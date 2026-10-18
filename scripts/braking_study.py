@@ -67,6 +67,8 @@ def main():
     for g, b, v, c in rows:
         lines.append(f"| {g} | {0.05 / (1 - g):.1f} s | {'-' if b is None else f'{b:.1f} m'} | {v * 3.6:.1f} km/h | {'yes' if c else 'no'} |")
     lines += ["", "![braking](braking-gamma.png)", "",
+              "Corner speeds within about 1 km/h of the limit are at the grid's resolution (0.25 m/s),",
+              "so a crash flagged at ~91 km/h is a resolution effect, not a horizon effect.", "",
               "Reading: a crash forfeits all future progress, so its true cost is the discounted",
               "value of everything after the corner. With a short horizon that value is small, the",
               "progress gained by braking later wins, and the agent arrives too fast. The RL",
