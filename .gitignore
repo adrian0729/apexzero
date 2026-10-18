@@ -1,0 +1,28 @@
+# Data: OpenF1 is CC BY-NC-SA and TUMFTM is LGPL; fetched by script, never committed.
+data/
+!data/README.md
+*.parquet
+*.json.gz
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+.ruff_cache/
+*.egg-info/
+build/
+dist/
+
+# Experiments
+runs/
+checkpoints/
+wandb/
+outputs/
+*.ckpt
+*.msgpack
+
+# OS / editors
+.DS_Store
+.idea/
+.vscode/
