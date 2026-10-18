@@ -25,6 +25,10 @@ class TrackArrays(NamedTuple):
     x: jax.Array         # [P]
     y: jax.Array         # [P]
     theta: jax.Array     # [P]
+    lx: jax.Array        # [P] left edge
+    ly: jax.Array
+    rx: jax.Array        # [P] right edge
+    ry: jax.Array
     ds: jax.Array        # scalar
     n_points: jax.Array  # scalar int, valid points (<= P)
     closed: jax.Array    # scalar bool
@@ -41,12 +45,19 @@ def track_arrays(track: Track, pad_to: int | None = None, dtype=jnp.float32) -> 
         out[:n] = a
         return jnp.asarray(out, dtype=dtype)
 
+    left, right = track.edges()
     return TrackArrays(
         kappa=pad(track.kappa), w_left=pad(track.w_left), w_right=pad(track.w_right),
         x=pad(track.x), y=pad(track.y), theta=pad(track.theta),
+        lx=pad(left[:, 0]), ly=pad(left[:, 1]), rx=pad(right[:, 0]), ry=pad(right[:, 1]),
         ds=jnp.asarray(track.ds, dtype=dtype), n_points=jnp.asarray(n, dtype=jnp.int32),
         closed=jnp.asarray(track.closed),
     )
+
+
+def track_length(tr: TrackArrays) -> jax.Array:
+    n = tr.n_points.astype(tr.ds.dtype)
+    return jnp.where(tr.closed, n * tr.ds, (n - 1) * tr.ds)
 
 
 def lookup(arr: jax.Array, s: jax.Array, tr: TrackArrays) -> jax.Array:
@@ -59,6 +70,20 @@ def lookup(arr: jax.Array, s: jax.Array, tr: TrackArrays) -> jax.Array:
     i1 = jnp.where(tr.closed, jnp.mod(i0 + 1, n), jnp.minimum(i0 + 1, n - 1))
     i0 = jnp.minimum(i0, n - 1)
     return (1.0 - frac) * arr[i0] + frac * arr[i1]
+
+
+def lookup_angle(arr: jax.Array, s: jax.Array, tr: TrackArrays) -> jax.Array:
+    """Like ``lookup`` for an unwrapped angle array: interpolates the wrapped difference,
+    so the closing segment of a closed track (theta jumps by 2*pi*turns) stays correct."""
+    n = tr.n_points
+    i = s / tr.ds
+    i = jnp.where(tr.closed, jnp.mod(i, n.astype(i.dtype)), jnp.clip(i, 0.0, (n - 1).astype(i.dtype)))
+    i0 = jnp.minimum(jnp.floor(i).astype(jnp.int32), n - 1)
+    frac = i - i0
+    i1 = jnp.where(tr.closed, jnp.mod(i0 + 1, n), jnp.minimum(i0 + 1, n - 1))
+    d = arr[i1] - arr[i0]
+    d = jnp.mod(d + jnp.pi, 2 * jnp.pi) - jnp.pi
+    return arr[i0] + frac * d
 
 
 def deriv(x, u, tr: TrackArrays, p: VehicleParams):
@@ -96,5 +121,5 @@ def control_step(x, u, tr: TrackArrays, p: VehicleParams, dt: float = 0.05,
 def global_pose(x, tr: TrackArrays):
     """World-frame (X, Y, psi) of the car's reference point."""
     s, n, xi = x[..., 0], x[..., 1], x[..., 2]
-    cx, cy, th = lookup(tr.x, s, tr), lookup(tr.y, s, tr), lookup(tr.theta, s, tr)
+    cx, cy, th = lookup(tr.x, s, tr), lookup(tr.y, s, tr), lookup_angle(tr.theta, s, tr)
     return cx - n * jnp.sin(th), cy + n * jnp.cos(th), th + xi

@@ -39,3 +39,10 @@ addopts = "-q"
 [tool.ruff]
 line-length = 100
 target-version = "py312"
+
+[tool.ruff.lint.flake8-bugbear]
+# Immutable NamedTuple configs are safe as default arguments.
+extend-immutable-calls = ["EnvParams", "apexzero.env.racing.EnvParams"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["RUF059"]
