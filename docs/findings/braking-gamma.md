@@ -20,6 +20,9 @@ Value iteration solves the discounted RL objective the agent uses (progress / 10
 
 ![braking](braking-gamma.png)
 
+Corner speeds within about 1 km/h of the limit are at the grid's resolution (0.25 m/s),
+so a crash flagged at ~91 km/h is a resolution effect, not a horizon effect.
+
 Reading: a crash forfeits all future progress, so its true cost is the discounted
 value of everything after the corner. With a short horizon that value is small, the
 progress gained by braking later wins, and the agent arrives too fast. The RL
