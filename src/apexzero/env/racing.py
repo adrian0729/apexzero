@@ -10,7 +10,8 @@ Observation (actor, 222-d, egocentric; nothing that identifies the track or lap 
     context  the six car parameters, normalised to [-1, 1].                      (6)
 Action: [a_steer, a_pedal] in [-1, 1]^2 at 20 Hz.
 Reward: progress / 10 m - 0.02 * ||a - a_prev||^2; on termination -(5 + 5 (v/50)^2).
-Termination: reference point within 1 m of an edge, |xi| > 90 deg, < 2 m/s for 2 s.
+Termination: reference point within 1 m of an edge, |xi| > 90 deg, tyre slip beyond
+alpha_max (10 deg, loss of control; the OCP enforces the same limit), < 2 m/s for 2 s.
 Truncation: end of the training window (or of an open strip); the learner bootstraps.
 """
 
@@ -144,7 +145,9 @@ def step_no_reset(state: EnvState, action: jax.Array, tr: TrackArrays,
     s1, n1, xi1, vx1 = x1[0], x1[1], x1[2], x1[3]
     wl, wr = lookup(tr.w_left, s1, tr), lookup(tr.w_right, s1, tr)
     off_track = (n1 > wl - params.edge_margin) | (n1 < -(wr - params.edge_margin))
-    spun = jnp.abs(xi1) > 0.5 * jnp.pi
+    fo1 = tyre_forces(x1, p, JAX)
+    slipped = (jnp.abs(fo1.alpha_f) > p.alpha_max) | (jnp.abs(fo1.alpha_r) > p.alpha_max)
+    spun = (jnp.abs(xi1) > 0.5 * jnp.pi) | slipped
     slow = jnp.where(vx1 < params.slow_speed, state.slow + params.dt, 0.0)
     stalled = slow > params.slow_time
     bad = ~jnp.all(jnp.isfinite(x1))
@@ -166,7 +169,7 @@ def step_no_reset(state: EnvState, action: jax.Array, tr: TrackArrays,
                    slow=slow, s0=state.s0)
     obs = observe(new, tr, p)
     info = {"progress": progress, "speed": vx1, "off_track": off_track, "spun": spun,
-            "stalled": stalled}
+            "slipped": slipped, "stalled": stalled}
     return obs, new, reward, terminated, truncated, info
 
 

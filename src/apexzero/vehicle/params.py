@@ -41,6 +41,8 @@ class VehicleParams(NamedTuple):
     brake_bias: float = 0.58     # front share of brake force (assumed)
     f_brake_max: float = 60e3    # N, total brake force demand at full pedal (assumed)
     v_drive_floor: float = 5.0   # m/s, P/v drive force is evaluated at max(v, floor)
+    alpha_max: float = 0.175     # rad (10 deg), tyre slip beyond which control is lost:
+                                 # the env terminates and the OCP constrains at this limit
     g: float = 9.81
 
     @property

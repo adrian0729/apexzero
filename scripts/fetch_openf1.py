@@ -9,6 +9,8 @@ About 5k requests at <=29/min, so a full run takes roughly 3 hours.
 import argparse
 from pathlib import Path
 
+import _bootstrap  # noqa: F401  (makes src/ importable)
+
 from apexzero.data.openf1 import run
 
 # The snapping audit runs on these first, so they are fetched before everything else.

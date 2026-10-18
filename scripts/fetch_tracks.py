@@ -9,6 +9,7 @@ import hashlib
 import json
 from pathlib import Path
 
+import _bootstrap  # noqa: F401  (makes src/ importable)
 import httpx
 
 REPO = "TUMFTM/racetrack-database"

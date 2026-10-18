@@ -5,6 +5,7 @@
 
 import time
 
+import _bootstrap  # noqa: F401  (makes src/ importable)
 import jax
 import jax.numpy as jnp
 import numpy as np
