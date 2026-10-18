@@ -20,10 +20,12 @@ bayes = ["numpyro>=0.16", "arviz>=0.20"]
 viz = ["matplotlib>=3.9"]
 # rejax 0.1.3 expects the pre-1.0 gymnax step signature.
 rlref = ["gymnax>=0.0.8,<1.0", "rejax>=0.1", "jaxued>=0.0.1"]
+# JaxUED maze replication (E5): what examples/maze_plr.py imports.
+maze = ["distrax>=0.1.5", "orbax-checkpoint>=0.5", "wandb>=0.17", "chex>=0.1.86"]
 dev = ["pytest>=8", "ruff>=0.6"]
 
 [tool.uv]
-default-groups = ["data", "ocp", "viz", "dev", "rlref"]
+default-groups = ["data", "ocp", "viz", "dev", "rlref", "maze"]
 
 [build-system]
 requires = ["hatchling"]
