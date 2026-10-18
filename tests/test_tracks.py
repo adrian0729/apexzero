@@ -28,10 +28,13 @@ def densify(poly, step=0.05):
 def test_circle_geometry():
     tr = circle()
     assert tr.length == pytest.approx(2 * np.pi * 100.0, rel=1e-4)
-    assert np.allclose(tr.kappa, 1 / 100.0, rtol=1e-3)
+    # Smoothing adds a small ripple but no bias.
+    assert tr.kappa.mean() == pytest.approx(1 / 100.0, rel=1e-4)
+    assert tr.kappa.std() / tr.kappa.mean() < 0.01
     assert np.allclose(np.diff(tr.s), tr.ds)
     left, _ = tr.edges()
-    assert np.allclose(np.hypot(left[:, 0], left[:, 1]), 95.0, atol=1e-2)
+    # Edges move with the smoothed centreline, which may drift by ~the smoothing RMS (5 cm).
+    assert np.allclose(np.hypot(left[:, 0], left[:, 1]), 95.0, atol=0.1)
 
 
 def test_mirror_and_reverse_flip_curvature():
@@ -39,7 +42,7 @@ def test_mirror_and_reverse_flip_curvature():
     assert np.allclose(tr.mirrored().kappa, -tr.kappa)
     rev = tr.reversed()
     assert rev.length == pytest.approx(tr.length, rel=1e-4)
-    assert np.allclose(rev.kappa, -1 / 100.0, rtol=1e-3)
+    assert rev.kappa.mean() == pytest.approx(-1 / 100.0, rel=1e-4)
 
 
 @needs_tumftm

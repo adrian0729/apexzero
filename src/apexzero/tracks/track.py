@@ -116,7 +116,7 @@ def from_centreline(
     arc = np.r_[0.0, np.cumsum(0.5 * (speed[1:] + speed[:-1]) * np.diff(dense_u))]
     total = arc[-1]
     if closed:
-        n = int(round(total / ds))
+        n = round(total / ds)
         ds_eff = total / n
         s = np.arange(n) * ds_eff
     else:
