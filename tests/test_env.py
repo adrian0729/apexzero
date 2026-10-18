@@ -40,7 +40,7 @@ def make_state(x, ctx=None):
 
 def test_observation_shape_and_finiteness():
     ta = track_arrays(wavy_track(), dtype=jnp.float64)
-    v_ref = jnp.full(ta.kappa.shape, 40.0)
+    v_ref = jnp.full(ta.x.shape, 40.0)
     obs, st = reset(jax.random.PRNGKey(0), ta, v_ref, default_context())
     assert obs.shape == (OBS_DIM,)
     assert bool(jnp.all(jnp.isfinite(obs)))
@@ -93,7 +93,7 @@ def test_leaving_the_corridor_terminates_with_speed_scaled_penalty():
 
 def test_auto_reset_and_truncation():
     ta = track_arrays(wavy_track(), dtype=jnp.float64)
-    v_ref = jnp.full(ta.kappa.shape, 40.0)
+    v_ref = jnp.full(ta.x.shape, 40.0)
     params = EnvParams(window_steps=3)
     obs, st = reset(jax.random.PRNGKey(0), ta, v_ref, default_context(), params)
     flags = []

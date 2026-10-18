@@ -27,15 +27,15 @@ def test_strips_are_deterministic_and_well_formed(grammar):
     gen = jax.jit(jax.vmap(lambda k: generate_strip(k, grammar)))
     a = gen(jax.random.split(jax.random.PRNGKey(0), 50))
     b = gen(jax.random.split(jax.random.PRNGKey(0), 50))
-    assert np.array_equal(np.asarray(a.kappa), np.asarray(b.kappa))
-    assert a.kappa.shape == (50, N_POINTS)
+    assert np.array_equal(np.asarray(a.kappa_c), np.asarray(b.kappa_c))
+    assert a.x.shape == (50, N_POINTS)
     for i in range(50):
         tr = to_track(jax.tree.map(lambda x, i=i: x[i], a))
         assert np.all(np.isfinite(tr.kappa)) and np.all(np.isfinite(tr.x))
         assert 1.0 / np.abs(tr.kappa).max() >= 8.0 - 1e-3          # radius floor
         assert drivable_margin(tr) <= 0.6 + 1e-3                   # Frenet safety cap
         assert np.all(tr.w_left > 1.5) and np.all(tr.w_right > 1.5)
-        assert np.abs(tr.kappa[:250]).max() == 0.0                 # starts on a >= 500 m straight
+        assert np.abs(tr.kappa[:250]).max() < 1e-6                  # starts on a >= 500 m straight
 
 
 def test_corner_statistics_match_development_circuits(grammar):

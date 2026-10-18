@@ -12,6 +12,7 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 
+from apexzero.tracks.spline import eval_jax, packed_coeffs
 from apexzero.tracks.track import Track
 from apexzero.vehicle.dynamics import f
 from apexzero.vehicle.ops import JAX
@@ -19,9 +20,12 @@ from apexzero.vehicle.params import VehicleParams
 
 
 class TrackArrays(NamedTuple):
-    kappa: jax.Array     # [P]
-    w_left: jax.Array    # [P]
-    w_right: jax.Array   # [P]
+    # C2 cubic B-spline coefficients (see tracks/spline.py), length P + 2. The dynamics,
+    # corridor and preview evaluate these, identically to the CasADi OCP.
+    kappa_c: jax.Array
+    w_left_c: jax.Array
+    w_right_c: jax.Array
+    # Pose arrays (piecewise-linear lookup; observations and plotting only).
     x: jax.Array         # [P]
     y: jax.Array         # [P]
     theta: jax.Array     # [P] unwrapped heading
@@ -41,8 +45,11 @@ def track_arrays(track: Track, pad_to: int | None = None, dtype=jnp.float32) -> 
         out[:n] = a
         return jnp.asarray(out, dtype=dtype)
 
+    def coef(a):
+        return jnp.asarray(packed_coeffs(np.asarray(a, float), track.closed, pad_to), dtype=dtype)
+
     return TrackArrays(
-        kappa=pad(track.kappa), w_left=pad(track.w_left), w_right=pad(track.w_right),
+        kappa_c=coef(track.kappa), w_left_c=coef(track.w_left), w_right_c=coef(track.w_right),
         x=pad(track.x), y=pad(track.y), theta=pad(track.theta),
         ds=jnp.asarray(track.ds, dtype=dtype), n_points=jnp.asarray(n, dtype=jnp.int32),
         closed=jnp.asarray(track.closed),
@@ -66,6 +73,19 @@ def lookup(arr: jax.Array, s: jax.Array, tr: TrackArrays) -> jax.Array:
     return (1.0 - frac) * arr[i0] + frac * arr[i1]
 
 
+def spline(coef: jax.Array, s: jax.Array, tr: TrackArrays) -> jax.Array:
+    """C2 spline value at arc length s (kappa, widths)."""
+    return eval_jax(coef, s, tr.ds, tr.n_points, tr.closed)
+
+
+def kappa_at(s, tr: TrackArrays):
+    return spline(tr.kappa_c, s, tr)
+
+
+def widths_at(s, tr: TrackArrays):
+    return spline(tr.w_left_c, s, tr), spline(tr.w_right_c, s, tr)
+
+
 def lookup_angle(arr: jax.Array, s: jax.Array, tr: TrackArrays) -> jax.Array:
     """Like ``lookup`` for an unwrapped angle array: interpolates the wrapped difference,
     so the closing segment of a closed track (theta jumps by 2*pi*turns) stays correct."""
@@ -81,7 +101,7 @@ def lookup_angle(arr: jax.Array, s: jax.Array, tr: TrackArrays) -> jax.Array:
 
 
 def deriv(x, u, tr: TrackArrays, p: VehicleParams):
-    return f(x, u, lookup(tr.kappa, x[..., 0], tr), p, JAX)
+    return f(x, u, kappa_at(x[..., 0], tr), p, JAX)
 
 
 def rk2_step(x, u, tr: TrackArrays, p: VehicleParams, dt):
@@ -115,7 +135,7 @@ def control_step(x, u, tr: TrackArrays, p: VehicleParams, dt: float = 0.05,
 def edges_at(s, tr: TrackArrays):
     """World-frame left and right edge points at arc length(s) s."""
     cx, cy, th = lookup(tr.x, s, tr), lookup(tr.y, s, tr), lookup_angle(tr.theta, s, tr)
-    wl, wr = lookup(tr.w_left, s, tr), lookup(tr.w_right, s, tr)
+    wl, wr = widths_at(s, tr)
     sn, cs = jnp.sin(th), jnp.cos(th)
     return (cx - wl * sn, cy + wl * cs), (cx + wr * sn, cy - wr * cs)
 

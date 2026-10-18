@@ -66,3 +66,24 @@ def test_refined_reference_keeps_edges_and_lowers_margin(name):
     for old, new in zip(tr.edges(), ref.edges()):
         err = cKDTree(densify(old)).query(new)[0]
         assert err.max() < 0.05
+
+
+def test_spline_lookup_is_identical_in_jax_numpy_and_casadi():
+    import jax
+    import jax.numpy as jnp
+
+    from apexzero.tracks.spline import eval_casadi, eval_jax, packed_coeffs, spline_np
+
+    jax.config.update("jax_enable_x64", True)
+    rng = np.random.default_rng(0)
+    for closed in (True, False):
+        n, ds = 400, 2.0
+        sg = np.arange(n) * ds
+        f = np.sin(sg / 40.0) + 0.2 * np.cos(sg / 7.0)
+        coef = packed_coeffs(f, closed, pad_to=n + 10)
+        s = rng.uniform(0, (n - 1) * ds, 2000)
+        vj = np.asarray(eval_jax(jnp.asarray(coef), jnp.asarray(s), ds, jnp.asarray(n), jnp.asarray(closed)))
+        vn = spline_np(coef, s, ds, n, closed)
+        vc = np.asarray(eval_casadi(coef, ds, n, closed).map(len(s))(s[None, :])).ravel()
+        assert np.max(np.abs(vj - vc)) < 1e-12 and np.max(np.abs(vn - vc)) < 1e-12
+        assert np.max(np.abs(spline_np(coef, sg, ds, n, closed) - f)) < 1e-12   # interpolates

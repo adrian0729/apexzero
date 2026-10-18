@@ -34,8 +34,16 @@ class ShootingCheck:
     p99_speed_error: float
 
 
-def shooting_check(res: OCPResult, p: VehicleParams, substeps: int = 20) -> ShootingCheck:
+def shooting_check(res: OCPResult, p: VehicleParams, substeps: int = 20,
+                   track=None) -> ShootingCheck:
+    """With ``track`` given, curvature comes from the track's C2 spline exactly as in the
+    simulator; otherwise it is interpolated linearly between the OCP stations."""
     jax.config.update("jax_enable_x64", True)
+    tr_arr = None
+    if track is not None:
+        from apexzero.vehicle.sim import kappa_at, track_arrays
+
+        tr_arr = track_arrays(track, dtype=jnp.float64)
     n = len(res.s)
     h_s = res.meta["ds"]
     L = n * h_s
@@ -48,6 +56,8 @@ def shooting_check(res: OCPResult, p: VehicleParams, substeps: int = 20) -> Shoo
 
     def one(s0, s1, z0, u0, u1, k0, k1, dt):
         def kappa(s):
+            if tr_arr is not None:
+                return kappa_at(s, tr_arr)
             w = jnp.clip((s - s0) / (s1 - s0), 0.0, 1.0)
             return (1 - w) * k0 + w * k1
 

@@ -54,16 +54,17 @@ class OCPResult:
 
 
 def resample(track: Track, ds: float):
-    """Track arrays on a uniform OCP grid of spacing ~ds."""
+    """Track quantities on a uniform OCP grid of spacing ~ds, evaluated with the same C2
+    spline the simulator uses."""
+    from apexzero.tracks.spline import packed_coeffs, spline_np
+
     n = round(track.length / ds) if track.closed else int(track.length // ds) + 1
     h = track.length / n if track.closed else ds
     s = np.arange(n) * h
-    period = track.length if track.closed else None
 
     def interp(a):
-        if period is not None:
-            return np.interp(s, np.r_[track.s, track.length], np.r_[a, a[0]])
-        return np.interp(s, track.s, a)
+        c = packed_coeffs(np.asarray(a, float), track.closed, track.n_points)
+        return spline_np(c, s, track.ds, track.n_points, track.closed)
 
     return s, h, interp(track.kappa), interp(track.w_left), interp(track.w_right)
 

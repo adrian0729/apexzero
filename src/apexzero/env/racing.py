@@ -30,8 +30,10 @@ from apexzero.vehicle.sim import (
     control_step,
     edges_at,
     global_pose,
+    kappa_at,
     lookup,
     track_length,
+    widths_at,
 )
 
 N_PREVIEW = 40
@@ -99,10 +101,10 @@ def observe(state: EnvState, tr: TrackArrays, p: VehicleParams) -> jax.Array:
     (lx, ly), (rx, ry) = edges_at(sk, tr)
     lxb, lyb = body(lx, ly)
     rxb, ryb = body(rx, ry)
-    kap = lookup(tr.kappa, sk, tr) * 50.0
+    kap = kappa_at(sk, tr) * 50.0
     preview = jnp.stack([lxb, lyb, rxb, ryb, kap], axis=-1).reshape(-1)
 
-    wl, wr = lookup(tr.w_left, s, tr), lookup(tr.w_right, s, tr)
+    wl, wr = widths_at(s, tr)
     lateral = (n - 0.5 * (wl - wr)) / (0.5 * (wl + wr))
     fo = tyre_forces(x, p, JAX)
     ego = jnp.stack([
@@ -124,7 +126,7 @@ def reset(key: jax.Array, tr: TrackArrays, v_ref: jax.Array, ctx: jax.Array,
     length = track_length(tr)
     s_hi = jnp.where(tr.closed, length, jnp.maximum(length - params.strip_tail - 1000.0, 1.0))
     s0 = jax.random.uniform(k1, (), minval=0.0, maxval=s_hi)
-    wl, wr = lookup(tr.w_left, s0, tr), lookup(tr.w_right, s0, tr)
+    wl, wr = widths_at(s0, tr)
     centre, half = 0.5 * (wl - wr), 0.5 * (wl + wr)
     n0 = centre + 0.5 * (half - params.edge_margin) * jax.random.uniform(k2, (), minval=-1.0, maxval=1.0)
     xi0 = 0.03 * jax.random.normal(k3, ())
@@ -151,7 +153,7 @@ def step_no_reset(state: EnvState, action: jax.Array, tr: TrackArrays,
     ay = (x1[4] - x0[4]) / params.dt + x1[3] * x1[5]
 
     s1, n1, xi1, vx1 = x1[0], x1[1], x1[2], x1[3]
-    wl, wr = lookup(tr.w_left, s1, tr), lookup(tr.w_right, s1, tr)
+    wl, wr = widths_at(s1, tr)
     off_track = (n1 > wl - params.edge_margin) | (n1 < -(wr - params.edge_margin))
     fo1 = tyre_forces(x1, p, JAX)
     slipped = (jnp.abs(fo1.alpha_f) > p.alpha_max) | (jnp.abs(fo1.alpha_r) > p.alpha_max)

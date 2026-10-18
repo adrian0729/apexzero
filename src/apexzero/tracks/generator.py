@@ -26,6 +26,7 @@ import jax.numpy as jnp
 import numpy as np
 
 from apexzero.tracks.corners import segment
+from apexzero.tracks.spline import coeffs_open_jax, values_from_coeffs
 from apexzero.tracks.track import Track
 from apexzero.vehicle.sim import TrackArrays
 
@@ -155,7 +156,8 @@ def strip_arrays(kappa, w_left, w_right, ds: float = DS) -> TrackArrays:
     y = jnp.concatenate([jnp.zeros(1), jnp.cumsum(0.5 * (s[1:] + s[:-1]) * ds)])
     n = kappa.shape[0]
     return TrackArrays(
-        kappa=kappa, w_left=w_left, w_right=w_right, x=x, y=y, theta=theta,
+        kappa_c=coeffs_open_jax(kappa), w_left_c=coeffs_open_jax(w_left),
+        w_right_c=coeffs_open_jax(w_right), x=x, y=y, theta=theta,
         ds=jnp.asarray(ds, kappa.dtype), n_points=jnp.asarray(n, jnp.int32),
         closed=jnp.asarray(False),
     )
@@ -170,6 +172,7 @@ def to_track(arr: TrackArrays, name: str = "strip") -> Track:
     a = jax.tree.map(np.asarray, arr)
     n = int(a.n_points)
     s = np.arange(n) * float(a.ds)
-    return Track(name=name, s=s, x=a.x[:n], y=a.y[:n], theta=a.theta[:n], kappa=a.kappa[:n],
-                 w_left=a.w_left[:n], w_right=a.w_right[:n], closed=False,
+    return Track(name=name, s=s, x=a.x[:n], y=a.y[:n], theta=a.theta[:n],
+                 kappa=values_from_coeffs(a.kappa_c, n), w_left=values_from_coeffs(a.w_left_c, n),
+                 w_right=values_from_coeffs(a.w_right_c, n), closed=False,
                  meta={"source": "procedural"})
