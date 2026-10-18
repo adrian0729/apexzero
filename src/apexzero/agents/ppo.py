@@ -60,6 +60,7 @@ class PPOConfig:
     mlp_layers: int = 3
     activation: str = "tanh"        # for "mlp"
     obs_noise: float = 0.0          # Gaussian noise on (normalised) observations in training
+    ensemble_heads: int = 0         # extra value heads on a stop-gradient trunk (disagreement score)
 
     @property
     def batch_size(self) -> int:
@@ -196,12 +197,24 @@ class Actor(nn.Module):
 
 
 class Critic(nn.Module):
+    """Value network. With ``ensemble_heads`` = E > 0 it also owns E small heads that read
+    the trunk through a stop-gradient: trained on the same targets, they cannot change the
+    main critic, and their spread is the ensemble-disagreement level score."""
+
     cfg: PPOConfig
 
     @nn.compact
-    def __call__(self, obs):
+    def __call__(self, obs, with_heads: bool = False):
         h = _encoder(self.cfg, self.cfg.critic_width)(obs)
-        return _dense(1, 1.0)(h).squeeze(-1)
+        v = _dense(1, 1.0)(h).squeeze(-1)
+        if self.cfg.ensemble_heads and (with_heads or self.is_initializing()):
+            hs = jax.lax.stop_gradient(h)
+            heads = jnp.stack([
+                _dense(1, 1.0)(nn.relu(_dense(64)(hs))).squeeze(-1)
+                for _ in range(self.cfg.ensemble_heads)
+            ], axis=-1)
+            return (v, heads) if with_heads else v
+        return v
 
 
 # --------------------------------------------------------------------------- distributions
@@ -295,7 +308,10 @@ def act(agent: AgentState, actor: Actor, obs_raw, key, discrete, deterministic=F
 # --------------------------------------------------------------------------- training
 
 
-def make_train(cfg: PPOConfig, env: Env, log_fn: Callable[[dict], None] | None = None):
+def make_train(cfg: PPOConfig, env: Env, log_fn: Callable[[dict], None] | None = None,
+               checkpoint_fn: Callable[[Any, Any], None] | None = None):
+    """``checkpoint_fn(snapshot, update)`` is called on the host after every update with the
+    actor/critic params and normalisers; it decides itself which updates to keep."""
     actor = Actor(cfg, env.action_dim, env.discrete)
     critic = Critic(cfg)
     n_up = cfg.num_updates
@@ -433,12 +449,16 @@ def make_train(cfg: PPOConfig, env: Env, log_fn: Callable[[dict], None] | None =
                         return loss, (pg.mean(), ent.mean(), approx_kl, clipfrac)
 
                     def critic_loss(params):
-                        v = critic.apply(params, t.obs)
+                        if cfg.ensemble_heads:
+                            v, heads = critic.apply(params, t.obs, with_heads=True)
+                            head_loss = ((heads - tgt[:, None]) ** 2).mean()
+                        else:
+                            v, head_loss = critic.apply(params, t.obs), 0.0
                         vl = (v - tgt) ** 2
                         if cfg.clip_value:
                             vc = t.value + jnp.clip(v - t.value, -cfg.clip_eps, cfg.clip_eps)
                             vl = jnp.maximum(vl, (vc - tgt) ** 2)
-                        return cfg.vf_coef * 0.5 * vl.mean()
+                        return cfg.vf_coef * 0.5 * (vl.mean() + head_loss)
 
                     (_, aux), ga = jax.value_and_grad(actor_loss, has_aux=True)(agent.actor.params)
                     vloss, gc = jax.value_and_grad(critic_loss)(agent.critic.params)
@@ -474,6 +494,10 @@ def make_train(cfg: PPOConfig, env: Env, log_fn: Callable[[dict], None] | None =
             }
             if log_fn is not None:
                 jax.debug.callback(log_fn, metrics)
+            if checkpoint_fn is not None:
+                snap = {"actor": agent.actor.params, "critic": agent.critic.params,
+                        "obs_rms": agent.obs_rms, "ret_rms": agent.ret_rms}
+                jax.debug.callback(checkpoint_fn, snap, upd)
             return (agent, env_state, obs, ret_acc, ep_ret, ep_len, key, env_params), metrics
 
         carry = (agent, env_state, obs, ret_acc, ep_ret, ep_len, key, env_params)
