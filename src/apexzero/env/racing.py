@@ -25,7 +25,14 @@ import jax.numpy as jnp
 from apexzero.vehicle.dynamics import tyre_forces
 from apexzero.vehicle.ops import JAX
 from apexzero.vehicle.params import CONTEXT_RANGES, F1_2025, VehicleParams, with_context
-from apexzero.vehicle.sim import TrackArrays, control_step, global_pose, lookup, track_length
+from apexzero.vehicle.sim import (
+    TrackArrays,
+    control_step,
+    edges_at,
+    global_pose,
+    lookup,
+    track_length,
+)
 
 N_PREVIEW = 40
 OBS_PREVIEW = 5 * N_PREVIEW
@@ -89,8 +96,9 @@ def observe(state: EnvState, tr: TrackArrays, p: VehicleParams) -> jax.Array:
         dx, dy = px - X, py - Y
         return (c * dx + sn * dy) / 100.0, (-sn * dx + c * dy) / 100.0
 
-    lxb, lyb = body(lookup(tr.lx, sk, tr), lookup(tr.ly, sk, tr))
-    rxb, ryb = body(lookup(tr.rx, sk, tr), lookup(tr.ry, sk, tr))
+    (lx, ly), (rx, ry) = edges_at(sk, tr)
+    lxb, lyb = body(lx, ly)
+    rxb, ryb = body(rx, ry)
     kap = lookup(tr.kappa, sk, tr) * 50.0
     preview = jnp.stack([lxb, lyb, rxb, ryb, kap], axis=-1).reshape(-1)
 

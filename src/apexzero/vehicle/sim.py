@@ -24,11 +24,7 @@ class TrackArrays(NamedTuple):
     w_right: jax.Array   # [P]
     x: jax.Array         # [P]
     y: jax.Array         # [P]
-    theta: jax.Array     # [P]
-    lx: jax.Array        # [P] left edge
-    ly: jax.Array
-    rx: jax.Array        # [P] right edge
-    ry: jax.Array
+    theta: jax.Array     # [P] unwrapped heading
     ds: jax.Array        # scalar
     n_points: jax.Array  # scalar int, valid points (<= P)
     closed: jax.Array    # scalar bool
@@ -45,11 +41,9 @@ def track_arrays(track: Track, pad_to: int | None = None, dtype=jnp.float32) -> 
         out[:n] = a
         return jnp.asarray(out, dtype=dtype)
 
-    left, right = track.edges()
     return TrackArrays(
         kappa=pad(track.kappa), w_left=pad(track.w_left), w_right=pad(track.w_right),
         x=pad(track.x), y=pad(track.y), theta=pad(track.theta),
-        lx=pad(left[:, 0]), ly=pad(left[:, 1]), rx=pad(right[:, 0]), ry=pad(right[:, 1]),
         ds=jnp.asarray(track.ds, dtype=dtype), n_points=jnp.asarray(n, dtype=jnp.int32),
         closed=jnp.asarray(track.closed),
     )
@@ -116,6 +110,14 @@ def control_step(x, u, tr: TrackArrays, p: VehicleParams, dt: float = 0.05,
 
     x, _ = jax.lax.scan(body, x, None, length=substeps)
     return x
+
+
+def edges_at(s, tr: TrackArrays):
+    """World-frame left and right edge points at arc length(s) s."""
+    cx, cy, th = lookup(tr.x, s, tr), lookup(tr.y, s, tr), lookup_angle(tr.theta, s, tr)
+    wl, wr = lookup(tr.w_left, s, tr), lookup(tr.w_right, s, tr)
+    sn, cs = jnp.sin(th), jnp.cos(th)
+    return (cx - wl * sn, cy + wl * cs), (cx + wr * sn, cy - wr * cs)
 
 
 def global_pose(x, tr: TrackArrays):
