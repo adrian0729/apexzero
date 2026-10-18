@@ -82,13 +82,21 @@ class PPOConfig:
 
 class Env(NamedTuple):
     """Pure-function environment. ``step`` auto-resets and returns
-    (obs, state, reward, terminated, truncated, info) with ``info['final_obs']``."""
+    (obs, state, reward, terminated, truncated, info) with ``info['final_obs']``.
 
-    reset: Callable[[jax.Array], tuple[jax.Array, Any]]
-    step: Callable[[jax.Array, Any, jax.Array], tuple]
+    ``reset(key, params)`` and ``step(key, state, action, params)`` take an environment
+    parameter carry (for example a bank of tracks). ``init_params(key)`` creates it and
+    ``refresh(key, params, update)``, if given, updates it between PPO updates (for
+    example regenerating part of the track bank).
+    """
+
+    reset: Callable[[jax.Array, Any], tuple[jax.Array, Any]]
+    step: Callable[[jax.Array, Any, jax.Array, Any], tuple]
     obs_dim: int
     action_dim: int
     discrete: bool
+    init_params: Callable[[jax.Array], Any] | None = None
+    refresh: Callable[[jax.Array, Any, jax.Array], Any] | None = None
 
 
 def from_gymnax(name: str, truncation_as_termination: bool = True, **kw) -> Env:
@@ -105,10 +113,10 @@ def from_gymnax(name: str, truncation_as_termination: bool = True, **kw) -> Env:
     action_dim = space.n if discrete else int(np.prod(space.shape))
     obs_dim = int(np.prod(env.observation_space(params).shape))
 
-    def reset(key):
+    def reset(key, _p=None):
         return env.reset(key, params)
 
-    def step(key, state, action):
+    def step(key, state, action, _p=None):
         out = env.step(key, state, action, params)
         if len(out) == 5:  # gymnax < 1.0: (obs, state, reward, done, info), no truncation flag
             obs, state, reward, done, info = out
@@ -302,7 +310,8 @@ def make_train(cfg: PPOConfig, env: Env, log_fn: Callable[[dict], None] | None =
                            optax.adam(learning_rate=lr_schedule, eps=1e-5))
 
     def init(key):
-        ka, kc, ke = jax.random.split(key, 3)
+        ka, kc, ke, kp = jax.random.split(key, 4)
+        env_params = env.init_params(kp) if env.init_params is not None else None
         dummy = jnp.zeros((1, env.obs_dim))
         a_params = actor.init(ka, dummy)
         c_params = critic.init(kc, dummy)
@@ -312,23 +321,27 @@ def make_train(cfg: PPOConfig, env: Env, log_fn: Callable[[dict], None] | None =
             obs_rms=RunningMeanStd.create((env.obs_dim,)),
             ret_rms=RunningMeanStd.create(()),
         )
-        obs, env_state = jax.vmap(env.reset)(jax.random.split(ke, cfg.num_envs))
+        obs, env_state = jax.vmap(env.reset, in_axes=(0, None))(
+            jax.random.split(ke, cfg.num_envs), env_params)
         if cfg.normalize_obs:
             agent = agent._replace(obs_rms=agent.obs_rms.update(obs))
-        return agent, env_state, obs
+        return agent, env_state, obs, env_params
 
     def norm_obs(agent, obs):
         return agent.obs_rms.normalize(obs) if cfg.normalize_obs else obs
 
     def train(key):
         key, k0 = jax.random.split(key)
-        agent, env_state, obs = init(k0)
+        agent, env_state, obs, env_params = init(k0)
         ret_acc = jnp.zeros(cfg.num_envs)
         ep_ret = jnp.zeros(cfg.num_envs)
         ep_len = jnp.zeros(cfg.num_envs)
 
         def update(carry, upd):
-            agent, env_state, obs, ret_acc, ep_ret, ep_len, key = carry
+            agent, env_state, obs, ret_acc, ep_ret, ep_len, key, env_params = carry
+            if env.refresh is not None:
+                key, kr = jax.random.split(key)
+                env_params = env.refresh(kr, env_params, upd)
 
             def env_step(c, _):
                 agent, env_state, obs, ret_acc, ep_ret, ep_len, key = c
@@ -344,8 +357,9 @@ def make_train(cfg: PPOConfig, env: Env, log_fn: Callable[[dict], None] | None =
                     logp = gaussian_logp(action, out, log_std)
                 value = critic.apply(agent.critic.params, o_in)
 
-                nobs, env_state, reward, term, trunc, info = jax.vmap(env.step)(
-                    jax.random.split(k_env, cfg.num_envs), env_state, action)
+                nobs, env_state, reward, term, trunc, info = jax.vmap(
+                    env.step, in_axes=(0, 0, 0, None))(
+                    jax.random.split(k_env, cfg.num_envs), env_state, action, env_params)
                 final_value = critic.apply(agent.critic.params, norm_obs(agent, info["final_obs"]))
                 done = term | trunc
 
@@ -460,9 +474,9 @@ def make_train(cfg: PPOConfig, env: Env, log_fn: Callable[[dict], None] | None =
             }
             if log_fn is not None:
                 jax.debug.callback(log_fn, metrics)
-            return (agent, env_state, obs, ret_acc, ep_ret, ep_len, key), metrics
+            return (agent, env_state, obs, ret_acc, ep_ret, ep_len, key, env_params), metrics
 
-        carry = (agent, env_state, obs, ret_acc, ep_ret, ep_len, key)
+        carry = (agent, env_state, obs, ret_acc, ep_ret, ep_len, key, env_params)
         carry, metrics = jax.lax.scan(update, carry, jnp.arange(n_up))
         return carry[0], metrics
 

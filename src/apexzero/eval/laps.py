@@ -52,6 +52,7 @@ def timed_laps(policy_fn, track: Track, v_start: float, runs: int = 20, laps: in
 
     def init_state(x):
         return racing.EnvState(x=x, prev_action=jnp.zeros(2), accel=jnp.zeros(2), ctx=ctx,
+                               hidden_mu=jnp.array(1.0),
                                t=jnp.zeros((), jnp.int32), slow=jnp.zeros(()), s0=x[0])
 
     states = jax.vmap(init_state)(jnp.asarray(x0))

@@ -34,7 +34,8 @@ def wavy_track(n=1500, mirror=False):
 def make_state(x, ctx=None):
     x = jnp.asarray(x, dtype=jnp.float64)
     return EnvState(x=x, prev_action=jnp.array([0.1, 0.2]), accel=jnp.array([1.0, -2.0]),
-                    ctx=default_context() if ctx is None else ctx, t=jnp.array(0),
+                    ctx=default_context() if ctx is None else ctx, hidden_mu=jnp.array(1.0),
+                    t=jnp.array(0),
                     slow=jnp.array(0.0), s0=x[0])
 
 

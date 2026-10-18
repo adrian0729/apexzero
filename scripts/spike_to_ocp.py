@@ -60,7 +60,8 @@ def policy_rollout(track, x0, spec, agent_path):
     tr = track_arrays(track, dtype=jnp.float64)
     params = racing.EnvParams(window_steps=10**9, substeps=spec.substeps)
     st = racing.EnvState(x=jnp.asarray(x0), prev_action=jnp.zeros(2), accel=jnp.zeros(2),
-                         ctx=racing.default_context().astype(jnp.float64), t=jnp.array(0),
+                         ctx=racing.default_context().astype(jnp.float64),
+                         hidden_mu=jnp.array(1.0), t=jnp.array(0),
                          slow=jnp.array(0.0), s0=jnp.asarray(x0[0]))
     p = racing.params_from_context(st.ctx)
     obs = racing.observe(st, tr, p)
@@ -79,7 +80,8 @@ def replay(track, p, x0, acts, spec):
     tr = track_arrays(track, dtype=jnp.float64)
     params = racing.EnvParams(window_steps=10**9, substeps=spec.substeps)
     st = racing.EnvState(x=jnp.asarray(x0), prev_action=jnp.zeros(2), accel=jnp.zeros(2),
-                         ctx=racing.default_context().astype(jnp.float64), t=jnp.array(0),
+                         ctx=racing.default_context().astype(jnp.float64),
+                         hidden_mu=jnp.array(1.0), t=jnp.array(0),
                          slow=jnp.array(0.0), s0=jnp.asarray(x0[0]))
 
     def body(c, a):

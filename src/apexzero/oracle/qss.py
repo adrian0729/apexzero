@@ -125,3 +125,67 @@ def lap_time(v: np.ndarray, ds: np.ndarray | float, closed: bool = True) -> floa
         v = v[:-1]
         dsv = np.broadcast_to(np.asarray(ds, dtype=float), v.shape)
     return float(np.sum(2.0 * dsv / (v + v_next)))
+
+
+# --------------------------------------------------------------------------- JAX version
+
+
+def speed_profile_jax(kappa, ds, p: VehicleParams, v_cap: float = 120.0):
+    """Forward-backward QSS profile for an open path, in JAX (vmappable over strips).
+
+    Same envelope as ``GG`` / ``speed_profile`` (NumPy), written with lax.scan so freshly
+    generated strips get reference speeds on-device.
+    """
+    import jax
+    import jax.numpy as jnp
+
+    fz_tyre = 0.25 * (p.m * p.g + 0.5 * p.rho * (p.cla_f + p.cla_r) * 60.0**2)
+    dmu = p.kmu * (fz_tyre - p.fz0)
+    mu_x = p.mu_scale * (0.5 * (p.mux_f + p.mux_r) + dmu)
+    mu_y = p.mu_scale * (0.5 * (p.muy_f + p.muy_r) + dmu)
+    mu_x_r = p.mu_scale * (p.mux_r + dmu)
+    cla = p.cla_f + p.cla_r
+
+    def normal(v):
+        return p.m * p.g + 0.5 * p.rho * cla * v * v
+
+    def drag(v):
+        return 0.5 * p.rho * p.cda * v * v + p.f_roll * normal(v)
+
+    def a_lat(v):
+        return mu_y * normal(v) / p.m
+
+    def a_brake(v):
+        return mu_x * normal(v) / p.m + drag(v) / p.m
+
+    def a_acc(v):
+        fz_r = p.m * p.g * p.lf / (p.lf + p.lr) + 0.5 * p.rho * p.cla_r * v * v
+        return (jnp.minimum(p.p_max / jnp.maximum(v, p.v_drive_floor), mu_x_r * fz_r) - drag(v)) / p.m
+
+    c = 0.5 * p.rho * cla / p.m
+    k = jnp.abs(kappa)
+    denom = k - mu_y * c
+    v_lim = jnp.where(denom > 1e-9, jnp.minimum(jnp.sqrt(mu_y * p.g / jnp.maximum(denom, 1e-9)), v_cap), v_cap)
+
+    def ellipse(v, kk, a_max):
+        lat = jnp.minimum(v * v * jnp.abs(kk) / a_lat(v), 1.0)
+        return a_max * jnp.sqrt(1.0 - lat * lat)
+
+    def fwd(v_prev, inp):
+        kk_prev, vl = inp
+        a = jnp.maximum(ellipse(v_prev, kk_prev, a_acc(v_prev)), 0.0)
+        v = jnp.minimum(vl, jnp.sqrt(v_prev**2 + 2.0 * a * ds))
+        return v, v
+
+    v0 = v_lim[0]
+    _, vf = jax.lax.scan(fwd, v0, (kappa[:-1], v_lim[1:]))
+    vf = jnp.concatenate([v0[None], vf])
+
+    def bwd(v_next, inp):
+        kk_next, vfi = inp
+        a = ellipse(v_next, kk_next, a_brake(v_next))
+        v = jnp.minimum(vfi, jnp.sqrt(v_next**2 + 2.0 * a * ds))
+        return v, v
+
+    _, vb = jax.lax.scan(bwd, vf[-1], (kappa[1:], vf[:-1]), reverse=True)
+    return jnp.concatenate([vb, vf[-1:]])

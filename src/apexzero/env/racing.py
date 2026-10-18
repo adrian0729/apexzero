@@ -64,7 +64,8 @@ class EnvState(NamedTuple):
     x: jax.Array            # [8] vehicle state
     prev_action: jax.Array  # [2]
     accel: jax.Array        # [2] body-frame (ax, ay) over the last control step
-    ctx: jax.Array          # [6] car context (physical units)
+    ctx: jax.Array          # [6] car context (physical units), observed
+    hidden_mu: jax.Array    # grip multiplier the policy does not observe (DR jitter)
     t: jax.Array            # control steps since reset
     slow: jax.Array         # seconds spent below slow_speed
     s0: jax.Array           # arc length at reset
@@ -76,8 +77,9 @@ def default_context() -> jax.Array:
     return jnp.array([p.m, p.p_max, cla, p.cda, p.mu_scale, p.cla_f / cla])
 
 
-def params_from_context(ctx: jax.Array, base: VehicleParams = F1_2025) -> VehicleParams:
-    return with_context(base, *[ctx[i] for i in range(6)])
+def params_from_context(ctx: jax.Array, base: VehicleParams = F1_2025,
+                        hidden_mu=1.0) -> VehicleParams:
+    return with_context(base, ctx[0], ctx[1], ctx[2], ctx[3], ctx[4] * hidden_mu, ctx[5])
 
 
 def preview_offsets(v: jax.Array) -> jax.Array:
@@ -119,7 +121,7 @@ def observe(state: EnvState, tr: TrackArrays, p: VehicleParams) -> jax.Array:
 
 
 def reset(key: jax.Array, tr: TrackArrays, v_ref: jax.Array, ctx: jax.Array,
-          params: EnvParams = EnvParams()) -> tuple[jax.Array, EnvState]:
+          params: EnvParams = EnvParams(), hidden_mu=1.0) -> tuple[jax.Array, EnvState]:
     """Random start: s0 uniform, lateral offset within half the corridor, small heading
     error, speed 60-100% of the reference profile at s0."""
     k1, k2, k3, k4 = jax.random.split(key, 4)
@@ -134,16 +136,17 @@ def reset(key: jax.Array, tr: TrackArrays, v_ref: jax.Array, ctx: jax.Array,
     x = jnp.array([s0, n0, xi0, v0, 0.0, 0.0, 0.0, 0.0], dtype=tr.ds.dtype)
     state = EnvState(
         x=x, prev_action=jnp.zeros(2, x.dtype), accel=jnp.zeros(2, x.dtype), ctx=ctx.astype(x.dtype),
-        t=jnp.zeros((), jnp.int32), slow=jnp.zeros((), x.dtype), s0=s0,
+        hidden_mu=jnp.asarray(hidden_mu, x.dtype), t=jnp.zeros((), jnp.int32),
+        slow=jnp.zeros((), x.dtype), s0=s0,
     )
-    p = params_from_context(state.ctx)
+    p = params_from_context(state.ctx, hidden_mu=state.hidden_mu)
     return observe(state, tr, p), state
 
 
 def step_no_reset(state: EnvState, action: jax.Array, tr: TrackArrays,
                   params: EnvParams = EnvParams()):
     """One control step. Returns (obs, state, reward, terminated, truncated, info)."""
-    p = params_from_context(state.ctx)
+    p = params_from_context(state.ctx, hidden_mu=state.hidden_mu)
     a = jnp.clip(action, -1.0, 1.0)
     x0 = state.x
     x1 = control_step(x0, a, tr, p, params.dt, params.substeps)
@@ -175,7 +178,8 @@ def step_no_reset(state: EnvState, action: jax.Array, tr: TrackArrays,
     reward = jnp.where(jnp.isfinite(reward), reward, -10.0)
 
     x1 = jnp.where(bad, x0, x1)
-    new = EnvState(x=x1, prev_action=a, accel=jnp.stack([ax, ay]), ctx=state.ctx, t=t,
+    new = EnvState(x=x1, prev_action=a, accel=jnp.stack([ax, ay]), ctx=state.ctx,
+                   hidden_mu=state.hidden_mu, t=t,
                    slow=slow, s0=state.s0)
     obs = observe(new, tr, p)
     info = {"progress": progress, "speed": vx1, "off_track": off_track, "spun": spun,
