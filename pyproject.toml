@@ -19,7 +19,7 @@ ocp = ["casadi>=3.6.7"]
 bayes = ["numpyro>=0.16", "arviz>=0.20"]
 viz = ["matplotlib>=3.9"]
 # rejax 0.1.3 expects the pre-1.0 gymnax step signature.
-rlref = ["gymnax>=0.0.8,<1.0", "rejax>=0.1"]
+rlref = ["gymnax>=0.0.8,<1.0", "rejax>=0.1", "jaxued>=0.0.1"]
 dev = ["pytest>=8", "ruff>=0.6"]
 
 [tool.uv]

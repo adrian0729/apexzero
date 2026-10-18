@@ -69,6 +69,7 @@ ocp = [
 ]
 rlref = [
     { name = "gymnax" },
+    { name = "jaxued" },
     { name = "rejax" },
 ]
 viz = [
@@ -101,6 +102,7 @@ dev = [
 ocp = [{ name = "casadi", specifier = ">=3.6.7" }]
 rlref = [
     { name = "gymnax", specifier = ">=0.0.8,<1.0" },
+    { name = "jaxued", specifier = ">=0.0.1" },
     { name = "rejax", specifier = ">=0.1" },
 ]
 viz = [{ name = "matplotlib", specifier = ">=3.9" }]
@@ -523,6 +525,22 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/69/72/318270378f5ff554ee921944bd97f59c0d6b35a8397cd35771dfdce1f445/jaxlib-0.11.2-cp312-cp312-manylinux_2_27_aarch64.whl", hash = "sha256:d497004e80daa91b98258d645b374e8dff480bf017d2c5f3e30b1371ac8f54b1", size = 84659774, upload-time = "2026-09-17T23:42:22.846Z" },
     { url = "https://files.pythonhosted.org/packages/51/d2/07c3ea737d65b328b00377462e0e5dc8993a8a88d2a8a89e1c42038a4e53/jaxlib-0.11.2-cp312-cp312-manylinux_2_27_x86_64.whl", hash = "sha256:6338a1f0956f60d02529404ac33a8070015a52635cdb6bbb15d0d199757077bb", size = 89896206, upload-time = "2026-09-17T23:42:26.851Z" },
     { url = "https://files.pythonhosted.org/packages/74/f7/8f6f7c55b80ca45e2225c78f4f44dbda8e5f420f933a5896e21045c3fb41/jaxlib-0.11.2-cp312-cp312-win_amd64.whl", hash = "sha256:53217a47d14eedd8fb5101f16aab1dfd58067835b4fb11910b50306218c7e620", size = 73563902, upload-time = "2026-09-17T23:42:30.216Z" },
+]
+
+[[package]]
+name = "jaxued"
+version = "0.0.1"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "chex" },
+    { name = "flax" },
+    { name = "gymnax" },
+    { name = "jax" },
+    { name = "numpy" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/e9/9d/27c8b9d7ebd36e2e6e017966dca120b3179e9411595d502f78970899d69f/jaxued-0.0.1.tar.gz", hash = "sha256:f931a245997eaef7aa3a96c045c52a6d127b136c7be603db679399cf0ce52fc1", size = 31101, upload-time = "2025-03-20T16:31:49.275Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/31/3b/2e122ddd95835faaee0e3e1d0607eaf0fdd4d76f07ee1c60eb62ead62998/jaxued-0.0.1-py3-none-any.whl", hash = "sha256:273e055b17e402ee94bcf246ff31d43a2c6833d0781184e2c850ce5de5283d6e", size = 35772, upload-time = "2025-03-20T16:31:47.736Z" },
 ]
 
 [[package]]
