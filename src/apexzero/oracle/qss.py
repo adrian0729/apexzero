@@ -62,6 +62,15 @@ class GG:
         power = p.p_max / np.maximum(v, p.v_drive_floor)
         return (np.minimum(power, traction) - self.drag(v)) / p.m
 
+    def top_speed(self) -> float:
+        """Straight-line top speed: P_max = v * (drag + rolling resistance), by bisection."""
+        p = self.p
+        lo, hi = 1.0, 200.0
+        for _ in range(80):
+            mid = 0.5 * (lo + hi)
+            lo, hi = (mid, hi) if p.p_max / mid > self.drag(mid) else (lo, mid)
+        return 0.5 * (lo + hi)
+
     def v_corner(self, kappa, v_cap: float = 120.0):
         """Largest v with v^2 |kappa| <= a_lat_max(v) (closed form, downforce included)."""
         p = self.p
@@ -84,7 +93,7 @@ def speed_profile(kappa: np.ndarray, ds: np.ndarray | float, gg: GG, closed: boo
     kappa = np.asarray(kappa, dtype=float)
     n = len(kappa)
     dsv = np.broadcast_to(np.asarray(ds, dtype=float), (n if closed else n - 1,))
-    v_lim = gg.v_corner(kappa, v_cap)
+    v_lim = gg.v_corner(kappa, min(v_cap, gg.top_speed()))
 
     def ellipse(v, k, a_max):
         lat = np.minimum((v * v * abs(k)) / gg.a_lat_max(v), 1.0)
@@ -161,6 +170,16 @@ def speed_profile_jax(kappa, ds, p: VehicleParams, v_cap: float = 120.0):
     def a_acc(v):
         fz_r = p.m * p.g * p.lf / (p.lf + p.lr) + 0.5 * p.rho * p.cla_r * v * v
         return (jnp.minimum(p.p_max / jnp.maximum(v, p.v_drive_floor), mu_x_r * fz_r) - drag(v)) / p.m
+
+    # Straight-line top speed by bisection (P_max = v * drag(v)); caps the profile.
+    def bisect(_, lohi):
+        lo, hi = lohi
+        mid = 0.5 * (lo + hi)
+        up = p.p_max / mid > drag(mid)
+        return (jnp.where(up, mid, lo), jnp.where(up, hi, mid))
+
+    lo, hi = jax.lax.fori_loop(0, 60, bisect, (jnp.asarray(1.0), jnp.asarray(200.0)))
+    v_cap = jnp.minimum(v_cap, 0.5 * (lo + hi))
 
     c = 0.5 * p.rho * cla / p.m
     k = jnp.abs(kappa)

@@ -48,6 +48,8 @@ class Grammar(NamedTuple):
     margin: jax.Array         # cap on (w_in - 1) * kappa
     ramp_min: jax.Array       # minimum clothoid length (m)
     gap_scale: jax.Array      # calibration: sampled gaps -> gaps as the segmentation sees them
+    corner_logits: jax.Array  # [Nc] sampling log-weights over the corner pool (0 = uniform)
+    width_scale: jax.Array    # multiplies the sampled total width
 
 
 def fit_grammar(tracks: list[Track], min_angle_deg: float = 0.0, jitter: float = 0.15,
@@ -75,7 +77,24 @@ def fit_grammar(tracks: list[Track], min_angle_deg: float = 0.0, jitter: float =
         corner_angle=f(ang), corner_rmin=f(rmin), corner_len=f(clen), straight_len=f(straights),
         p_alt_short=f(np.mean(alt_s)), p_alt_long=f(np.mean(alt_l)), width=f(widths),
         jitter=f(jitter), r_floor=f(r_floor), margin=f(margin), ramp_min=f(ramp_min),
-        gap_scale=f(gap_scale),
+        gap_scale=f(gap_scale), corner_logits=f(np.zeros(len(ang))), width_scale=f(1.0),
+    )
+
+
+def tilted(g: Grammar, alpha: float = 1.0, gap_scale: float = 0.8) -> Grammar:
+    """Hairpin-heavy, technical variant still inside the training support: corners are
+    re-weighted by (1 / r_min)^alpha and gaps shortened. Used for the A_tail level set."""
+    logits = -alpha * jnp.log(g.corner_rmin)
+    return g._replace(corner_logits=logits - logits.max(), gap_scale=jnp.asarray(gap_scale, jnp.float32))
+
+
+def out_of_distribution(g: Grammar) -> Grammar:
+    """Shifted generator for P-OOD / A_OOD: narrower tracks (about 6.5-8 m), tighter hairpins
+    (radius floor 6 m, heavier weight on slow corners) and longer straights."""
+    logits = -1.5 * jnp.log(g.corner_rmin)
+    return g._replace(
+        corner_logits=logits - logits.max(), r_floor=jnp.asarray(6.0, jnp.float32),
+        width_scale=jnp.asarray(0.65, jnp.float32), gap_scale=jnp.asarray(1.6, jnp.float32),
     )
 
 
@@ -96,7 +115,7 @@ def generate(key: jax.Array, g: Grammar, n_points: int = N_POINTS, ds: float = D
     jit = lambda k, shape: jnp.exp(g.jitter * jax.random.normal(k, shape))
 
     # Corners: joint draw of (angle, r_min, length) from the empirical pool, jittered.
-    ci = jax.random.randint(keys[0], (m,), 0, g.corner_angle.shape[0])
+    ci = jax.random.categorical(keys[0], g.corner_logits, shape=(m,))
     angle = g.corner_angle[ci] * jit(keys[1], (m,))
     radius = jnp.maximum(g.corner_rmin[ci] * jit(keys[2], (m,)), g.r_floor)
     clen = g.corner_len[ci] * jit(keys[3], (m,))
@@ -137,8 +156,9 @@ def generate(key: jax.Array, g: Grammar, n_points: int = N_POINTS, ds: float = D
     # Widths: development-circuit median, low-frequency variation, asymmetry, Frenet cap.
     ti = jax.random.randint(keys[9], (), 0, g.width.shape[0])
     kw = jax.random.split(keys[9], 3)
-    w_total = g.width[ti] * jnp.exp(0.08 * jax.random.normal(kw[0], ())) + _lowfreq(kw[1], s, 1.5)
-    w_total = jnp.clip(w_total, 7.0, 18.0)
+    w_total = g.width_scale * g.width[ti] * jnp.exp(0.08 * jax.random.normal(kw[0], ()))
+    w_total = w_total + g.width_scale * _lowfreq(kw[1], s, 1.5)
+    w_total = jnp.clip(w_total, 7.0 * g.width_scale, 18.0)
     asym = _lowfreq(kw[2], s, 0.5)
     wl = 0.5 * w_total + asym
     wr = 0.5 * w_total - asym
