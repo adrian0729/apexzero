@@ -1,102 +1,207 @@
-"""Level scores (UED estimators) computed from audit rollouts.
+"""Level scores (UED estimators), following docs/paper/score-spec.md (`audit-v1`).
 
-Conventions follow the reference implementation (JaxUED, itself from minimax), which the
-tests diff against: a score is averaged over the time steps of each *completed* episode,
-then over episodes. In the audit every window is one complete episode (it ends by
-termination or by truncation at the window length), so "completed" always holds; the
--inf "incomplete" convention matters only inside the curriculum's chunked rollouts.
+Single-trajectory primitives are shared by the offline audit (E1, below) and the
+in-training racing-PLR scorer, so both compute identical numbers:
 
-Scores (higher = the sampler wants this level more):
-- L1 value loss        mean_t |A_t|
-- PVL                  mean_t max(A_t, 0)            (identity: PVL = L1/2 + mean_t A_t / 2)
-- MaxMC (implemented)  mean_t (R_max - V_t), R_max the max *undiscounted* return ever seen
-                       (floored at 0, as the reference's running max starts at 0)
-- MaxMC (unit)         R^gamma_max - V(o_0), with the max *discounted* return
-- learnability         p (1 - p), p = success rate over the windows provided
-- disagreement         mean_t std_e(V^e_t) over the critic's ensemble heads
-A_t is GAE(lambda) with the window's bootstrap: V(o_T) at truncation, 0 at termination.
+- ``scoring_gae``: GAE in *raw* reward units (values already multiplied by sigma, DEV-6).
+  The window end is terminal in the headline "mode F" (as in every reference codebase)
+  and bootstrapped from V(final_obs) in "mode B". Chunk boundaries (kappa_t) cut the
+  lambda-sum and bootstrap from V_{t+1} (DEV-2).
+- ``mna_terms``: MNA's clipped-GAE G_hat in closed form (exact for lambda = 1, where the
+  reference code's 1/(1 - lambda) form divides by zero).
+
+Per-window (episode) records are then aggregated per level (spec section 1.8):
+
+    L1 = mean_e L1_e, PVL = mean_e PVL_e
+    MaxMC (as implemented) = max(0, max_e G_e) - mean_e Vbar_e           (undiscounted R_max)
+    MaxMC-unit = mean_e (max_e' G^gamma_e' - V_first,e)                  (no floor, DEV-22)
+    learnability = p (1 - p),  p = mean_e success_e  (S1 or S2, indicators, DEV-9)
+    MNA = C_hat * sum_e sum_t G_hat_t / sum_e T_e,  C_hat = 1[any S1]    (DEV-11, DEV-12)
+    disagreement = mean_e mean_t std_k(V^k_t)  (population std, main critic excluded)
 """
 
 from __future__ import annotations
+
+from typing import NamedTuple
 
 import numpy as np
 
 from apexzero.audit.rollouts import WindowRollouts
 
+CHUNK = 128
+LAMBDAS = (0.9, 0.95, 0.98, 1.0)
 
-def gae(ro: WindowRollouts, gamma: float, lam: float) -> np.ndarray:
-    """GAE advantages [L, W, T] (zero after the episode ends)."""
-    r, v, al = ro.reward, ro.value, ro.alive
-    T = r.shape[-1]
-    # Next value: V(o_{t+1}) while alive; at the last alive step, the bootstrap value.
-    v_next = np.concatenate([v[..., 1:], np.zeros(v.shape[:-1] + (1,))], axis=-1)
-    al_next = np.concatenate([al[..., 1:], np.zeros(al.shape[:-1] + (1,))], axis=-1)
-    last = (al > 0) & (al_next == 0)
-    boot = np.where(ro.terminated[..., None], 0.0, ro.final_value[..., None])
-    v_next = np.where(last, boot, v_next)
-    delta = (r + gamma * v_next - v) * al
+
+# --------------------------------------------------------------------------- primitives
+
+
+def _next_values(v, term, trunc, vf, mode: str):
+    """V used for s_{t+1}: 0 on termination; 0 (mode F) or V^f (mode B) on truncation."""
+    nxt = np.r_[v[1:], 0.0]
+    nxt = np.where(trunc, vf if mode == "B" else 0.0, nxt)
+    return np.where(term, 0.0, nxt)
+
+
+def scoring_gae(r, v, term, trunc, vf, cut, gamma, lam, mode: str = "F"):
+    """GAE for one trajectory. ``cut[t]`` = 1 where a chunk ends after step t (and the
+    episode does not): the lambda-sum restarts and V_{t+1} bootstraps it."""
+    r, v = np.asarray(r, float), np.asarray(v, float)
+    term, trunc, cut = (np.asarray(a, bool) for a in (term, trunc, cut))
+    done = term | trunc
+    delta = r + gamma * _next_values(v, term, trunc, vf, mode) - v
     adv = np.zeros_like(r)
-    acc = np.zeros(r.shape[:-1])
-    for t in range(T - 1, -1, -1):
-        acc = delta[..., t] + gamma * lam * acc * al_next[..., t] * (1 - last[..., t])
-        adv[..., t] = acc * al[..., t]
+    acc = 0.0
+    for t in range(len(r) - 1, -1, -1):
+        cont = 0.0 if (done[t] or cut[t]) else 1.0
+        acc = delta[t] + gamma * lam * cont * acc
+        adv[t] = acc
     return adv
 
 
-def _time_mean(x: np.ndarray, alive: np.ndarray) -> np.ndarray:
-    """Per-episode mean over alive steps -> [L, W]."""
-    return np.sum(x * alive, -1) / np.maximum(np.sum(alive, -1), 1)
+def mna_terms(r, v, term, trunc, vf, cut, gamma, lam, mode: str = "F"):
+    """Closed-form G_hat_s (spec 1.6) over segments delimited by episode ends and cuts.
+
+    A_s^(n) = sum_{i<n} gamma^i delta_{s+i};  M_n = max(0, A^(1..n));  G^(n) = M_n - A^(n);
+    G_hat_s = sum_{n=1}^{N_s - 1} (1 - lam) lam^{n-1} G^(n) + lam^{N_s - 1} G^(N_s).
+    """
+    r, v = np.asarray(r, float), np.asarray(v, float)
+    term, trunc, cut = (np.asarray(a, bool) for a in (term, trunc, cut))
+    delta = r + gamma * _next_values(v, term, trunc, vf, mode) - v
+    ends = np.nonzero(term | trunc | cut)[0]
+    bounds = list(ends + 1)
+    if not bounds or bounds[-1] != len(r):
+        bounds.append(len(r))
+    out = np.zeros_like(r)
+    start = 0
+    for stop in bounds:
+        d = delta[start:stop]
+        N = len(d)
+        if N == 0:
+            continue
+        idx = np.arange(N)
+        n = idx[None, :] + 1                                  # horizon n = 1..N
+        valid = idx[:, None] + idx[None, :] < N               # s + n - 1 < N
+        gidx = np.clip(idx[:, None] + idx[None, :], 0, N - 1)
+        terms = np.where(valid, gamma ** idx[None, :] * d[gidx], 0.0)
+        A = np.cumsum(terms, axis=1)
+        M = np.maximum.accumulate(np.maximum(A, 0.0), axis=1)
+        G = M - A
+        Ns = N - idx                                           # N_s for each start s
+        w = np.where(n < Ns[:, None], (1 - lam) * lam ** (n - 1),
+                     np.where(n == Ns[:, None], lam ** (Ns[:, None] - 1), 0.0))
+        out[start:stop] = np.sum(np.where(valid, w * G, 0.0), axis=1)
+        start = stop
+    return out
 
 
-def l1_value_loss(ro: WindowRollouts, gamma: float, lam: float) -> np.ndarray:
-    return _time_mean(np.abs(gae(ro, gamma, lam)), ro.alive).mean(-1)
+# --------------------------------------------------------------------------- per-window records
 
 
-def positive_value_loss(ro: WindowRollouts, gamma: float, lam: float) -> np.ndarray:
-    return _time_mean(np.maximum(gae(ro, gamma, lam), 0.0), ro.alive).mean(-1)
+class WindowStats(NamedTuple):
+    """Per (level, window) quantities in raw units; arrays [L, W] unless noted."""
+    T: np.ndarray            # steps (includes the terminal transition)
+    G: np.ndarray            # undiscounted return
+    G_disc: np.ndarray       # discounted return (no bootstrap)
+    V_first: np.ndarray
+    V_bar: np.ndarray
+    pvl: np.ndarray          # [len(lambdas), L, W] per-episode time means
+    l1: np.ndarray
+    mean_a: np.ndarray
+    pvl_disc: np.ndarray     # discount-weighted variants at lambdas[headline]
+    l1_disc: np.ndarray
+    mna_sum: np.ndarray      # sum_t G_hat_t
+    dis: np.ndarray          # mean_t std_k(V^k_t) (nan without heads)
+    completed: np.ndarray    # S1: ended by truncation, not termination
+    distance: np.ndarray
 
 
-def undiscounted_returns(ro: WindowRollouts) -> np.ndarray:
-    return np.sum(ro.reward * ro.alive, -1)
+def chunk_cuts(T: int, phase: int, chunk: int = CHUNK) -> np.ndarray:
+    """cut[t] = 1 where t = phase - 1 (mod chunk): window starts are uniformly phased
+    against training chunk boundaries (spec 0.2)."""
+    t = np.arange(T)
+    return (t % chunk) == ((phase - 1) % chunk)
 
 
-def maxmc_implemented(ro: WindowRollouts, max_return: np.ndarray | None = None) -> np.ndarray:
-    """mean_t (R_max - V_t); R_max = max undiscounted return over these windows and any
-    earlier ones passed in ``max_return`` [L] (the buffer's stored maximum).
+def window_stats(ro: WindowRollouts, gamma: float = 0.995, lambdas=LAMBDAS, headline: int = 1,
+                 mode: str = "F", phases: np.ndarray | None = None, chunked: bool = True) -> WindowStats:
+    L, W, _ = ro.reward.shape
+    n_lam = len(lambdas)
+    out = {k: np.zeros((L, W)) for k in ("T", "G", "G_disc", "V_first", "V_bar", "pvl_disc",
+                                         "l1_disc", "mna_sum", "dis")}
+    pvl, l1, mean_a = (np.zeros((n_lam, L, W)) for _ in range(3))
+    has_heads = ro.heads.shape[-1] > 0
+    for i in range(L):
+        for w in range(W):
+            T = int(ro.alive[i, w].sum())
+            r, v = ro.reward[i, w, :T], ro.value[i, w, :T]
+            term = np.zeros(T, bool)
+            trunc = np.zeros(T, bool)
+            if ro.terminated[i, w]:
+                term[-1] = True
+            else:
+                trunc[-1] = True
+            if chunked:
+                ph = 0 if phases is None else int(phases[i, w])
+                cut = chunk_cuts(T, ph) & ~(term | trunc)
+            else:
+                cut = np.zeros(T, bool)
+            vf = ro.final_value[i, w]
+            disc = gamma ** np.arange(T)
+            for k, lam in enumerate(lambdas):
+                a = scoring_gae(r, v, term, trunc, vf, cut, gamma, lam, mode)
+                pvl[k, i, w] = np.maximum(a, 0).mean()
+                l1[k, i, w] = np.abs(a).mean()
+                mean_a[k, i, w] = a.mean()
+                if k == headline:
+                    out["pvl_disc"][i, w] = np.sum(disc * np.maximum(a, 0)) / disc.sum()
+                    out["l1_disc"][i, w] = np.sum(disc * np.abs(a)) / disc.sum()
+            g_hat = mna_terms(r, v, term, trunc, vf, cut, gamma, lambdas[headline], mode)
+            out["T"][i, w] = T
+            out["G"][i, w] = r.sum()
+            out["G_disc"][i, w] = np.sum(disc * r)
+            out["V_first"][i, w] = v[0]
+            out["V_bar"][i, w] = v.mean()
+            out["mna_sum"][i, w] = g_hat.sum()
+            out["dis"][i, w] = ro.heads[i, w, :T].std(-1).mean() if has_heads else np.nan
+    return WindowStats(out["T"], out["G"], out["G_disc"], out["V_first"], out["V_bar"], pvl, l1,
+                       mean_a, out["pvl_disc"], out["l1_disc"], out["mna_sum"], out["dis"],
+                       ~ro.terminated.astype(bool), ro.distance)
 
-    Matches the reference exactly, including a quirk: JaxUED's ``compute_max_returns``
-    starts its running maximum at 0, so R_max is floored at 0 when every return is
-    negative."""
-    r_max = np.maximum(undiscounted_returns(ro).max(-1), 0.0)
-    if max_return is not None:
-        r_max = np.maximum(r_max, max_return)
-    return _time_mean(r_max[:, None, None] - ro.value, ro.alive).mean(-1)
+
+# --------------------------------------------------------------------------- level scores
 
 
-def maxmc_unit(ro: WindowRollouts, gamma: float, max_return: np.ndarray | None = None) -> np.ndarray:
-    """R^gamma_max - V(o_0): discounted, so it is in the same units as the value."""
-    r_max = ro.returns(gamma).max(-1)
-    if max_return is not None:
-        r_max = np.maximum(r_max, max_return)
-    return r_max - ro.value[..., 0].mean(-1)
+def level_scores(st: WindowStats, windows, headline: int = 1, qss_distance: np.ndarray | None = None,
+                 s2_fraction: float = 0.97) -> dict[str, np.ndarray]:
+    """Scores per level from the given window indices (e.g. range(4) for the operational
+    score, odd windows for cross-fitted high-budget scores)."""
+    w = np.asarray(list(windows))
+    sel = lambda a: a[..., w]
+    s1 = sel(st.completed)
+    scores = {
+        "l1": sel(st.l1[headline]).mean(-1),
+        "pvl": sel(st.pvl[headline]).mean(-1),
+        "mean_a": sel(st.mean_a[headline]).mean(-1),
+        "pvl_disc": sel(st.pvl_disc).mean(-1),
+        "l1_disc": sel(st.l1_disc).mean(-1),
+        "maxmc": np.maximum(sel(st.G).max(-1), 0.0) - sel(st.V_bar).mean(-1),
+        "maxmc_unit": (sel(st.G_disc).max(-1)[:, None] - sel(st.V_first)).mean(-1),
+        "learnability_s1": s1.mean(-1) * (1 - s1.mean(-1)),
+        "mna": np.where(s1.any(-1), sel(st.mna_sum).sum(-1) / sel(st.T).sum(-1), 0.0),
+        "mna_lit_gate": (np.maximum(sel(st.G).max(-1), 0.0) > 0).astype(float),
+        "disagreement": sel(st.dis).mean(-1),
+        "agent_only": -sel(st.G_disc).mean(-1),
+    }
+    for k, lam in enumerate(LAMBDAS):
+        if k != headline:
+            scores[f"pvl_lam{lam}"] = sel(st.pvl[k]).mean(-1)
+            scores[f"l1_lam{lam}"] = sel(st.l1[k]).mean(-1)
+    if qss_distance is not None:
+        s2 = s1 & (sel(st.distance) >= s2_fraction * qss_distance[:, None])
+        scores["learnability_s2"] = s2.mean(-1) * (1 - s2.mean(-1))
+    return scores
 
 
-def success_completed(ro: WindowRollouts) -> np.ndarray:
-    """Success = the window ended by truncation, not termination."""
-    return ~ro.terminated.astype(bool)
-
-
-def success_distance(ro: WindowRollouts, qss_distance: np.ndarray, fraction: float = 0.97) -> np.ndarray:
-    """Non-saturating success: completed *and* covered >= fraction of the QSS distance."""
-    return success_completed(ro) & (ro.distance >= fraction * qss_distance[:, None])
-
-
-def learnability(success: np.ndarray) -> np.ndarray:
-    p = success.mean(-1)
-    return p * (1.0 - p)
-
-
-def disagreement(ro: WindowRollouts) -> np.ndarray:
-    if ro.heads.shape[-1] == 0:
-        return np.full(ro.reward.shape[0], np.nan)
-    return _time_mean(ro.heads.std(-1), ro.alive).mean(-1)
+def target_returns(st: WindowStats, windows) -> np.ndarray:
+    """J^pi estimate per level: mean discounted return over the given (target) windows."""
+    return st.G_disc[..., np.asarray(list(windows))].mean(-1)

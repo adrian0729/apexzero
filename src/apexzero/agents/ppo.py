@@ -285,6 +285,8 @@ class Transition(NamedTuple):
     truncated: jax.Array
     final_value: jax.Array  # V(final_obs), used when truncated
     raw_reward: jax.Array
+    heads: jax.Array        # [E] ensemble-head values (E may be 0)
+    final_heads: jax.Array  # [E] heads at final_obs
 
 
 def policy_apply(actor_params, actor: Actor, obs, discrete):
@@ -371,12 +373,20 @@ def make_train(cfg: PPOConfig, env: Env, log_fn: Callable[[dict], None] | None =
                 else:
                     action = out + jnp.exp(log_std) * jax.random.normal(k_act, out.shape)
                     logp = gaussian_logp(action, out, log_std)
-                value = critic.apply(agent.critic.params, o_in)
+                if cfg.ensemble_heads:
+                    value, heads = critic.apply(agent.critic.params, o_in, with_heads=True)
+                else:
+                    value, heads = critic.apply(agent.critic.params, o_in), jnp.zeros((cfg.num_envs, 0))
 
                 nobs, env_state, reward, term, trunc, info = jax.vmap(
                     env.step, in_axes=(0, 0, 0, None))(
                     jax.random.split(k_env, cfg.num_envs), env_state, action, env_params)
-                final_value = critic.apply(agent.critic.params, norm_obs(agent, info["final_obs"]))
+                if cfg.ensemble_heads:
+                    final_value, final_heads = critic.apply(
+                        agent.critic.params, norm_obs(agent, info["final_obs"]), with_heads=True)
+                else:
+                    final_value = critic.apply(agent.critic.params, norm_obs(agent, info["final_obs"]))
+                    final_heads = jnp.zeros((cfg.num_envs, 0))
                 done = term | trunc
 
                 ret_acc = ret_acc * cfg.gamma + reward
@@ -395,40 +405,51 @@ def make_train(cfg: PPOConfig, env: Env, log_fn: Callable[[dict], None] | None =
                 ep_ret = jnp.where(done, 0.0, ep_ret)
                 ep_len = jnp.where(done, 0.0, ep_len)
 
-                tr = Transition(o_in, action, logp, value, scaled, term, trunc, final_value, reward)
+                tr = Transition(o_in, action, logp, value, scaled, term, trunc, final_value, reward,
+                                heads, final_heads)
                 return (agent, env_state, nobs, ret_acc, ep_ret, ep_len, key), (tr, stats, obs)
 
             (agent, env_state, obs, ret_acc, ep_ret, ep_len, key), (traj, stats, raw_obs) = jax.lax.scan(
                 env_step, (agent, env_state, obs, ret_acc, ep_ret, ep_len, key), None, cfg.num_steps)
 
-            last_value = critic.apply(agent.critic.params, norm_obs(agent, obs))
+            if cfg.ensemble_heads:
+                last_value, last_heads = critic.apply(agent.critic.params, norm_obs(agent, obs), with_heads=True)
+            else:
+                last_value = critic.apply(agent.critic.params, norm_obs(agent, obs))
+                last_heads = jnp.zeros((cfg.num_envs, 0))
 
-            # GAE with truncation bootstrapping.
+            # GAE with truncation bootstrapping. Ensemble heads get their own GAE targets
+            # from their own values (as in minimax), over the same rewards and episode ends.
             def gae_step(c, t):
-                adv_next, v_next = c
+                adv_next, v_next, hadv_next, h_next = c
                 done = t.terminated | t.truncated
                 next_v = jnp.where(done, jnp.where(t.terminated, 0.0, t.final_value), v_next)
                 delta = t.reward + cfg.gamma * next_v - t.value
                 adv = delta + cfg.gamma * cfg.gae_lambda * (1.0 - done) * adv_next
-                return (adv, t.value), adv
+                d, tm = done[:, None], t.terminated[:, None]
+                next_h = jnp.where(d, jnp.where(tm, 0.0, t.final_heads), h_next)
+                hdelta = t.reward[:, None] + cfg.gamma * next_h - t.heads
+                hadv = hdelta + cfg.gamma * cfg.gae_lambda * (1.0 - d) * hadv_next
+                return (adv, t.value, hadv, t.heads), (adv, hadv)
 
-            _, adv = jax.lax.scan(gae_step, (jnp.zeros_like(last_value), last_value), traj,
-                                  reverse=True)
+            init = (jnp.zeros_like(last_value), last_value, jnp.zeros_like(last_heads), last_heads)
+            _, (adv, head_adv) = jax.lax.scan(gae_step, init, traj, reverse=True)
             targets = adv + traj.value
+            head_targets = head_adv + traj.heads
 
             # PPO epochs over shuffled minibatches.
             def epoch(c, _):
                 agent, key = c
                 key, kp = jax.random.split(key)
                 flat = jax.tree.map(lambda x: x.reshape((cfg.batch_size,) + x.shape[2:]),
-                                    (traj, adv, targets))
+                                    (traj, adv, targets, head_targets))
                 perm = jax.random.permutation(kp, cfg.batch_size)
                 mbs = jax.tree.map(
                     lambda x: jnp.take(x, perm, axis=0).reshape(
                         (cfg.num_minibatches, cfg.minibatch_size) + x.shape[1:]), flat)
 
                 def minibatch(agent, mb):
-                    t, a, tgt = mb
+                    t, a, tgt, htgt = mb
                     frac = upd / n_up
                     ent_coef = cfg.ent_coef + frac * (cfg.ent_coef_final - cfg.ent_coef)
 
@@ -451,7 +472,7 @@ def make_train(cfg: PPOConfig, env: Env, log_fn: Callable[[dict], None] | None =
                     def critic_loss(params):
                         if cfg.ensemble_heads:
                             v, heads = critic.apply(params, t.obs, with_heads=True)
-                            head_loss = ((heads - tgt[:, None]) ** 2).mean()
+                            head_loss = ((heads - htgt) ** 2).mean()
                         else:
                             v, head_loss = critic.apply(params, t.obs), 0.0
                         vl = (v - tgt) ** 2

@@ -3,7 +3,8 @@
 For each (level, window) pair the policy drives one 1,200-step window from the level's
 straight start x0, with stochastic actions and 1% observation noise (windows differ only
 in that randomness). Per-step rewards, critic values, ensemble-head values and an alive
-mask are kept, so every level score (any GAE lambda, discounted or not, any success
+mask are kept (values in *raw reward units*: the critic's output times sigma, the return
+normaliser's std, spec DEV-6), so every level score (any GAE lambda, discounted or not, any success
 definition) can be computed afterwards from the same rollouts, and targets can be
 cross-fitted on disjoint windows.
 """
@@ -25,6 +26,11 @@ class Snapshot(NamedTuple):
     actor: dict
     critic: dict
     obs_rms: RunningMeanStd
+    ret_rms: RunningMeanStd   # return normaliser: critic outputs are in units of reward / sigma
+
+    @property
+    def sigma(self):
+        return jnp.sqrt(self.ret_rms.var + 1e-8)
 
 
 class WindowRollouts(NamedTuple):
@@ -44,10 +50,10 @@ class WindowRollouts(NamedTuple):
 
 
 def snapshot_from_pickle(d: dict) -> Snapshot:
-    rms = d["obs_rms"]
-    if isinstance(rms, dict):
-        rms = RunningMeanStd(**{k: jnp.asarray(v) for k, v in rms.items()})
-    return Snapshot(d["actor"], d["critic"], rms)
+    def rms(x):
+        return RunningMeanStd(**{k: jnp.asarray(v) for k, v in x.items()}) if isinstance(x, dict) else x
+
+    return Snapshot(d["actor"], d["critic"], rms(d["obs_rms"]), rms(d["ret_rms"]))
 
 
 def rollout_windows(snap: Snapshot, cfg: PPOConfig, tracks: TrackArrays, x0: jax.Array,
@@ -88,6 +94,8 @@ def rollout_windows(snap: Snapshot, cfg: PPOConfig, tracks: TrackArrays, x0: jax
             body, (st, obs, jnp.array(True)), jax.random.split(k, steps))
         oT = snap.obs_rms.normalize(obT)
         vT = critic.apply(snap.critic, oT)
+        sig = snap.sigma
+        v, hs, vT = v * sig, hs * sig, vT * sig
         crashed = term.any()
         return (r, v, hs, al.astype(jnp.float32), crashed, jnp.where(crashed, 0.0, vT),
                 stT.x[0] - x0_l[0], lp)

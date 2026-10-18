@@ -63,3 +63,21 @@ def test_checkpoint_callback_receives_snapshots():
                              checkpoint_fn=lambda snap, upd: seen.append(int(upd)))
     jax.block_until_ready(jax.jit(train)(jax.random.PRNGKey(0)))
     assert seen == [0, 1, 2]
+
+
+def test_training_with_per_head_targets_runs_and_heads_learn():
+    # Value clipping off: with unnormalised CartPole rewards PPO's +/-0.2 value clip makes the
+    # main critic lag the true returns, which the (unclipped) heads would then "disagree" with.
+    cfg = PPOConfig(num_envs=16, num_steps=64, total_timesteps=16 * 64 * 30, network="mlp",
+                    actor_width=32, critic_width=32, mlp_layers=2, ensemble_heads=3,
+                    normalize_obs=False, normalize_reward=False, gamma=0.99, clip_value=False)
+    train, _, critic = make_train(cfg, from_gymnax("CartPole-v1"))
+    agent, metrics = jax.jit(train)(jax.random.PRNGKey(0))
+    assert np.all(np.isfinite(np.asarray(metrics["value_loss"])))
+    obs = jax.random.normal(jax.random.PRNGKey(2), (64, 4)) * 0.05
+    _, heads = critic.apply(agent.critic.params, obs, with_heads=True)
+    per_head = jnp.mean(heads, 0)
+    # Heads trained on their own GAE targets learn the return scale (start-state returns
+    # are tens here) and agree with each other, which the disagreement score relies on.
+    assert float(per_head.min()) > 5.0
+    assert float(per_head.std() / per_head.mean()) < 0.3
