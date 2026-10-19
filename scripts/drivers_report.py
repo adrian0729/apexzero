@@ -422,8 +422,10 @@ def write_report(out_dir: Path, pilots: list[dict]) -> None:
        f"medium-apex (+20 ms) and {100 * det_f:.0f}% for fast-exit (-20 ms).")
     w_("")
     se = by.get(("slow", "entry"))
-    qss_ratio = [budget_qss[k].claim_limit_ms / by[k].claim_limit_ms for k in by
-                 if k in budget_qss]
+    ratio_by = {k: budget_qss[k].claim_limit_ms / by[k].claim_limit_ms for k in by
+                if k in budget_qss}
+    qss_ratio = list(ratio_by.values())
+    worst = max(ratio_by.items(), key=lambda kv: abs(np.log(kv[1])))
     w_("**Reading.** The injected effects come back unbiased within their error: recovered "
        f"means are {_range([b.recovered_ms - b.injected_ms for b in budget], '{:+.1f}')} ms "
        "off the injected values. The smallest claimable per-phase teammate effect, from one "
@@ -447,8 +449,13 @@ def write_report(out_dir: Path, pilots: list[dict]) -> None:
        f"{qcfg.wobble_sd:g}, natural "
        f"{_range([1000 * v for v in inj['qss_natural'].values()])} ms by cell) to pilot "
        f"limits are {_range(qss_ratio, '{:.2f}')}, median {np.median(qss_ratio):.2f}. "
-       "So, outside the fast-entry cell, the budget does not hinge on the speed-profile "
-       "shape. Per-lap errors also carry a part common to all laps. It cancels in "
+       f"{sum(0.745 <= q <= 1.255 for q in qss_ratio)} of {len(qss_ratio)} cells agree "
+       f"within 25%. The exception is {worst[0][0]} {worst[0][1]} ({worst[1]:.2f}). There "
+       "the calibrated natural variation is "
+       f"{1000 * inj['qss_natural'].get(worst[0], float('nan')):.0f} ms, so the limit is "
+       "measurement error alone, and that does depend on the profile. So the budget mostly "
+       "does not hinge on the speed-profile shape. Per-lap errors also carry a part common "
+       "to all laps. It cancels in "
        "teammate deltas, but it would not cancel against a physics reference (R2).")
     w_("")
 
