@@ -1139,3 +1139,22 @@ M = methodology review, O = optimal-control review.
 | O16 | Line and regret measures | Accepted. η normalised per side; regret only where a key exists at that phase. | §5 |
 | O17 | Tier E arithmetic | Accepted. Every count recomputed: tier E is now 105 + 39 + 64 runs. | §3.5 |
 | — | Freeze rule | Changed: agent-free keys and the dry run now come before the tag (needed for O2), and the tag is renamed `psychophysics-prereg-v2`. | Header, §10 |
+## 12. Pre-tag rulings (2026-10-19)
+
+The build (`docs/interp/IMPLEMENTATION.md`) raised these questions. Each ruling below is part of the design. Each was made before the tag and before any protocol stimulus was rolled out on a non-pilot agent.
+
+| # | Question | Ruling |
+|---|---|---|
+| R1 | Real-lap rollouts for initial states (tiers D, E1, E2, the fidelity gate, G3's crash corners) are agent rollouts outside the two exceptions | **Allowed before the tag.** They repeat the standard R_DEV evaluation that training already ran for every agent (`eval_rdev.json` / `eval.json`), under the same convention as `eval/laps.py`. They put no protocol stimulus in front of an agent. Each one is logged in the manifest as a "standard evaluation (R1)" entry. |
+| R2 | Crash corners labelled by the crash documents' raw ±60 m radius (YasMarina 12.7, Zandvoort 12.1) differ from the segmented corner that contains the crash (R_seg ≈ 20.4 and 27.5 m) | **The crash corner is the `corners.segment` corner that contains the crash point (D15). Its regime comes from its R_seg.** This is the single-estimator rule of 1.4, which already covers crash corners. Every crash corner's label is recomputed this way, and the P8 sets follow from the recomputed regimes. A neighbouring tighter corner lies inside the ladder's [s_c − 800, s_c + 400] window, so the context rungs still show its effect. **P8 thresholds become proportional:** *confirm* if at least ⌈0.6 n⌉ of the n tail units are reproduced *and* single-corner with twin agreement; *refute* if at most ⌊0.2 n⌋ are. For n = 5 this equals the original 3 and 1. If n < 3 the tail prediction is "not testable". |
+| R3 | θ_eff misses 0.3° on 6 of 160 synthetic rows (R 6.0/180°, R 8.4/90°), from 2 m knot sampling of the trapezoid's kinks | **Accepted.** θ_eff is recorded per row and the rows are listed. The failing rows are clip-saturated or below support, which are descriptive regimes. |
+| R4 | Twin fits miss the 2 m length tolerance on 5 of 13 crash corners and 10 of 13 E2 corners, because the real corner is longer than the longest symmetric trapezoid with its R_seg and angle | **Accepted:** twins match R_seg and the angle (to < 1e-3) and take the closest length. The length shortfall is listed for each twin and reported as a covariate in the twin-transfer analysis. No new shape is introduced. |
+| R5 | l_typ and v_typ use corners turning at least 10°, and v_typ pools bins with fewer than 20 corners | **Accepted.** Without the filter, near-straight kinks at the 10 m ramp floor dominate the top bin, which contradicts the protocol's stated expectation (≥ 44 m at 75 m). |
+| R6 | Every A2 run is flagged "unsettled", because the corner is visible from state 0 by design (D < d_max) and the pedal state starts at 0 | **The unsettled flag does not apply to cells whose corner is in view at the start (`sight_at_start`).** Their first-sight state is the designed initial state. The flag keeps its meaning on every other cell. |
+| R7 | Budget rule 2 says "5 geometries", but at 180° only R 35.8, 44.7 and 55.9 exist with R ≥ 35.8 | **3 geometries × 2 approaches.** The count was a miscount. Cut cells are still rolled out, carry `no_key`, and are excluded from key-based errors. |
+| R8 | The crash-typing ellipse search starts at s_c0 − 50 (M11) | Accepted |
+| R9 | R_clip is printed as 50/(\|μ\| + 10σ); the sign that clips first gives 50/(10σ − \|μ\|) | **50/(10σ − \|μ\|)**, which is "the worse sign" as 2.3 intends |
+| R10 | P4 uses only single-factor F1 conditions, and class 2 can be met vacuously (AD16) | Accepted. A vacuous class 2 is flagged in the details and reported. |
+| R11 | P6a confirmation also needs a permutation p ≤ 0.05 (AD18) | Accepted |
+| R12 | P1b's Kendall τ mixes keys at A1: below-support pairs on nominal e_ve, tail pairs on e_ve^RA | **Re-anchored A1 keys are extended to the non-clipped below-support cells (P0)**, so the whole A1 set uses e_ve^RA |
+| R13 | Analysis decisions AD1–AD25 (`interp/analysis.py` docstring) | Signed off as written |
