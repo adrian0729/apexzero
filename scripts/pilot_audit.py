@@ -44,6 +44,7 @@ from apexzero.tracks.levels import build, grammar_for, make_levels
 from apexzero.tracks.track import load_tumftm
 
 ROOT_SEED = 2026
+MAX_TIE_SHARE = 0.8    # split-half r is not reported when > 80% of levels tie on one value
 HEADLINE = ["pvl", "l1", "maxmc", "maxmc_unit", "learnability_s1", "learnability_s2", "mna",
             "disagreement"]
 BASELINES = ["agent_only", "j_best", "qss_slow", "random"]
@@ -130,6 +131,17 @@ def scores_for(st: WindowStats, windows, d_qss, g_all, c, rng_seed, j_opt=None):
     return {k: s[k] for k in keep if k in s}
 
 
+def _window_mean(x: np.ndarray, mask: np.ndarray | None = None):
+    """Per-level mean of a per-window quantity over a window subset, optionally over the
+    completed windows only (NaN for a level with none): the crash-window diagnostic."""
+    def fn(w):
+        if mask is None:
+            return {"s": x[:, w].mean(-1)}
+        m = mask[:, w]
+        return {"s": np.where(m.any(-1), (x[:, w] * m).sum(-1) / np.maximum(m.sum(-1), 1), np.nan)}
+    return fn
+
+
 def analyse(stats, infos, d_qss, n_boot, j_opt=None):
     W = stats[0].G_disc.shape[-1]
     plan = F.window_plan(W)
@@ -155,16 +167,22 @@ def analyse(stats, infos, d_qss, n_boot, j_opt=None):
             t = F.regret_targets(g_all, w, j_opt=j_opt)
             return {"reg": t.reg[c], "reg_norm": t.reg_norm[c], "j_pi": t.j_pi[c]}
 
-        rel_s = F.split_half(score_fn, range(W))
-        rel_t = F.split_half(target_fn, range(W))
+        rel_s = F.split_half(score_fn, range(W), max_tie_share=MAX_TIE_SHARE)
+        rel_t = F.split_half(target_fn, range(W), max_tie_share=MAX_TIE_SHARE)
         curve = F.reliability_curve(lambda w, sf=score_fn, tf=target_fn: {**sf(w), **tf(w)},
-                                    range(W), sizes, n_splits=10, seed=c)
+                                    range(W), sizes, n_splits=10, seed=c,
+                                    max_tie_share=MAX_TIE_SHARE)
         r12 = F.spearman(t_hb.j_opt, t_hb.j_pi[c])
+        tails = {key: (F.split_half(_window_mean(x), range(W))["s"],
+                       F.split_half(_window_mean(x, st.completed), range(W))["s"])
+                 for key, x in (("l1", st.l1[1]), ("g", st.G_disc))}
         res.append(dict(
             info=info, completion=comp, phase=F.phase_of(comp),
             j_pi=float(t_hb.j_pi[c].mean()), reg_mean=float(t_hb.reg[c].mean()),
             reg_median=float(np.median(t_hb.reg[c])), attained=float(t_hb.attained[c].mean()),
             r12=float(r12), fid_hb=fid_hb, fid_op=fid_op, rel_s=rel_s, rel_t=rel_t, curve=curve,
+            rc_oracle=float(F.regret_captured(t_hb.reg[c], t_hb.reg[c], 0.1)), tails=tails,
+            crash=float(1.0 - st.completed.mean()),
             sizes=sizes, calib=F.value_calibration(st.V_first, st.G_disc),
             s2_rate=float(np.mean(st.completed & (st.distance >= 0.97 * d_qss[:, None]))),
         ))
@@ -298,6 +316,62 @@ def _windows(v) -> str:
     return f"{int(np.ceil(v))}"
 
 
+def sb_check(res, half: int, gap: float = 0.1) -> str:
+    """Compare the empirical reliability curve with the Spearman-Brown prophecy from the
+    split half, at the checkpoint the figure shows. A curve flatter than the prophecy
+    (empirical above it at 1 window) means the score does not behave like a mean of
+    exchangeable windows, and SB budgets for 0.9 extrapolate too optimistically."""
+    gradable = [r for r in res if r["attained"] < 0.5]
+    r = gradable[-1] if gradable else res[-1]
+    sizes = np.array(r["sizes"], float)
+    flat, fits = [], []
+    for name in HEADLINE + ["reg"]:
+        emp = r["curve"].get(name)
+        r_half = r["rel_t"]["reg"] if name == "reg" else r["rel_s"].get(name, np.nan)
+        if emp is None or not np.isfinite(emp[0]) or not np.isfinite(r_half) or r_half <= 0:
+            continue
+        pred = F.spearman_brown(r_half, sizes / half)
+        label = "target Reg" if name == "reg" else LABELS[name]
+        (flat if emp[0] - pred[0] > gap else fits).append(
+            f"{label} ({emp[0]:.2f} vs {pred[0]:.2f})")
+    when = f"{r['info']['timesteps'] / 1e6:.0f}M"
+    out = (f"**Spearman-Brown check ({when}, empirical vs prophecy at 1 window).** Flatter"
+           f" than the prophecy by more than {gap}: {'; '.join(flat) or 'none'}. Close to it:"
+           f" {'; '.join(fits) or 'none'}.")
+    if flat:
+        out += (" For the flatter ones the window budgets for 0.9 above are likely optimistic,"
+                " and the empirical curve, not the prophecy, should size the full audit. The"
+                " crash-window table below tests one cause: crashed windows have heavy-tailed"
+                " per-window values, so a mean over windows gains rank reliability more slowly"
+                " than exchangeable averaging assumes.")
+    return out
+
+
+def crash_table(res, half: int) -> list[str]:
+    """Split-half reliability of window means over all windows vs completed windows only."""
+    head = " | ".join(f"{r['info']['timesteps'] / 1e6:.0f}M" for r in res)
+    rows = [
+        ("crash share of windows", [f"{r['crash'] * 100:.0f}%" for r in res]),
+        ("L1 (λ 0.95): all / completed only",
+         [f"{_num(r['tails']['l1'][0])} / {_num(r['tails']['l1'][1])}" for r in res]),
+        ("G^γ (= J^π): all / completed only",
+         [f"{_num(r['tails']['g'][0])} / {_num(r['tails']['g'][1])}" for r in res]),
+    ]
+    return [
+        ("**Crash windows and reliability.** Split-half r (odd vs even windows,"
+        f" {half} each) of the per-level window mean, over all windows and over completed"
+        " windows only. If dropping crashed windows raises r, crash windows (not window-to-"
+        "window noise in clean driving) limit reliability, which favours the plan's hurdle"
+        " split (crash probability, and regret given completion) and robust aggregation for"
+        " the full audit. The headline scores keep the reference definitions (means over all"
+        " windows)."),
+        "",
+        f"| Quantity | {head} |",
+        "|---|" + "---|" * len(res),
+        *[f"| {name} | " + " | ".join(cells) + " |" for name, cells in rows],
+    ]
+
+
 def summary(res, half: int) -> list[str]:
     """Computed bullets for the top of the report: thresholds only, no interpretation that a
     re-run on more checkpoints could silently contradict."""
@@ -326,7 +400,8 @@ def summary(res, half: int) -> list[str]:
         f"- **Target reliability:** split-half r of Reg at {half} windows"
         f" {min(rel_reg):.2f}-{max(rel_reg):.2f} (median {np.median(rel_reg):.2f}); windows for"
         f" 0.9 by Spearman-Brown: median {_windows(np.median(n_reg))}, range"
-        f" {_windows(min(n_reg))}-{_windows(max(n_reg))}.")
+        f" {_windows(min(n_reg))}-{_windows(max(n_reg))} (see the Spearman-Brown check under"
+        " *Reliability and power* before trusting these budgets).")
     need = []
     for name in HEADLINE:
         vals = [r["rel_s"].get(name, np.nan) for r in graded]
@@ -463,16 +538,19 @@ def report(args, plan, res, d_qss, out: Path, skipped_ckpts):
         lines.append(f"| {LABELS[name]} | " + " | ".join(cells) + " |")
     lines += ["", "![fidelity](pilot-audit-fidelity.png)", "",
               "## Operational scores (windows 1-4 against windows 5+)", "",
-              ("Spearman ρ against absolute regret, and RC@10% (share of total regret in the"
-              " score's top 10% of levels; random = 0.10)."), "",
-              "| Score | " + " | ".join(f"{r['info']['timesteps'] / 1e6:.0f}M ρ / RC" for r in res) + " |",
+              ("Spearman ρ against absolute regret, and the RC@10% lift (share of total regret"
+               " in the score's top 10% of levels, rescaled so that random = 0 and the"
+               " regret-sorted oracle = 1; see the per-checkpoint tables for why the raw share"
+               " is not shown here)."), "",
+              "| Score | " + " | ".join(f"{r['info']['timesteps'] / 1e6:.0f}M ρ / lift" for r in res) + " |",
               "|---|" + "---|" * len(res)]
     for name in HEADLINE + BASELINES + [REFERENCE]:
         cells = []
         for r in res:
             row = r["fid_op"].rows.get(name)
             cells.append("-" if row is None else
-                         f"{_num(row['rho_abs'].value, '{:+.2f}')} / {_num(row['rc'].value)}")
+                         f"{_num(row['rho_abs'].value, '{:+.2f}')}"
+                         f" / {_num(row['rc_lift'].value, '{:+.2f}')}")
         lines.append(f"| {LABELS[name]} | " + " | ".join(cells) + " |")
 
     lines += [
@@ -483,7 +561,9 @@ def report(args, plan, res, d_qss, out: Path, skipped_ckpts):
         f" ({half} each), Spearman correlation across levels. That is the reliability of the"
         f" high-budget score as used ({half} windows); Spearman-Brown steps it to other budgets."
         " *Windows for 0.9* is the Spearman-Brown prophecy (the G1 gate asks for ≥ 0.9 late and"
-        " ≥ 0.8 mid within 64 windows). *Operational* is the prophecy at 4 windows."),
+        " ≥ 0.8 mid within 64 windows). *op.* is the prophecy at the operational budget:"
+        f" {len(plan.operational)} windows for scores, the {len(plan.op_target)} target"
+        f" windows {len(plan.operational) + 1}-{W} for the target rows."),
         "",
         "| Quantity | " + " | ".join(f"{r['info']['timesteps'] / 1e6:.0f}M r / for 0.9 / op." for r in res) + " |",
         "|---|" + "---|" * len(res),
@@ -491,10 +571,12 @@ def report(args, plan, res, d_qss, out: Path, skipped_ckpts):
     for name in HEADLINE + ["agent_only", "reg", "reg_norm", "j_pi"]:
         cells = []
         for r in res:
-            v = r["rel_t"].get(name) if name in ("reg", "reg_norm", "j_pi") else r["rel_s"].get(name)
+            is_target = name in ("reg", "reg_norm", "j_pi")
+            v = r["rel_t"].get(name) if is_target else r["rel_s"].get(name)
             ok = v is not None and np.isfinite(v)
             n = float(F.windows_for_reliability(v, half)) if ok else None
-            op = float(F.spearman_brown(v, 4 / half)) if ok else None
+            n_op = len(plan.op_target) if is_target else len(plan.operational)
+            op = float(F.spearman_brown(v, n_op / half)) if ok else None
             cells.append(f"{_num(v)} / {_windows(n)} / {_num(op)}")
         label = {"reg": "**target: Reg**", "reg_norm": f"**target: Reg/{opt}**",
                  "j_pi": "**target: J^π**"}.get(name, LABELS.get(name, name))
@@ -514,13 +596,23 @@ def report(args, plan, res, d_qss, out: Path, skipped_ckpts):
         " exchangeable windows. MaxMC (and the max-return term of MaxMC-unit) take a maximum"
         " over windows, so their prophecy is approximate; the right panel of the figure"
         " compares the prophecy with the empirical curve. A reliability near 0 or negative"
-        " (constant or near-constant scores, e.g. learnability when every window completes)"
-        " cannot be extrapolated (\"never\")."),
+        " cannot be extrapolated (\"never\"). Split-half r is not reported (\"-\") when more"
+        f" than {MAX_TIE_SHARE:.0%} of levels share one value in either half (e.g. S2"
+        " learnability while almost no window succeeds): the halves then agree on their ties"
+        " and r is spuriously high."),
+        "",
+        sb_check(res, half),
+        "",
+        *crash_table(res, half),
         "",
         "## Per-checkpoint tables (high budget)",
         "",
-        (f"ρ = Spearman against Reg and against Reg/{opt}; RC = RC@10% (share of total regret in"
-        " the score's top 10%) and RC/oracle (divided by the share of the regret-sorted top 10%);"
+        (f"ρ = Spearman against Reg and against Reg/{opt}; RC@10% = share of total regret in"
+        " the score's top 10% of levels (random = k/L = 0.10); lift = (RC − k/L) / (RC_oracle −"
+        " k/L), so random = 0 and the regret-sorted oracle = 1 (when regret is spread almost"
+        " evenly over levels the oracle itself captures little more than k/L, given in each"
+        " heading, so the raw share barely moves, and dividing by the oracle share alone would"
+        " rate a random score close to 1);"
         " P@10% = overlap of the top 10% sets; a, b = standardised loadings of rank(S) on"
         f" rank({opt}) and rank(J^π) (faithful: a > 0, b < 0); Δρ = ρ minus the agent-only"
         " baseline's ρ, paired; ρ* = ρ disattenuated by the split-half reliabilities of score"
@@ -533,9 +625,10 @@ def report(args, plan, res, d_qss, out: Path, skipped_ckpts):
             "",
             f"### {r['info']['timesteps'] / 1e6:.1f}M steps: completion {r['completion'] * 100:.1f}%"
             f" ({r['phase']}), {tab.n_levels} levels graded"
-            + (f", {tab.n_dropped} dropped ({opt} ≤ 1)" if tab.n_dropped else ""),
+            + (f", {tab.n_dropped} dropped ({opt} ≤ 1)" if tab.n_dropped else "")
+            + f", oracle RC@10% {r['rc_oracle']:.2f}",
             "",
-            f"| Score | ρ vs Reg | ρ vs Reg/{opt} | RC@10% | RC/oracle | P@10% | a | b | Δρ vs agent-only | ρ* |",
+            f"| Score | ρ vs Reg | ρ vs Reg/{opt} | RC@10% | RC lift | P@10% | a | b | Δρ vs agent-only | ρ* |",
             "|---|---|---|---|---|---|---|---|---|---|",
         ]
         for name in HEADLINE + BASELINES + [REFERENCE]:
@@ -547,7 +640,7 @@ def report(args, plan, res, d_qss, out: Path, skipped_ckpts):
             rho_star = F.disattenuate(row["rho_abs"].value, rel, r["rel_t"]["reg"])
             lines.append(
                 f"| {LABELS[name]} | {_ci(row['rho_abs'])} | {_ci(row['rho_norm'])} | {_ci(row['rc'], signed=False)}"
-                f" | {_ci(row['rc_rel'], signed=False)} | {_ci(row['p_at_q'], signed=False)}"
+                f" | {_ci(row['rc_lift'])} | {_ci(row['p_at_q'], signed=False)}"
                 f" | {_ci(row['a_opt'])} | {_ci(row['b_pi'])}"
                 f" | {_ci(row.get('delta_rho_abs'))} | {_num(float(rho_star), '{:+.2f}')} |")
         if tab.skipped:
