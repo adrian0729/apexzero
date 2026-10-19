@@ -1,4 +1,4 @@
-# Status (18 Oct 2026, evening)
+# Status (19 Oct 2026)
 
 Phases follow [the two-track plan](plan/two-track-plan.md): K = shared core, P = paper, D = demo.
 
@@ -13,7 +13,10 @@ Phases follow [the two-track plan](plan/two-track-plan.md): K = shared core, P =
 | **K4 specialist** | Training script, timed-lap evaluation | Hockenheim, 200M steps on the Mac CPU: 100% completion, **4.8% from the optimal lap** (gate: 8%), seed 1 of 3 |
 | **K5 (part)** | Procedural DR env with on-device track bank; randomised cars and hidden grip; paper level sets (A_DR / A_tail / A_OOD / pool) from disjoint seed streams; tilted and OOD generators; critic ensemble heads with per-head targets; log-spaced checkpoints | Generator matches R-dev corner statistics (radius W1/median 0.07); 1,000 strips in ~2 s |
 | **P harness (part)** | Score spec extracted from pinned JaxUED / minimax / MNA / SFL source ([spec](paper/score-spec.md)); estimators; audit rollouts; maze oracle; JaxUED maze example running unmodified | Estimators reproduce every hand-computed test vector in the spec; PVL matches JaxUED's own function; MNA closed form equals a port of the reference code to 1e-10; BFS optimum matches executed optimal plans in JaxUED's env exactly |
-| **K5 DR pilot** | 200M steps on procedural strips, 3 h on the Mac | Zero-shot on R-dev it completes Catalunya, Nuerburgring, Sepang and Moscow at **6.2-8.6% from the optimum**, but crashes on 8/12 (gate: 80% completion; pilot 33%). Every crash is a lap-1 corridor exit in a corner tighter than ~90% of the generator's ([diagnosis](findings/dr-pilot-200M-crashes.md)). v2 mixes in 30% hairpin-heavy strips |
+| **K5 DR pilots** | 200M steps each on procedural strips, ~3 h each on the Mac | v1: zero-shot it completes 4/12 R-dev circuits at **6.2-8.6% from the optimum**; every crash is a corridor exit in a corner tighter than ~90% of the generator's ([v1](findings/dr-pilot-200M-crashes.md)). v2 (30% hairpin-heavy strips): **5/12**, adding Brands Hatch 7.4% and Hockenheim 6.7%; remaining crashes are R 12-14 m hairpins ([v2](findings/dr-pilot-v2-tilt30-crashes.md)). Gate is 80%; v3 (stronger tilt) queued |
+| **K2a TO-OCP speed** | Exact floor-indexed lookups, hand-structured derivatives compiled to C, horizon continuation | **Gate met:** a 60 s window solves in 46-232 CPU-s (mean 97 s; gate 12 CPU-min); replay stays exact (< 5e-9). Fixed a slip-limit margin bug the benchmark exposed. Local optima differ by ~1e-4-1e-3 of J* ([report](findings/to-ocp-spike.md)) |
+| **P curriculum loop** | `ued/`: racing PLR-perp on JaxUED's own LevelSampler (chunked windows, pre-drawn assignments, per-transition loss masks, writes at episode end) and SFL; `scripts/train_ued.py` | Spec tests P-1..P-9 and S-1..S-4 pass; smoke runs only; first 200M PLR pilot queued |
+| **P maze E5 audit** | `maze/audit.py`: audits JaxUED's own maze checkpoints against exact BFS regret | PVL / MaxMC equal JaxUED's to 2.8e-7. Pilot at 0.7% of the default run: PVL and MaxMC correlate **negatively** with exact regret (rho ~ -0.2) while the agent-only baseline is +0.26. One seed, very early: a pilot, not a finding ([report](findings/maze-audit-pilot.md)) |
 | **P pilot audit** | `audit/fidelity.py`: proxy-label targets, Spearman / RC@10% / two-loading regression with bootstrap CIs, split-half reliability and window power analysis | Proxy-label pilot on 13 DR checkpoints, explicitly not a finding: target reliability split-half r ~0.8 at 16 windows per half; ready for real labels via `--j-opt` ([report](findings/pilot-audit.md)) |
 | **D drivers-lite** | `drivers/`: registration, anchored RTS s(t), push-lap filter, additive corner phases, teammate deltas within Q segments, R1 envelope, injection-recovery, placebo, split-half | Held-out sector error 10-18 ms; claim limits per phase ~24-100 ms (2 laps per driver); placebo and split-half both run; split-half below the 0.5 gate at pilot scale, so pair case studies only for now ([report](findings/drivers-pilot.md)). Found and fixed: race control's "LAP n" is OpenF1 lap n-1 |
 | **Paper draft** | `paper/` (LaTeX, 26 pages): introduction, related work, environment, TO-OCP, estimators and deviations table, protocol, threats, appendices; every number traced to a repo file; unverified citations marked | Builds with latexmk; results are placeholders |
@@ -21,8 +24,18 @@ Phases follow [the two-track plan](plan/two-track-plan.md): K = shared core, P =
 
 ## Running now
 
-- **DR pilot v2**, 200M steps with 30% tilted (hairpin-heavy) strips: does fixing the generator's tight-corner tail lift R-dev completion?
-- **Workflow:** TO-OCP speed-up (40 s window took ~67 min; the gate is 12 CPU-min for 60 s), maze E5 audit, racing PLR-perp / SFL curriculum loop; each reviewed and fixed before merge.
+`scripts/queue_overnight.sh` (sequential, ~10-12 h): Hockenheim specialist seeds 2 and 3 (K4
+gate), DR v3 (50% strips from a (1/r_min)^2 tilt), and a first racing PLR-perp (MaxMC) pilot
+on a 1,000-level pool.
+
+## Protocol deviation (recorded)
+
+Optimum computations on R_TEST (lockbox) circuits exist: the first all-circuit s-domain OCP
+batch (run before the revised plan restricted OCPs to R-dev) and the TO-OCP speed benchmarks
+(Monza, Spa, Silverstone, Budapest; that workflow's instructions lacked the lockbox rule). None
+was used for generator fitting, tuning or checkpoint choice. All 24 files are moved to
+`outputs/sealed/` (with a README) and must not be read until `protocol-v1` is tagged. Every
+later task carries the lockbox rule explicitly.
 
 ## Decisions taken (reversible, recorded here)
 
