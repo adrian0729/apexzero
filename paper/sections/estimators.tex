@@ -209,9 +209,12 @@ four windows, which is exactly JaxUED's branch for a new level (\dev{23}).
 the target. In training, a score is written when an episode ends, from the episodes of
 one slot that end in the same chunk.
 % src: docs/paper/score-spec.md section 1.8
-Every score is computed from the same per-window records by one implementation, so the
-in-training scorer and the offline audit cannot drift apart.
-% src: src/apexzero/audit/estimators.py (module docstring)
+The offline scorer exists; the in-training scorer does not yet. The offline scorer's
+single-trajectory primitives, the scoring GAE and the closed-form MNA terms, are written to
+be shared with the in-training accumulator, and spec test E-18 will check that the two
+give identical scores on the same trajectory.
+% src: src/apexzero/audit/estimators.py (module docstring; scoring_gae, mna_terms);
+%      docs/paper/score-spec.md section 4 (E-18 "online vs offline")
 
 The unit tests reproduce the spec's hand-computed vectors E-1--E-6, E-8--E-11, E-13--E-16
 and E-19; PVL matches JaxUED's own function on completed episodes; and the closed-form
@@ -239,9 +242,10 @@ number because it follows the reference.
 \renewcommand{\arraystretch}{1.15}
 \begin{longtable}{@{}>{\raggedright\arraybackslash}p{1.05cm}>{\raggedright\arraybackslash}p{1.95cm}>{\raggedright\arraybackslash}p{3.2cm}>{\raggedright\arraybackslash}p{3.45cm}>{\raggedright\arraybackslash}p{2.6cm}@{}}
 \caption{Deviations from the reference code (score spec, section 3). ``Ours'' describes
-the racing audit and curricula. DEV-14 applies only if the ensemble heads share the main
-critic's target; the current code trains each head on its own GAE target, as minimax does,
-so DEV-14 no longer applies.}
+the racing audit and curricula; references to our code are to the spec's pinned commit
+\code{99ee5a0}, named by identifier rather than line. DEV-14 applies only if the ensemble
+heads share the main critic's target; the current code trains each head on its own GAE
+target, as minimax does, so DEV-14 no longer applies.}
 \label{tab:deviations}\\
 % src: docs/paper/score-spec.md section 3; DEV-14 status: src/apexzero/agents/ppo.py (gae_step,
 %      "Ensemble heads get their own GAE targets"), docs/STATUS.md (K5 row)
@@ -273,8 +277,8 @@ DEV-4 & Incomplete episodes & dropped (MNA includes them); $-\infty$ or 0 or NaN
 DEV-5 & Episodes per score & all completed in the rollout ($\ge 1$ at maze defaults) & 1 per
   write in training (grouped within a chunk); 4 in E1 & window length \\
 DEV-6 & Units & no reward normalisation; scores reuse the PPO's advantage tensor &
-  $V := \sigma\hat V$; separate raw-unit scoring GAE & our PPO scales rewards
-  (\code{ppo.py} L385--386) \\
+  $V := \sigma\hat V$; separate raw-unit scoring GAE & our PPO scales rewards by the
+  running return std (\code{ppo.py}, \code{ret\_rms}) \\
 -- & Window end (mode F) & time limit terminal & \textbf{same} (headline); mode B
   (bootstrap $V^f$) stored as a variant & follows the reference \\
 DEV-8 & $\lambda$ & PPO $\lambda$ (maze 0.98) & PPO $\lambda = 0.95$ (+ variants) & same
@@ -291,7 +295,8 @@ DEV-13 & Ensemble architecture & heads are the critic, with a shared trunk getti
   gradients; head 0 drives GAE & 5 extra heads on a stop-gradient trunk; main critic
   excluded; 64-unit ReLU & heads must not change the audited critic \\
 DEV-14 & Ensemble targets (only if not fixed) & own GAE target per head & main critic's
-  target (\code{ppo.py} L452--454) & current code; fix recommended \\
+  target (\code{ppo.py}, \code{critic\_loss}, \code{head\_loss}) & code at the spec's
+  commit; fix recommended \\
 DEV-15 & Replay decision & one Bernoulli per update for the whole batch & one per slot per
   chunk & asynchronous resets \\
 DEV-16 & $\perp$ mechanism & whole update discarded; no gradient step on DR updates &
