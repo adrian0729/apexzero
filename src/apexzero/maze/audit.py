@@ -35,6 +35,7 @@ Scores, all on the same operational episodes:
 
 from __future__ import annotations
 
+import functools
 import importlib.util
 import json
 import sys
@@ -60,6 +61,18 @@ MAZE_PLR = Path(__file__).resolve().parents[3] / "third_party" / "jaxued_example
 MAZE_SIZE = 13            # maze_plr.main: Maze(max_height=13, max_width=13, ...)
 
 
+def float32(fn):
+    """Run ``fn`` with JAX's default 32-bit types, as JaxUED trains. Some processes (the racing
+    tests) enable x64 globally; there the maze observation ``uint8 / 10.0`` would become
+    float64, the LSTM carry would change dtype inside ``scan``, and ``jax.random.choice`` in
+    the level generator would draw different levels."""
+    @functools.wraps(fn)
+    def wrapped(*args, **kwargs):
+        with jax.enable_x64(False):
+            return fn(*args, **kwargs)
+    return wrapped
+
+
 @lru_cache(maxsize=1)
 def maze_plr():
     """JaxUED's examples/maze_plr.py as a module (no edits; its ``main`` is not run)."""
@@ -78,6 +91,7 @@ def make_env(agent_view_size: int = 5):
     return AutoReplayWrapper(env), env.default_params
 
 
+@float32
 def generate_levels(n: int, key: jax.Array, n_walls: int = 25) -> Level:
     """n levels from the DR generator the training run samples from (batched Level)."""
     gen = make_level_generator(MAZE_SIZE, MAZE_SIZE, n_walls)
@@ -200,6 +214,7 @@ def _chunk_runner(act, env, env_params, n: int, chunk: int):
     return jax.jit(run)
 
 
+@float32
 def collect(policy: Policy, levels: Level, episodes: int, key: jax.Array,
             agent_view_size: int = 5, chunk: int = 250) -> MazeRollouts:
     """Run every level's stream until it has completed ``episodes`` episodes. Step keys are
@@ -245,6 +260,7 @@ def episode_bounds(done: np.ndarray, episodes: int) -> np.ndarray:
 # --------------------------------------------------------------------------- scores
 
 
+@float32
 def jaxued_scores(ro: MazeRollouts, k: int, gamma: float, lam: float) -> dict[str, np.ndarray]:
     """PVL and MaxMC exactly as maze_plr.py's new-level branch computes them (L545-547) on a
     rollout holding the first k episodes of each stream."""

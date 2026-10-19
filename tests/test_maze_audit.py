@@ -59,6 +59,7 @@ def _levels(n_generated: int, seed: int = 3) -> Level:
                         gen, extra)
 
 
+@maze.float32
 def _random_params(seed: int = 0, value_bias: float = 0.3):
     key = jax.random.PRNGKey(seed)
     mod = maze.maze_plr()
@@ -122,6 +123,21 @@ def test_chunking_does_not_change_the_stream():
     T = min(a.done.shape[0], b.done.shape[0])
     for x, y in zip(a[:3], b[:3]):
         np.testing.assert_array_equal(x[:T], y[:T])
+
+
+def test_global_x64_does_not_change_levels_or_rollouts():
+    # Other test modules (and possibly a combined script) switch x64 on process-wide.
+    pol = maze.network_policy(_random_params())
+    with jax.enable_x64(False):
+        lv32 = maze.generate_levels(3, jax.random.PRNGKey(8))
+        ro32 = maze.collect(pol, lv32, 1, jax.random.PRNGKey(2))
+    with jax.enable_x64(True):
+        lv64 = maze.generate_levels(3, jax.random.PRNGKey(8))
+        ro64 = maze.collect(pol, lv64, 1, jax.random.PRNGKey(2))
+    jax.tree.map(np.testing.assert_array_equal, lv32, lv64)
+    for x, y in zip(ro32, ro64):
+        np.testing.assert_array_equal(x, y)
+        assert x.dtype == y.dtype
 
 
 def test_scores_equal_jaxued_utils_on_the_collected_rollouts(random_rollouts):
