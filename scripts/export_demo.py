@@ -66,21 +66,26 @@ def main():
     ap.add_argument("--unseal-lockbox", action="store_true")
     args = ap.parse_args()
 
-    export.lockbox_guard(args.track, unsealed=args.unseal_lockbox)
+    unsealed = args.unseal_lockbox
+    export.lockbox_guard(args.track, unsealed=unsealed)
     wall0, cpu0 = time.perf_counter(), time.process_time()
     out = Path(args.out)
     agent_path = Path(args.agent)
     ocp_path = Path(args.ocp or f"outputs/ocp/{args.track}.pkl")
 
     track = refine_reference(load_tumftm(f"data/tracks/tumftm/{args.track}.csv"))
+    # Again on the loaded name: "--track ./Monza" or "--track monza" resolve to a lockbox
+    # circuit even though the raw string differs (the library entry points check too).
+    export.lockbox_guard(track.name, unsealed=unsealed)
     with open(ocp_path, "rb") as fh:
         res = pickle.load(fh)
-    g_ocp = export.ocp_ghost(res, track, rate_hz=args.rate, label="Optimum (s-domain OCP)")
+    g_ocp = export.ocp_ghost(res, track, rate_hz=args.rate, label="Optimum (s-domain OCP)",
+                             unsealed=unsealed)
 
     policy = export.load_policy(agent_path)
     v0 = float(reference_speed(track)[0]) * args.v_start_frac
-    ro = export.rollout_policy(policy, track, v0)
-    g_agent = export.policy_ghost(ro, track, label=args.agent_label)
+    ro = export.rollout_policy(policy, track, v0, unsealed=unsealed)
+    g_agent = export.policy_ghost(ro, track, label=args.agent_label, unsealed=unsealed)
 
     # The export must reproduce the evaluation harness's own number for this run.
     harness = timed_laps(policy, track, v0, runs=1)
@@ -119,7 +124,7 @@ def main():
     doc = export.build_document(
         track, [g_agent, g_ocp], reference="ocp",
         title=f"{args.track}: {args.agent_label} vs the optimal lap", notes=notes,
-        provenance=provenance)
+        provenance=provenance, unsealed=unsealed)
 
     paths = [export.write_document(doc, out / f"{args.name}.json")]
     paths.append(export.embed_in_viewer(doc, out / f"{args.name}.html"))

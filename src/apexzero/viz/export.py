@@ -28,10 +28,11 @@ from __future__ import annotations
 import dataclasses
 import json
 import pickle
+import re
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
-from pathlib import Path
+from pathlib import Path, PurePath
 from typing import Any
 
 import numpy as np
@@ -273,7 +274,7 @@ def load_policy(path: str | Path) -> Callable:
 
 def rollout_policy(policy_fn: Callable, track: Track, v_start: float, laps: int = 2,
                    params=None, ctx=None, n0: float = 0.0,
-                   max_steps: int | None = None) -> PolicyRollout:
+                   max_steps: int | None = None, unsealed: bool = False) -> PolicyRollout:
     """Run ``policy_fn`` (``obs [B, D] -> action [B, 2]``) from a rolling start at s = 0,
     as ``timed_laps`` does for its first (unjittered) run, but record every state.
 
@@ -281,11 +282,13 @@ def rollout_policy(policy_fn: Callable, track: Track, v_start: float, laps: int 
     harness's run 0 up to batch-size rounding in the network. The harness only runs in
     float32 (its scan carry mixes float32 state with default-dtype context), so the rollout
     forces float32 even if the caller has enabled ``jax_enable_x64`` (the OCP checks do).
+    Refuses lockbox circuits.
     """
     import contextlib
 
     import jax
 
+    lockbox_guard(track.name, unsealed)
     float32 = getattr(jax, "enable_x64", None)
     with float32(False) if float32 is not None else contextlib.nullcontext():
         return _rollout_policy_f32(policy_fn, track, v_start, laps, params, ctx, n0, max_steps)
@@ -339,8 +342,9 @@ def _rollout_policy_f32(policy_fn, track, v_start, laps, params, ctx, n0, max_st
 
 def policy_ghost(ro: PolicyRollout, track: Track, lap: int | None = None, id: str = "agent",
                  label: str = "RL agent", badge: str | None = None,
-                 meta: dict | None = None) -> Ghost:
+                 meta: dict | None = None, unsealed: bool = False) -> Ghost:
     """The timed lap (default: the last of ``ro.laps``) of a policy rollout."""
+    lockbox_guard(track.name, unsealed)
     lap = ro.laps if lap is None else lap
     L = float(track.length)
     dead = np.nonzero(~ro.alive)[0]
@@ -362,7 +366,7 @@ def policy_ghost(ro: PolicyRollout, track: Track, lap: int | None = None, id: st
 
 def ghost_from_lap_trace(trace: dict, track: Track, lap: int = 2, id: str = "agent",
                          label: str = "RL agent", delta_max: float = F1_2025.delta_max,
-                         meta: dict | None = None) -> Ghost:
+                         meta: dict | None = None, unsealed: bool = False) -> Ghost:
     """A ghost from ``timed_laps(...).trace`` (keys t, s, n, vx, action).
 
     That trace has no heading error, side slip or actuator states, so: ``heading`` is the
@@ -370,6 +374,7 @@ def ghost_from_lap_trace(trace: dict, track: Track, lap: int = 2, id: str = "age
     (steering scaled by ``delta_max``), and the friction-ellipse channels are absent.
     Prefer :func:`rollout_policy` + :func:`policy_ghost` when the policy is at hand.
     """
+    lockbox_guard(track.name, unsealed)
     L = float(track.length)
     t = np.r_[0.0, np.asarray(trace["t"], float)]
     s = np.r_[0.0, np.asarray(trace["s"], float)]
@@ -397,7 +402,8 @@ def ghost_from_lap_trace(trace: dict, track: Track, lap: int = 2, id: str = "age
 
 def ocp_ghost(res, track: Track, p: VehicleParams = F1_2025, rate_hz: float | None = 20.0,
               id: str = "ocp", label: str = "Optimal lap (s-domain OCP)",
-              badge: str | None = None, meta: dict | None = None) -> Ghost:
+              badge: str | None = None, meta: dict | None = None,
+              unsealed: bool = False) -> Ghost:
     """Map an ``OCPResult`` (stations in s) to time.
 
     The OCP integrates dt/ds with the trapezoidal rule, so ``res.t`` is its own time at
@@ -407,6 +413,9 @@ def ocp_ghost(res, track: Track, p: VehicleParams = F1_2025, rate_hz: float | No
     lap time (``rate_hz=None`` keeps the stations). Position and heading are recomputed
     from the interpolated Frenet state, so the ghost stays on the curved line.
     """
+    lockbox_guard(track.name, unsealed)
+    if res.meta.get("track") is not None:
+        lockbox_guard(res.meta["track"], unsealed)
     if res.meta.get("track") not in (None, track.name):
         raise ValueError(f"OCP is for {res.meta['track']!r}, not {track.name!r}")
     L = float(track.length)
@@ -458,11 +467,32 @@ def delta_time(ghost: Ghost, ref: Ghost, s: np.ndarray) -> np.ndarray:
 # --------------------------------------------------------------------------- document
 
 
+def _squash(name: str) -> str:
+    return re.sub(r"[^0-9a-z]", "", name.casefold())
+
+
+_LOCKBOX = tuple(_squash(name) for name in R_TEST)
+
+
+def is_lockbox(track_name: str) -> bool:
+    """True if ``track_name`` names an R_TEST circuit or a variant of one.
+
+    Deliberately loose, so a spelling cannot slip past it: directory parts and a file
+    suffix are dropped, case and separators are ignored, and any name that *starts* with
+    a lockbox circuit counts ("./Monza", "monza", "Monza-mirrored", "Mexico City",
+    "Spa_reversed", "SpaFrancorchamps"). No R-dev name starts with an R_TEST name."""
+    stem = PurePath(str(track_name)).name
+    stem = re.sub(r"\.(csv|pkl|json)$", "", stem, flags=re.IGNORECASE)
+    return _squash(stem).startswith(_LOCKBOX)
+
+
 def lockbox_guard(track_name: str, unsealed: bool = False) -> None:
     """Refuse agent or optimum content on the lockbox circuits (R_TEST), including their
-    mirrored and reversed variants, unless the lockbox has been formally unsealed."""
-    base = track_name.split("-")[0]
-    if base in R_TEST and not unsealed:
+    mirrored and reversed variants, unless the lockbox has been formally unsealed.
+
+    Every entry point that rolls out a policy, maps an OCP or assembles a document calls
+    it on the track's name, so a caller cannot skip it by using the library directly."""
+    if is_lockbox(track_name) and not unsealed:
         raise PermissionError(
             f"{track_name} is a lockbox (R_TEST) circuit: no agent or optimum laps there "
             "until protocol-v1 unseals it")
@@ -478,9 +508,12 @@ def _arr(a, decimals: int) -> list:
 def build_document(track: Track, ghosts: Iterable[Ghost], reference: str | None = None,
                    sectors: list[Sector] | None = None, title: str | None = None,
                    notes: Iterable[str] = (), provenance: dict | None = None,
-                   delta_ds: float | None = None) -> dict[str, Any]:
+                   delta_ds: float | None = None, unsealed: bool = False) -> dict[str, Any]:
     """Assemble a schema document. With a ``reference`` ghost, every other ghost gets a
-    comparison: Δt(s) on the track's grid and the time lost per corner sector."""
+    comparison: Δt(s) on the track's grid and the time lost per corner sector.
+
+    Refuses lockbox circuits (by the track's name) unless ``unsealed``."""
+    lockbox_guard(track.name, unsealed)
     ghosts = list(ghosts)
     ids = [g.id for g in ghosts]
     if len(set(ids)) != len(ids):

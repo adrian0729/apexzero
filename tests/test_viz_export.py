@@ -281,9 +281,39 @@ def test_ghosts_need_required_channels():
 
 
 def test_lockbox_guard():
-    for name in ("Monza", "Suzuka-mirrored", "Spa-reversed"):
+    for name in ("Monza", "Suzuka-mirrored", "Spa-reversed", "monza", "./Monza",
+                 "data/tracks/tumftm/Monza.csv", "MONZA-Mirrored", "Mexico City",
+                 "mexico_city-reversed", "SaoPaulo.pkl", "Spa_reversed", "SpaFrancorchamps"):
         with pytest.raises(PermissionError):
             export.lockbox_guard(name)
         export.lockbox_guard(name, unsealed=True)
-    for name in ("Hockenheim", "Catalunya-reversed", "square"):
+    for name in ("Hockenheim", "Catalunya-reversed", "square", "./Hockenheim",
+                 "hockenheim-mirrored", "circle"):
         export.lockbox_guard(name)
+
+
+def test_no_dev_circuit_looks_like_a_lockbox_circuit():
+    from apexzero.tracks.corners import EXCLUDED, R_DEV, R_TEST
+
+    assert not any(export.is_lockbox(name) for name in R_DEV + EXCLUDED)
+    assert all(export.is_lockbox(name) for name in R_TEST)
+
+
+def test_library_entry_points_refuse_lockbox_tracks():
+    """Calling the library directly gets the guard too, by the track's own name."""
+    import dataclasses
+
+    tr = dataclasses.replace(circle(), name="monza")
+    res = synthetic_ocp(circle())
+    with pytest.raises(PermissionError):
+        export.ocp_ghost(res, tr)
+    res.meta["track"] = "Monza"
+    with pytest.raises(PermissionError):
+        export.ocp_ghost(res, circle())
+    with pytest.raises(PermissionError):
+        export.rollout_policy(_ring_policy, tr, 30.0)
+    with pytest.raises(PermissionError):
+        export.build_document(tr, [])
+    trace = {"t": [0.05], "s": [1.0], "n": [0.0], "vx": [20.0], "action": [[0.0, 0.0]]}
+    with pytest.raises(PermissionError):
+        export.ghost_from_lap_trace(trace, tr)
