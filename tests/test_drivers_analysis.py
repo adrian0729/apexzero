@@ -230,20 +230,57 @@ def _table(effect, n_laps=4, n_phase=6, noise=0.01, seed=0, teams=3):
                        labels, {})
 
 
-def test_pair_delta_is_additive_and_uses_the_fastest_laps():
+def _with_phase_times(tab, pt):
+    return dl.LapTable(tab.session, tab.keys, tab.driver, tab.team, tab.q_segment,
+                       pt.sum(axis=1), pt, tab.labels, tab.acronym)
+
+
+def test_pair_delta_is_additive_and_uses_the_fastest_laps_of_each_segment():
     effect = np.array([0.05, 0.0, -0.02, 0.0, 0.01, 0.0])
     tab = _table(effect, noise=0.0)
     d = dl.pair_delta(tab, "T0", top_n=2)
     assert (d.a, d.b) == (1, 2)
     assert np.allclose(d.delta, effect)
     assert d.lap_delta == pytest.approx(effect.sum())
-    # With noise, top-2 really are each driver's two fastest laps.
-    tab = _table(effect, noise=0.05, seed=1)
+    # With noise and 3 laps per driver per segment, top-2 are each driver's two fastest
+    # laps *within* each Q segment; the segments get equal weight (2 + 2 laps each).
+    tab = _table(effect, n_laps=6, noise=0.05, seed=1)
     d = dl.pair_delta(tab, "T1", top_n=2)
-    m = (tab.driver == 4)
-    fastest = np.sort(tab.lap_time[m])[:2].mean()
-    m_a = (tab.driver == 3)
-    assert d.lap_delta == pytest.approx(fastest - np.sort(tab.lap_time[m_a])[:2].mean())
+    assert d.segments == ((1, 2, 2), (2, 2, 2)) and d.var_factor == pytest.approx(0.5)
+
+    def top2(drv, q):
+        return np.sort(tab.lap_time[(tab.driver == drv) & (tab.q_segment == q)])[:2].mean()
+
+    expect = np.mean([top2(4, q) - top2(3, q) for q in (1, 2)])
+    assert d.lap_delta == pytest.approx(expect)
+
+
+def test_pair_delta_never_compares_laps_across_q_segments():
+    effect = np.array([0.05, 0.0, -0.02, 0.0, 0.01, 0.0])
+    tab = _table(effect, n_laps=6, noise=0.03, seed=5)
+    # Track evolution: every lap in Q2 is faster, by a different amount in each phase,
+    # enough to reorder the drivers' laps across segments. The deltas must not move.
+    evo = -np.linspace(0.02, 0.12, 6)
+    shifted = _with_phase_times(tab, tab.phase_t + (tab.q_segment == 2)[:, None] * evo)
+    for team in ("T0", "T1", "T2"):
+        for top_n in (1, 2, None):
+            d0, d1 = dl.pair_delta(tab, team, top_n), dl.pair_delta(shifted, team, top_n)
+            assert np.allclose(d0.delta, d1.delta, atol=1e-12)
+            assert d0.lap_delta == pytest.approx(d1.lap_delta, abs=1e-12)
+    # Driver 2 only ran in Q2: only Q2 is compared, whatever driver 1 did in Q1.
+    sub = shifted.rows(~((shifted.driver == 2) & (shifted.q_segment == 1)))
+    d = dl.pair_delta(sub, "T0", top_n=2)
+    q2 = dl.pair_delta(shifted.rows(shifted.q_segment == 2), "T0", top_n=2)
+    assert d.q_segments == (2,) and np.allclose(d.delta, q2.delta)
+    # Unequal lap counts: inverse-variance weights 1 / (1/n_A + 1/n_B).
+    sub = tab.rows(~((tab.driver <= 2) & (tab.q_segment == 1) & (np.array(
+        [k[1] for k in tab.keys]) > 2)))
+    d = dl.pair_delta(sub, "T0", top_n=None)
+    assert d.segments == ((1, 1, 1), (2, 3, 3))
+    w = np.array([0.5, 1.5]) / 2.0
+    parts = [dl.pair_delta(sub.rows(sub.q_segment == q), "T0", None).delta for q in (1, 2)]
+    assert np.allclose(d.delta, w[0] * parts[0] + w[1] * parts[1])
+    assert d.var_factor == pytest.approx(0.5)
 
 
 def test_pair_delta_needs_a_shared_q_segment():
@@ -261,19 +298,44 @@ def test_r1_envelope_is_the_best_phase_time_per_car():
     assert np.allclose(r1["T2"], tab.phase_t[m].min(axis=0))
 
 
-def test_placebo_collapses_effects_and_split_half_finds_real_ones():
+def test_placebo_and_split_half_separate_real_effects_from_none():
     effect = np.array([0.08, -0.06, 0.05, -0.07, 0.06, -0.05])
     tabs = [_table(effect, n_laps=6, noise=0.02, seed=s) for s in range(3)]
     pb = dl.placebo(tabs, top_n=None, n_shuffles=100)
-    assert abs(pb.placebo_mean) < 3 * pb.placebo_mean_se + 1e-3
+    assert pb.n_pairs == 9 and pb.n_cells == 54
     assert pb.real_abs_mean > 2 * pb.placebo_abs_mean
+    assert all(r > 2 for r, _ in pb.abs_ratio_by_cell().values())
     assert pb.ss_p_value < 0.02
     sh = dl.split_half_within(tabs)
-    assert sh.rho > 0.8
+    assert sh.rho > 0.8 and sh.p_value < 0.02 and sh.n_pairs == 9
     null_tabs = [_table(np.zeros(6), n_laps=6, noise=0.02, seed=s) for s in range(3)]
     pb0 = dl.placebo(null_tabs, top_n=None, n_shuffles=100)
     assert pb0.ss_p_value > 0.05
-    assert abs(dl.split_half_within(null_tabs).rho) < 0.5
+    assert all(0.5 < r < 2 for r, _ in pb0.abs_ratio_by_cell().values())
+    # A correct 2-sigma limit (2 x 0.02 s at 2 + 2 laps, scaled to 3 + 3 laps in each of
+    # two segments) is exceeded by about 5% of shuffled cells; one half as wide is not.
+    lim = {("slow", ph): 0.04 for ph in segments.PHASES}
+    share, _, n = pb0.exceed_share(lim)
+    assert n == 54 and 0.025 < share < 0.08
+    narrow, _, _ = pb0.exceed_share({k: 0.5 * v for k, v in lim.items()})
+    assert narrow > 0.2
+    sh0 = dl.split_half_within(null_tabs)
+    assert abs(sh0.rho) < 0.5 and sh0.p_value > 0.05
+
+
+def test_split_half_halves_stay_inside_q_segments():
+    tab = _table(np.zeros(6), n_laps=6, noise=0.02, seed=7)
+    h1, h2 = dl._halves(tab, "T0")
+    for q in (1, 2):
+        for drv in (1, 2):
+            m = (tab.driver == drv) & (tab.q_segment == q)
+            assert np.isin(np.flatnonzero(m), h1).sum() == 2
+            assert np.isin(np.flatnonzero(m), h2).sum() == 1
+    # A segment where one driver has a single lap cannot be split; it is left out.
+    sub = tab.rows(~((tab.driver == 1) & (tab.q_segment == 1) & (np.array(
+        [k[1] for k in tab.keys]) > 1)))
+    h1, h2 = dl._halves(sub, "T0")
+    assert set(sub.q_segment[np.r_[h1, h2]]) == {2}
 
 
 # ----------------------------------------------------------------------------- injection
