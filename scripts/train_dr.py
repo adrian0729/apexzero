@@ -21,6 +21,7 @@ import _bootstrap  # noqa: F401  (makes src/ importable)
 import jax
 import numpy as np
 
+from apexzero.agents.checkpoints import make_checkpoint_fn
 from apexzero.agents.ppo import Actor, PPOConfig, make_train
 from apexzero.env import racing
 from apexzero.env.adapters import procedural_env, reference_speed
@@ -29,10 +30,6 @@ from apexzero.tracks.corners import R_DEV
 from apexzero.tracks.generator import fit_grammar
 from apexzero.tracks.reference import refine_reference
 from apexzero.tracks.track import load_tumftm
-
-
-def log_spaced(total: float, first: float = 10e6, n: int = 16) -> list[int]:
-    return sorted({int(x) for x in np.geomspace(first, total, n)})
 
 
 def main():
@@ -50,7 +47,7 @@ def main():
     args = ap.parse_args()
 
     out = Path("runs") / args.name
-    (out / "ckpt").mkdir(parents=True, exist_ok=True)
+    out.mkdir(parents=True, exist_ok=True)
     dev = [load_tumftm(f"data/tracks/tumftm/{n}.csv") for n in R_DEV]
     g = fit_grammar(dev)
     env = procedural_env(g, bank_size=args.bank, refresh_per_update=args.refresh,
@@ -61,10 +58,6 @@ def main():
                     activation="tanh", ensemble_heads=args.ensemble_heads)
     (out / "config.json").write_text(json.dumps({"ppo": asdict(cfg), "args": vars(args),
                                                  "env": racing.EnvParams()._asdict()}, indent=1))
-    ckpt_steps = log_spaced(args.steps)
-    ckpt_updates = {max(0, s // cfg.batch_size - 1): s for s in ckpt_steps}
-    ckpt_updates[cfg.num_updates - 1] = int(args.steps)
-
     log = open(out / "metrics.csv", "w", newline="")  # noqa: SIM115  (written from a JAX callback)
     writer = None
     t0 = time.perf_counter()
@@ -82,17 +75,7 @@ def main():
         writer.writerow(m)
         log.flush()
 
-    def checkpoint_fn(snap, upd):
-        upd = int(upd)
-        if upd in ckpt_updates:
-            snap = jax.device_get(snap)
-            d = {"actor": snap["actor"], "critic": snap["critic"],
-                 "obs_rms": snap["obs_rms"]._asdict(), "ret_rms": snap["ret_rms"]._asdict(),
-                 "config": asdict(cfg), "timesteps": ckpt_updates[upd]}
-            with open(out / "ckpt" / f"{ckpt_updates[upd]:012d}.pkl", "wb") as fh:
-                pickle.dump(d, fh)
-
-    train, _, _ = make_train(cfg, env, log_fn, checkpoint_fn)
+    train, _, _ = make_train(cfg, env, log_fn, make_checkpoint_fn(out, cfg))
     agent, _ = jax.jit(train)(jax.random.PRNGKey(args.seed))
     jax.block_until_ready(agent)
     log.close()

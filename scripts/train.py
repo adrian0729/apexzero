@@ -19,6 +19,7 @@ import jax
 import numpy as np
 from flax import serialization
 
+from apexzero.agents.checkpoints import make_checkpoint_fn
 from apexzero.agents.ppo import PPOConfig, make_train
 from apexzero.env import racing
 from apexzero.env.adapters import bank_env, make_bank, reference_speed
@@ -76,7 +77,9 @@ def main():
               f"term {m['terminated_frac'] * 100:5.2f}%  ent {m['entropy']:6.3f}  "
               f"kl {m['approx_kl']:.4f}  ev {m['explained_var']:.2f}", flush=True)
 
-    train, actor, _ = make_train(cfg, env, log_fn)
+    # Log-spaced snapshots from 5M steps, so learning can be compared across checkpoints.
+    ckpt_fn = make_checkpoint_fn(out, cfg, first=5e6)
+    train, actor, _ = make_train(cfg, env, log_fn, ckpt_fn)
     agent, _ = jax.jit(train)(jax.random.PRNGKey(args.seed))
     jax.block_until_ready(agent)
     log.close()

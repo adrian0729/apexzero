@@ -81,3 +81,22 @@ def test_training_with_per_head_targets_runs_and_heads_learn():
     # are tens here) and agree with each other, which the disagreement score relies on.
     assert float(per_head.min()) > 5.0
     assert float(per_head.std() / per_head.mean()) < 0.3
+
+
+def test_log_spaced_checkpoints_are_written_in_the_shared_format(tmp_path):
+    import pickle
+
+    from apexzero.agents.checkpoints import list_checkpoints, log_spaced, make_checkpoint_fn
+    from apexzero.audit.rollouts import snapshot_from_pickle
+
+    assert log_spaced(200e6, 10e6, 5)[0] == 10_000_000 and log_spaced(200e6, 10e6, 5)[-1] == 200_000_000
+    cfg = PPOConfig(num_envs=8, num_steps=16, total_timesteps=8 * 16 * 6, network="mlp",
+                    actor_width=16, critic_width=16, mlp_layers=1)
+    train, _, _ = make_train(cfg, from_gymnax("CartPole-v1"),
+                             checkpoint_fn=make_checkpoint_fn(tmp_path, cfg, first=8 * 16 * 2, n=3))
+    jax.block_until_ready(jax.jit(train)(jax.random.PRNGKey(0)))
+    files = list_checkpoints(tmp_path)
+    assert len(files) >= 2 and files[-1].stem == f"{8 * 16 * 6:012d}"
+    with open(files[-1], "rb") as fh:
+        snap = snapshot_from_pickle(pickle.load(fh))
+    assert float(snap.sigma) > 0
