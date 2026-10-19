@@ -115,11 +115,13 @@ def audit_checkpoint(path: Path, cache: Path, lv, tracks, x0, n_windows: int, ph
 # --------------------------------------------------------------------------- analysis
 
 
-def scores_for(st: WindowStats, windows, d_qss, g_all, c, rng_seed):
+def scores_for(st: WindowStats, windows, d_qss, g_all, c, rng_seed, j_opt=None):
     """Every graded score from ``windows``: the estimators plus the baselines, all computed
-    from the score windows only (so none shares noise with the target windows)."""
+    from the score windows only (so none shares noise with the target windows). With real
+    labels ``j_opt`` (J*_20), the policy-agnostic baseline is J*_20 itself and the reference
+    row is the plan's oracle-operational score J*_20 - G on the score windows."""
     s = level_scores(st, windows, qss_distance=d_qss)
-    best = F.regret_targets(g_all, windows)                    # J_best and J^pi on score windows
+    best = F.regret_targets(g_all, windows, j_opt=j_opt)       # J_opt and J^pi on score windows
     s["j_best"] = best.j_opt
     s["qss_slow"] = -d_qss
     s["random"] = np.random.default_rng(rng_seed).normal(size=d_qss.shape)
@@ -128,29 +130,29 @@ def scores_for(st: WindowStats, windows, d_qss, g_all, c, rng_seed):
     return {k: s[k] for k in keep if k in s}
 
 
-def analyse(stats, infos, d_qss, n_boot):
+def analyse(stats, infos, d_qss, n_boot, j_opt=None):
     W = stats[0].G_disc.shape[-1]
     plan = F.window_plan(W)
     g_all = np.stack([st.G_disc for st in stats])               # [C, L, W]
-    t_hb = F.regret_targets(g_all, plan.hb_target)
-    t_op = F.regret_targets(g_all, plan.op_target)
+    t_hb = F.regret_targets(g_all, plan.hb_target, j_opt=j_opt)
+    t_op = F.regret_targets(g_all, plan.op_target, j_opt=j_opt)
     half = W // 2
     sizes = [m for m in (1, 2, 4, 8, 16, 32) if m <= half]
     res = []
     for c, (st, info) in enumerate(zip(stats, infos)):
         comp = F.completion_rate(st.completed)
-        sc_hb = scores_for(st, plan.hb_score, d_qss, g_all, c, rng_seed=c)
-        sc_op = scores_for(st, plan.operational, d_qss, g_all, c, rng_seed=c)
+        sc_hb = scores_for(st, plan.hb_score, d_qss, g_all, c, rng_seed=c, j_opt=j_opt)
+        sc_op = scores_for(st, plan.operational, d_qss, g_all, c, rng_seed=c, j_opt=j_opt)
         fid_hb = F.fidelity_table(sc_hb, t_hb.j_opt, t_hb.j_pi[c], t_hb.reg[c], t_hb.reg_norm[c],
                                   n_boot=n_boot, seed=c, reference="agent_only")
         fid_op = F.fidelity_table(sc_op, t_op.j_opt, t_op.j_pi[c], t_op.reg[c], t_op.reg_norm[c],
                                   n_boot=n_boot, seed=c, reference="agent_only")
 
         def score_fn(w, st=st, c=c):
-            return scores_for(st, w, d_qss, g_all, c, rng_seed=c)
+            return scores_for(st, w, d_qss, g_all, c, rng_seed=c, j_opt=j_opt)
 
         def target_fn(w, c=c):
-            t = F.regret_targets(g_all, w)
+            t = F.regret_targets(g_all, w, j_opt=j_opt)
             return {"reg": t.reg[c], "reg_norm": t.reg_norm[c], "j_pi": t.j_pi[c]}
 
         rel_s = F.split_half(score_fn, range(W))
@@ -191,7 +193,7 @@ def _log_steps(ax, x):
     ax.xaxis.set_minor_formatter(matplotlib.ticker.NullFormatter())
 
 
-def fig_fidelity(res, path: Path):
+def fig_fidelity(res, path: Path, tag: str, opt: str):
     """Small multiples: one panel per headline score, rho against absolute and normalised
     regret with 95% bootstrap bands, the agent-only baseline dashed for comparison."""
     x = np.array([r["info"]["timesteps"] / 1e6 for r in res])
@@ -199,7 +201,7 @@ def fig_fidelity(res, path: Path):
     for ax, name in zip(axes.ravel(), HEADLINE):
         _style(ax)
         for metric, color, label in (("rho_abs", PALETTE[0], "vs Reg"),
-                                     ("rho_norm", PALETTE[1], "vs Reg / J_opt")):
+                                     ("rho_norm", PALETTE[1], f"vs Reg / {opt}")):
             est = [r["fid_hb"].rows.get(name, {}).get(metric) for r in res]
             y = np.array([e.value if e else np.nan for e in est])
             lo = np.array([e.lo if e else np.nan for e in est])
@@ -217,14 +219,14 @@ def fig_fidelity(res, path: Path):
     for ax in axes[:, 0]:
         ax.set_ylabel("Spearman rho", fontsize=8, color=INK2)
     axes[0, 0].legend(fontsize=7, frameon=False, loc="lower left")
-    fig.suptitle("PROXY-LABEL PILOT: high-budget fidelity (odd-window scores vs even-window "
-                 "regret against J_best), 95% bootstrap bands over levels", fontsize=10, color=INK)
+    fig.suptitle(f"{tag}: high-budget fidelity (odd-window scores vs even-window regret against"
+                 f" {opt}), 95% bootstrap bands over levels", fontsize=10, color=INK)
     fig.tight_layout()
     fig.savefig(path, dpi=150, facecolor=SURFACE)
     plt.close(fig)
 
 
-def fig_reliability(res, path: Path, W: int):
+def fig_reliability(res, path: Path, W: int, tag: str):
     """Left: split-half reliability (score on half the windows) across training. Right: the
     empirical reliability curve against window count at the last checkpoint, with the
     Spearman-Brown prophecy from the split-half value and the 0.9 goal."""
@@ -243,9 +245,10 @@ def fig_reliability(res, path: Path, W: int):
     ax[0].set_xlabel("training steps (M)", fontsize=8, color=INK2)
     ax[0].set_ylabel(f"split-half reliability ({W // 2} windows)", fontsize=8, color=INK2)
     ax[0].legend(fontsize=7, frameon=False, ncol=2, loc="lower right")
-    # The newest checkpoint's proxy labels are degenerate (it attains J_best on most levels),
-    # so the curve is shown for the one before it.
-    last = res[-2] if len(res) > 2 else res[-1]
+    # With proxy labels the newest checkpoint's targets are degenerate (it attains J_best on
+    # most levels), so the curve is shown for the newest checkpoint that does not.
+    gradable = [r for r in res if r["attained"] < 0.5]
+    last = gradable[-1] if gradable else res[-1]
     sizes = np.array(last["sizes"])
     grid = np.geomspace(1, 128, 100)
     shown = HEADLINE + ["reg"]
@@ -267,7 +270,7 @@ def fig_reliability(res, path: Path, W: int):
     ax[1].set_ylabel("reliability", fontsize=8, color=INK2)
     ax[1].set_title(f"{last['info']['timesteps'] / 1e6:.0f}M checkpoint: empirical (dots) vs "
                     "Spearman-Brown from the split half (lines)", fontsize=9, color=INK)
-    fig.suptitle("PROXY-LABEL PILOT: reliability of scores and target", fontsize=10, color=INK)
+    fig.suptitle(f"{tag}: reliability of scores and target", fontsize=10, color=INK)
     fig.tight_layout()
     fig.savefig(path, dpi=150, facecolor=SURFACE)
     plt.close(fig)
@@ -295,22 +298,97 @@ def _windows(v) -> str:
     return f"{int(np.ceil(v))}"
 
 
+def summary(res, half: int) -> list[str]:
+    """Computed bullets for the top of the report: thresholds only, no interpretation that a
+    re-run on more checkpoints could silently contradict."""
+    ratios = [r["calib"]["ratio"] for r in res]
+    sig = [r["info"]["sigma"] for r in res]
+    comp = [r["completion"] for r in res]
+    graded = [r for r in res if r["attained"] < 0.5]          # proxy labels not degenerate
+    raw = all(0.8 < x < 1.25 for x in ratios)
+    verdict = ("so critic values are in raw reward units" if raw else
+               "**outside 0.8-1.25: check the value units before trusting value-based scores**")
+    out = [
+        (f"- **Units:** σ = {min(sig):.1f}-{max(sig):.1f}; mean V(o₀) / mean G^γ ="
+         f" {min(ratios):.3f}-{max(ratios):.3f} across checkpoints, {verdict} (normalised values"
+         f" would give ~1/σ ≈ {1 / max(sig):.2f})."),
+        (f"- **Phase:** window completion {min(comp) * 100:.0f}%-{max(comp) * 100:.0f}%; phases"
+        f" covered: {', '.join(p for p in ('early', 'mid', 'late') if p in {r['phase'] for r in res})}."),
+        (f"- **Gradable checkpoints:** {len(graded)} of {len(res)} (with proxy labels, a"
+         " checkpoint that attains J_best on half the levels or more has degenerate labels and is"
+         " excluded from these bullets)."),
+    ]
+    if not graded:
+        return out
+    rel_reg = [r["rel_t"]["reg"] for r in graded]
+    n_reg = [float(F.windows_for_reliability(v, half)) for v in rel_reg]
+    out.append(
+        f"- **Target reliability:** split-half r of Reg at {half} windows"
+        f" {min(rel_reg):.2f}-{max(rel_reg):.2f} (median {np.median(rel_reg):.2f}); windows for"
+        f" 0.9 by Spearman-Brown: median {_windows(np.median(n_reg))}, range"
+        f" {_windows(min(n_reg))}-{_windows(max(n_reg))}.")
+    need = []
+    for name in HEADLINE:
+        vals = [r["rel_s"].get(name, np.nan) for r in graded]
+        if not np.isfinite(vals).any():
+            continue
+        n = [float(F.windows_for_reliability(v, half)) if np.isfinite(v) else np.inf for v in vals]
+        need.append(f"{LABELS[name]} {_windows(np.median(n))}")
+    out.append("- **Score reliability**, median windows for 0.9 over gradable checkpoints: "
+               + "; ".join(need) + ".")
+    pos, beat = [], []
+    for name in HEADLINE:
+        rows = [r["fid_hb"].rows.get(name) for r in graded]
+        k_pos = sum(1 for row in rows if row and np.isfinite(row["rho_abs"].lo) and row["rho_abs"].lo > 0)
+        k_beat = sum(1 for row in rows if row and "delta_rho_abs" in row
+                     and np.isfinite(row["delta_rho_abs"].lo) and row["delta_rho_abs"].lo > 0)
+        pos.append(f"{LABELS[name]} {k_pos}/{len(graded)}")
+        beat.append(f"{LABELS[name]} {k_beat}/{len(graded)}")
+    out += [
+        "- **ρ vs Reg with CI above 0** (high budget), checkpoints: " + "; ".join(pos) + ".",
+        "- **ρ above the agent-only baseline** (paired CI above 0), checkpoints: "
+        + "; ".join(beat) + ".",
+    ]
+    return out
+
+
 def report(args, plan, res, d_qss, out: Path, skipped_ckpts):
     L = len(d_qss)
     W = len(plan.hb_score) + len(plan.hb_target)
     half = W // 2
     wall = sum(r["info"]["wall"] for r in res)
     cpu = sum(r["info"]["cpu"] for r in res)
+    proxy = args.j_opt is None
+    opt = "J_best" if proxy else "J\\*_20"
+    if proxy:
+        banner = [
+            "> **PROXY-LABEL PILOT.** Regret here is measured against **J_best**, the best mean",
+            "> return any audited checkpoint reached on the level, not against the TO-OCP optimum",
+            "> J\\*_20. These numbers test the E1 machinery (plan phase 11) and must not be read as",
+            "> findings about the scores. The audit is ready for real labels: re-run with",
+            "> `--j-opt labels.npy` (J\\*_20 for the same levels, in level order).",
+        ]
+        target = ("- **Target:** J^π = mean discounted return over the target windows; J_best ="
+                  " max over checkpoints of that mean (from the target windows only, so scores and"
+                  " labels share no window noise); Reg = J_best − J^π, Reg_norm = Reg / J_best."
+                  " J_best is a certified lower bound on J\\*: every realised window is a feasible"
+                  " control sequence of the deterministic level.")
+    else:
+        banner = [(f"> **TO-OCP LABELS** from `{args.j_opt}` (J\\*_20 per level). Pilot scale:"
+                   " one seed, the levels and checkpoints listed below.")]
+        target = ("- **Target:** J^π = mean discounted return over the target windows;"
+                  " Reg = J\\*_20 − J^π, Reg_norm = Reg / J\\*_20 (J\\*_20 is a best-known optimum,"
+                  " so Reg is a lower bound on regret).")
     lines = [
         "# Pilot audit: level-score fidelity on the DR pilot's early checkpoints",
         "",
-        "> **PROXY-LABEL PILOT.** Regret here is measured against **J_best**, the best mean",
-        "> return any audited checkpoint reached on the level, not against the TO-OCP optimum",
-        "> J\\*_20. These numbers test the E1 machinery (plan phase 11) and must not be read as",
-        "> findings about the scores. The audit is ready for real labels: pass J\\*_20 as",
-        "> `j_opt` to `apexzero.audit.fidelity.regret_targets` and re-run.",
+        *banner,
         "",
         f"Generated by `scripts/pilot_audit.py` from `{args.run}`.",
+        "",
+        f"## Summary (computed; {'proxy' if proxy else 'TO-OCP'} labels)",
+        "",
+        *summary(res, half),
         "",
         "## Setup",
         "",
@@ -327,11 +405,7 @@ def report(args, plan, res, d_qss, out: Path, skipped_ckpts):
         (f"- **Window roles (plan 2.2):** high-budget scores use the odd windows (1, 3, ...,"
         f" {W - 1}), the target the even windows; operational scores use windows 1-4 and their"
         f" target windows 5-{W}."),
-        ("- **Target:** J^π = mean discounted return over the target windows; J_best ="
-        " max over checkpoints of that mean (from the target windows only, so scores and labels"
-        " share no window noise); Reg = J_best − J^π, Reg_norm = Reg / J_best. J_best is a"
-        " certified lower bound on J\\*: every realised window is a feasible control sequence"
-        " of the deterministic level."),
+        target,
         ("- **Phase:** window completion rate over all windows of the audited levels"
         " (<50% early, 50-90% mid, ≥90% late)."),
         (f"- **Statistics:** percentile bootstrap over levels, {args.boot} resamples shared by all"
@@ -340,12 +414,13 @@ def report(args, plan, res, d_qss, out: Path, skipped_ckpts):
         (f"- **Compute:** rollouts + window statistics {wall / 60:.1f} min wall, {cpu / 60:.1f} min"
         " CPU in total (nice 15, on a machine shared with the DR run)."),
         "",
-        ("Baselines: *agent-only* = −J^π on the score windows; *J_best, score windows* = the proxy"
-        " optimum recomputed from the score windows (policy-agnostic, in the role J\\*_20 will"
-        " play); *geometric* = −d_QSS, the distance the QSS profile of the level's own car covers"
-        " in 60 s (shorter = slower, more technical strip); *random*. The *proxy regret, score"
-        " windows* row is the oracle-operational reference: the regret itself measured on the"
-        " score windows. It is a reference, not a ceiling."),
+        (f"Baselines: *agent-only* = −J^π on the score windows; *{LABELS['j_best']}* = the"
+         " policy-agnostic optimum baseline"
+         + (" (recomputed from the score windows, in the role J\\*_20 will play)" if proxy else "")
+         + "; *geometric* = −d_QSS, the distance the QSS"
+         " profile of the level's own car covers in 60 s (shorter = slower, more technical"
+         f" strip); *random*. The *{LABELS[REFERENCE]}* row is the oracle-operational reference,"
+         f" {opt} − J^π on the score windows: a reference, not a ceiling."),
         "",
         "## Units check and phase",
         "",
@@ -357,7 +432,7 @@ def report(args, plan, res, d_qss, out: Path, skipped_ckpts):
         " o₀ previews only the first few hundred metres of a ~3.5 km window."),
         "",
         ("| Checkpoint | σ | mean V(o₀) | mean G^γ | ratio | slope | r | completion | phase"
-        " | S2 rate | mean J^π | mean Reg | median Reg | attains J_best | corr(J_best, J^π) |"),
+        f" | S2 rate | mean J^π | mean Reg | median Reg | attains {opt} | corr({opt}, J^π) |"),
         "|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|",
     ]
     for r in res:
@@ -371,8 +446,10 @@ def report(args, plan, res, d_qss, out: Path, skipped_ckpts):
     lines += [
         "",
         ("*attains J_best*: share of levels on which this checkpoint *is* the proxy optimum, so"
-        " its regret is exactly 0 there. *corr(J_best, J^π)*: rank correlation of the two"
-        " loadings of the two-loading regression; near ±1 they are unidentified."),
+         " its regret is exactly 0 there (always 0% with TO-OCP labels)." if proxy else "")
+        + (f" *corr({opt}, J^π)*: rank correlation of the two loadings of the two-loading"
+           " regression; near ±1 they are unidentified. *S2 rate*: windows that complete and"
+           " cover at least 97% of d_QSS (the non-saturating success)."),
         "",
         "## Fidelity across training (high budget)",
         "",
@@ -419,7 +496,7 @@ def report(args, plan, res, d_qss, out: Path, skipped_ckpts):
             n = float(F.windows_for_reliability(v, half)) if ok else None
             op = float(F.spearman_brown(v, 4 / half)) if ok else None
             cells.append(f"{_num(v)} / {_windows(n)} / {_num(op)}")
-        label = {"reg": "**target: Reg**", "reg_norm": "**target: Reg/J_best**",
+        label = {"reg": "**target: Reg**", "reg_norm": f"**target: Reg/{opt}**",
                  "j_pi": "**target: J^π**"}.get(name, LABELS.get(name, name))
         lines.append(f"| {label} | " + " | ".join(cells) + " |")
     mde = {n: F.spearman_mde(n) for n in (L, 1000, 1412)}
@@ -442,10 +519,10 @@ def report(args, plan, res, d_qss, out: Path, skipped_ckpts):
         "",
         "## Per-checkpoint tables (high budget)",
         "",
-        ("ρ = Spearman against Reg and against Reg/J_best; RC = RC@10% (share of total regret in"
+        (f"ρ = Spearman against Reg and against Reg/{opt}; RC = RC@10% (share of total regret in"
         " the score's top 10%) and RC/oracle (divided by the share of the regret-sorted top 10%);"
         " P@10% = overlap of the top 10% sets; a, b = standardised loadings of rank(S) on"
-        " rank(J_best) and rank(J^π) (faithful: a > 0, b < 0); Δρ = ρ minus the agent-only"
+        f" rank({opt}) and rank(J^π) (faithful: a > 0, b < 0); Δρ = ρ minus the agent-only"
         " baseline's ρ, paired; ρ* = ρ disattenuated by the split-half reliabilities of score"
         " and target (it can exceed 1 in magnitude when those reliabilities are small, since"
         " both are noisy estimates)."),
@@ -456,9 +533,9 @@ def report(args, plan, res, d_qss, out: Path, skipped_ckpts):
             "",
             f"### {r['info']['timesteps'] / 1e6:.1f}M steps: completion {r['completion'] * 100:.1f}%"
             f" ({r['phase']}), {tab.n_levels} levels graded"
-            + (f", {tab.n_dropped} dropped (J_best ≤ 1)" if tab.n_dropped else ""),
+            + (f", {tab.n_dropped} dropped ({opt} ≤ 1)" if tab.n_dropped else ""),
             "",
-            "| Score | ρ vs Reg | ρ vs Reg/J_best | RC@10% | RC/oracle | P@10% | a | b | Δρ vs agent-only | ρ* |",
+            f"| Score | ρ vs Reg | ρ vs Reg/{opt} | RC@10% | RC/oracle | P@10% | a | b | Δρ vs agent-only | ρ* |",
             "|---|---|---|---|---|---|---|---|---|---|",
         ]
         for name in HEADLINE + BASELINES + [REFERENCE]:
@@ -470,38 +547,47 @@ def report(args, plan, res, d_qss, out: Path, skipped_ckpts):
             rho_star = F.disattenuate(row["rho_abs"].value, rel, r["rel_t"]["reg"])
             lines.append(
                 f"| {LABELS[name]} | {_ci(row['rho_abs'])} | {_ci(row['rho_norm'])} | {_ci(row['rc'], signed=False)}"
-                f" | {_num(row['rc_rel'].value)} | {_num(row['p_at_q'].value)}"
-                f" | {_num(row['a_opt'].value, '{:+.2f}')} | {_num(row['b_pi'].value, '{:+.2f}')}"
+                f" | {_ci(row['rc_rel'], signed=False)} | {_ci(row['p_at_q'], signed=False)}"
+                f" | {_ci(row['a_opt'])} | {_ci(row['b_pi'])}"
                 f" | {_ci(row.get('delta_rho_abs'))} | {_num(float(rho_star), '{:+.2f}')} |")
         if tab.skipped:
             lines.append(f"\nSkipped (non-finite on graded levels): {', '.join(tab.skipped)}.")
 
     lines += [
         "",
-        "## What the proxy can and cannot say",
+        "## Limits of this pilot",
         "",
-        ("- **Degenerate at the newest checkpoint.** J_best is attained by the best checkpoint"
-        " on each level, so that checkpoint's regret is exactly 0 there (see *attains J_best*)."
-        " As training improves monotonically the last checkpoint's labels collapse toward 0 and"
-        " its fidelity rows are uninformative; the earlier checkpoints are graded against what"
-        " this run later reached, which is regret relative to the run, not to the optimum."),
-        ("- **Collinear loadings.** J_best is close to the late J^π, so corr(J_best, J^π) is"
-        " high and the two-loading coefficients are poorly identified; with J\\*_20 (a property"
-        " of the level, not of the run) the regression becomes meaningful."),
-        ("- **Lower bound, not the optimum.** Reg ≥ 0 by construction and understates true regret"
-        " everywhere the run never got close to J\\*. Normalised regret divides by a"
-        " run-dependent number."),
-        ("- **Pilot scale.** One seed, early checkpoints only (no late phase yet unless the table"
-        f" says so), {L} levels instead of 1,000 A_DR + 300 A_tail + 100 A_OOD, {W} windows"
-        " without the adaptive raise to 64, no Holm correction, no seed-level bootstrap."),
-        ("- **d_QSS** (geometric baseline and the S2 success threshold) integrates the level"
-        " car's QSS profile from s = 0 and ignores the 0.8·v_QSS start, a deficit of a few tens"
-        " of metres in ~3-4 km."),
-        "",
-        ("What carries over unchanged to the real audit: the window roles and cross-fitting, the"
-        " metrics and their tie handling, the paired bootstrap, the split-half reliability,"
-        " disattenuation and window-budget calculations, and the units check."),
     ]
+    if proxy:
+        lines += [
+            ("- **Degenerate at the newest checkpoint.** J_best is attained by the best"
+             " checkpoint on each level, so that checkpoint's regret is exactly 0 there (see"
+             " *attains J_best*). As training improves the last checkpoint's labels collapse"
+             " toward 0 and its fidelity rows are uninformative; the earlier checkpoints are"
+             " graded against what this run later reached, which is regret relative to the run,"
+             " not to the optimum."),
+            ("- **Collinear loadings.** J_best is close to the late J^π, so corr(J_best, J^π) is"
+             " high and the two-loading coefficients are poorly identified; with J\\*_20 (a"
+             " property of the level, not of the run) the regression becomes meaningful."),
+            ("- **Lower bound, not the optimum.** Reg ≥ 0 by construction and understates true"
+             " regret everywhere the run never got close to J\\*. Normalised regret divides by a"
+             " run-dependent number."),
+        ]
+    lines += [
+        ("- **Pilot scale.** One seed, early checkpoints only (no late phase yet unless the table"
+         f" says so), {L} levels instead of 1,000 A_DR + 300 A_tail + 100 A_OOD, {W} windows"
+         " without the adaptive raise to 64, no Holm correction, no seed-level bootstrap."),
+        ("- **d_QSS** (geometric baseline and the S2 success threshold) integrates the level"
+         " car's QSS profile from s = 0 and ignores the 0.8·v_QSS start, a deficit of a few tens"
+         " of metres in ~3-4 km."),
+    ]
+    if proxy:
+        lines += [
+            "",
+            ("What carries over unchanged to the real audit: the window roles and cross-fitting,"
+             " the metrics and their tie handling, the paired bootstrap, the split-half"
+             " reliability, disattenuation and window-budget calculations, and the units check."),
+        ]
     (out / "pilot-audit.md").write_text("\n".join(lines) + "\n")
 
 
@@ -518,11 +604,20 @@ def main():
     ap.add_argument("--cache", default="outputs/pilot-audit")
     ap.add_argument("--out", default="docs/findings")
     ap.add_argument("--report-only", action="store_true", help="use cached checkpoints only")
+    ap.add_argument("--j-opt", default=None,
+                    help=".npy of J*_20 for the same levels, in level order (replaces the proxy)")
     args = ap.parse_args()
 
     out, cache = Path(args.out), Path(args.cache)
     out.mkdir(parents=True, exist_ok=True)
     t0 = time.perf_counter()
+    j_opt = None
+    if args.j_opt:
+        j_opt = np.load(args.j_opt)
+        if j_opt.shape != (args.levels,):
+            raise SystemExit(f"--j-opt has shape {j_opt.shape}, expected ({args.levels},)")
+        LABELS.update({"j_best": "J\\*_20 (policy-agnostic)",          # tables only
+                       REFERENCE: "oracle-operational J\\*_20 − G (reference)"})
     lv, tracks, x0, d_qss = pilot_levels(args.levels)
     print(f"levels ready ({time.perf_counter() - t0:.0f} s); median d_QSS {np.median(d_qss):.0f} m",
           flush=True)
@@ -545,9 +640,10 @@ def main():
               f"cpu {info['cpu']:.0f} s", flush=True)
     if len(stats) < 2:
         raise SystemExit("need at least two audited checkpoints")
-    plan, res = analyse(stats, infos, d_qss, args.boot)
-    fig_fidelity(res, out / "pilot-audit-fidelity.png")
-    fig_reliability(res, out / "pilot-audit-reliability.png", args.windows)
+    plan, res = analyse(stats, infos, d_qss, args.boot, j_opt=j_opt)
+    tag = "PROXY-LABEL PILOT" if j_opt is None else "TO-OCP LABELS (pilot scale)"
+    fig_fidelity(res, out / "pilot-audit-fidelity.png", tag, "J_best" if j_opt is None else "J*_20")
+    fig_reliability(res, out / "pilot-audit-reliability.png", args.windows, tag)
     report(args, plan, res, d_qss, out, skipped)
     print(f"wrote {out / 'pilot-audit.md'} ({time.perf_counter() - t0:.0f} s)")
 
