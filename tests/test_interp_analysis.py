@@ -1033,7 +1033,7 @@ class FakeKeys:
     def backoff(self, cell):
         return A.KeyView(None, measures.ResponseMetrics(v_e=29.0, v_min=24.0))
 
-    def anchored(self, cell, agent, timesteps):
+    def anchored(self, cell, agent, timesteps, phase=0):
         if agent != "G1":
             return None
         return A.KeyView(None, measures.ResponseMetrics(v_e=31.0))

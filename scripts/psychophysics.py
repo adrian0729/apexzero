@@ -1087,6 +1087,28 @@ def _core_phase_cell(bank, c) -> bool:
     return bool("A" in c.tiers and c.approach == "A1" and sp is not None and sp.R <= PHASE_R_MAX)
 
 
+def _p7_cell(c) -> bool:
+    """A cell run at more than the 4 deterministic phases: P7's 16-phase A1 cells (R in
+    {9.4, 11.7, 14.6, 28.6, 55.9} x {90, 180} deg, both directions: 20 cells)."""
+    from apexzero.interp.constants import N_PHASES
+
+    return int(c.n_phases) > N_PHASES
+
+
+def _phase_key_indices(c) -> list[int]:
+    """The phases a cell's phase-matched keys are solved at: every phase but u = 0 (ruling
+    R17b), so every deterministic run's errors use the key at its own phase. That is u_1..u_3
+    on a 4-phase cell, as before, and all 15 on P7's 16-phase cells (they had 4, 8 and 12)."""
+    return list(range(1, int(c.n_phases)))
+
+
+def _p7_null_phases(c) -> list[int]:
+    """P7's pre-registered key null (2.4: "the key's own SD across its 4 phase-matched
+    solutions"): the keys at the 4-phase grid's phases, u = 0 and ``_phase_indices`` (0, 4,
+    8, 12 of 16), whatever else is solved (R17b keeps the definition)."""
+    return [0, *_phase_indices(c)]
+
+
 def _v7_failed(m) -> bool:
     """Protocol 6.5: the manifest's validation V7 failed (on speeds, its only criterion).
     Its remedy: phase-matched keys for every braking cell, and speed errors judged against
@@ -1116,7 +1138,9 @@ def _key_sets(bank, cells: list, both: bool, v7_failed: bool = False) -> dict[st
     their nominal keys come from the validate stage), 'phase_P1' E1's twins, E2 and E3,
     'phase_P2' tier C and the recovery cells (tier B); tier G (flat nulls) and tier D (s-OCP
     keys only) have none. Only braking candidates get keys (``_phase_targets``: known once
-    the nominal key is solved); the core cells keep theirs regardless."""
+    the nominal key is solved); the core cells keep theirs regardless. Ruling R17b: P7's
+    20 cells (``_p7_cell``) get keys at all 16 phases in every case, so while V7 holds
+    'phase' holds them too (R 28.6 and 55.9 besides the core set)."""
     cs = _one_direction(bank, cells, both)
     sets = {
         "nominal_A": [c for c in cs if "A" in c.tiers and c.approach in ("A1", "A2")],
@@ -1131,7 +1155,7 @@ def _key_sets(bank, cells: list, both: bool, v7_failed: bool = False) -> dict[st
         "tierC": [c for c in cs if "C" in c.tiers],
         "recovery": [c for c in cs if c.approach == "REC"],
     }
-    sets["phase"] = [c for c in sets["nominal_A"] if _core_phase_cell(bank, c)]
+    sets["phase"] = [c for c in sets["nominal_A"] if _core_phase_cell(bank, c) or _p7_cell(c)]
     sets["phase_P1"], sets["phase_P2"] = [], []
     if v7_failed:
         seen: set[int] = set()
@@ -1164,12 +1188,13 @@ def _phase_split(bank, cs: list, cache, v7_failed: bool) -> tuple[list, list]:
     (``_core_phase_cell``) and every candidate whose cached nominal key brakes (2.3: a
     sustained brake and v_min* < v0 - tau); flat cells, and cells whose nominal key is
     unsolved, get none. A candidate without a cached nominal key is unknown (every one with
-    no ``cache``)."""
+    no ``cache``). P7's 16-phase cells are kept like the core cells (ruling R17b: keys at
+    every phase on the 20 P7 cells)."""
     if not v7_failed:
         return list(cs), []
     keep, unknown = [], []
     for c in cs:
-        if _core_phase_cell(bank, c):
+        if _core_phase_cell(bank, c) or _p7_cell(c):
             keep.append(c)
             continue
         b = _nominal_braking(bank, c, cache) if cache is not None else None
@@ -1192,26 +1217,33 @@ def _phase_targets(bank, cs: list, cache, v7_failed: bool, unknown: bool = False
 
 def _phase_jobs(bank, cs: list, cache, proj: dict, item: str, v7_failed: bool,
                 log=None) -> list[dict]:
-    """Phase-matched key jobs (u_1..u_3, ``_phase_indices``) for one phase item, planned
-    once its cells' nominal keys are solved: ``_phase_split`` (braking cells when V7
-    failed), then budget rule 2 (``_cut``). The log counts the flat or unsolved cells apart
-    from those with no cached nominal key (an errored job)."""
+    """Phase-matched key jobs (every phase but u = 0, ``_phase_key_indices``: u_1..u_3, and
+    all 15 on P7's 16-phase cells by ruling R17b) for one phase item, planned once its
+    cells' nominal keys are solved: ``_phase_split`` (braking cells when V7 failed), then
+    budget rule 2 (``_cut``). The log counts the flat or unsolved cells apart from those
+    with no cached nominal key (an errored job)."""
     tg, unk = _phase_split(bank, cs, cache, v7_failed)      # tg in the item's order
     keep = _cut(bank, tg, proj, item)
-    if v7_failed and log is not None:
+    n_keys = sum(len(_phase_key_indices(c)) for c in keep)
+    if log is not None and (v7_failed or any(_p7_cell(c) for c in keep)):
         # Cells without a cached nominal key (its job errored, or was not run) are counted
         # apart from the flat and unsolved ones: a resumed run solves their keys.
-        _say(log, f"V7 remedy, {item}: {len(tg)} of {len(cs)} candidate cells get keys "
-                  f"(braking or core); {len(cs) - len(tg) - len(unk)} flat or unsolved "
-                  f"skipped; {len(unk)} without a nominal key skipped (errored or not "
-                  f"solved: a resumed keys run picks them up); {len(keep)} after budget "
-                  f"rule 2: {3 * len(keep)} phase-matched keys")
+        p7 = [c for c in keep if _p7_cell(c)]
+        _say(log, f"{'V7 remedy' if v7_failed else 'phase-matched keys'}, {item}: {len(tg)} "
+                  f"of {len(cs)} candidate cells get keys (braking, core or P7); "
+                  f"{len(cs) - len(tg) - len(unk)} flat or unsolved skipped; {len(unk)} "
+                  f"without a nominal key skipped (errored or not solved: a resumed keys run "
+                  f"picks them up); {len(keep)} after budget rule 2: {n_keys} phase-matched "
+                  f"keys, {sum(len(_phase_key_indices(c)) for c in p7)} of them on "
+                  f"{len(p7)} P7 cells at every phase (R17b)")
     return [dict(what="phase", label=f"phase cell {c.cell_id}", cells=[c],
-                 phases=_phase_indices(c)) for c in keep]
+                 phases=_phase_key_indices(c)) for c in keep]
 
 
 def _phase_indices(c) -> list[int]:
-    """Phase-matched keys at u_1..u_3 of the 4-phase grid (indices 4, 8, 12 on 16-phase cells)."""
+    """u_1..u_3 of the 4-phase grid (indices 4, 8, 12 on 16-phase cells): validation V7's
+    phases (6.5) and, with u = 0, P7's key null (``_p7_null_phases``). The keys stage solves
+    phase-matched keys at ``_phase_key_indices`` (every phase, ruling R17b)."""
     step = max(1, c.n_phases // 4)
     return [step, 2 * step, 3 * step]
 
@@ -1233,34 +1265,101 @@ def _r12_extra_anchored(bank, cells: list, regimes: dict | None = None) -> int:
     """Ruling R12's addition to P0's re-anchored keys: the non-clipped below-support A1
     cells of every generalist (design-time clipping; the stage applies the run-time one),
     from the frozen regimes. 0 before the support stage has frozen them."""
-    from apexzero.interp import support
-
     regimes = _frozen_regimes() if regimes is None else regimes
     if not regimes:
         return 0
-    n = 0
-    for a in ("G1", "G2", "G3"):
-        if a in regimes:
-            n += sum(1 for c in anchored_cells(cells, bank, regimes, a, "P0", True)
-                     if support.regime(bank.stimuli[c.stim_id].geometry.R_seg, regimes[a])
-                     == "below")
-    return n
+    return sum(len(_r12_below_cells(bank, cells, regimes, a))
+               for a in ("G1", "G2", "G3") if a in regimes)
+
+
+def _r12_below_cells(bank, cells: list, regimes: dict, agent: str) -> list:
+    """One generalist's R12 cells: P0's re-anchored A1 cells below support (design-time
+    regime 'below')."""
+    from apexzero.interp import support
+
+    return [c for c in anchored_cells(cells, bank, regimes, agent, "P0", True)
+            if support.regime(bank.stimuli[c.stim_id].geometry.R_seg, regimes[agent])
+            == "below"]
+
+
+def _ra_phases_final(c) -> int:
+    """Ruling R17a: re-anchored keys per cell at a final, one per deterministic phase (the
+    finals run every phase: 4, and 16 on P7 cells)."""
+    return int(c.n_phases)
 
 
 def _anchored_g_count(bank, cells: list) -> dict:
     """P0's re-anchored A1 keys for the generalist finals, for the budget projection. Once
-    the regimes are frozen, every key is counted on the design (``anchored_cells`` at P0:
+    the regimes are frozen, every cell is counted on the design (``anchored_cells`` at P0:
     tail, bulk and R12's non-clipped below-support cells, design-time clipping), so R12's
-    addition and the rest are counted alike; before that, the protocol's 96. Anchored keys
-    start from each agent's own state, so both directions count (no mirror shortcut)."""
+    addition and the rest are counted alike; before that, the protocol's 96 cells. Anchored
+    keys start from each agent's own state, so both directions count (no mirror shortcut).
+    Ruling R17a: one key per deterministic phase of each cell (``_ra_phases_final``: 4, and
+    16 on P7's cells), so ``n`` (keys) is about 4x ``cells``; ``u0_keys`` is the count
+    before R17 (one per cell, at u = 0)."""
+    from apexzero.interp.constants import N_PHASES
+
     regimes = _frozen_regimes()
     if not regimes or not any(a in regimes for a in ("G1", "G2", "G3")):
-        return dict(n=ANCHORED_G_PROTOCOL, source="protocol (regimes not frozen)",
-                    r12_below_support=0, protocol=ANCHORED_G_PROTOCOL)
-    n = sum(len(anchored_cells(cells, bank, regimes, a, "P0", True))
-            for a in ("G1", "G2", "G3") if a in regimes)
-    return dict(n=n, source="design", r12_below_support=_r12_extra_anchored(bank, cells, regimes),
+        return dict(n=N_PHASES * ANCHORED_G_PROTOCOL, cells=ANCHORED_G_PROTOCOL,
+                    u0_keys=ANCHORED_G_PROTOCOL, p7_cells=0, p7_keys=0,
+                    source="protocol (regimes not frozen) x 4 phases (R17a)",
+                    rule="R17a: one re-anchored key per deterministic phase",
+                    r12_below_support=0, r12_below_support_keys=0,
+                    protocol=ANCHORED_G_PROTOCOL)
+    sel = [c for a in ("G1", "G2", "G3") if a in regimes
+           for c in anchored_cells(cells, bank, regimes, a, "P0", True)]
+    below = [c for a in ("G1", "G2", "G3") if a in regimes
+             for c in _r12_below_cells(bank, cells, regimes, a)]
+    p7 = [c for c in sel if _p7_cell(c)]
+    return dict(n=sum(_ra_phases_final(c) for c in sel), cells=len(sel), u0_keys=len(sel),
+                p7_cells=len(p7), p7_keys=sum(_ra_phases_final(c) for c in p7),
+                source="design", rule="R17a: one re-anchored key per deterministic phase "
+                                      "(4; 16 on P7 cells)",
+                r12_below_support=len(below),
+                r12_below_support_keys=sum(_ra_phases_final(c) for c in below),
                 protocol=ANCHORED_G_PROTOCOL)
+
+
+P6C_CHECKPOINTS = 3     # P6c's re-anchored checkpoints per generalist (the final is P0)
+RA_U0_PROTOCOL = {"anchored_S": 50, "anchored_B": 108, "anchored_ckpt": 216}    # protocol 10
+
+
+def _anchored_p12_count(bank, cells: list) -> dict[str, dict]:
+    """P1's and P2's re-anchored keys for the budget projection, counted on the design as
+    ``stage_anchored_keys`` will solve them (review finding 2: the protocol's u = 0
+    estimates, 50 / 108 / 216, were below the stage's selection even before R17a).
+    'anchored_S': the specialists' finals, A1 and tier B D = 600 cells (``anchored_cells``
+    at P1); 'anchored_B': the generalist finals' tier B D = 600 cells; both one key per
+    deterministic phase of a final (``_ra_phases_final``: 4, 16 on P7 cells), and needing no
+    regimes. 'anchored_ckpt': the generalists' A1 tail and bulk cells at P6c's
+    ``P6C_CHECKPOINTS`` checkpoints, 4 phases each (checkpoints run the 4-phase grid), once
+    the generalists' regimes are frozen; before that, the protocol's 216 x 4. Each item
+    records its u = 0 count (one key per cell and snapshot) and its source."""
+    from apexzero.interp.constants import N_PHASES
+
+    out: dict[str, dict] = {}
+    for item, agents_, gen in (("anchored_S", ("S1", "S2", "S3"), False),
+                               ("anchored_B", ("G1", "G2", "G3"), True)):
+        sel = [c for a in agents_ for c in anchored_cells(cells, bank, {}, a, "P1", gen)]
+        out[item] = dict(keys=sum(_ra_phases_final(c) for c in sel), u0_keys=len(sel),
+                         p7_keys=sum(_ra_phases_final(c) for c in sel if _p7_cell(c)),
+                         source="design", protocol_u0=RA_U0_PROTOCOL[item])
+    regimes = _frozen_regimes()
+    gens = [a for a in ("G1", "G2", "G3") if regimes and a in regimes]
+    if gens:
+        sel = [c for a in gens for c in anchored_cells(cells, bank, regimes, a, "P2", True)]
+        u0 = P6C_CHECKPOINTS * len(sel)
+        out["anchored_ckpt"] = dict(keys=N_PHASES * u0, u0_keys=u0, p7_keys=0,
+                                    source=f"design: {len(sel)} cells x {P6C_CHECKPOINTS} "
+                                           f"checkpoints x {N_PHASES} phases",
+                                    protocol_u0=RA_U0_PROTOCOL["anchored_ckpt"])
+    else:
+        v = RA_U0_PROTOCOL["anchored_ckpt"]
+        out["anchored_ckpt"] = dict(keys=N_PHASES * v, u0_keys=v, p7_keys=0,
+                                    source=f"protocol 10 x {N_PHASES} phases (regimes not "
+                                           "frozen)", protocol_u0=v)
+    return out
 
 
 def _rule2_keeps_phase(bank, c) -> bool:
@@ -1274,9 +1373,10 @@ def _rule2_keeps_phase(bank, c) -> bool:
 def _rule2_cut_counts(bank, sets: dict, phase: dict | None = None) -> dict[str, int]:
     """Budget rule 2's credit per item, counted on the item sets the projection counts (one
     direction with the mirror shortcut, both without it): the nominal keys of the cut cells
-    (``budget_cut``: 6 with the shortcut, 12 without) and 3 phase-matched keys per phase
-    cell that ``_cut`` drops (``_rule2_keeps_phase``: non-180 deg cells; with V7's remedy
-    also real roads and the cut cells), per phase item. ``phase`` maps each phase item to
+    (``budget_cut``: 6 with the shortcut, 12 without) and the phase-matched keys of every
+    phase cell that ``_cut`` drops (``_rule2_keeps_phase``: non-180 deg cells; with V7's
+    remedy also real roads and the cut cells), 3 per cell, 15 per P7 cell (R17b,
+    ``_phase_key_indices``), per phase item. ``phase`` maps each phase item to
     the cells its count was taken on (default: ``sets``' own phase items). The backed-off
     item is the protocol's fixed one-direction estimate (66), so its credit stays
     ``answer_key.DEFAULT_CUTS['backoff']`` (one per cut geometry and approach)."""
@@ -1285,7 +1385,7 @@ def _rule2_cut_counts(bank, sets: dict, phase: dict | None = None) -> dict[str, 
     phase = {k: sets.get(k, []) for k in PHASE_ITEMS} if phase is None else phase
     out = {"nominal_A": sum(1 for c in sets["nominal_A"] if budget_cut(bank, c)),
            "backoff": ak.DEFAULT_CUTS["backoff"]}
-    out.update({k: 3 * sum(1 for c in cs if not _rule2_keeps_phase(bank, c))
+    out.update({k: sum(len(_phase_key_indices(c)) for c in cs if not _rule2_keeps_phase(bank, c))
                 for k, cs in phase.items()})
     return out
 
@@ -1295,8 +1395,15 @@ def _budget(bank, cells: list, both: bool, m, workers: int, cache=None) -> dict:
     the core A1 set while it holds; when it failed on speeds, the braking cells of every
     nominal-key item at their nominal key's priority ('phase' P0, 'phase_P1', 'phase_P2'),
     braking read from ``cache``'s nominal keys where solved and counted as braking where not
-    (an upper bound; ``proj['phase_keys']``)."""
+    (an upper bound; ``proj['phase_keys']``). Ruling R17b: each phase cell counts the keys
+    of every phase but u = 0 (``_phase_key_indices``: 3, and 15 on P7's 16-phase cells,
+    which are always counted). Ruling R17a: re-anchored keys are one per deterministic
+    phase: P0's on the design (``_anchored_g_count``), and P1's and P2's on the design too
+    (``_anchored_p12_count``: the specialists' A1 and tier B D = 600 cells, the generalists'
+    tier B D = 600 cells, at every phase of a final; the checkpoints' 4 phases once the
+    regimes are frozen) (``proj['anchored_phases']``)."""
     from apexzero.interp import answer_key as ak
+    from apexzero.interp.constants import N_PHASES
 
     timings = dict(DEFAULT_TIMINGS)
     timings.update(m.budget.get("timings", {}))
@@ -1309,26 +1416,45 @@ def _budget(bank, cells: list, both: bool, m, workers: int, cache=None) -> dict:
     for k, (keep, unk) in split.items():        # counted: braking or not yet known
         ids = {c.cell_id for c in keep + unk}
         ph[k] = [c for c in sets[k] if c.cell_id in ids]
+    n_keys = {k: sum(len(_phase_key_indices(c)) for c in cs) for k, cs in ph.items()}
     n_a2 = sum(1 for c in cells if c.approach == "A2")
     anchored_g = _anchored_g_count(bank, cells)
+    ra12 = _anchored_p12_count(bank, cells)
     counts = {"layout_socp": n_a2, "v8_socp": 36, "validation": 30,
               "nominal_A": len(sets["nominal_A"]), "nominal_E1": len(sets["nominal_E1"]) or 30,
-              "null": len(sets["null"]), "backoff": 66, "phase": 3 * len(ph["phase"]),
+              "null": len(sets["null"]), "backoff": 66, "phase": n_keys["phase"],
               "anchored_G": anchored_g["n"],
               "viability": 200, "E1_twins": len(sets["E1_twins"]) or 15,
               "E2": len(sets["E2"]) or 39, "E3": len(sets["E3"]), "tierD_socp": 140,
-              "anchored_S": 50, "anchored_B": 108, "tierC": len(sets["tierC"]),
-              "recovery": len(sets["recovery"]), "anchored_ckpt": 216}
+              "tierC": len(sets["tierC"]), "recovery": len(sets["recovery"]),
+              **{k: v["keys"] for k, v in ra12.items()}}
     if v7_failed:
-        counts.update(phase_P1=3 * len(ph["phase_P1"]), phase_P2=3 * len(ph["phase_P2"]))
+        counts.update(phase_P1=n_keys["phase_P1"], phase_P2=n_keys["phase_P2"])
+    # Tier B D = 600's u = 0 nominal keys: no keys-stage item solves them, so the anchored
+    # stage solves each cold, once per (agent, cell) job; counted once per cell.
+    n_b600 = len({c.cell_id for c in anchored_cells(cells, bank, {}, "G1", "P1", True)})
+    if n_b600:
+        counts["nominal_B600"] = ("nominal", "P1", n_b600)
     proj = ak.project_budget(timings, counts, cut_counts=_rule2_cut_counts(bank, sets, ph),
                              workers=workers)
     proj["anchored_G"] = anchored_g
+    proj["anchored_phases"] = dict(
+        rule="R17a: one re-anchored key per deterministic phase, anchored on that phase's run",
+        anchored_G=dict(keys=anchored_g["n"], cells=anchored_g.get("cells"),
+                        u0_keys=anchored_g.get("u0_keys"), source=anchored_g.get("source")),
+        **ra12)
+    p7 = {k: [c for c in cs if _p7_cell(c)] for k, cs in ph.items()}
     proj["phase_keys"] = dict(
         v7_failed=v7_failed, rule="every braking cell with a nominal key (V7 failed on speeds)"
         if v7_failed else "A1, R <= 18.3 (protocol 6.1)",
+        phases="every phase but u = 0 (R17b): 3 per cell, 15 on P7's 16-phase cells",
         candidates={k: len(sets[k]) for k in PHASE_ITEMS},
         counted={k: len(ph[k]) for k in PHASE_ITEMS},
+        keys=n_keys,
+        p7_cells={k: len(v) for k, v in p7.items()},
+        p7_keys={k: sum(len(_phase_key_indices(c)) for c in v) for k, v in p7.items()},
+        p7_beyond_u1_u3={k: sum(len(_phase_key_indices(c)) - (N_PHASES - 1) for c in v)
+                         for k, v in p7.items()},
         braking_unknown={k: len(split[k][1]) for k in PHASE_ITEMS})
     proj["timings_used"] = timings
     proj["timings_source"] = "validation" if m.budget.get("timings") else "protocol defaults"
@@ -2410,7 +2536,12 @@ def _stage_rollouts_post_tag(args) -> None:
 
 
 def _anchored_job(job: dict) -> dict:
-    """Re-anchored or viability keys of one (agent, snapshot, cell) in a key worker."""
+    """Re-anchored keys of one (agent, snapshot, cell), one per deterministic phase of
+    ``job['phases']`` ((phase, row) pairs; ruling R17a), or viability keys of one (agent,
+    snapshot, cell) run, in a key worker. A cell's phases share one job so that a missing
+    u = 0 nominal key (tier B D = 600 has none from the keys stage) is solved once per
+    (agent, cell), not by concurrent workers; a phase that fails does not stop the others
+    (``error`` lists each failed phase)."""
     import traceback
 
     from apexzero.interp import answer_key as ak
@@ -2423,7 +2554,6 @@ def _anchored_job(job: dict) -> dict:
         cell = job["cell"]
         if job["what"] != "beaten":
             groups, _ = rollout.load_rollouts(Path(job["file"]))
-            traj = measures.trajectory_from_rollout(groups["det"], int(job["row"]), "det")
         if job["what"] == "beaten":
             # Protocol 6.3: re-solve warm from every final agent's u = 0 rollout.
             runs = {}
@@ -2441,11 +2571,27 @@ def _anchored_job(job: dict) -> dict:
         if nom is None:
             nom = ak.full_recipe(bank, cell, cache=cache, tables=tables)
         if job["what"] == "anchored":
-            rec = ak.anchored_key(bank, cell, nom, job["agent"], traj, cache,
-                                  snapshot=str(job["timesteps"]), tables=tables,
-                                  force=bool(job.get("force")))
-            out["keys"] = [_rec_summary(rec)]
+            # Ruling R17a: each phase anchored on its own run, from the key at that phase
+            # (the phase-matched key where one is cached, else the u = 0 key).
+            phases = job.get("phases") or [(int(job.get("phase", 0)), int(job["row"]))]
+            failed = []
+            out["phases"] = []
+            for k, row in phases:
+                k = int(k)
+                try:
+                    traj = measures.trajectory_from_rollout(groups["det"], int(row), "det")
+                    base = ak.anchor_base(cell, k, nom, cache=cache, bank=bank)
+                    rec = ak.anchored_key(bank, cell, base, job["agent"], traj, cache,
+                                          snapshot=str(job["timesteps"]), phase=k,
+                                          tables=tables, force=bool(job.get("force")))
+                    out["keys"].append(_rec_summary(rec))
+                    out["phases"].append(k)
+                except Exception:  # noqa: BLE001  (one phase's failure keeps the others)
+                    failed.append(f"phase {k}:\n{traceback.format_exc()}")
+            if failed:
+                out["error"] = "\n".join(failed)
         else:
+            traj = measures.trajectory_from_rollout(groups["det"], int(job["row"]), "det")
             bo = ak.key_for(cell, "backoff", 0, cache=cache, bank=bank) or nom
             recs = ak.viability_keys(bank, cell, traj, nom, bo, cache, agent=job["agent"],
                                      snapshot=job["snapshot"], tables=tables,
@@ -2459,10 +2605,33 @@ def _anchored_job(job: dict) -> dict:
 
 def _u0_rows(det: dict, cells: list) -> dict[int, int]:
     """cell_id -> row of its deterministic phase-0 run."""
-    out = {}
+    return {c: ph[0] for c, ph in _det_rows(det, cells).items() if 0 in ph}
+
+
+def _det_rows(det: dict, cells: list) -> dict[int, dict[int, int]]:
+    """cell_id -> {phase k: row of its deterministic run at k} (the first such row): the
+    runs a snapshot has, every phase at the finals (16 on P7 cells), 4 at the checkpoints."""
+    out: dict[int, dict[int, int]] = {}
     for i, (c, k) in enumerate(zip(det["cell"], det["phase"], strict=True)):
-        if int(k) == 0 and int(c) not in out:
-            out[int(c)] = i
+        out.setdefault(int(c), {}).setdefault(int(k), i)
+    return out
+
+
+def anchored_jobs(cells: list, file: str, det: dict, agent: str, timesteps: int, prio: str,
+                  force: bool = False) -> list[dict]:
+    """Ruling R17a: one re-anchored key per (cell, deterministic phase) of a snapshot's run
+    file, each anchored on that phase's own run. One job per cell carries its phases'
+    (phase, row) pairs in phase order (``phases``), so the cell's missing nominal key is
+    solved once, not by 4 (16 on P7 cells) concurrent workers."""
+    rows = _det_rows(det, cells)
+    out = []
+    for c in cells:
+        ph = sorted(rows.get(c.cell_id, {}).items())
+        if ph:
+            out.append(dict(what="anchored", force=force, phases=ph, agent=agent,
+                            timesteps=int(timesteps), cell=c, file=str(file),
+                            label=f"RA {agent}@{timesteps} cell {c.cell_id} "
+                                  f"x{len(ph)} phases ({prio})"))
     return out
 
 
@@ -2571,8 +2740,9 @@ def _beaten_jobs(bank, cells, finals: dict, cache) -> tuple[list[dict], dict]:
 def stage_anchored_keys(args: argparse.Namespace) -> None:
     """Step 7 (post-tag; never alongside rollouts at full width): first protocol 6.3's
     'agent beats the key' re-solves on the finals' u = 0 returns (a deviation is logged per
-    re-solved cell); then re-anchored keys (W = 400, from the agent's own deterministic
-    u = 0 state, protocol 6.1) and viability solves (9.1: crashed u = 0 runs, or the first
+    re-solved cell); then re-anchored keys (W = 400, protocol 6.1; ruling R17a: one per
+    deterministic phase, each from the agent's own run at that phase and the key at that
+    phase, ``anchored_jobs``) and viability solves (9.1: crashed u = 0 runs, or the first
     crashed phase; at most 200 solves, a seeded subset beyond the cap). P0: A1 tail, bulk
     and non-clipped below-support cells of the generalist finals (R12; clipping from each
     final's runs), plus viability; P1: the specialists' finals (A1 and
@@ -2657,16 +2827,12 @@ def stage_anchored_keys(args: argparse.Namespace) -> None:
             groups, _ = rollout.load_rollouts(f)
             if "det" not in groups:
                 continue
-            rows = _u0_rows(groups["det"], cells)
             clipped = (A.kappa_clipped_pairs(final_rt[agent])
                        if prio == "P0" and agent in final_rt else None)
-            for c in anchored_cells(cells, bank, sup.regimes, agent, prio, agent in gen,
-                                    clipped):
-                if c.cell_id in rows:
-                    jobs.append(dict(what="anchored", force=force,
-                                     label=f"RA {agent}@{e.timesteps} cell {c.cell_id} ({prio})",
-                                     agent=agent, timesteps=e.timesteps, cell=c, file=str(f),
-                                     row=rows[c.cell_id]))
+            # R17a: one key per deterministic phase of each cell, anchored on that run.
+            jobs += anchored_jobs(anchored_cells(cells, bank, sup.regimes, agent, prio,
+                                                 agent in gen, clipped),
+                                  str(f), groups["det"], agent, e.timesteps, prio, force)
         # Viability solves on the generalist finals' crashed u = 0 runs (9.1), within the cap.
         vt_rows = list(final_rt.values())
         if vt_rows:
@@ -3164,9 +3330,10 @@ def _d_ood_from_det(det: dict, label: str, bank, cells, obs_rms, buffer) -> dict
 
 
 def _key_phase_sd(kt, cells, cache, bank) -> dict[str, float]:
-    """geometry -> the key's d_b SD across its phase-matched solutions (P7 null, R <= 18.3
+    """geometry -> the key's d_b SD across its 4 phase-matched solutions (P7 null, R <= 18.3
     only: V7's remedy also solves phase-matched keys on P7's larger-R cells, which P7's
-    null does not read)."""
+    null does not read). The 4 are u = 0, 4, 8 and 12 of the 16 (``_p7_null_phases``):
+    ruling R17b solves keys at every phase of P7's cells and keeps the null's definition."""
     from apexzero.interp import analysis as A
     from apexzero.interp import answer_key as ak
 
@@ -3176,7 +3343,7 @@ def _key_phase_sd(kt, cells, cache, bank) -> dict[str, float]:
         if "p7" not in c.flags or not _core_phase_cell(bank, c):
             continue
         ds = []
-        for k in [0, *_phase_indices(c)]:
+        for k in _p7_null_phases(c):
             r = ak.key_for(c, "nominal" if k == 0 else "phase", k, cache=cache, bank=bank)
             if r is not None and r.status == "verified":
                 ds.append(float(r.measures.get("d_b", np.nan)))

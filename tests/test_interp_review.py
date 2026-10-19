@@ -157,7 +157,7 @@ class _PhaseKeys:
     def backoff(self, cell):
         return None
 
-    def anchored(self, cell, agent, ts):
+    def anchored(self, cell, agent, ts, phase=0):
         return None
 
     def null(self, cell):

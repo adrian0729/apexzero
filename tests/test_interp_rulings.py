@@ -543,7 +543,7 @@ class _Keys:
     def backoff(self, cell):
         return None
 
-    def anchored(self, cell, agent, ts):
+    def anchored(self, cell, agent, ts, phase=0):
         if cell.cell_id != 0:
             return None
         return A.KeyView(None, measures.ResponseMetrics(v_e=31.0), True, "verified")
@@ -636,13 +636,16 @@ def test_R12_budget_counts_the_extra_anchored_keys(ps, monkeypatch):
     assert ps._r12_extra_anchored(bank, cells) == 1                    # the R 10 A1 cell
     # The whole P0 count is taken on the design (tail 15, bulk 30, below 10), so R12's cell
     # and the tail and bulk cells are counted alike, not added to the protocol's fixed 96.
+    # Ruling R17a: one key per deterministic phase, so 4 keys per (4-phase) cell.
     g = ps._anchored_g_count(bank, cells)
-    assert g["n"] == 3 and g["source"] == "design" and g["r12_below_support"] == 1
+    assert g["cells"] == 3 and g["source"] == "design" and g["r12_below_support"] == 1
+    assert g["n"] == 12 and g["r12_below_support_keys"] == 4 and g["u0_keys"] == 3
     monkeypatch.setattr(support, "load_support", lambda d: (_ for _ in ()).throw(
         FileNotFoundError(d)))
     assert ps._r12_extra_anchored(bank, cells) == 0                    # nothing frozen yet
     g = ps._anchored_g_count(bank, cells)
-    assert g["n"] == ps.ANCHORED_G_PROTOCOL == 96 and g["r12_below_support"] == 0
+    assert g["cells"] == ps.ANCHORED_G_PROTOCOL == 96 and g["r12_below_support"] == 0
+    assert g["n"] == 4 * 96
 
 
 def test_R7_rule_2_credit_counts_the_cut_keys_in_both_directions(ps):

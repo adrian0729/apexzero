@@ -42,9 +42,10 @@ Psychophysics step 1, pre-tag. Done: harness, rulings R1–R17 (protocol Section
 (verified by replay; 0 unsolved, 0 infeasible, 15 multi-basin). No agent has been rolled out
 on any protocol stimulus. To resume, in order:
 
-1. `git stash pop`, which restores the interrupted R17 edits (per-phase re-anchored keys; keys at
-   all 16 phases on P7 cells). They are untested: finish them, then review and test.
-2. `psychophysics.py keys --priority P2`, which solves R17's extra P7 phase keys (resumes from the cache).
+1. Implement ruling R17c: tier B D = 600 cells get nominal and phase-matched keys in the keys
+   stage at P1 (R17 itself is done and committed).
+2. `psychophysics.py keys --priority P2`, which solves R17's extra P7 phase keys and R17c's tier B keys
+   (resumes from the cache). It runs before `anchored-keys`.
 3. `psychophysics.py stimuli --real --force`, which adds the F5 swap-A rows now that tier D's braking
    corners are known. Then `keys --layout-only` and `keys --priority P2` for the new rows.
 4. `psychophysics.py controls`, which runs T and c3 now that keys exist.

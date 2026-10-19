@@ -344,7 +344,7 @@ class _V7Keys:
             return None
         return A.KeyView(None, measures.ResponseMetrics(v_e=27.0), True, "verified")
 
-    def anchored(self, cell, agent, ts):
+    def anchored(self, cell, agent, ts, phase=0):
         return None
 
     def null(self, cell):

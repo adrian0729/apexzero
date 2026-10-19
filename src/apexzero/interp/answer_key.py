@@ -1562,32 +1562,97 @@ def _anchor_index(run: Trajectory, s_target: float) -> int | None:
     return int(idx[0]) if idx.size else None
 
 
-def anchored_key(bank: StimulusBank, cell: Cell, nominal: KeyRecord, agent: str,
-                 run: Trajectory, cache: KeyCache | None = None, *, snapshot: str = "",
-                 tables: ModelTables | None = None, p: VehicleParams = F1_2025,
-                 W: int = W_SHORT, force: bool = False) -> KeyRecord:
-    """Re-anchored key (W = 400) from the agent's deterministic u = 0 run at
-    s_L = s_c0 - (d_b* + v_b* 1.0 s): solved from x_{L-1} with a_0 = a_{L-1}, start (1) the
-    nominal key re-timed from the matched s (one retry at max_iter 3000 if it fails). Only
-    when the agent reaches s_L alive and the key has a sustained brake; else returns the
-    nominal key itself (protocol 6.1; at A2 s_L lies before the start). Post-tag."""
-    m = nominal.measures
-    if nominal.status != "verified" or not m.get("has_brake"):
-        return nominal
+def anchor_base(cell: Cell, phase: int, nominal: KeyRecord | None,
+                cache: KeyCache | None = None, bank: StimulusBank | None = None
+                ) -> KeyRecord | None:
+    """The key a re-anchored key at phase k starts from (ruling R17a): the nominal key at
+    that phase, i.e. the phase-matched key at u_k when one is cached and verified, else the
+    u = 0 nominal key ``nominal`` (the key at the run's phase when one exists, else the u = 0
+    key: the rule every other error follows). Its d_b* and v_b* place s_L, its sustained
+    brake gates re-anchoring, it is the warm start, and it is what a run falls back to when
+    re-anchoring does not apply (6.1). Looked up, never solved."""
+    if phase:
+        rec = key_for(cell, "phase", int(phase), cache=cache, bank=bank)
+        if rec is not None and rec.status == "verified":
+            return rec
+    return nominal
+
+
+@dataclass
+class Anchor:
+    """A re-anchored problem: the run's state x_{L-1} and action a_{L-1} at the first state
+    reached alive with s >= s_L, the cache id and the base key it starts from."""
+
+    key_id: str
+    phase: int
+    L: int
+    s_L: float
+    x_prev: np.ndarray
+    a_prev: np.ndarray
+    base: KeyRecord
+
+
+def anchored_key_id(bank: StimulusBank, x_prev: np.ndarray, a_prev: np.ndarray, stim_id: int,
+                    agent: str, snapshot: str, phase: int, W: int = W_SHORT,
+                    p: VehicleParams = F1_2025) -> str:
+    """Cache id of a re-anchored key: the agent's state and action, W, the car and spec, and
+    (ruling R17a) the deterministic phase whose run it is anchored on, with the agent and
+    snapshot. The same state reached at two phases gives two keys."""
+    spec_w = dataclasses.replace(WindowSpec(), steps=int(W))
+    return key_id("anchored", row_hash(bank, stim_id), np.asarray(x_prev, float), int(W), p,
+                  spec_w, {"a0": np.asarray(a_prev, float).tolist(), "agent": agent,
+                           "snapshot": snapshot, "phase": int(phase)})
+
+
+def anchor_for(bank: StimulusBank, cell: Cell, base: KeyRecord, run: Trajectory, *,
+               agent: str = "", snapshot: str = "", phase: int = 0, W: int = W_SHORT,
+               p: VehicleParams = F1_2025) -> Anchor | None:
+    """Where the run at phase k is re-anchored (protocol 6.1, R17a): s_L = s_c0 - (d_b* +
+    v_b* 1.0 s) of ``base`` (``anchor_base``: the key at that phase), the run's first state
+    reached alive with s >= s_L. None when re-anchoring does not apply: ``base`` unverified
+    or without a sustained brake, or the run not reaching s_L alive (at A2 s_L lies before
+    the start)."""
+    m = base.measures
+    if base.status != "verified" or not m.get("has_brake"):
+        return None
     lm = bank.stimuli[cell.stim_id].landmarks
     s_L = float(lm.s_c0 - (m["d_b"] + m["v_b"] * ANCHOR_LEAD))
     L = _anchor_index(run, s_L)
     if L is None or L < 1:
-        return nominal
+        return None
     x_prev = np.asarray(run.x[L - 1], float)
     a_prev = np.asarray(run.a[L - 1], float)
-    prob = _problem(bank, cell, "anchored", 0, p, W=W, x0=x_prev, a0_fixed=a_prev, tables=tables)
-    spec_w = dataclasses.replace(prob.spec, steps=W)
-    kid = key_id("anchored", prob.row_hash, x_prev, W, prob.p, spec_w,
-                 {"a0": a_prev.tolist(), "agent": agent, "snapshot": snapshot})
+    kid = anchored_key_id(bank, x_prev, a_prev, cell.stim_id, agent, snapshot, phase, W, p)
+    return Anchor(kid, int(phase), int(L), s_L, x_prev, a_prev, base)
+
+
+def anchored_key(bank: StimulusBank, cell: Cell, nominal: KeyRecord, agent: str,
+                 run: Trajectory, cache: KeyCache | None = None, *, snapshot: str = "",
+                 phase: int = 0, tables: ModelTables | None = None,
+                 p: VehicleParams = F1_2025, W: int = W_SHORT, force: bool = False) -> KeyRecord:
+    """Re-anchored key (W = 400) from the agent's deterministic run at phase ``phase``
+    (ruling R17a: one key per deterministic phase, each anchored on that phase's own run) at
+    s_L = s_c0 - (d_b* + v_b* 1.0 s): solved from x_{L-1} with a_0 = a_{L-1}, start (1)
+    ``nominal`` re-timed from the matched s (one retry at max_iter 3000 if it fails).
+    ``nominal`` is the key at that phase (``anchor_base``: the phase-matched key when one
+    exists, else the u = 0 key); it sets s_L. Only when the run reaches s_L alive and that
+    key has a sustained brake; else returns ``nominal`` itself (protocol 6.1: the nominal
+    key at that phase). The record carries the phase (``KeyRecord.phase``, its alias
+    ``cell<id>_ph<k>_<agent>@<snapshot>``, its id). Post-tag."""
+    an = anchor_for(bank, cell, nominal, run, agent=agent, snapshot=snapshot, phase=phase,
+                    W=W, p=p)
+    if an is None:
+        return nominal
+    x_prev, a_prev, kid = an.x_prev, an.a_prev, an.key_id
+    prob = _problem(bank, cell, "anchored", an.phase, p, W=W, x0=x_prev, a0_fixed=a_prev,
+                    tables=tables)
     if cache is not None and not force:
+        # A hit counts only when it was started from this base key: the id holds the
+        # problem (state, action, phase), not the warm start, so a key anchored from the
+        # u = 0 key before the phase key existed is re-solved from the phase key once it
+        # does (same s_L step, same id; the new record replaces the old).
         hit = cache.get("anchored", kid)
-        if hit is not None:
+        if hit is not None and hit.anchor.get("nominal", nominal.key_id) == nominal.key_id:
             return hit
     guess = retime(nominal, x_prev, W, track=prob.track, p=prob.p)
 
@@ -1597,8 +1662,9 @@ def anchored_key(bank: StimulusBank, cell: Cell, nominal: KeyRecord, agent: str,
     pairs = [_run_start(prob, f"nominal:{nominal.key_id}", guess, extend, (W,), IPOPT_STAGE_MAX_ITER)]
     if not pairs[0][0].verified:
         pairs.append(_run_start(prob, "retry", guess, extend, (W,), RETRY_MAX_ITER))
-    anchor = {"step": L, "s_L": s_L, "s_anchor": float(x_prev[0]), "a_prev": a_prev.tolist(),
-              "snapshot": snapshot, "nominal": nominal.key_id}
+    anchor = {"step": an.L, "s_L": an.s_L, "s_anchor": float(x_prev[0]),
+              "a_prev": a_prev.tolist(), "snapshot": snapshot, "nominal": nominal.key_id,
+              "phase": an.phase, "base_kind": nominal.kind, "base_phase": int(nominal.phase)}
     rec = _record(prob, pairs, key_id_=kid, socp_id=nominal.socp_id, agent=agent, anchor=anchor)
     return _store(rec, cache)
 

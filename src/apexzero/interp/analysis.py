@@ -40,7 +40,10 @@ owner before the tag (protocol 12, ruling R13):
        remedy). Ruling R12: P0's re-anchored keys cover every
        non-clipped below-support, tail and bulk A1 cell, so P1b and P2 read e_ve^RA
        throughout A1; a run without one falls back to e_ve, and its e_ve_bo_ra to its
-       e_ve_bo, and is counted (ra_key, ra_fallback).
+       e_ve_bo, and is counted (ra_key, ra_fallback). Ruling R17a: one re-anchored key per
+       deterministic phase, anchored on that phase's own run, and every run (stochastic
+       sample j at phase j mod n, D9) is judged against the key of its phase, never another
+       phase's (run columns ra_phase, ra_key_id; pair columns ra_keys, ra_off_phase).
 - AD6  "Pooled within-θ range of log v_e*" = max - min of the within-θ-centred values.
 - AD7  A leave-one-R-out slope that cannot be computed fails the confirm criterion and does
        not count as "outside" for the refute.
@@ -90,6 +93,9 @@ owner before the tag (protocol 12, ruling R13):
        is solved, 6.1), else the u = 0 backed-off key. Run columns speed_at_phase and
        bo_at_phase record the choice, key_at_phase and v_e_star_k name the key; S and r
        (v_e_star_band) use the median v_e* of the same keys wherever e_ve is not re-anchored.
+       Ruling R17b: P7's 16-phase cells have phase-matched keys at all 16 phases, so each of
+       their runs is judged against the key at its own phase (P7's key null still reads
+       phases 0, 4, 8 and 12 only).
 - AD24 Protocol 8's gate applies to every snapshot read for P1-P3, the finals and the two
        history snapshots included: a snapshot that fails it (or cannot be judged: no gentle
        or tier G runs, undefined oscillation index) gives 'not testable'. Gentle cells and
@@ -160,7 +166,11 @@ RUN_EXTRA_COLUMNS = {
                    "re-anchoring)",
     "v_e_star_k": "m/s: v_e* of the key behind the onset errors (phase-matched where solved)",
     "v_b_star_k": "m/s: its v_b*", "d_b_star_k": "m: its d_b*",
-    "ra_key": "bool: e_ve_ra is against a re-anchored key (False: the nominal u = 0 fallback)",
+    "ra_key": "bool: e_ve_ra is against a re-anchored key (False: the nominal fallback, the "
+              "key behind e_ve)",
+    "ra_phase": "int: phase of the deterministic run the re-anchored key behind e_ve_ra is "
+                "anchored on (ruling R17a: the run's own phase); -1 without one",
+    "ra_key_id": "str: that re-anchored key's cache id ('' without one)",
     "speed_at_phase": "bool: e_ve, e_vmin and e_vmin^line are against the key behind the "
                       "onset errors (key_at_phase, v_e_star_k), because V7 failed on speeds "
                       "(6.5, AD23); False: against the nominal u = 0 key (2.2)",
@@ -227,6 +237,11 @@ PAIR_COLUMNS = {
     "ra_fallback": "int: deterministic runs of a uses_ra pair with no re-anchored key, whose "
                    "e_ve_ra fell back to e_ve (R12: none in P1b's A1 set once P0's anchored "
                    "keys exist)",
+    "ra_keys": "int: distinct re-anchored keys behind the deterministic runs' e_ve_ra "
+               "(ruling R17a: one per run's phase, so n_runs - ra_fallback on a uses_ra "
+               "pair; 0 on pairs that do not use the re-anchored error, e.g. A2)",
+    "ra_off_phase": "int: deterministic runs whose re-anchored key was anchored on another "
+                    "phase's run (0 under R17a)",
     "v_e": "m/s median (+inf for overspeed crashes)",
     "v_e_obs": "m/s median of the observed v_e (no +inf; P2b)",
     "e_ve": "median per-run error", "e_ve_bo": "", "e_ve_ra": "",
@@ -572,16 +587,20 @@ class KeyView(NamedTuple):
     tau: dict | None = None      # measure -> tolerance (answer_key.KeyRecord.tau)
     active: dict | None = None   # slip_limited / lock_limited / corridor_limited
     J: float = float("nan")
+    key_id: str = ""             # the cached record's id ('' for doubles)
+    phase: int = -1              # the record's phase (-1: not known)
 
 
 class KeySource(Protocol):
     """Where run_table and key_table get keys from. ``CachedKeys`` reads answer_key's
     cache; tests and the dry run use doubles. Optional: ``backoff_at(cell, phase)``, a
-    backed-off key solved at that phase (AD23's V7 remedy); a source without it has none."""
+    backed-off key solved at that phase (AD23's V7 remedy); a source without it has none.
+    ``anchored(cell, agent, timesteps, phase)``: the re-anchored key anchored on that
+    snapshot's deterministic run at that phase (ruling R17a: one per phase), or None."""
 
     def nominal(self, cell, phase: int) -> KeyView | None: ...
     def backoff(self, cell) -> KeyView | None: ...
-    def anchored(self, cell, agent: str, timesteps: int) -> KeyView | None: ...
+    def anchored(self, cell, agent: str, timesteps: int, phase: int = 0) -> KeyView | None: ...
     def null(self, cell) -> KeyView | None: ...
     def socp(self, cell) -> KeyView | None: ...
     def no_return(self, cell, agent: str, timesteps: int, phase: int, sample: int, traj,
@@ -618,8 +637,8 @@ class _NoKeyFilter:
         f = getattr(self._keys, "backoff_at", None)
         return None if has_no_key(cell) or f is None else f(cell, phase)
 
-    def anchored(self, cell, agent: str, timesteps: int):
-        return None if has_no_key(cell) else self._keys.anchored(cell, agent, timesteps)
+    def anchored(self, cell, agent: str, timesteps: int, phase: int = 0):
+        return None if has_no_key(cell) else self._keys.anchored(cell, agent, timesteps, phase)
 
     def null(self, cell):
         return self._keys.null(cell)
@@ -652,7 +671,9 @@ class CachedKeys:
 
     ``anchor_id(agent, timesteps)`` names the snapshot in ``key_for(..., agent=...)`` for
     re-anchored keys: '<agent>@<timesteps>', the alias tag ``answer_key.anchored_key`` writes
-    for ``agent=<agent>, snapshot=str(timesteps)`` (the anchored-keys stage's convention).
+    for ``agent=<agent>, snapshot=str(timesteps)`` (the anchored-keys stage's convention),
+    looked up at the run's phase (``cell<id>_ph<k>_<agent>@<timesteps>``, ruling R17a: one
+    re-anchored key per deterministic phase, never another phase's).
     ``viability`` maps (agent, timesteps, cell_id, phase, sample) to that run's viability
     KeyRecords (``answer_key.viability_keys``). Views are cached per key.
 
@@ -709,7 +730,9 @@ class CachedKeys:
                        bool(getattr(rec, "multi_basin", False)),
                        dict(getattr(rec, "tau", {}) or {}),
                        dict(getattr(rec, "active", {}) or {}),
-                       float(getattr(rec, "J", np.nan)))
+                       float(getattr(rec, "J", np.nan)),
+                       str(getattr(rec, "key_id", "") or ""),
+                       int(getattr(rec, "phase", -1)))
 
     def _get(self, cell, kind: str, phase: int = 0, agent: str = "", at_phase: bool = True):
         k = (cell.cell_id, kind, phase, agent, at_phase)
@@ -734,8 +757,10 @@ class CachedKeys:
         keys at u = 0 only, so this is None unless one was added)."""
         return self._get(cell, "backoff", phase) if phase else self.backoff(cell)
 
-    def anchored(self, cell, agent: str, timesteps: int) -> KeyView | None:
-        return self._get(cell, "anchored", 0, self.anchor_id(agent, timesteps))
+    def anchored(self, cell, agent: str, timesteps: int, phase: int = 0) -> KeyView | None:
+        """The re-anchored key of (agent, timesteps) anchored on its run at ``phase`` (R17a);
+        None when that phase's key was not solved (the run then falls back, ra_key False)."""
+        return self._get(cell, "anchored", int(phase), self.anchor_id(agent, timesteps))
 
     def null(self, cell) -> KeyView | None:
         c = self.cells.get(cell.null_cell)
@@ -897,7 +922,8 @@ def run_table(agent: str, timesteps: int, rollouts: dict | tuple, cells: list, b
     2.2: the key solved from x0 at u = 0); the onset errors dd_b and dd_resp, regret and
     corner time against the key solved at the run's phase where one exists (protocol 6.1,
     phase-matched keys back Δd_b and P2b), else the u = 0 key; backed-off and re-anchored
-    band errors; corner time also against the pinned s-OCP and its null (protocol 5).
+    band errors (the re-anchored key of the run's own phase, ruling R17a); corner time also
+    against the pinned s-OCP and its null (protocol 5).
 
     ``speed_at_phase`` (AD23, protocol 6.5's V7 remedy; pass ``v7_speeds_failed`` of the
     manifest's validation): e_ve, e_vmin and e_vmin^line are judged against the onset
@@ -1008,15 +1034,22 @@ def _run_row(agent, timesteps, g, arr, i, by_id, bank, keys, tables, nulls,
     v_bo = float(_attr(bo.metrics, "v_e")) if bo is not None and bo.status == "verified" \
         else np.nan
     bo_at_phase = bool(bo_at_phase and np.isfinite(v_bo))
-    ra = keys.anchored(cell, agent, timesteps)
+    # Ruling R17a: the re-anchored key anchored on this snapshot's deterministic run at this
+    # run's phase (stochastic sample j: phase j mod n, D9); without one, e_ve_ra falls back
+    # to e_ve (the nominal key at that phase under AD23's switch, else the u = 0 key).
+    ra = keys.anchored(cell, agent, timesteps, phase)
     ra_key = bool(ra is not None and ra.status == "verified"
                   and np.isfinite(_attr(ra.metrics, "v_e")))
     if ra_key:
         v_ra = float(_attr(ra.metrics, "v_e"))
         e_ra = v_e / v_ra - 1.0
+        ra_phase = int(getattr(ra, "phase", -1))
+        ra_phase = phase if ra_phase < 0 else ra_phase
+        ra_id = str(getattr(ra, "key_id", "") or "")
     else:
         v_ra = v_e_star_s
         e_ra = float(ke.e_ve)
+        ra_phase, ra_id = -1, ""
     # The key behind this run's onset errors (phase-matched where one exists; P2b).
     k_ph = {f"{c}_star_k": float(_attr(nom.metrics, c)) if ok else np.nan
             for c in ("v_e", "v_b", "d_b")}
@@ -1033,7 +1066,8 @@ def _run_row(agent, timesteps, g, arr, i, by_id, bank, keys, tables, nulls,
     row.update({f: getattr(ke, f) for f in KEY_ERROR_COLUMNS})
     row.update(e_ve_bo=v_e / v_bo - 1.0 if np.isfinite(v_bo) else np.nan, e_ve_ra=float(e_ra),
                key_at_phase=bool(nom.at_phase) if ok else False, crash_type=ctype,
-               v_e_star_ra=float(v_ra), ra_key=ra_key, speed_at_phase=bool(speed_at_phase),
+               v_e_star_ra=float(v_ra), ra_key=ra_key, ra_phase=int(ra_phase),
+               ra_key_id=ra_id, speed_at_phase=bool(speed_at_phase),
                bo_at_phase=bo_at_phase, **k_ph)
     return row
 
@@ -1069,7 +1103,8 @@ def pair_values(runs: Table, keys: Table, regimes: dict | None = None,
     cols.update(agent=_st(runs, "agent"), mode=_st(runs, "mode"),
                 crash_type=_st(runs, "crash_type"), timesteps=_it(runs, "timesteps", 0),
                 pair=_it(runs, "pair"), cell=_it(runs, "cell"), phase=_it(runs, "phase", 0),
-                steer_sign=_it(runs, "steer_sign", 1))
+                steer_sign=_it(runs, "steer_sign", 1), ra_phase=_it(runs, "ra_phase", -1),
+                ra_key_id=_st(runs, "ra_key_id"))
     kidx = {int(c): i for i, c in enumerate(_it(keys, "cell"))}
     kdir = _it(keys, "direction", 0)
     groups: dict[tuple, list[int]] = {}
@@ -1208,6 +1243,9 @@ def _pair_row(cols: dict, idx: np.ndarray, keys: Table, kidx: dict, kdir: np.nda
         n_runs=nr, n_missing=missing["v_e"], defined=bool(nr > 0 and missing["v_e"]
                                                           <= _max_missing(nr)),
         uses_ra=bool(uses_ra), ra_fallback=int((~cols["ra_key"][det]).sum()) if uses_ra else 0,
+        ra_keys=len({str(k) for k in cols["ra_key_id"][det][cols["ra_key"][det]] if str(k)}),
+        ra_off_phase=int((cols["ra_key"][det] & (cols["ra_phase"][det] >= 0)
+                          & (cols["ra_phase"][det] != cols["phase"][det])).sum()),
         v_e=vals["v_e"], v_e_obs=_median(v_e_obs), e_ve=vals["e_ve"],
         e_ve_bo=vals["e_ve_bo"], e_ve_ra=vals["e_ve_ra"], e_ve_bo_ra=vals["e_ve_bo_ra"],
         side=band_side(e_b, e_bo, b), v_min=vals["v_min"], e_vmin=vals["e_vmin"],
