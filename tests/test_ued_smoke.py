@@ -10,13 +10,14 @@ import jax.numpy as jnp
 import numpy as np
 import pytest
 
-from apexzero.agents.ppo import PPOConfig, RunningMeanStd
+from apexzero.agents.ppo import Actor, Critic, PPOConfig, RunningMeanStd, init_agent
+from apexzero.audit.rollouts import Snapshot, rollout_windows
 from apexzero.env import racing
 from apexzero.tracks.corners import R_DEV
 from apexzero.tracks.generator import fit_grammar
 from apexzero.tracks.levels import make_levels
 from apexzero.tracks.track import load_tumftm
-from apexzero.ued import pool
+from apexzero.ued import pool, sfl
 from apexzero.ued.plr import (
     KIND_DR,
     KIND_EXPLORE,
@@ -240,6 +241,23 @@ def test_sfl_smoke(pool_setup):
         assert np.all(rec["kind"][~sfl_rows] == KIND_DR)
         assert log.mask.all() and log.metrics["train_frac"] == 1.0
     assert trainer.sampler_snapshot(st)["refresh_chunk"] == 4
+
+
+def test_sfl_scorer_is_the_audit_rollout_and_compiles_once(pool_setup):
+    bank, _ = pool_setup
+    actor, critic = Actor(CFG, racing.ACTION_DIM, False), Critic(CFG)
+    key = jax.random.PRNGKey(3)
+    compiled = []
+    for s in range(2):                                   # two checkpoints, one compilation
+        a = init_agent(CFG, actor, critic, racing.OBS_DIM, jax.random.PRNGKey(s), jax.random.PRNGKey(9 + s), 4)
+        snap = Snapshot(a.actor.params, a.critic.params, a.obs_rms, a.ret_rms._replace(var=a.ret_rms.var * 4))
+        crashed, alive, dist = sfl.score_windows(snap, CFG, bank, 2, key, WINDOW, 0.01, 32, PARAMS)
+        compiled.append(sfl._window_scorer(CFG, WINDOW, 0.01, PARAMS)._cache_size())
+        ro = rollout_windows(snap, CFG, bank.tracks, bank.x0, bank.ctx, bank.hidden_mu, 2, key, steps=WINDOW,
+                             obs_noise=0.01, level_chunk=32, params=PARAMS)
+        assert np.array_equal(crashed, ro.terminated) and np.array_equal(dist, ro.distance)
+        assert np.array_equal(alive, ro.alive.sum(-1)) and alive.dtype.kind == "i"
+    assert compiled[1] == compiled[0]
 
 
 @pytest.mark.parametrize("arm", ["dr-pool", "plr-maxmc", "plr-oracle"])

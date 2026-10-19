@@ -4,7 +4,7 @@ import jax
 import numpy as np
 import pytest
 
-from apexzero.ued.sfl import SOURCE_BUFFER, SOURCE_POOL, slot_sources, top_k
+from apexzero.ued.sfl import SOURCE_BUFFER, SOURCE_POOL, slot_sources, top_k, window_success
 
 
 def test_S1_top_k_by_learnability():
@@ -30,6 +30,14 @@ def test_S3_nan_learnability_raises():
     assert int(np.argsort([0.25, np.nan, 0.1])[-1]) == 1
     with pytest.raises(ValueError):
         top_k([0.25, np.nan, 0.1], 1)
+
+
+def test_window_success_and_the_end_of_strip_check():
+    crashed = np.array([[False, True], [True, False]])
+    alive = np.array([[100, 37], [5, 100]])
+    assert window_success(crashed, alive, 100).tolist() == [[True, False], [False, True]]
+    with pytest.raises(AssertionError, match="end of its strip"):
+        window_success(crashed, np.array([[100, 37], [5, 99]]), 100)   # stopped short, not crashed
 
 
 def test_S4_slot_split():
