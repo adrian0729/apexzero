@@ -186,12 +186,18 @@ from a vendored copy.
 \subsection{Endpoints and statistics}
 \label{sec:protocol-endpoints}
 
-\paragraph{Co-primary endpoints} With Holm correction within the family, each reported by
-phase and by critic type:
+\paragraph{Co-primary endpoints} With Holm correction within the family (to be listed in
+\code{protocol-v1}; see below), each reported by phase and by critic type:
 \begin{itemize}
   \item Spearman $\rho$ between the score and absolute regret, and between the score and
         normalised regret;
-  \item RC@10\%, the share of regret captured by the levels in the score's top 10\%;
+  \item RC@10\%, the regret captured by the score's top 10\% of levels relative to the
+        most any 10\% could capture,
+        $\mathrm{RC@10\%} = \sum_{\theta \in \mathrm{top}_{10}(S)} \Reg^{+}(\theta) \big/
+        \sum_{\theta \in \mathrm{top}_{10}(\Reg)} \Reg^{+}(\theta)$, with
+        $\Reg^{+} = \max(\widehat{\Reg}, 0)$, so a perfect ranking scores 1 and a random
+        one scores $0.1\sum_\theta \Reg^{+} / \sum_{\mathrm{top}_{10}(\Reg)} \Reg^{+}$ in
+        expectation, which we report alongside;
   \item in-buffer $\rho$, between the stored score and current regret, with score age as
         a covariate;
   \item admission AUROC, how well the score separates levels whose regret is in the top
@@ -199,9 +205,21 @@ phase and by critic type:
   \item for RQ3, the interquartile mean of held-out regret at 1\,B steps.
 \end{itemize}
 % src: docs/plan/two-track-plan.md section 2.3 ("Co-primary endpoints")
-\VERIFY{RC@10\% and admission AUROC are defined in the plan only in words. We read RC@10\%
-as the regret in the score's top decile divided by the regret in the true top decile, and
-the admission quantile as unspecified; fix both in \code{audit-v1}}
+\paragraph{Negative regret estimates} A per-level estimate $\widehat{\Reg} = \Jstar -
+\Jhat$ can be negative, through Monte Carlo noise in $\Jhat$ or a label the agent beats.
+Rank correlations use the raw estimates; RC@10\% clips them at zero as above; and levels
+on which an observed agent return beats $\Jstar$ stay in the endpoints, flagged as label
+shortfalls and counted in the report of \cref{sec:answer-lb}.
+\VERIFY{the plan defines RC@10\% only in words (``the share of regret captured by the
+score's top 10\%''); the normalised form above and the handling of negative estimates are
+our proposal and must be signed off in \code{protocol-v1}, together with the admission
+quantile, which the plan leaves unspecified. Under this definition the provisional
+thresholds below should be checked against the random-score expectation, which depends on
+how concentrated regret is}
+\TODO{list the Holm family in \code{protocol-v1}: which of the seven estimator rows,
+the five co-primary endpoints, the three phases and the two critics (E0, E0-sym) form one
+family, and whether absolute and normalised regret, and S1 and S2 learnability, count as
+separate tests}
 
 \paragraph{Diagnostics} A two-loading regression
 $\mathrm{rank}(S) \sim a\,\mathrm{rank}(\Jstar) + b\,\mathrm{rank}(\Jhat)$, for which a
