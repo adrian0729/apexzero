@@ -267,7 +267,7 @@ def main():
                       f"cpu={cpu:.1f}s J*={row['J']:.5f} "
                       f"(starts {', '.join(f'{k} {v:.5f}' for k, v in row['J_starts'].items())}) "
                       f"replay {row['replay_rel']:+.1e} survives={row['replay_survives']}", flush=True)
-                slug = name.replace(" ", "_").replace(":", "-").replace("=", "")
+                slug = (f"{args.tag}-" if args.tag else "") + name.replace(" ", "_").replace(":", "-").replace("=", "")
                 with open(out / f"{slug}-{int(sec)}s-{method}.pkl", "wb") as fh:   # candidates: for diagnosis
                     pickle.dump({"result": best, "row": row, "candidates": {k: runs[k][-1] for k in keys},
                                  "stages": {k: runs[k][:-1] for k in keys}}, fh)
