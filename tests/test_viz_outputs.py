@@ -1,8 +1,10 @@
-"""Renderers of a trajectory export: the matplotlib figures and the static viewer."""
+"""Renderers of a trajectory export: the matplotlib figures, the static viewer and the
+optional Rerun recording."""
 
 import json
 import re
 
+import pytest
 from _viz_fixtures import make_doc
 
 from apexzero.viz import export
@@ -31,6 +33,14 @@ def test_figures_render(tmp_path):
     assert [p.name for p in paths] == ["demo-map.png", "demo-speed-delta.png", "demo-sectors.png"]
     for p in paths:
         assert p.read_bytes()[:8] == b"\x89PNG\r\n\x1a\n" and p.stat().st_size > 5_000
+
+
+def test_rerun_log(tmp_path):
+    pytest.importorskip("rerun")   # optional dependency group: uv sync --group rerun
+    from apexzero.viz.rerun_log import log_document
+
+    p = log_document(make_doc(), tmp_path / "demo.rrd")
+    assert p.read_bytes()[:4] == b"RRF2" and p.stat().st_size > 10_000
 
 
 def test_figures_leave_the_pyplot_state_alone():
