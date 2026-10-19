@@ -10,6 +10,7 @@ from apexzero.drivers.progress import (
     fit_session,
     held_out_sector,
     lap_inputs,
+    loo_median_shift,
     track_samples,
 )
 from apexzero.drivers.registration import (
@@ -341,8 +342,23 @@ def test_fit_session_recovers_lines_start_times_and_timing(rect_line):
 def test_held_out_sector_error_is_small_on_clean_data(rect_line):
     inputs, _ = _lap_inputs(rect_line, seed=4)
     timing = fit_session(inputs, rect_line)
+    assert set(timing.line_obs) == {li.key for li in inputs}
     err = held_out_sector(inputs, rect_line, timing)
     assert np.max(np.abs(err)) < 0.03
+    # The in-sample variant (line from every lap, ratio fitted with the S2 anchors) is
+    # also small here; on clean data the two differ by little.
+    err_in = held_out_sector(inputs, rect_line, timing, loo=False, refit_ratio=False)
+    assert np.max(np.abs(err_in)) < 0.03 and np.max(np.abs(err - err_in)) < 0.02
+
+
+def test_leave_one_out_median_shift_wraps_around_the_line():
+    length = 1000.0
+    s = np.array([999.0, 0.5, 1.0, 2.0, 998.5])      # median 999.0 + ... straddles s = 0
+    shift = loo_median_shift(s, length)
+    u = wrap(s - 999.0, length)                      # -0, 1.5, 2, 3, -0.5 around 999
+    for i in range(len(s)):
+        assert shift[i] == pytest.approx(np.median(np.delete(u, i)) - np.median(u))
+    assert np.all(np.abs(shift) < 2.0)
 
 
 def test_lap_inputs_drop_interior_gaps_but_allow_an_empty_pad(rect_line):

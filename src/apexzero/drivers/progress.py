@@ -161,6 +161,13 @@ def _circ_median(s: np.ndarray, length: float) -> float:
     return float((ref + np.median(wrap(s - ref, length))) % length)
 
 
+def loo_median_shift(s: np.ndarray, length: float) -> np.ndarray:
+    """For each element, how far the circular median moves when that element is left out."""
+    u = wrap(np.asarray(s, dtype=float) - _circ_median(s, length), length)
+    med = float(np.median(u))
+    return np.array([float(np.median(np.delete(u, i))) - med for i in range(len(u))])
+
+
 @dataclass
 class LapFit:
     driver: int
@@ -199,6 +206,9 @@ class SessionTiming:
     ratio: np.ndarray              # speed / centreline rate
     laps: dict[tuple[int, int], LapFit] = field(default_factory=dict)
     delta_spread: float = 0.0      # robust sd of the start-time corrections
+    # Per lap, where its unanchored fit puts each of the three lines (centreline s): the
+    # samples whose circular median is ``s_lines`` (used for leave-one-lap-out lines).
+    line_obs: dict[tuple[int, int], np.ndarray] = field(default_factory=dict)
 
     @property
     def x_sectors(self) -> np.ndarray:
@@ -220,12 +230,13 @@ def _unwrap_lines(s_lines: np.ndarray, near: float, length: float) -> np.ndarray
 def fit_session(inputs: list[LapInput], line: Centreline, cfg: SmootherConfig = DEFAULT_CONFIG,
                 ratio_bin: float = 10.0, ratio_smooth: float = 50.0, iterations: int = 2,
                 drop_anchor: int | None = None,
-                fixed: SessionTiming | None = None) -> SessionTiming:
+                fixed: SessionTiming | None = None, refit_ratio: bool = False) -> SessionTiming:
     """Estimate s(t) for every lap; see the module docstring for the steps.
 
     ``drop_anchor`` (1 or 2) leaves out one sector line for the held-out-anchor gate.
-    ``fixed`` reuses the line positions and path-ratio profile of an earlier fit (so a
-    held-out refit changes only what it should).
+    ``fixed`` reuses the line positions (and, unless ``refit_ratio``, the path-ratio
+    profile) of an earlier fit, so a held-out refit changes only what it should; with
+    ``refit_ratio`` the profile is re-estimated without the dropped anchor.
     """
     length = line.length
     if not inputs:
@@ -236,13 +247,15 @@ def fit_session(inputs: list[LapInput], line: Centreline, cfg: SmootherConfig = 
         t, kind, z, g = _measurements(li, use_speed=True, anchors=None,
                                       gain=np.full(len(li.t_spd), 1.0 / 1.006))
         free[li.key] = smooth(t, kind, z, gain=g, cfg=cfg)
+    line_obs: dict[tuple[int, int], np.ndarray] = {}
     if fixed is None:
         delta = {li.key: 0.0 for li in inputs}
         for _ in range(iterations):
-            s_lines = np.array([
-                _circ_median(np.array([free[li.key].s_at(li.date_start + delta[li.key] + li.taus[k])
-                                       for li in inputs]) % length, length)
-                for k in range(3)])
+            line_obs = {li.key: np.array([free[li.key].s_at(li.date_start + delta[li.key]
+                                                             + li.taus[k]) for k in range(3)])
+                        % length for li in inputs}
+            obs = np.stack([line_obs[li.key] for li in inputs])
+            s_lines = np.array([_circ_median(obs[:, k], length) for k in range(3)])
             for li in inputs:
                 fit = free[li.key]
                 near = float(fit.s_at(li.date_start))
@@ -268,7 +281,7 @@ def fit_session(inputs: list[LapInput], line: Centreline, cfg: SmootherConfig = 
         return (t0 + li.taus)[keep], s_un[keep], t0, float(s_un[0])
 
     # Step 3: anchored, positions only -> path-ratio profile and per-lap speed scale.
-    if fixed is None:
+    if fixed is None or refit_ratio:
         xs, rs, per_lap = [], [], {}
         for li in inputs:
             ta, sa, t0, s0 = anchors(li)
@@ -296,7 +309,7 @@ def fit_session(inputs: list[LapInput], line: Centreline, cfg: SmootherConfig = 
     def r_at(x):
         return np.interp(x % length, np.r_[grid, length], np.r_[ratio, ratio[0]])
 
-    timing = SessionTiming(length, s_lines, grid, ratio)
+    timing = SessionTiming(length, s_lines, grid, ratio, line_obs=line_obs)
     # Step 4: anchored, positions and speed.
     for li in inputs:
         ta, sa, t0, s0 = anchors(li)
@@ -325,16 +338,30 @@ def fit_session(inputs: list[LapInput], line: Centreline, cfg: SmootherConfig = 
 
 
 def held_out_sector(inputs: list[LapInput], line: Centreline, timing: SessionTiming,
-                    cfg: SmootherConfig = DEFAULT_CONFIG, which: int = 2) -> np.ndarray:
+                    cfg: SmootherConfig = DEFAULT_CONFIG, which: int = 2,
+                    loo: bool = True, refit_ratio: bool = True) -> np.ndarray:
     """Refit without one sector line and return predicted - official crossing time (s).
 
     ``which`` = 2 drops the S2/S3 line (the plan's gate); the prediction is the time the
     refitted s(t) reaches that line, and the truth is the official S1 + S2.
+
+    What is held out: the refit has no anchor at that line, its path-ratio profile is
+    re-estimated without it (``refit_ratio``), and the line's position on the
+    centreline is, for each lap, the circular median over the *other* laps (``loo``).
+    The start and S1 lines and the start-time corrections still use every lap.
+
+    The spread of the errors is the held-out statistic. Their median is not an absolute
+    bias: the line position itself comes from unanchored fits, so the median only says
+    how far the anchored and unanchored fits disagree about where that line is.
     """
-    refit = fit_session(inputs, line, cfg, drop_anchor=which, fixed=timing)
-    x_line = timing.x_sectors[which - 1]
+    refit = fit_session(inputs, line, cfg, drop_anchor=which, fixed=timing,
+                        refit_ratio=refit_ratio)
+    x_line = np.full(len(inputs), timing.x_sectors[which - 1])
+    if loo and all(li.key in timing.line_obs for li in inputs):
+        obs = np.array([timing.line_obs[li.key][which] for li in inputs])
+        x_line = x_line + loo_median_shift(obs, timing.length)
     err = []
-    for li in inputs:
+    for li, x in zip(inputs, x_line, strict=True):
         lf = refit.laps[li.key]
-        err.append(float(lf.elapsed(np.array([x_line]))[0] - li.taus[which]))
+        err.append(float(lf.elapsed(np.array([x]))[0] - li.taus[which]))
     return np.array(err)
