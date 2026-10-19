@@ -55,3 +55,39 @@ def optimal_return(wall_map, agent_pos, agent_dir, goal_pos, gamma: float = 0.99
     if k is None:
         return 0.0
     return float(gamma ** (k - 1) * (1.0 - 0.9 * k / max_steps))
+
+
+def optimal_plan(wall_map: np.ndarray, agent_pos, agent_dir: int, goal_pos,
+                 max_steps: int = 250) -> list[int] | None:
+    """One shortest action sequence (0 = left, 1 = right, 2 = forward) that ends by stepping
+    into the goal, or None. Same search as ``min_actions_to_goal`` with parent pointers, so
+    ``len(plan) == min_actions_to_goal(...)``; executed open-loop it attains J* exactly."""
+    wall_map = np.asarray(wall_map, bool)
+    h, w = wall_map.shape
+    gx, gy = int(goal_pos[0]), int(goal_pos[1])
+    start = (int(agent_pos[0]), int(agent_pos[1]), int(agent_dir) % 4)
+    parent: dict = {start: None}
+    depth = {start: 0}
+    q = deque([start])
+    while q:
+        s = q.popleft()
+        x, y, d = s
+        if depth[s] >= max_steps:
+            continue
+        dx, dy = DIR_TO_VEC[d]
+        fx, fy = min(max(x + dx, 0), w - 1), min(max(y + dy, 0), h - 1)
+        if (fx, fy) == (gx, gy):
+            plan, cur = [2], s
+            while parent[cur] is not None:
+                cur, a = parent[cur]
+                plan.append(a)
+            return plan[::-1]
+        nxt = [(0, (x, y, (d - 1) % 4)), (1, (x, y, (d + 1) % 4))]
+        if not wall_map[fy, fx]:
+            nxt.append((2, (fx, fy, d)))
+        for a, n in nxt:
+            if n not in parent:
+                parent[n] = (s, a)
+                depth[n] = depth[s] + 1
+                q.append(n)
+    return None
