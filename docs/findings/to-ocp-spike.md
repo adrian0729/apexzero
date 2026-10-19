@@ -19,7 +19,7 @@ every verified optimum replays to its J* within 3e-12.
 
 **Label budget.** The plan gives every level 3 starts, which share one s-OCP: s-OCP +
 3 x TO-OCP is about 775 CPU-s per level at these means (pool:5's failed start included),
-or ~1,160 CPU-h for 5,400 levels. That is at the low end of the plan's 1,200-3,000 CPU-h.
+or ~1,160 CPU-h for 5,400 levels, just under the plan's 1,200-3,000 CPU-h.
 Two things are not settled. A single start can land in a clearly worse local optimum: on
 Hockenheim at 60 s the policy start is 0.31 (0.45%) below the s-OCP start (below). And a
 start can fail outright (pool:5). The pilot labels should measure both rates before the
