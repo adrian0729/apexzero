@@ -1,7 +1,8 @@
 """Curriculum comparison C (plan 2.4): one arm on the labelled pool, with checkpoints.
 
     uv run python scripts/train_ued.py --arm plr-pvl --steps 1e9 --name c/plr-pvl-s0 --seed 0
-    uv run python scripts/train_ued.py --arm plr-oracle --labels outputs/pool_jstar.npy ...
+    uv run python scripts/train_ued.py --arm plr-oracle --pool-file outputs/pool.npz \
+        --labels outputs/pool_jstar.npz ...
 
 Arms: dr-pool, plr-pvl, plr-maxmc, plr-oracle, sfl (``apexzero.ued.trainer``). Defaults are
 the plan's: 4,000 pool levels, 1,200-step windows, 128-step chunks, JaxUED's PLR defaults
@@ -10,13 +11,20 @@ M = 4, K = 1,000, rho = 0.5. PPO matches ``train_dr.py`` except the chunk length
 
 The pool is the "pool" stream of ``apexzero.tracks.levels``: loaded from ``--pool-file``
 (``levels.save`` format, the frozen labelled pool) or regenerated from ``--levels-root``.
-``--labels`` is a .npy of J*_20 per pool level, in pool order (plr-oracle only).
+plr-oracle needs ``--pool-file`` and ``--labels``, a .npz of J*_20 per pool level written by
+``ued.pool.save_oracle_labels``; it stores the pool's level encoding, and labels from any
+other pool are refused.
 
-Outputs in runs/<name>/:
+Outputs in <runs-dir>/<name>/:
     config.json, metrics.csv (one row per chunk; wall and process CPU time)
-    ckpt/<timesteps>.pkl     params + normalisers (train_dr.py's format), log-spaced
+    ckpt/<timesteps>.pkl     params + normalisers, ``agents.checkpoints`` (shared format and
+                             naming), 8 log-spaced from 10M to the end, plus the last
     sampler/<timesteps>.pkl  the PLR buffer or SFL's D and learnabilities, same timesteps
-    records/<chunk>.npz      every completed episode with its scores (``ued.scoring``)
+    records/<chunk>.npz      every completed episode with its scores (``ued.scoring``) and
+                             the write of its group (write_row / write_outcome / write_score);
+                             PLR arms also every committed buffer operation with its outcome,
+                             score, R_max and buffer index (``ev_*``, ``ued.plr.event_rows``),
+                             joined to the records on (chunk, row)
 """
 
 import argparse
@@ -31,6 +39,7 @@ import _bootstrap  # noqa: F401  (makes src/ importable)
 import jax
 import numpy as np
 
+from apexzero.agents.checkpoints import checkpoint_schedule, save_snapshot
 from apexzero.agents.ppo import PPOConfig
 from apexzero.env import racing
 from apexzero.tracks import levels as paper_levels
@@ -43,30 +52,23 @@ from apexzero.ued.sfl import SFLConfig
 from apexzero.ued.trainer import ARMS, UEDConfig, UEDTrainer
 
 
-def checkpoint_chunks(total: float, batch: int, n: int, first: float = 10e6) -> set[int]:
-    """Chunks closest to n log-spaced timesteps from 10M (or total/100 for short runs) to
-    the end; files are named by the timesteps actually done at that chunk."""
-    first = min(first, total / 100)
-    n_chunks = max(int(total) // batch, 1)
-    return {min(max(round(x / batch) - 1, 0), n_chunks - 1) for x in np.geomspace(first, total, n)} | {
-        n_chunks - 1}
-
-
-def main():
+def parse_args(argv=None):
     ap = argparse.ArgumentParser()
     ap.add_argument("--arm", required=True, choices=ARMS)
     ap.add_argument("--steps", type=float, default=1e9)
     ap.add_argument("--name", required=True)
+    ap.add_argument("--runs-dir", type=Path, default=Path("runs"))
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--num-envs", type=int, default=2048)
     ap.add_argument("--num-steps", type=int, default=128, help="chunk length")
     ap.add_argument("--network", default="mlp", choices=["mlp", "simba"])
+    ap.add_argument("--width", type=int, help="actor and critic width (default: train_dr.py's)")
     ap.add_argument("--ensemble-heads", type=int, default=5)
     ap.add_argument("--window-steps", type=int, default=1200)
     ap.add_argument("--pool-file", type=Path)
     ap.add_argument("--levels-root", type=int, default=0)
     ap.add_argument("--pool-size", type=int, default=paper_levels.SIZES["pool"])
-    ap.add_argument("--labels", type=Path, help="J*_20 per pool level (.npy), for plr-oracle")
+    ap.add_argument("--labels", type=Path, help="J*_20 of the pool (save_oracle_labels .npz), plr-oracle")
     ap.add_argument("--capacity", type=int, default=1000)
     ap.add_argument("--replay-prob", type=float, default=0.8)
     ap.add_argument("--staleness", type=float, default=0.3)
@@ -77,10 +79,17 @@ def main():
     ap.add_argument("--sfl-k", type=int, default=1000)
     ap.add_argument("--sfl-rho", type=float, default=0.5)
     ap.add_argument("--checkpoints", type=int, default=8)
+    ap.add_argument("--checkpoint-first", type=float, default=10e6)
     ap.add_argument("--records-every", type=int, default=50, help="chunks per records shard")
-    args = ap.parse_args()
+    args = ap.parse_args(argv)
+    if args.arm == "plr-oracle" and (args.pool_file is None or args.labels is None):
+        ap.error("plr-oracle needs --pool-file (the frozen labelled pool) and --labels (its J*_20)")
+    return args
 
-    out = Path("runs") / args.name
+
+def main(argv=None):
+    args = parse_args(argv)
+    out = args.runs_dir / args.name
     for sub in ("ckpt", "sampler", "records"):
         (out / sub).mkdir(parents=True, exist_ok=True)
 
@@ -88,20 +97,15 @@ def main():
         lv = paper_levels.load(args.pool_file)
     else:
         lv = paper_levels.make_levels(jax.random.PRNGKey(args.levels_root), "pool", n=args.pool_size)
-    oracle_j = None
-    if args.arm == "plr-oracle":
-        if args.labels is None:
-            ap.error("plr-oracle needs --labels (J*_20 of every pool level)")
-        oracle_j = np.load(args.labels)
-        if oracle_j.shape != (lv.ctx.shape[0],):
-            ap.error(f"--labels has shape {oracle_j.shape}, the pool has {lv.ctx.shape[0]} levels")
+    oracle_j = pool.load_oracle_labels(args.labels, lv) if args.arm == "plr-oracle" else None
 
     params = racing.EnvParams(window_steps=args.window_steps)
     g = fit_grammar([load_tumftm(f"data/tracks/tumftm/{n}.csv") for n in R_DEV])
     bank = pool.make_bank(lv, g, params=params)
+    width = args.width or 256
     cfg = PPOConfig(num_envs=args.num_envs, num_steps=args.num_steps, total_timesteps=int(args.steps),
-                    network=args.network, gamma=0.995, gae_lambda=0.95, actor_width=256,
-                    critic_width=256 if args.network == "mlp" else 384, mlp_layers=3,
+                    network=args.network, gamma=0.995, gae_lambda=0.95, actor_width=width,
+                    critic_width=args.width or (256 if args.network == "mlp" else 384), mlp_layers=3,
                     activation="tanh", ensemble_heads=args.ensemble_heads)
     ued = UEDConfig(arm=args.arm,
                     plr=PLRConfig(capacity=args.capacity, replay_prob=args.replay_prob,
@@ -113,8 +117,9 @@ def main():
         {"ppo": asdict(cfg), "ued": asdict(ued), "args": {k: str(v) for k, v in vars(args).items()},
          "env": params._asdict(), "pool_levels": int(lv.ctx.shape[0])}, indent=1))
 
+    # One chunk is one PPO update, so the shared schedule (and file naming) applies as is.
     n_chunks = max(cfg.num_updates, 1)
-    ckpt_chunks = checkpoint_chunks(args.steps, cfg.batch_size, args.checkpoints)
+    ckpt_at = checkpoint_schedule(cfg.total_timesteps, cfg.batch_size, args.checkpoint_first, args.checkpoints)
 
     trainer = UEDTrainer(cfg, ued, bank, pool.level_pytree(lv), params, oracle_j=oracle_j)
     t0, c0 = time.perf_counter(), time.process_time()
@@ -125,9 +130,13 @@ def main():
     def flush(upto: int):
         nonlocal shard, shard_start
         if shard:
-            cat = {k: np.concatenate([r[k] for r in shard]) for k in shard[0]}
-            cat = {k: v.astype(np.float32) if v.dtype == np.float64 else v for k, v in cat.items()}
-            np.savez_compressed(out / "records" / f"{shard_start:07d}.npz", **cat)
+            cols = {}
+            for prefix, i in (("", 0), ("ev_", 1)):
+                parts = [s[i] for s in shard if s[i] is not None]
+                if parts:
+                    cols.update({prefix + k: np.concatenate([p[k] for p in parts]) for k in parts[0]})
+            cols = {k: v.astype(np.float32) if v.dtype == np.float64 else v for k, v in cols.items()}
+            np.savez_compressed(out / "records" / f"{shard_start:07d}.npz", **cols)
         shard, shard_start = [], upto
 
     for k in range(n_chunks):
@@ -139,22 +148,21 @@ def main():
             writer.writeheader()
         writer.writerow(m)
         log.flush()
-        shard.append(chunk_log.records)
+        shard.append((chunk_log.records, chunk_log.event_rows))
         if (k + 1) % args.records_every == 0:
             flush(k + 1)
-        if k in ckpt_chunks:
-            ts = (k + 1) * cfg.batch_size
-            snap = dict(trainer.snapshot(st), config=asdict(cfg), timesteps=ts, arm=args.arm)
-            with open(out / "ckpt" / f"{ts:012d}.pkl", "wb") as fh:
-                pickle.dump(snap, fh)
+        if k in ckpt_at:
+            ts, done = ckpt_at[k], (k + 1) * cfg.batch_size
+            save_snapshot(out, trainer.snapshot(st), cfg, ts, timesteps_done=done, arm=args.arm)
             with open(out / "sampler" / f"{ts:012d}.pkl", "wb") as fh:
-                pickle.dump(dict(trainer.sampler_snapshot(st), timesteps=ts), fh)
+                pickle.dump(dict(trainer.sampler_snapshot(st), timesteps=ts, timesteps_done=done), fh)
         if k % 25 == 0 or k == n_chunks - 1:
             keys = ("chunk", "timesteps", "train_frac", "episodes", "buf_size", "sps", "cpu_s")
             print(json.dumps({x: round(m[x], 3) if isinstance(m[x], float) else m[x]
                               for x in keys if x in m}), flush=True)
     flush(n_chunks)
     log.close()
+    return out
 
 
 if __name__ == "__main__":

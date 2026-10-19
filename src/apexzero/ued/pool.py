@@ -24,6 +24,7 @@ from typing import NamedTuple
 
 import jax
 import jax.numpy as jnp
+import numpy as np
 
 from apexzero.agents.ppo import Env
 from apexzero.env import racing
@@ -96,6 +97,33 @@ def level_pytree(levels: paper_levels.Levels) -> dict:
     return {"keys": jnp.asarray(levels.keys, jnp.uint32), "ctx": jnp.asarray(levels.ctx, jnp.float32),
             "hidden_mu": jnp.asarray(levels.hidden_mu, jnp.float32),
             "level_id": jnp.arange(n, dtype=jnp.int32)}
+
+
+def save_oracle_labels(path, levels: paper_levels.Levels, jstar) -> None:
+    """J*_20 per pool level, saved with the pool's own level encoding (keys, ctx, hidden_mu)
+    so ``load_oracle_labels`` can refuse labels computed on a different pool."""
+    jstar = np.asarray(jstar, np.float64)
+    if jstar.shape != (levels.ctx.shape[0],):
+        raise ValueError(f"jstar has shape {jstar.shape}, the pool has {levels.ctx.shape[0]} levels")
+    np.savez(path, jstar=jstar, keys=np.asarray(levels.keys), ctx=np.asarray(levels.ctx),
+             hidden_mu=np.asarray(levels.hidden_mu))
+
+
+def load_oracle_labels(path, levels: paper_levels.Levels) -> np.ndarray:
+    """The J*_20 labels of ``save_oracle_labels``, checked against ``levels`` level by level.
+
+    The oracle-latest arm scores level i with J*[i], so labels from another pool (same
+    size, different levels or order) would silently score every level against the wrong
+    optimum; this raises instead."""
+    d = np.load(path)
+    missing = {"jstar", "keys", "ctx", "hidden_mu"} - set(d.files)
+    if missing:
+        raise ValueError(f"{path}: oracle labels need {sorted(missing)} (write them with save_oracle_labels)")
+    # Keys exactly; the car numbers in float32 (a pool file loaded without x64 is float32).
+    for name, dt in (("keys", np.uint32), ("ctx", np.float32), ("hidden_mu", np.float32)):
+        if not np.array_equal(np.asarray(d[name], dt), np.asarray(getattr(levels, name), dt)):
+            raise ValueError(f"{path}: labels were computed on a different pool ({name} differ)")
+    return d["jstar"]
 
 
 def reset_to(level: jax.Array, bank: PoolBank) -> tuple[jax.Array, racing.EnvState]:
