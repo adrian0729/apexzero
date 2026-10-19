@@ -93,3 +93,63 @@ def replay(res: OCPResult, track: Track, p: VehicleParams, h: float = 0.005,
     return Replay(t=t[sl], x=xs[sl], u=us[sl], lap_time=lap, completed=bool(completed),
                   max_lateral_error=float(np.max(lat_err[sl])),
                   max_corridor_violation=float(np.max(viol[sl])))
+
+
+def replay_window(track: Track, x0: np.ndarray, acts: np.ndarray, ctx: np.ndarray | None = None,
+                  gamma: float = 0.995, substeps: int = 10,
+                  hidden_mu: float = 1.0) -> tuple[float, bool, np.ndarray]:
+    """Open-loop replay of TO-OCP controls through the RL env's own float64 step.
+
+    ``ctx`` (observed car context) and ``hidden_mu`` (the level's unobserved grip
+    multiplier) are passed to the env as a level carries them; the env drives the car with
+    mu_scale = ctx[4] * hidden_mu. Returns the discounted return, whether every step
+    survived the env's termination checks, and the states [T+1, 8]. This is the TO-OCP's
+    acceptance test: the return must reproduce J* and the car must never terminate.
+    """
+    from apexzero.env import racing
+
+    jax.config.update("jax_enable_x64", True)
+    tr = track_arrays(track, dtype=jnp.float64)
+    params = racing.EnvParams(window_steps=10**9, substeps=substeps)
+    c = racing.default_context() if ctx is None else jnp.asarray(ctx)
+    st = racing.EnvState(x=jnp.asarray(x0, jnp.float64), prev_action=jnp.zeros(2), accel=jnp.zeros(2),
+                         ctx=c.astype(jnp.float64), hidden_mu=jnp.asarray(hidden_mu, jnp.float64),
+                         t=jnp.array(0), slow=jnp.array(0.0), s0=jnp.asarray(x0[0], jnp.float64))
+
+    def body(carry, a):
+        st, alive = carry
+        _, st2, r, term, _, _ = racing.step_no_reset(st, a, tr, params)
+        return (st2, alive & ~term), (st2.x, r, alive & ~term)
+
+    _, (xs, rs, alive) = jax.lax.scan(body, (st, jnp.array(True)), jnp.asarray(acts, jnp.float64))
+    rs = np.asarray(rs)
+    ret = float(np.sum(gamma ** np.arange(len(rs)) * rs))
+    return ret, bool(np.asarray(alive).all()), np.vstack([np.asarray(x0)[None], np.asarray(xs)])
+
+
+REPLAY_RTOL = 1e-6     # |replayed return - J*| / |J*| for a label to count as verified
+
+
+def verify_window(res, track: Track, x0: np.ndarray, ctx: np.ndarray | None = None,
+                  hidden_mu: float = 1.0, rtol: float = REPLAY_RTOL) -> bool:
+    """Acceptance test of a TO-OCP result (``window.WindowResult``) as a label: the solve
+    succeeded, and its controls replayed in the float64 env survive every step and
+    reproduce J* within ``rtol``. The replay is recorded in ``res.meta['replay']``."""
+    gamma = res.meta.get("spec", {}).get("gamma", 0.995)
+    substeps = res.meta.get("spec", {}).get("substeps", 10)
+    ret, alive, xr = replay_window(track, x0, res.a, ctx=ctx, gamma=gamma, substeps=substeps,
+                                   hidden_mu=hidden_mu)
+    rel = (ret - res.value) / abs(res.value)
+    ok = bool(res.success and alive and abs(rel) <= rtol)
+    res.meta["replay"] = {"return": ret, "rel": rel, "survives": alive, "verified": ok,
+                          "max_state_dev": float(np.max(np.abs(xr - res.x)))}
+    return ok
+
+
+def best_verified(results, track: Track, x0: np.ndarray, ctx: np.ndarray | None = None,
+                  hidden_mu: float = 1.0, rtol: float = REPLAY_RTOL):
+    """The highest-J* result among those that pass ``verify_window`` (several starts of
+    one window), or None if none does. A failed solve can report a higher J at an
+    infeasible point, so J alone must never pick the label."""
+    ok = [r for r in results if verify_window(r, track, x0, ctx, hidden_mu, rtol)]
+    return max(ok, key=lambda r: r.value) if ok else None
