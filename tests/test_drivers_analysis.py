@@ -104,6 +104,19 @@ def test_corner_types():
     assert segments.corner_type(250 / 3.6) == "fast"
 
 
+def test_retype_changes_types_only(chicane_line):
+    x, v = reference(chicane_line)
+    seg = segments.build(chicane_line, S_LINE, x, v)
+    assert {c.kind for c in seg.complexes} == {"slow"}
+    # An envelope 100 km/h above the reference puts every apex between 120 and 200 km/h.
+    faster = segments.retype(seg, x, v + 100 / 3.6)
+    assert np.array_equal(faster.cuts, seg.cuts)
+    assert [c.name for c in faster.complexes] == [c.name for c in seg.complexes]
+    assert {c.kind for c in faster.complexes} == {"medium"}
+    for c0, c1 in zip(seg.complexes, faster.complexes, strict=True):
+        assert c1.v_type == pytest.approx(c0.v_min + 100 / 3.6, abs=0.5)
+
+
 def test_phase_bumps_integrate_to_one_inside_their_phase(chicane_line):
     x, v = reference(chicane_line)
     seg = segments.build(chicane_line, S_LINE, x, v)
@@ -296,6 +309,8 @@ def test_r1_envelope_is_the_best_phase_time_per_car():
     r1 = dl.r1_envelope(tab)
     m = np.array([t == "T2" for t in tab.team])
     assert np.allclose(r1["T2"], tab.phase_t[m].min(axis=0))
+    y = dl.r1_residuals(tab)
+    assert np.all(y >= 0) and np.allclose(y[m].min(axis=0), 0.0)
 
 
 def test_placebo_and_split_half_separate_real_effects_from_none():

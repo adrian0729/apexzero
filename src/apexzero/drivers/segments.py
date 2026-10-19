@@ -7,8 +7,9 @@ complex times sum exactly to the lap time. Corners come from the centreline curv
 chicane is one complex: at 3.7 Hz, one sample every 6-25 m, its halves cannot be timed
 separately); up to ``merge_gap`` they merge while more than ``n_min`` complexes remain;
 then the closest pairs merge until at most ``n_max`` remain. A circuit with fewer natural
-complexes than ``n_min`` keeps what it has (Monza has about ten): splitting a chicane to
-reach a quota creates phases a few samples long, which is noise, not resolution.
+complexes than ``n_min`` keeps what it has (2025: Monza 7, Suzuka 9, Montreal 9, Spa 12):
+splitting a chicane to reach a quota creates phases a few samples long, which is noise,
+not resolution.
 
 Each complex is split into three phases at reference positions taken from the session's
 pooled speed profile, not from any driver's lap:
@@ -20,13 +21,17 @@ pooled speed profile, not from any driver's lap:
 
 Every phase is at least ``min_phase`` long.
 
-Corner type comes from the observed envelope apex speed: slow < 120 km/h,
-medium 120-200 km/h, fast > 200 km/h.
+Corner type: slow < 120 km/h, medium 120-200 km/h, fast > 200 km/h at the apex. ``build``
+types each complex on the pooled reference speed it is given (the median lap); the
+pipeline then re-types it with ``retype`` on the observed envelope apex speed, the 95th
+percentile across the session's clean laps (the plan's definition; the percentile, not
+the maximum, so that one bad fit cannot move a corner across a threshold). Cuts and
+phases do not change when a complex is re-typed.
 """
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 import numpy as np
 
@@ -55,6 +60,7 @@ class Complex:
     v_min: float            # reference minimum speed (m/s)
     kind: str               # slow / medium / fast
     corners: tuple[tuple[float, float], ...]   # curvature runs inside, lap distance
+    v_type: float | None = None   # apex speed the type was set from (m/s), if re-typed
 
     @property
     def bounds(self) -> tuple[float, float, float, float]:
@@ -179,3 +185,22 @@ def build(line: Centreline, s_line: float, v_ref_x: np.ndarray, v_ref: np.ndarra
         a_end = float(np.clip(a_end, e_end + min_phase, b - min_phase))
         complexes.append(Complex(j, a, b, e_end, a_end, x_min, v_min, corner_type(v_min), runs))
     return Segmentation(length, tuple(complexes))
+
+
+def _apex_region(c: Complex, x: np.ndarray) -> np.ndarray:
+    """Where a complex's apex speed is looked for: its curvature runs, else all of it."""
+    if c.corners:
+        m = (x >= c.corners[0][0]) & (x <= c.corners[-1][1])
+        if m.any():
+            return m
+    return (x >= c.x_start) & (x < c.x_end)
+
+
+def retype(seg: Segmentation, x: np.ndarray, v_type: np.ndarray) -> Segmentation:
+    """Re-type every complex on another speed profile (e.g. the envelope) over lap
+    distance ``x``; cuts, phases and names stay as they are."""
+    out = []
+    for c in seg.complexes:
+        v = float(np.min(v_type[_apex_region(c, x)]))
+        out.append(replace(c, kind=corner_type(v), v_type=v))
+    return Segmentation(seg.length, tuple(out))

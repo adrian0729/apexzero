@@ -1,10 +1,12 @@
 """The drivers-lite pipeline end to end, for a real session or a synthetic one.
 
     registration -> lap checks 1-7 -> s(t) per lap -> segmentation -> traffic (check 8)
-    -> per-phase lap table -> teammate deltas
+    -> corner types on the clean laps' envelope -> per-phase lap table -> teammate deltas
 
-Real and synthetic sessions go through the same functions (``fit_laps``), which is the
-point of the injection-recovery gate: the error it measures is the error of this code.
+Real and synthetic sessions share the timing and phase steps (``lap_inputs``,
+``fit_session``, ``phase_times``, ``held_out_sector``) and the teammate deltas. That is
+the part whose error the injection-recovery gate measures; ``fit_synthetic`` lists what
+it holds fixed.
 """
 
 from __future__ import annotations
@@ -17,7 +19,7 @@ import numpy as np
 from apexzero.drivers import laps as lapf
 from apexzero.drivers import segments
 from apexzero.drivers.circuits import Circuit, circuit_for
-from apexzero.drivers.deltas import LapTable
+from apexzero.drivers.deltas import LapTable, r1_envelope
 from apexzero.drivers.geometry import Centreline
 from apexzero.drivers.progress import (
     LapInput,
@@ -33,6 +35,7 @@ from apexzero.drivers.synth import CircuitModel, SynthSession, empirical_model
 from apexzero.tracks.track import load_tumftm
 
 TRACKS = Path("data/tracks/tumftm")
+MIN_ENVELOPE_LAPS = 5      # fewer clean laps than this: envelope over every fitted lap
 
 
 def registration_points(sess: SessionData, within: float = 1.07) -> tuple[np.ndarray, list]:
@@ -80,6 +83,15 @@ def car_speed(timing: SessionTiming, x: np.ndarray, rate: np.ndarray) -> np.ndar
     r = np.interp(x % timing.length, np.r_[timing.ratio_x, timing.length],
                   np.r_[timing.ratio, timing.ratio[0]])
     return rate * r * k
+
+
+def envelope_speed(timing: SessionTiming, keys, x: np.ndarray, q: float = 95.0) -> np.ndarray:
+    """The observed envelope of the car's own speed: per lap distance, the q-th
+    percentile over laps of rate x path ratio x that lap's speed scale."""
+    r = np.interp(x % timing.length, np.r_[timing.ratio_x, timing.length],
+                  np.r_[timing.ratio, timing.ratio[0]])
+    v = np.stack([timing.laps[k].speed(x) * r * timing.laps[k].k_speed for k in keys])
+    return np.percentile(v, q, axis=0)
 
 
 def phase_times(timing: SessionTiming, seg: segments.Segmentation, keys) -> np.ndarray:
@@ -130,6 +142,8 @@ class SessionResult:
     dt_car: np.ndarray
     pos_sigma: float
     dropped: dict
+    v_env: np.ndarray | None = None   # envelope speed on v_ref_x (corner types come from it)
+    r1: dict | None = None            # team -> [P] R1 envelope phase times (clean laps)
 
     def model(self) -> CircuitModel:
         return empirical_model(self.label, self.line, self.registration.transform,
@@ -174,14 +188,19 @@ def run_session(directory: str | Path, tracks_dir: str | Path = TRACKS,
     lapf.traffic_check(statuses, timing, others, seg)
     fitted = sorted(timing.laps)
     ok = [k for k in fitted if statuses[k].ok]
+    # Corner types on the observed envelope of the clean laps (traffic windows depend
+    # only on the cuts, which re-typing leaves alone).
+    v_env = envelope_speed(timing, ok if len(ok) >= MIN_ENVELOPE_LAPS else fitted, x)
+    seg = segments.retype(seg, x, v_env)
     held = held_out_sector(inputs, line, timing)
     dl, dc = sampling_intervals(inputs)
+    table = lap_table(label, sess, timing, seg, statuses, ok)
     res = SessionResult(
         label=label, circuit=circuit, line=line, registration=reg, timing=timing, seg=seg,
-        statuses=statuses, table=lap_table(label, sess, timing, seg, statuses, ok),
+        statuses=statuses, table=table,
         table_all=lap_table(label, sess, timing, seg, statuses, fitted), held_out_s2=held,
         v_ref_x=x, v_ref=v, dt_location=dl, dt_car=dc, pos_sigma=position_noise(timing),
-        dropped=dropped,
+        dropped=dropped, v_env=v_env, r1=r1_envelope(table),
     )
     log(f"{label}: {len(fitted)} laps fitted, {len(ok)} pass every check, "
         f"{len(seg.complexes)} complexes, held-out S2 robust sd "
@@ -206,8 +225,15 @@ def fit_synthetic(ss: SynthSession, model: CircuitModel, cfg: SmootherConfig = D
                   held_out: bool = False) -> SynthResult:
     """Run the real pipeline's s(t) and phase steps on a synthetic session.
 
-    Lap checks are not exercised (every synthetic lap is a clean push lap); the
-    segmentation is the circuit model's, as it would be fixed per circuit in real use.
+    Held fixed, i.e. not part of the measured error:
+
+    - registration: the circuit model's transform is reused, not re-fitted;
+    - segmentation and corner types: the circuit model's;
+    - the lap filter, traffic and Q-segment structure: every synthetic lap is a clean
+      push lap and the whole session is one Q segment;
+    - the track model: synthetic positions scatter about the TUMFTM centreline, not about
+      a racing-line-like track model as the real feed does.
+
     ``held_out`` also runs the held-out S2 anchor check, which can be compared with the
     real sessions' value: that is the test of whether the synthetic feed is as bad as the
     real one.
