@@ -95,8 +95,12 @@ a measurement framework for RQ2, not a contribution.
 
 \paragraph{Scope} Every claim is about the racing domain and, where stated, the maze. The
 racing reward is dense; whether our findings carry over to sparse-reward domains is a
-conjecture we do not test (\cref{sec:threats}). No agent is evaluated and no optimum is
-computed on a real circuit anywhere in this paper; the only real-circuit data are the
-public telemetry of the supporting audit in \cref{app:snapping}, which no claim uses.
+conjecture we do not test (\cref{sec:threats}). No audit or curriculum experiment uses a
+real circuit. Real circuits enter the paper in three ways only: twelve development
+circuits supply the generator's corner statistics; the development checks of
+\cref{sec:env,sec:answer} (one specialist agent, a minimum-time replay gate and the
+TO-OCP spike) ran on development circuits only; and \cref{app:snapping} audits public
+human telemetry, which no claim uses. No number in the paper is computed on the twelve
+lockbox circuits held out for later work (\cref{sec:threats}).
 % src: docs/plan/two-track-plan.md sections 2.4 ("Real circuits are left out of the paper"),
 %      2.6 (reward density stated as conjecture) and 4 (lockbox rules)

@@ -4,13 +4,18 @@
 %      sessions) and docs/findings/snapping-audit.png; docs/STATUS.md (P0 row) for the
 %      archive size. Ranges below are min / median / max over the 85 session rows of the
 %      table in docs/findings/snapping-audit.md, computed from that table.
-% Lockbox note: this audit registers public F1 telemetry against real circuit geometry. It
-% computes no agent return and no optimum on any circuit, which the plan allows.
+% Lockbox note: this audit compares public F1 telemetry with itself (each session's pole
+% lap). Its sessions include lockbox circuits (the left panel of the figure is one). It
+% computes no agent return, no optimum, no QSS profile and no simulator quantity on any
+% circuit; this is the one explicit exception to "no real-circuit data" in the paper.
 
 This appendix is not used by any claim in the paper. It is included because it applies the
 same discipline as the audit, a measurement validated with planted signals before it is
 trusted, to the public data that a companion analysis of human drivers depends on, and
-because its result fixes what that analysis can and cannot claim.
+because its result fixes what that analysis can and cannot claim. It is the only part of
+the paper that uses data from real circuits, lockbox circuits included, and that data is
+human telemetry only: nothing here is computed with an agent, an optimiser or the
+simulator.
 
 \paragraph{Question} Public Formula One timing data include car positions at about
 3.7\,Hz. Do these positions carry each driver's racing line, or are they projected onto a
@@ -57,7 +62,8 @@ everywhere was excluded and reported, and two sessions were skipped.
 \centering
 \includegraphics[width=\linewidth]{snapping-audit.png}
 \caption{Left: distance of all drivers' flying-lap samples from the pole lap's curve in one
-session. Right: median driver ICC of the signed lateral offset per session, for the real
+session (2026 Monza qualifying; human telemetry only). Right: median driver ICC of the
+signed lateral offset per session, for the real
 data and with a planted 0.5\,m line. Reproduced from docs/findings/snapping-audit.png.}
 \label{fig:snapping}
 \end{figure}

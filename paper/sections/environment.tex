@@ -102,10 +102,12 @@ Frenet frame non-singular wherever the car can reach.
 % src: src/apexzero/tracks/generator.py (module docstring, fit_grammar defaults, generate)
 Because the simulator is local in Frenet coordinates, strips need no closure or
 self-intersection checks. The development circuits are twelve real layouts from the
-TUMFTM database~\citep{tumftm_tracks}; in this paper they only supply these statistics
-(they also served the development checks of \cref{sec:env-mdp,sec:answer-evidence}). A
-disjoint set of twelve lockbox circuits is never used, and no real circuit appears in
-any experiment.
+TUMFTM database~\citep{tumftm_tracks}. They supply these statistics, and they hosted the
+development checks reported in \cref{sec:env-mdp,sec:env-gates,sec:answer-evidence}
+(a specialist agent, a minimum-time replay gate and the TO-OCP spike); no audit or
+curriculum experiment runs on them. A disjoint set of twelve lockbox circuits is held
+out of the paper: no number reported here is computed on them (\cref{sec:threats}
+discloses the one design decision a lockbox circuit influenced).
 % src: src/apexzero/tracks/corners.py (R_DEV, R_TEST); tests/test_generator.py::test_dev_and_lockbox_are_disjoint
 Generated corners match the development circuits' corner statistics: the
 Wasserstein-1 distance for minimum radius, divided by the median radius, is 0.07.
@@ -190,11 +192,14 @@ slip angle exceeds $\alpha_{\max} = 10^\circ$ (loss of control), when the car st
 2\,m/s for 2\,s, or on a non-finite state. It is truncated at the end of the 60\,s window
 (\num{1200} control steps) or 520\,m before the end of the strip.
 % src: src/apexzero/env/racing.py (EnvParams, step_no_reset)
-The slip limit closes an exploit we found in an early optimum, which drifted through a
-chicane at about $20^\circ$ of rear slip on the soft post-peak part of the tyre curve; the
-same $10^\circ$ limit is a termination in the environment and a constraint in every
-optimal control problem.
-% src: docs/STATUS.md ("Things found along the way", first item); params.py alpha_max
+The slip limit closes an exploit found in an early minimum-time optimum, which drifted
+through a chicane far beyond the rear tyre's peak slip, on the soft post-peak part of the
+tyre curve. That optimum was computed on a lockbox circuit, before the simulator was
+frozen (\cref{sec:threats}). The same $10^\circ$ limit is a termination in the
+environment and a constraint in every optimal control problem.
+% src: docs/STATUS.md ("Things found along the way", first item: the circuit is a lockbox
+%      circuit in src/apexzero/tracks/corners.py R_TEST; its slip angle and lap-time gain are
+%      deliberately not reported); params.py alpha_max
 
 \paragraph{Discount and agent} The agent optimises the discounted return with
 $\gamma = 0.995$ (a 10\,s effective horizon at 20\,Hz) using PPO with GAE

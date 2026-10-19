@@ -91,9 +91,9 @@ error bar covers the fact that agents run in single precision.
 \TODO{measure the float32-vs-float64 error bar}
 
 \paragraph{The optimiser finds what the model allows} An optimum is only as sensible as the
-model: an early minimum-time solution drifted at about $20^\circ$ of rear slip on the soft
-post-peak tyre curve, which we then closed with a slip limit applied identically in the
-environment and the optimiser (\cref{sec:env-mdp}). An agent could find the same
+model: an early minimum-time solution drifted far beyond the rear tyre's peak slip, on
+the soft post-peak tyre curve, which we then closed with a slip limit applied identically
+in the environment and the optimiser (\cref{sec:env-mdp}). An agent could find the same
 exploits, and then they are part of both sides of $\Reg$, but we want neither side to
 depend on them. Labels are computed only after the simulator is frozen as \code{sim-v1},
 and any exploit found later is reported, not silently fixed.
@@ -106,12 +106,29 @@ to be identical, which the parity, integrator and replay gates check. Realism on
 supports the weaker claim that the domain exercises racing-like control, which the
 terminal-speed, braking and skidpad gates support.
 
-\paragraph{Lockbox hygiene} No experiment in this paper uses a real circuit; the
-generator is fitted on the twelve development circuits only, and the development checks
-(the specialist, the solver spike) ran on one of them. One gate in
-\cref{tab:gates}, the replay of minimum-time optima, was computed on all 24 usable TUMFTM
-circuits, the lockbox included. The plan allows optimal control only on development
-circuits until the generator is frozen, so this value will be replaced by the
-development-circuit value before submission; no claim in the paper depends on it.
-% src: docs/STATUS.md (K2a row: 24/25 circuits); src/apexzero/tracks/corners.py (R_DEV, R_TEST);
-%      docs/plan/two-track-plan.md section 4 ("OCPs run on R-dev only until generator-v1 is tagged")
+\paragraph{Lockbox hygiene} Twelve real circuits are a lockbox, held out of this paper
+for later evaluation, and twelve disjoint ones are for development. No audit or
+curriculum experiment uses a real circuit. The generator is fitted on the development
+circuits only, and the development checks (the specialist, the minimum-time replay gate
+of \cref{tab:gates} and the solver spike) ran on development circuits only. No number in
+the paper is computed on a lockbox circuit. Two departures from a clean lockbox happened
+before the simulator was frozen, and we disclose both. First, minimum-time optima were
+once solved on every TUMFTM circuit, the lockbox included, against a plan that allows
+optimal control only on development circuits until the generator is frozen; the replay
+gate reported here was recomputed on the development circuits alone, and none of those
+lockbox results is used. Second, an earlier minimum-time optimum on a lockbox circuit
+revealed the slip exploit above, and the $10^\circ$ slip limit was introduced because of
+it. A lockbox circuit therefore shaped one simulator design choice. The exploit is a
+property of the tyre curve, which has the same post-peak shape on every track, but the
+decision to close it came from a lockbox result, so any later lockbox evaluation must
+report it.
+% src: docs/STATUS.md (K2a row; "Things found along the way", first item);
+%      src/apexzero/tracks/corners.py (R_DEV, R_TEST);
+%      docs/plan/two-track-plan.md section 4 ("OCPs run on R-dev only until generator-v1 is tagged",
+%      "The paper never touches R-test"); R-dev recomputation: see the src comment of tab:gates
+\VERIFY{the docs record the exploit and the fix (docs/STATUS.md) but not how the value
+$10^\circ$ was chosen; if it was tuned against the lockbox optimum, say so here}
+Separately, the public telemetry of \cref{app:snapping} covers qualifying sessions at
+real circuits, lockbox circuits among them. It is human data only: no agent, optimum,
+quasi-steady-state profile or simulator quantity is computed for any circuit there, and
+no claim depends on it.
