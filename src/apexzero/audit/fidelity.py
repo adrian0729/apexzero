@@ -160,10 +160,11 @@ def top_weights(score: np.ndarray, frac: float) -> np.ndarray:
 def regret_captured(score: np.ndarray, reg: np.ndarray, frac: float = 0.1) -> np.ndarray:
     """RC@frac: share of the total regret held by the score's top ``frac`` of levels.
 
-    A random score captures ``frac`` in expectation, a perfect one captures the oracle share
-    ``regret_captured(reg, reg, frac)``, which is below 1 unless regret is concentrated. The
-    plan's thresholds (faithful >= 0.6, uninformative <= 0.2) read most naturally on the
-    oracle-normalised scale, so both are reported. Assumes Reg >= 0 (true for the proxy;
+    A random score captures exactly k/L (= ``frac`` up to rounding) in expectation; a perfect
+    one captures the oracle share ``regret_captured(reg, reg, frac)``, which is close to k/L
+    when regret is spread evenly over levels. The raw share therefore cannot reach the
+    plan's provisional thresholds (faithful >= 0.6) unless regret is concentrated, so
+    ``regret_captured_lift`` is reported beside it. Assumes Reg >= 0 (true for the proxy;
     TO-OCP labels are lower bounds, so negative regret flags a label problem); NaN when the
     total regret is not positive.
     """
@@ -172,6 +173,22 @@ def regret_captured(score: np.ndarray, reg: np.ndarray, frac: float = 0.1) -> np
     tot = np.broadcast_to(reg, w.shape).sum(-1)
     num = (w * reg).sum(-1)
     return np.where(tot > 0, num / np.where(tot > 0, tot, 1.0), np.nan)
+
+
+def regret_captured_lift(score: np.ndarray, reg: np.ndarray, frac: float = 0.1) -> np.ndarray:
+    """RC@frac rescaled so that a random score is 0 and the regret-sorted oracle is 1:
+    (RC - k/L) / (RC_oracle - k/L). Dividing by the oracle share alone is misleading when
+    regret is nearly uniform (random then scores ~k/L / RC_oracle, close to 1), which is
+    exactly the proxy pilot's situation. NaN when the oracle cannot beat random (all regret
+    equal)."""
+    reg = np.asarray(reg, float)
+    rc = regret_captured(score, reg, frac)
+    n = np.shape(rc)
+    L = np.broadcast_shapes(np.shape(score), reg.shape)[-1]
+    base = top_count(L, frac) / L
+    span = np.broadcast_to(regret_captured(reg, reg, frac), n) - base
+    ok = span > 1e-12
+    return np.where(ok, (rc - base) / np.where(ok, span, 1.0), np.nan)
 
 
 def precision_at(score: np.ndarray, reg: np.ndarray, q: float = 0.1) -> np.ndarray:
@@ -229,20 +246,19 @@ class FidelityTable(NamedTuple):
     skipped: list[str]                     # scores with non-finite values on graded levels
 
 
-METRICS = ("rho_abs", "rho_norm", "rc", "rc_rel", "p_at_q", "a_opt", "b_pi")
-PAIRED = ("rho_abs", "rho_norm", "rc")
+METRICS = ("rho_abs", "rho_norm", "rc", "rc_lift", "p_at_q", "a_opt", "b_pi")
+PAIRED = ("rho_abs", "rho_norm", "rc_lift")
 
 
 def fidelity_metrics(score, j_opt, j_pi, reg, reg_norm, frac: float = 0.1,
                      q: float = 0.1) -> dict[str, np.ndarray]:
     """Every fidelity metric of one score, along the last axis."""
     a, b, _ = two_loading(score, j_opt, j_pi)
-    rc = regret_captured(score, reg, frac)
     return {
         "rho_abs": spearman(score, reg),
         "rho_norm": spearman(score, reg_norm),
-        "rc": rc,
-        "rc_rel": rc / regret_captured(reg, reg, frac),
+        "rc": regret_captured(score, reg, frac),
+        "rc_lift": regret_captured_lift(score, reg, frac),
         "p_at_q": precision_at(score, reg, q),
         "a_opt": a,
         "b_pi": b,
@@ -300,11 +316,25 @@ def fidelity_table(scores: dict[str, np.ndarray], j_opt: np.ndarray, j_pi: np.nd
 # --------------------------------------------------------------------------- reliability
 
 
-def correlation(x: np.ndarray, y: np.ndarray, method: str = "spearman") -> float:
-    """Correlation across levels over pairwise-finite entries (NaN if fewer than 3)."""
+def tie_share(x: np.ndarray) -> float:
+    """Share of levels holding the most common value (1 for a constant score)."""
+    _, counts = np.unique(np.asarray(x, float), return_counts=True)
+    return float(counts.max() / counts.sum()) if counts.size else float("nan")
+
+
+def correlation(x: np.ndarray, y: np.ndarray, method: str = "spearman",
+                max_tie_share: float | None = None) -> float:
+    """Correlation across levels over pairwise-finite entries (NaN if fewer than 3).
+
+    With ``max_tie_share``, NaN when either side has more than that share of levels on one
+    value: two mostly-zero halves (learnability when almost no window succeeds) agree on
+    their ties and give a spuriously high split-half r that says nothing about the levels
+    that matter."""
     x, y = np.asarray(x, float), np.asarray(y, float)
     ok = np.isfinite(x) & np.isfinite(y)
     if ok.sum() < 3:
+        return float("nan")
+    if max_tie_share is not None and max(tie_share(x[ok]), tie_share(y[ok])) > max_tie_share:
         return float("nan")
     f = spearman if method == "spearman" else _pearson
     return float(f(x[ok], y[ok]))
@@ -338,22 +368,24 @@ def disattenuate(rho, rel_x, rel_y):
 ScoreFn = Callable[[np.ndarray], dict[str, np.ndarray]]
 
 
-def split_half(fn: ScoreFn, windows: Iterable[int], method: str = "spearman") -> dict[str, float]:
+def split_half(fn: ScoreFn, windows: Iterable[int], method: str = "spearman",
+               max_tie_share: float | None = None) -> dict[str, float]:
     """Odd/even split-half correlation across levels of every quantity ``fn`` returns.
 
     ``fn(window_indices)`` maps a window subset to per-level values (e.g. ``level_scores``
     or a target). The result is the reliability of a quantity measured on half the windows;
     ``spearman_brown(r, 2)`` steps it up to the full set. Spearman by default, matching the
     rank-based fidelity endpoints and robust to the crash-penalty tails of the returns.
+    ``max_tie_share`` as in ``correlation``.
     """
     a, b = odd_even(windows)
     va, vb = fn(a), fn(b)
-    return {k: correlation(va[k], vb[k], method) for k in va}
+    return {k: correlation(va[k], vb[k], method, max_tie_share) for k in va}
 
 
 def reliability_curve(fn: ScoreFn, windows: Iterable[int], sizes: Iterable[int],
-                      n_splits: int = 20, seed: int = 0,
-                      method: str = "spearman") -> dict[str, np.ndarray]:
+                      n_splits: int = 20, seed: int = 0, method: str = "spearman",
+                      max_tie_share: float | None = None) -> dict[str, np.ndarray]:
     """Empirical reliability against window count: for each size m, the mean correlation
     between ``fn`` on two disjoint random m-window subsets, over ``n_splits`` draws. Checks
     the Spearman-Brown prophecy directly instead of trusting it."""
@@ -368,7 +400,8 @@ def reliability_curve(fn: ScoreFn, windows: Iterable[int], sizes: Iterable[int],
             p = rng.permutation(w)
             va, vb = fn(np.sort(p[:m])), fn(np.sort(p[m:2 * m]))
             for k in va:
-                acc.setdefault(k, [[] for _ in sizes])[j].append(correlation(va[k], vb[k], method))
+                acc.setdefault(k, [[] for _ in sizes])[j].append(
+                    correlation(va[k], vb[k], method, max_tie_share))
     return {k: np.array([np.nanmean(v) if np.isfinite(v).any() else np.nan for v in vals])
             for k, vals in acc.items()}
 

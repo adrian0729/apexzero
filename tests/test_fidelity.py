@@ -115,6 +115,20 @@ def test_regret_captured_random_scores_capture_frac_in_expectation():
     reg = rng.exponential(size=50)
     scores = rng.normal(size=(4000, 50))
     assert abs(F.regret_captured(scores, reg, 0.1).mean() - 0.1) < 0.005
+    assert abs(F.regret_captured_lift(scores, reg, 0.1).mean()) < 0.02     # random -> 0
+
+
+def test_regret_captured_lift_hand_computed():
+    reg = np.array([5.0, 3, 2, 0, 0, 0, 0, 0, 0, 0])                   # k = 2, random = 0.2
+    assert np.isclose(F.regret_captured_lift(reg, reg, 0.2), 1.0)     # oracle -> 1
+    score = np.array([0.0, 9, 8, 0, 0, 0, 0, 0, 0, 0])                # RC 0.5
+    assert np.isclose(F.regret_captured_lift(score, reg, 0.2), (0.5 - 0.2) / (0.8 - 0.2))
+    assert np.isclose(F.regret_captured_lift(-reg, reg, 0.2), -0.2 / 0.6)
+    near_uniform = np.array([1.0, 1.0, 1.0, 1.0, 1.1])               # oracle barely beats random
+    assert F.regret_captured(np.arange(5.0)[::-1], near_uniform, 0.2) / \
+        F.regret_captured(near_uniform, near_uniform, 0.2) > 0.9      # ratio flatters a bad score
+    assert F.regret_captured_lift(np.arange(5.0)[::-1], near_uniform, 0.2) < 0   # lift does not
+    assert np.isnan(F.regret_captured_lift(score, np.ones(10), 0.2))   # all equal: undefined
 
 
 def test_precision_at_q():
@@ -158,7 +172,7 @@ def test_fidelity_table_perfect_score_and_population_rho():
     tab = F.fidelity_table({"oracle": reg, "noisy": noisy}, j_opt, j_pi, reg, reg_norm,
                            n_boot=500, seed=0, reference="noisy")
     o = tab.rows["oracle"]
-    assert o["rho_abs"].value == pytest.approx(1.0) and o["rc_rel"].value == pytest.approx(1.0)
+    assert o["rho_abs"].value == pytest.approx(1.0) and o["rc_lift"].value == pytest.approx(1.0)
     assert o["p_at_q"].value == pytest.approx(1.0)
     rho_s = 6 / math.pi * math.asin(0.6 / 2)             # Spearman of a Gaussian pair
     n = tab.rows["noisy"]
@@ -222,6 +236,21 @@ def test_split_half_recovers_classical_reliability():
     assert abs(F.windows_for_reliability(r, 8, 0.9) - 36) < 4     # 1 / (1 + 4/36) = 0.9
     rs = F.split_half(fn, range(16))["mean"]                      # Spearman of a Gaussian pair
     assert abs(rs - 6 / math.pi * math.asin(r / 2)) < 0.02
+
+
+def test_tie_guard_rejects_mostly_constant_halves():
+    rng = np.random.default_rng(13)
+    a = np.zeros(100)
+    b = np.zeros(100)
+    a[:3], b[:3] = rng.uniform(0.1, 0.2, 3), rng.uniform(0.1, 0.2, 3)  # 97% tied at zero
+    assert F.correlation(a, b) > 0.9                                   # spuriously "reliable"
+    assert np.isnan(F.correlation(a, b, max_tie_share=0.8))
+    assert F.tie_share(a) == pytest.approx(0.97) and F.tie_share(np.arange(4.0)) == 0.25
+    x = rng.normal(size=100)
+    assert np.isfinite(F.correlation(x, x + rng.normal(size=100), max_tie_share=0.8))
+    rel = F.split_half(lambda w: {"s": np.where(np.arange(100) < 3, 1.0, 0.0) * len(w)},
+                       range(8), max_tie_share=0.8)
+    assert np.isnan(rel["s"])
 
 
 def test_reliability_curve_matches_theory():
