@@ -11,7 +11,12 @@
 %   % src: PATH   every number in the text carries a comment naming the repo file it comes
 %                 from (code, test or doc). Numbers without such a comment are definitions
 %                 or placeholders.
-% Set \draftfalse to hide \VERIFY and \TODO markers (they must all be resolved first).
+%   refs.bib      bibliographic provenance lives in an unprinted `provenance` field; an
+%                 entry with an open VERIFY carries \bibverify in its printed note.
+% Set \draftfalse to hide the \VERIFY, \TODO and \bibverify markers. They must all be
+% resolved first: \draftfalse only hides them (each remaining \bibverify then logs a
+% warning), and placeholders such as the Monette et al. title in refs.bib and every
+% \RESULT still print.
 
 \documentclass[10pt]{article}
 
@@ -71,6 +76,10 @@
 \newcommand{\RESULT}[1]{{\color{resultcol}[\textsc{result}: #1]}}
 \newcommand{\VERIFY}[1]{\ifdraft{\color{verifycol}\,[\textsc{verify}: #1]}\fi}
 \newcommand{\TODO}[1]{\ifdraft{\color{todocol}\,[\textsc{todo}: #1]}\fi}
+% Used in refs.bib notes for entries whose fields are not yet verified.
+\newcommand{\bibverify}{\ifdraft{\color{verifycol}\,[\textsc{verify}: fields, see
+  refs.bib]}\else\PackageWarning{refs.bib}{An entry still carries an unresolved
+  VERIFY}\fi}
 
 % ---------------------------------------------------------------- notation
 \newcommand{\Jstar}{J^{*}_{20}}
