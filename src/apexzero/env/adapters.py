@@ -86,11 +86,22 @@ def bank_env(bank: TrackBank, params: racing.EnvParams = racing.EnvParams(),
                init_params=lambda key: bank)
 
 
-def generate_bank(key: jax.Array, g: Grammar, size: int) -> TrackBank:
-    """``size`` fresh strips with their QSS reference speeds, entirely on-device."""
+def generate_bank(key: jax.Array, g: Grammar, size: int, g_alt: Grammar | None = None,
+                  alt_fraction: float = 0.0) -> TrackBank:
+    """``size`` fresh strips with their QSS reference speeds, entirely on-device.
+
+    With ``g_alt``, each strip comes from ``g_alt`` with probability ``alt_fraction``
+    (a per-strip mixture; the grammars share array shapes, so the choice is a select).
+    """
 
     def one(k):
-        kappa, wl, wr = generate(k, g)
+        if g_alt is not None:
+            k, kc = jax.random.split(k)
+            use_alt = jax.random.uniform(kc) < alt_fraction
+            gg = jax.tree.map(lambda a, b: jnp.where(use_alt, b, a), g, g_alt)
+        else:
+            gg = g
+        kappa, wl, wr = generate(k, gg)
         tr = _strip_arrays(kappa, wl, wr)
         return tr, speed_profile_jax(kappa, 2.0, F1_2025)
 
@@ -106,14 +117,18 @@ def sample_context(key: jax.Array) -> jax.Array:
 
 def procedural_env(g: Grammar, bank_size: int = 4096, refresh_per_update: int = 256,
                    params: racing.EnvParams = racing.EnvParams(), randomize_car: bool = True,
-                   mu_jitter: float = 0.02) -> Env:
+                   mu_jitter: float = 0.02, g_alt: Grammar | None = None,
+                   alt_fraction: float = 0.0) -> Env:
     """Domain randomisation over generated strips (E0).
 
     The bank holds ``bank_size`` strips; before every PPO update ``refresh_per_update`` of
     them (a rotating slice) are regenerated, so over a long run the agent sees millions of
     distinct tracks without ever generating one inside the environment step. Each reset
     draws a strip, a car context (if ``randomize_car``) and a hidden grip multiplier
-    U(1 - mu_jitter, 1 + mu_jitter) that the policy does not observe.
+    U(1 - mu_jitter, 1 + mu_jitter) that the policy does not observe. ``g_alt`` /
+    ``alt_fraction`` mix in a second grammar (e.g. the tilted, hairpin-heavy one), which
+    the first DR pilot showed is needed: it crashed in corners tighter than ~90% of the
+    plain generator's.
     """
     default_ctx = racing.default_context()
 
@@ -127,11 +142,11 @@ def procedural_env(g: Grammar, bank_size: int = 4096, refresh_per_update: int = 
         return obs, BankState(st, tid)
 
     def init_params(key):
-        return generate_bank(key, g, bank_size)
+        return generate_bank(key, g, bank_size, g_alt, alt_fraction)
 
     def refresh(key, bank, update):
         start = (update * refresh_per_update) % bank_size
-        fresh = generate_bank(key, g, refresh_per_update)
+        fresh = generate_bank(key, g, refresh_per_update, g_alt, alt_fraction)
         idx = (start + jnp.arange(refresh_per_update)) % bank_size
         return jax.tree.map(lambda old, new: old.at[idx].set(new), bank, fresh)
 

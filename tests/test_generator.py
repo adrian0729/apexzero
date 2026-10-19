@@ -45,3 +45,16 @@ def test_corner_statistics_match_development_circuits(grammar):
     for key in ("r_min", "abs_angle", "corner_length"):
         assert wasserstein_distance(gen[key], dev[key]) / np.median(dev[key]) < 0.3, key
     assert abs(gen["alternation"].mean() - dev["alternation"].mean()) < 0.1
+
+
+def test_mixed_bank_draws_from_both_grammars(grammar):
+    from apexzero.env.adapters import generate_bank
+    from apexzero.tracks.generator import tilted
+
+    bank = generate_bank(jax.random.PRNGKey(3), grammar, 120, tilted(grammar), alt_fraction=0.5)
+    tracks = [to_track(jax.tree.map(lambda a, i=i: a[i], bank.tracks)) for i in range(120)]
+    r_med = np.array([np.median(geometry_stats([segment(t)])["r_min"]) for t in tracks])
+    plain = generate_bank(jax.random.PRNGKey(3), grammar, 120)
+    r_plain = np.array([np.median(geometry_stats([segment(to_track(jax.tree.map(lambda a, i=i: a[i], plain.tracks)))])["r_min"]) for i in range(120)])
+    assert np.median(r_med) < 0.85 * np.median(r_plain)          # the mixture is tighter
+    assert np.all(np.isfinite(np.asarray(bank.v_ref)))
