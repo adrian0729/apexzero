@@ -20,7 +20,9 @@ have zero derivative, so first and second derivatives flow only through the cubi
 t. (The previous lookup summed K smooth-kernel terms, all of which entered every
 derivative; it cost ~4x more per Hessian at the same K.) The 20 RK2 stages of a control step
 look up kappa from a small *block* of coefficients picked once per step at the node's
-interval, so a wider window costs little. The window bounds |s_t - sigma_t| <= radius; an
+interval (from one interval behind it to 7 ahead), so a wider window costs little; every
+solve checks that the optimum's stages stayed inside their blocks. The window bounds
+|s_t - sigma_t| <= radius; an
 outer loop re-centres the windows if the solution reaches a bound. (A very wide window is
 not a substitute for a good guess: the bound also acts as a trust region, and from a poor
 guess a 300 m radius converged to worse local optima. ``solve_continuation`` supplies
@@ -47,8 +49,11 @@ optima), verified by replaying its controls in the float64 simulator.
 
 from __future__ import annotations
 
+import fcntl
+import functools
 import hashlib
 import os
+import platform
 import subprocess
 import tempfile
 import time
@@ -143,31 +148,51 @@ def window_lookup(s, windows, j0, q):
     return [_combine(t, [ca.dot(mask, W[k: k + K - 3]) for k in range(4)]) for W in windows]
 
 
-def block_select(s, W, j0, q, L: int):
-    """The L coefficients c_{i-1}, ..., c_{i+L-2} around s's interval i, and i itself.
+BLOCK_BEHIND = 1    # intervals behind the node's own that a kappa block also covers
 
-    Valid while 1 <= i - j0 <= K - L + 1.
+
+def block_select(s, W, j0, q, L: int):
+    """The L coefficients c_{i-2}, ..., c_{i+L-3} around s's interval i, and i itself.
+
+    Valid while 2 <= i - j0 <= K - L + 2. The block starts BLOCK_BEHIND interval behind
+    s's own, so an RK stage that lands slightly behind the node (the car moving backward
+    within a step, e.g. in an intermediate IPOPT iterate) is still looked up exactly.
     """
     i, _ = spline_index(s, q)
     il = i - j0
     K = W.numel()
-    mask = ca.vertcat(*[il == m for m in range(1, K - L + 2)])
+    first = 1 + BLOCK_BEHIND
+    mask = ca.vertcat(*[il == m for m in range(first, K - L + 1 + first)])
     return ca.vertcat(*[ca.dot(mask, W[k: k + K - L + 1]) for k in range(L)]), i
 
 
+def block_offset_range(L: int) -> tuple[int, int]:
+    """Interval offsets i - i0 that a block of L coefficients selected at i0 covers."""
+    return -BLOCK_BEHIND, L - 4 - BLOCK_BEHIND
+
+
 def block_lookup(s, blk, i0, q):
-    """Spline at s from a block selected at interval i0; exact while 0 <= i - i0 <= L - 4."""
+    """Spline at s from a block selected at interval i0; exact while i - i0 is within
+    ``block_offset_range`` ([-1, L - 5]), zero outside. ``WindowSolver.solve`` checks every
+    RK stage of the optimum against that range."""
     i, t = spline_index(s, q)
-    li = i - i0
+    li = i - i0 + BLOCK_BEHIND
     L = blk.numel()
     mask = ca.vertcat(*[li == m for m in range(L - 3)])
     return _combine(t, [ca.dot(mask, blk[k: k + L - 3]) for k in range(4)])
 
 
 def coefficient_windows(track: Track, centres: np.ndarray, spec: WindowSpec):
-    """Per-step windows [K, T] of the kappa, w_left, w_right coefficients, and their j0."""
+    """Per-step windows [K, T] of the kappa, w_left, w_right coefficients, and their j0.
+
+    On an open strip the centres are clipped to the strip: eval_jax clamps the interval
+    index there, so a window centred past an end would otherwise miss the clamped index.
+    """
     n = track.n_points
-    j0 = np.floor(np.asarray(centres) / track.ds).astype(int) - spec.k_behind
+    c = np.asarray(centres, float)
+    if not track.closed:
+        c = np.clip(c, 0.0, (n - 1) * track.ds)
+    j0 = np.floor(c / track.ds).astype(int) - spec.k_behind
     idx = j0[:, None] + np.arange(spec.n_coef)[None, :]
     k = np.mod(idx, n) + 1 if track.closed else np.clip(idx, -1, n) + 1
     coefs = [packed_coeffs(a, track.closed, n) for a in (track.kappa, track.w_left, track.w_right)]
@@ -181,7 +206,8 @@ def _context_params(ctx) -> VehicleParams:
 
 
 def substep_functions(spec: WindowSpec):
-    """psi (one RK2 substep, as sim.rk2_step), its Jacobian, and Hess(mu' psi) w.r.t. (x, a)."""
+    """psi (one RK2 substep, as sim.rk2_step), its Jacobian, Hess(mu' psi) w.r.t. (x, a),
+    and the interval offsets i - i0 of its two kappa lookups (for the block range check)."""
     L = spec.block
     x = ca.SX.sym("x", NX)
     a = ca.SX.sym("a", NA)
@@ -197,13 +223,16 @@ def substep_functions(spec: WindowSpec):
         return dynamics.f(xx, a, block_lookup(xx[0], blk, i0, q), p, CASADI)
 
     k1 = rhs(x)
-    xn = x + h * rhs(x + 0.5 * h * k1)
+    x_mid = x + 0.5 * h * k1
+    xn = x + h * rhs(x_mid)
     hess, _ = ca.hessian(ca.dot(mu, xn), ca.vertcat(x, a))
+    offsets = ca.vertcat(spline_index(x[0], q)[0], spline_index(x_mid[0], q)[0]) - i0
     opts = {"cse": True}
     args = [x, a, blk, i0, q, ctx]
     return (ca.Function("psi", args, [xn], opts),
             ca.Function("psi_jac", args, [xn, ca.jacobian(xn, x), ca.jacobian(xn, a)], opts),
-            ca.Function("psi_hess", [x, a, mu, blk, i0, q, ctx], [ca.densify(hess)], opts))
+            ca.Function("psi_hess", [x, a, mu, blk, i0, q, ctx], [ca.densify(hess)], opts),
+            ca.Function("psi_offsets", args, [xn, offsets], opts))
 
 
 def _block_function(spec: WindowSpec) -> ca.Function:
@@ -218,7 +247,7 @@ def _block_function(spec: WindowSpec) -> ca.Function:
 def step_functions(spec: WindowSpec):
     """Per control step: Phi(x, a, W, j0, q, ctx) -> x_{t+1}; its Jacobian [8 x 10] w.r.t.
     (x, a); and Hess(lam' Phi) [10 x 10] by the second-order adjoint over the substeps."""
-    psi, psi_jac, psi_hess = substep_functions(spec)
+    psi, psi_jac, psi_hess, _ = substep_functions(spec)
     block = _block_function(spec)
     x = ca.MX.sym("x", NX)
     a = ca.MX.sym("a", NA)
@@ -264,6 +293,27 @@ def step_function(spec: WindowSpec) -> ca.Function:
     return step_functions(spec)[0]
 
 
+def block_offsets_function(spec: WindowSpec) -> ca.Function:
+    """(min, max) over a control step's 2 x substeps kappa lookups of i - i0, the interval
+    offset from the node at which the step's block was selected. The lookups are exact
+    only within ``block_offset_range(spec.block)``."""
+    _, _, _, psi_offsets = substep_functions(spec)
+    block = _block_function(spec)
+    x = ca.MX.sym("x", NX)
+    a = ca.MX.sym("a", NA)
+    W = ca.MX.sym("W", spec.n_coef)
+    j0 = ca.MX.sym("j0")
+    q = ca.MX.sym("q", 4)
+    ctx = ca.MX.sym("ctx", 6)
+    blk, i0 = block(x, W, j0, q)
+    xc, offs = x, []
+    for _ in range(spec.substeps):
+        xc, o = psi_offsets(xc, a, blk, i0, q, ctx)
+        offs.append(o)
+    offs = ca.vertcat(*offs)
+    return ca.Function("block_offsets", [x, a, W, j0, q, ctx], [ca.mmin(offs), ca.mmax(offs)])
+
+
 def path_functions(spec: WindowSpec):
     """Constraints at a post-step state, scaled: [n - (wl - edge), -(wr - edge) - n,
     alpha_f / alpha_max, alpha_r / alpha_max]; their Jacobian and Hess(nu' path) (upper)."""
@@ -294,29 +344,70 @@ def default_cache_dir() -> Path:
     return Path(os.environ.get("APEXZERO_CACHE", Path.home() / ".cache" / "apexzero")) / "to_ocp"
 
 
+@functools.cache
+def compiler_identity(cc: str) -> str:
+    """What the cache key must include besides the source: the compiler (its own version
+    banner) and the machine the library is built for."""
+    try:
+        banner = subprocess.run([cc, "--version"], check=True, capture_output=True, text=True).stdout
+    except (OSError, subprocess.CalledProcessError):
+        banner = "unknown"
+    return f"{cc}\n{banner}\n{platform.system()} {platform.machine()}"
+
+
+def library_tag(source: bytes, flags: tuple[str, ...], cc: str) -> str:
+    """Cache key of a compiled library: its C source, the flags and the compiler identity."""
+    return hashlib.sha256(source + "\n".join([*flags, compiler_identity(cc)]).encode()).hexdigest()[:20]
+
+
 def compile_functions(funcs: dict[str, ca.Function], cache_dir: Path | None = None,
-                      flags: tuple[str, ...] = ("-O2",)) -> dict[str, ca.Function]:
-    """Generate C for ``funcs``, compile it into a shared library (cached by a hash of the
-    source and flags) and load it. No fast-math: the compiled code must keep IEEE semantics."""
+                      flags: tuple[str, ...] = ("-O2", "-ffp-contract=off")) -> dict[str, ca.Function]:
+    """Generate C for ``funcs``, compile it into a shared library and load it.
+
+    IEEE semantics are kept: no fast-math, and no fused multiply-adds (clang contracts
+    a * b + c by default), so the library computes what CasADi's VM computes, which the
+    tests compare with the JAX simulator. Libraries are cached by a hash of the source,
+    the flags and the compiler identity ($CC or cc, its version, the architecture), so a
+    shared cache never serves a library built by another compiler or for another machine.
+    Concurrent builders (e.g. labelling workers starting together) take a file lock, so
+    each library is compiled once; the others wait for it and load it.
+    """
     cache = Path(cache_dir or default_cache_dir())
+    cc = os.environ.get("CC", "cc")
     cg = ca.CodeGenerator("to_ocp.c", {"with_header": False})
     for f in funcs.values():
         cg.add(f)
     with tempfile.TemporaryDirectory(prefix="to_ocp_") as tmp:
         src = Path(cg.generate(tmp + os.sep))
-        tag = hashlib.sha256(src.read_bytes() + " ".join(flags).encode()).hexdigest()[:20]
+        tag = library_tag(src.read_bytes(), flags, cc)
         lib = cache / f"to_ocp_{tag}.so"
         if not lib.exists():
             cache.mkdir(parents=True, exist_ok=True)
-            part = cache / f"{lib.name}.{os.getpid()}.part"     # atomic publish: concurrent
-            cc = os.environ.get("CC", "cc")                     # builders write separate files
-            subprocess.run([cc, *flags, "-fPIC", "-shared", str(src), "-o", str(part), "-lm"],
-                           check=True, capture_output=True)
-            os.replace(part, lib)
+            with open(cache / f"to_ocp_{tag}.lock", "w") as lock:
+                fcntl.flock(lock, fcntl.LOCK_EX)
+                if not lib.exists():                            # built while we waited?
+                    part = cache / f"{lib.name}.{os.getpid()}.part"
+                    subprocess.run([cc, *flags, "-fPIC", "-shared", str(src), "-o", str(part), "-lm"],
+                                   check=True, capture_output=True)
+                    os.replace(part, lib)                       # atomic publish
     return {k: ca.external(f.name(), str(lib)) for k, f in funcs.items()}
 
 
 # -------------------------------------------------------------------------------- solver
+
+def _window_centres(s: np.ndarray) -> np.ndarray:
+    """Window centres sigma_t from a guess's arc lengths: non-decreasing, and advancing at
+    most MAX_TRAVEL - 0.5 per step, so that node t+1's bounds
+    [sigma_{t+1} - R, min(sigma_{t+1}, sigma_t + MAX_TRAVEL - 0.5) + R] are never empty
+    (a guess that jumps forward by more than 2R + 6 m would otherwise make them so). For a
+    guess that moves less than 6 m per step (every rollout or s-OCP guess: ~90 m/s at
+    most) this is the running maximum of s."""
+    sigma = np.empty(len(s))
+    sigma[0] = s[0]
+    for t in range(1, len(s)):
+        sigma[t] = min(max(sigma[t - 1], s[t]), sigma[t - 1] + MAX_TRAVEL - 0.5)
+    return sigma
+
 
 class WindowSolver:
     """One IPOPT solver for every level with the same window length (and spec).
@@ -490,8 +581,14 @@ class WindowSolver:
         self.compile_seconds = time.perf_counter() - t0
         self.funcs = funcs
         self.n_param = P.numel()
+        self.block_offsets = block_offsets_function(spec).map(T)     # VM; once per solve
+        # honor_original_bounds: IPOPT relaxes bounds by ~1e-8 internally; project the
+        # returned point back, so the controls are within [-1, 1] as the env needs them.
+        # acceptable_constr_viol_tol: the default (1e-2) would let an "acceptable" stop
+        # carry defects far above the replay tolerance (success needs Solve_Succeeded).
         opts = {"ipopt.max_iter": max_iter, "ipopt.tol": tol, "ipopt.print_level": print_level,
                 "print_time": False, "ipopt.mu_strategy": "adaptive", "ipopt.linear_solver": "mumps",
+                "ipopt.honor_original_bounds": "yes", "ipopt.acceptable_constr_viol_tol": 1e-7,
                 "calc_lam_p": False, "no_nlp_grad": True, "grad_f": funcs["grad_f"],
                 "jac_g": funcs["jac_g"], "hess_lag": funcs["hess_lag"]}
         opts.update({"ipopt." + k: v for k, v in (ipopt or {}).items()})
@@ -524,13 +621,29 @@ class WindowSolver:
 
     def solve(self, track: Track, x0: np.ndarray, init: tuple[np.ndarray, np.ndarray],
               ctx: np.ndarray | None = None, p: VehicleParams = F1_2025,
-              max_rounds: int = 6, lam0: tuple[np.ndarray, np.ndarray] | None = None) -> WindowResult:
+              max_rounds: int = 6, lam0: tuple[np.ndarray, np.ndarray] | None = None,
+              hidden_mu: float = 1.0) -> WindowResult:
+        """Solve the window from x0, warm-started with ``init`` = (xs [T+1, 8], acts [T, 2]).
+
+        ``ctx`` is the car context as the policy observes it (default: ``p``'s) and
+        ``hidden_mu`` the level's unobserved grip multiplier; the env drives the car with
+        mu_scale = ctx[4] * hidden_mu, and so does this solve (``replay_window`` takes the
+        same pair). ``success`` means IPOPT's Solve_Succeeded with no window bound active
+        and every RK stage inside its kappa block; the float64 replay
+        (``replay.verify_window``) is the separate acceptance test of a label.
+        """
         spec, T = self.spec, self.T
         if abs(track.ds - spec.ds) > 0.05:
             raise ValueError(f"track ds {track.ds} too far from the nominal {spec.ds} the window is sized for")
+        if lam0 is not None and not self._warm_ipopt:
+            raise ValueError("lam0 has no effect unless the solver has warm_ipopt options "
+                             "(e.g. {'warm_start_init_point': 'yes'})")
         if ctx is None:
             cla = p.cla_f + p.cla_r
             ctx = np.array([p.m, p.p_max, cla, p.cda, p.mu_scale, p.cla_f / cla])
+        ctx = np.array(ctx, float)
+        ctx_drive = ctx.copy()
+        ctx_drive[4] *= hidden_mu
         xs, acts = (np.array(v, float) for v in init)
         xs[0] = x0
         lam_g, lam_x = lam0 if lam0 is not None else (None, None)
@@ -538,16 +651,19 @@ class WindowSolver:
         wall, cpu, iters, log = 0.0, 0.0, 0, []
         for rnd in range(1, max_rounds + 1):
             # Step t's window is centred on its start sigma_t; node t+1 must stay inside the
-            # windows of both steps it belongs to. (The car only moves forward, so a warm start
-            # that steps back, e.g. at a junction of two guesses, is centred monotonically.)
-            sigma = np.maximum.accumulate(xs[:, 0])
-            P = self.parameters(track, sigma[:-1], ctx, p)
+            # windows of both steps it belongs to. The centres never decrease (the car only
+            # moves forward, so a warm start that steps back, e.g. at a junction of two
+            # guesses, is centred monotonically) and advance at most one control step's
+            # travel per step, so every node's bounds [lo, hi] below are non-empty.
+            sigma = _window_centres(xs[:, 0])
+            P = self.parameters(track, sigma[:-1], ctx_drive, p)
             o, d = np.zeros(self.nw), self.var_scale
             if self.scaled:
                 o = self.offset(sigma)
                 P = np.concatenate([P, o])
             lo = np.maximum(sigma[1:], sigma[:-1]) - R
             hi = np.minimum(sigma[1:], sigma[:-1] + MAX_TRAVEL - 0.5) + R
+            assert np.all(lo < hi), "empty window bounds"
             lbX = np.tile(np.array([-np.inf, -np.inf, -0.5 * np.pi, 2.0, -25.0, -5.0, -p.delta_max, -1.0])[:, None], (1, T + 1))
             ubX = np.tile(np.array([np.inf, np.inf, 0.5 * np.pi, 120.0, 25.0, 5.0, p.delta_max, 1.0])[:, None], (1, T + 1))
             lbX[0, 1:], ubX[0, 1:] = lo, hi
@@ -578,11 +694,24 @@ class WindowSolver:
             at_bound = bool(np.any(xs[1:, 0] < lo + 1.0) or np.any(xs[1:, 0] > hi - 1.0))
             if not at_bound:
                 break
-        return WindowResult(x=xs, a=acts, value=float(-sol["f"]), success=bool(st["success"]) and not at_bound,
-                            status=str(st["return_status"]) + (" (window bound active)" if at_bound else ""),
+        # Every RK stage's kappa lookup must have stayed inside its step's block (outside
+        # it the lookup reads 0); recomputed at the optimum with the last round's windows.
+        (Ck, _, _), j0 = coefficient_windows(track, sigma[:-1], spec)
+        q_t = np.tile(np.array(track_scalars(track))[:, None], (1, T))
+        o_lo, o_hi = self.block_offsets(xs[:T].T, acts.T, Ck, j0[None, :], q_t, np.tile(ctx_drive[:, None], (1, T)))
+        off_lo, off_hi = float(np.min(np.asarray(o_lo))), float(np.max(np.asarray(o_hi)))
+        rng = block_offset_range(spec.block)
+        block_ok = rng[0] <= off_lo and off_hi <= rng[1]
+        status = str(st["return_status"])
+        flags = [f for f, bad in (("window bound active", at_bound), ("kappa block out of range", not block_ok))
+                 if bad]
+        return WindowResult(x=xs, a=acts, value=float(-sol["f"]),
+                            success=status == "Solve_Succeeded" and not flags,
+                            status=status + "".join(f" ({f})" for f in flags),
                             iterations=iters, solve_seconds=wall, rounds=rnd,
                             meta={"cpu_seconds": cpu, "rounds": log, "lam": (lam_g, lam_x),
-                                  "track": track.name, "ctx": ctx.tolist(), "spec": spec.__dict__,
+                                  "track": track.name, "ctx": ctx.tolist(), "hidden_mu": float(hidden_mu),
+                                  "block_offsets": (off_lo, off_hi), "spec": spec.__dict__,
                                   "compiled": self.compiled})
 
 
@@ -594,6 +723,36 @@ def window_return(xs: np.ndarray, acts: np.ndarray, spec: WindowSpec = WindowSpe
 
 
 # ------------------------------------------------------------------- warm starts, continuation
+
+def reachable_strip(track: Track, x0: np.ndarray, seconds: float, p: VehicleParams = F1_2025,
+                    margin: float = 300.0) -> Track:
+    """The part of an open strip that a ``seconds`` window from x0 can reach, for solving
+    the s-domain guess on it instead of on the whole strip.
+
+    Continuation needs the s-domain minimum-time optimum as its extension guess, and on a
+    production level (an 8 km strip, its own car) that s-OCP costs more than the TO-OCP
+    chain. A window cannot get further than ``seconds`` at the car's straight-line top
+    speed (power against drag, 2% allowance), about 5.3 km in 60 s for the default car, so
+    the strip is cut there, plus ``margin`` so the cut s-OCP still brakes for whatever
+    follows the window's reach. (The centreline QSS profile is no bound: the racing line is
+    ~20% faster, and a cut at its 60 s reach left the s-OCP short of 60 s.) Closed
+    circuits are returned whole: their periodic lap s-OCP serves every window on them.
+    """
+    from apexzero.oracle.qss import GG
+
+    if track.closed:
+        return track
+    v_top = max(1.02 * GG.from_params(p).top_speed(), float(x0[3]))
+    reach = float(x0[0]) + seconds * v_top
+    end = int(np.ceil((reach + margin) / track.ds)) + 1
+    if end >= track.n_points:
+        return track
+    cut = slice(0, end)
+    return Track(name=f"{track.name}[0:{track.s[end - 1]:.0f}m]", s=track.s[cut], x=track.x[cut],
+                 y=track.y[cut], theta=track.theta[cut], kappa=track.kappa[cut],
+                 w_left=track.w_left[cut], w_right=track.w_right[cut], closed=False,
+                 meta=dict(track.meta, cut_from=track.name))
+
 
 def min_time_guess(ocp, track: Track, x_start: np.ndarray, steps: int, dt: float = 0.05):
     """The s-domain minimum-time optimum (``min_time.OCPResult``) mapped to time from
@@ -611,6 +770,10 @@ def min_time_guess(ocp, track: Track, x_start: np.ndarray, steps: int, dt: float
     else:
         s_grid, z_grid, u_grid = ocp.s, ocp.z, ocp.u
         tau = np.interp(s0, ocp.s, ocp.t) + dt * np.arange(steps + 1)
+        if tau[-1] > ocp.t[-1]:
+            warnings.warn(f"min_time_guess: the guess needs {tau[-1]:.1f} s of the s-OCP but it ends at "
+                          f"{ocp.t[-1]:.1f} s (s = {ocp.s[-1]:.0f} m); the guess stops there",
+                          stacklevel=2)
         s = s_mod = np.interp(tau, ocp.t, ocp.s)
     z = np.stack([np.interp(s_mod, s_grid, z_grid[:, k]) for k in range(NX - 1)], 1)
     acts = np.stack([np.interp(s_mod[:-1], s_grid, u_grid[:, k]) for k in range(NA)], 1)
@@ -636,7 +799,7 @@ def prefix_multipliers(lam: tuple[np.ndarray, np.ndarray], T_prev: int, N: int, 
 def solve_continuation(solver_for, track: Track, x0: np.ndarray, horizons, first_guess,
                        extend, overlap: int = 20, ctx: np.ndarray | None = None,
                        p: VehicleParams = F1_2025, warm_multipliers: bool = False,
-                       previous: WindowResult | None = None) -> list[WindowResult]:
+                       previous: WindowResult | None = None, hidden_mu: float = 1.0) -> list[WindowResult]:
     """Horizon continuation: solve a short window, then each next one from the previous
     optimum.
 
@@ -651,20 +814,40 @@ def solve_continuation(solver_for, track: Track, x0: np.ndarray, horizons, first
     the WindowSolver for a window length. With ``warm_multipliers`` the kept prefix's
     multipliers are passed on too (the solver's ``warm_ipopt`` options decide how IPOPT
     uses them).
+
+    A failed stage (``success`` False) is never a warm start: the next stage continues from
+    the last successful one, else from ``first_guess``, else (nothing better) from the
+    failed one. Each result's meta records its warm start ("warm_start") and the status of
+    every stage of this chain so far ("chain": [(steps, status), ...]), so a failed middle
+    stage stays visible on the final result.
     """
     results: list[WindowResult] = []
     for T in horizons:
         lam0 = None
-        prev = results[-1] if results else previous
+        done = ([previous] if previous is not None else []) + results
+        good = [r for r in done if r.success]
+        if good:
+            prev = good[-1]
+        elif first_guess is not None or not done:
+            prev = None
+        else:
+            prev = done[-1]
         if prev is None:
+            if first_guess is None:
+                raise ValueError("solve_continuation needs a first_guess or a previous result")
             xs, acts = (np.asarray(v, float) for v in first_guess)
             xs, acts = xs[: T + 1], acts[:T]
+            source = "first guess"
         else:
             N = max(min(len(prev.a), T) - overlap, 1)
             xe, ae = extend(prev.x[N], T - N)
             xs = np.vstack([prev.x[: N + 1], np.asarray(xe)[1:]])
             acts = np.vstack([prev.a[:N], ae])
+            source = f"{len(prev.a)}-step result, first {N} steps" + ("" if prev.success else " (failed)")
             if warm_multipliers and "lam" in prev.meta:
                 lam0 = prefix_multipliers(prev.meta["lam"], len(prev.a), N, T)
-        results.append(solver_for(T).solve(track, x0, init=(xs, acts), ctx=ctx, p=p, lam0=lam0))
+        res = solver_for(T).solve(track, x0, init=(xs, acts), ctx=ctx, p=p, lam0=lam0, hidden_mu=hidden_mu)
+        res.meta["warm_start"] = source
+        res.meta["chain"] = [(len(r.a), r.status) for r in results] + [(len(res.a), res.status)]
+        results.append(res)
     return results
