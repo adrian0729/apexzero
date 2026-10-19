@@ -1,0 +1,11 @@
+# LaTeX build products (build with: latexmk -pdf main.tex)
+*.aux
+*.bbl
+*.blg
+*.fdb_latexmk
+*.fls
+*.log
+*.out
+*.toc
+*.synctex.gz
+main.pdf

@@ -1,0 +1,105 @@
+\section{Related work}
+\label{sec:related}
+% Facts in this section come from docs/paper/sources-{jaxued,sfl,recent}.md and
+% docs/plan/novelty-and-outputs.md (appendix C1, C2). Anything those files do not state is
+% marked \VERIFY. Bibliographic details missing from the docs are flagged in refs.bib.
+
+\paragraph{UED and level scores} PAIRED framed environment design as a game in which a
+teacher maximises the student's regret~\citep{dennis2020paired}.\VERIFY{PAIRED's content
+is not summarised in the repo docs} Robust PLR~\citep{jiang2021robustplr} replays
+levels in proportion to a score and, in its \PLRp{} form, takes gradient steps only on
+replayed levels. Its two scores are PVL, the time-averaged positive part of the GAE
+advantage, and MaxMC, the time-averaged gap between the highest return achieved on the
+level and the critic's value (\S4.2 of that paper).
+% src: docs/paper/sources-jaxued.md section 1.2 ("The two papers' versions")
+ACCEL~\citep{parkerholder2022accel} adds a mutation step that edits replayed levels and
+scores the children with the same rule; SAMPLR~\citep{jiang2022samplr} addresses
+aleatoric uncertainty in level parameters.\VERIFY{SAMPLR's content is not summarised in
+the repo docs} We use the reference implementations in JaxUED~\citep{coward2024jaxued},
+whose score functions are a modified copy of minimax's~\citep{minimax2023code}; the
+details we replicate, and where we deviate, are in \cref{sec:estimators}. SFL, introduced
+in No Regrets~\citep{rutherford2024noregrets}, scores a level by $p(1-p)$ following
+\citet{tzannetos2023procurl}, keeps the top $K$ of $N$ fresh levels, and mixes uniform
+draws from that set with fresh levels.
+% src: docs/paper/sources-sfl.md sections 1.1 and 2.1
+Its authors restrict SFL to deterministic, binary-outcome domains and suggest the
+variance of rewards over repeated plays of a level as the continuous analogue.
+% src: docs/paper/sources-sfl.md section 1.1 ("Scope (Sec 9)")
+
+\paragraph{Checking scores against regret} No Regrets is the closest precedent. It
+correlates MaxMC and PVL with success rate (Pearson $r = 0.61$ and $0.51$) and with mean
+return, on \num{2500} JaxNav levels stratified by the success rate of the same policy
+that is scored, using the final checkpoint of one PLR-MaxMC seed.
+% src: docs/paper/sources-sfl.md section 3.1 (protocol; reported values table)
+Its released analysis code computes no statistic between any score and regret or
+learnability, and its
+``Perfect Regret (Oracle)'' arm is $1-p$ on solvable levels, a success-rate proxy rather
+than a return gap.
+% src: docs/paper/sources-sfl.md sections 3.1 ("The statistic"), 3.2 and 3.3
+ReMiDi~\citep{beukman2024remidi} runs \PLRp{} with perfect regret from a shortest-path
+optimum in mazes and shows that a regret-maximising sampler can fixate on levels whose
+regret cannot be reduced, which motivates its refinement of minimax regret.
+% src: docs/paper/sources-recent.md ("ReMiDi"); docs/plan/novelty-and-outputs.md (C2)
+\citet{abdelsadek2025goal} define oracle-latest, the exact maximum discounted return minus
+the agent's latest empirical return, computed by a graph solver in gridworlds, and
+compare it with a MaxMC-like max-latest score by the behaviour of the resulting agents,
+not by any correlation with true regret.
+% src: docs/paper/sources-recent.md section (c); docs/plan/novelty-and-outputs.md (C2)
+Our oracle arm reuses their definition. \citet{monette2025} is also related.\VERIFY{the
+repo docs list Monette et al.\ (RLC 2025) without any summary; read it and state the
+relationship}
+
+\paragraph{New scores judged downstream} MNA~\citep{mead2026mna} replaces the critic's
+value with a running maximum over $n$-step returns, gates the score on whether the level
+was ever solved, and is evaluated by zero-shot test performance on MiniGrid, Key-MiniGrid
+and Sokoban.
+% src: docs/paper/sources-recent.md section (a); docs/plan/novelty-and-outputs.md (C2)
+TRACED~\citep{cho2026traced} adds a transition-prediction loss to PVL and a
+co-learnability bonus; PACE~\citep{yuan2026pace} scores a level by the squared parameter
+change of a provisional update, which measures learning progress rather than regret.
+% src: docs/paper/sources-recent.md sections (b1) and (b2)
+Ensemble value disagreement exists as a score option in minimax, with no published
+evaluation that we found, and in goal and task curricula such as
+VDS~\citep{zhang2020vds} and AutoDIME~\citep{kanitscheider2022autodime}; none of these
+is a regret estimate.
+% src: docs/paper/sources-recent.md section (d)
+All of these are judged by what the curriculum achieves. Our audit asks the earlier
+question of whether the score ranks levels by regret at all, which a downstream benchmark
+cannot separate from everything else the curriculum does.
+
+\paragraph{Learning and optimal control in racing} GT Sophy~\citep{wurman2022sophy}
+and \citet{fuchs2021} trained racing policies with a two-output steering and pedal
+action at 10\,Hz; Fuchs et~al.\ used soft actor-critic with a non-terminal wall-contact
+penalty proportional to $\lVert v\rVert^2$, without which their cars did not learn to
+brake.
+% src: docs/plan/plan-v1.md section 4 (Action; Reward and episodes)
+\VERIFY{GT Sophy facts and bibliographic details are not in the repo docs beyond the
+action layout, the 10\,Hz rate and a speed-scaled preview of about 6\,s}
+\citet{song2023reaching} compare reinforcement learning with optimal control on the same
+drone model on fixed tracks, attributing RL's advantage to robustness, with no zero-shot
+test.
+% src: docs/plan/novelty-and-outputs.md (C1, C3 appendix)
+\citet{hoeppke2022thesis} pairs PPO with direct-collocation minimum-lap-time optimisation
+on one shared bicycle model: a policy trained on 8 real F1 layouts finds valid
+trajectories on 18 of 20 circuits, 12 of them unseen, scored by completion or distance
+rather than by a gap to the optimum, and RL is used to warm-start the collocation.
+% src: docs/plan/novelty-and-outputs.md (appendix C1, Hoeppke)
+\citet{green2026drone} train a zero-shot generalist drone racer with a procedural
+generator and a learning-progress curriculum, and compare it with optimal control
+(MPCC/MPCC++) on a single track (5.42\,s against 5.38\,s).
+% src: docs/plan/novelty-and-outputs.md (appendix C1, Green et al.)
+Environment as Policy~\citep{wang2025envaspolicy} learns a track-shaping teacher rewarded
+by the racer's performance percentiles, and CENIE~\citep{teoh2025cenie} runs PLR with an
+approximate (PVL-style) regret score plus novelty on CarRacing, the Box2D benchmark with
+procedural B\'ezier tracks that Robust PLR evaluates zero-shot on 20 real F1 layouts by
+return.
+% src: docs/plan/novelty-and-outputs.md (appendix C1 and C2)
+None of these scores a level with a time-optimal or return-optimal planner, and none
+audits a curriculum score. Our use of optimal control is the reverse of most of this work:
+it does not compete with the learner or train it, it grades the teacher.
+
+\paragraph{Method precedents} Auditing estimators against ground truth across many
+policies has a precedent in the DOPE benchmark for off-policy
+evaluation~\citep{fu2021dope};\VERIFY{DOPE is named in the plan without a summary} we
+borrow its framing for level scores. Interval estimates and aggregate statistics follow
+rliable~\citep{agarwal2021rliable}.

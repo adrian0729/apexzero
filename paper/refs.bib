@@ -1,0 +1,355 @@
+% References for "Regret, Measured".
+%
+% Provenance rule: every field below is taken from the repo's docs (docs/paper/sources-*.md,
+% docs/plan/*.md) unless the entry's `note` starts with "VERIFY". A VERIFY note lists the
+% fields that are NOT in the repo docs (typically full author lists, full titles or venues)
+% and must be checked against the primary source before submission. Where the docs give
+% only "First author et al.", the author list ends in "and others".
+
+% ------------------------------------------------------------------ UED methods and scores
+
+@inproceedings{dennis2020paired,
+  author    = {Dennis, Michael and others},
+  title     = {Emergent Complexity and Zero-shot Transfer via Unsupervised Environment Design},
+  booktitle = {Advances in Neural Information Processing Systems},
+  year      = {2020},
+  note      = {VERIFY: not described in the repo docs (only named in docs/plan/two-track-plan.md
+               section 2.7); authors, title, venue and year from memory}
+}
+
+@inproceedings{jiang2021plr,
+  author    = {Jiang, Minqi and others},
+  title     = {Prioritized Level Replay},
+  booktitle = {International Conference on Machine Learning},
+  year      = {2021},
+  note      = {VERIFY: named as "PLR" in docs/plan/two-track-plan.md section 2.7 without
+               details; authors, title, venue and year from memory}
+}
+
+@inproceedings{jiang2021robustplr,
+  author    = {Jiang, Minqi and others},
+  title     = {Replay-Guided Adversarial Environment Design},
+  booktitle = {Advances in Neural Information Processing Systems},
+  year      = {2021},
+  eprint    = {2110.02439},
+  archivePrefix = {arXiv},
+  note      = {arXiv:2110.02439. Title, venue and year from docs/plan/novelty-and-outputs.md
+               (appendix C1). VERIFY: full author list}
+}
+
+@inproceedings{parkerholder2022accel,
+  author    = {Parker-Holder, Jack and others},
+  title     = {Evolving Curricula with Regret-Based Environment Design},
+  booktitle = {International Conference on Machine Learning},
+  year      = {2022},
+  eprint    = {2203.01302},
+  archivePrefix = {arXiv},
+  note      = {arXiv:2203.01302 (docs/paper/sources-jaxued.md). VERIFY: authors, title,
+               venue and year are not in the repo docs}
+}
+
+@inproceedings{jiang2022samplr,
+  author    = {Jiang, Minqi and others},
+  title     = {Grounding Aleatoric Uncertainty for Unsupervised Environment Design},
+  booktitle = {Advances in Neural Information Processing Systems},
+  year      = {2022},
+  note      = {VERIFY: only the name "SAMPLR" appears in the repo docs; every field from memory}
+}
+
+@misc{coward2024jaxued,
+  author    = {Coward, Samuel and others},
+  title     = {{JaxUED}: A simple and useable {UED} library in {Jax}},
+  year      = {2024},
+  eprint    = {2403.13091},
+  archivePrefix = {arXiv},
+  howpublished = {\url{https://github.com/DramaCow/jaxued}, commit 0f8f1284677375b889e4f13a32c9617cd009f8c4},
+  note      = {arXiv:2403.13091; repository and commit from docs/paper/sources-jaxued.md.
+               VERIFY: authors and title}
+}
+
+@misc{minimax2023code,
+  author    = {{facebookresearch}},
+  title     = {minimax: efficient baselines for autocurricula in {JAX} (source code)},
+  year      = {2023},
+  howpublished = {\url{https://github.com/facebookresearch/minimax}, commit 2ae9e04d37f97d7c14308f5a26237dcfca63470f},
+  note      = {Repository and commit from docs/paper/score-spec.md section 0.1. VERIFY: the
+               associated paper, its authors and year}
+}
+
+@misc{rutherford2024noregrets,
+  author    = {Rutherford, Alexander and others},
+  title     = {No Regrets: Investigating and Improving Regret Approximations for Curriculum Discovery},
+  year      = {2024},
+  eprint    = {2408.15099},
+  archivePrefix = {arXiv},
+  howpublished = {Advances in Neural Information Processing Systems (NeurIPS 2024)},
+  note      = {arXiv:2408.15099v3, NeurIPS 2024 (docs/paper/sources-sfl.md). VERIFY: full
+               title and author list}
+}
+
+@misc{sfl2024code,
+  author    = {Rutherford, Alexander and others},
+  title     = {sampling-for-learnability (source code)},
+  year      = {2024},
+  howpublished = {\url{https://github.com/amacrutherford/sampling-for-learnability}, commit 8b14e2ec07b38dc33a9df476b84faa2f3ca5fd3b},
+  note      = {Repository and commit from docs/paper/sources-sfl.md}
+}
+
+@inproceedings{beukman2024remidi,
+  author    = {Beukman, Michael and others},
+  title     = {Refining Minimax Regret for Unsupervised Environment Design},
+  booktitle = {International Conference on Machine Learning},
+  year      = {2024},
+  eprint    = {2402.12284},
+  archivePrefix = {arXiv},
+  note      = {arXiv:2402.12284; title, venue and year from docs/plan/novelty-and-outputs.md
+               (appendix C2). VERIFY: full author list}
+}
+
+@inproceedings{abdelsadek2025goal,
+  author    = {Abdel Sadek, Karim and others},
+  title     = {Mitigating Goal Misgeneralization via Minimax Regret},
+  booktitle = {Reinforcement Learning Conference},
+  year      = {2025},
+  eprint    = {2507.03068},
+  archivePrefix = {arXiv},
+  note      = {arXiv:2507.03068, RLC 2025 (docs/paper/sources-recent.md section (c);
+               docs/plan/novelty-and-outputs.md, which lists "Abdel Sadek, Farrugia-Roberts,
+               ..., Dennis"). Code: https://github.com/matomatical/jaxgmg, experiments
+               branch. VERIFY: full author list and first names}
+}
+
+@inproceedings{monette2025,
+  author    = {Monette and others},
+  title     = {[title not in the repo docs]},
+  booktitle = {Reinforcement Learning Conference},
+  year      = {2025},
+  note      = {VERIFY: the repo docs give only "Monette et al. (RLC 2025)"
+               (docs/plan/two-track-plan.md section 2.7); every other field is missing}
+}
+
+@misc{mead2026mna,
+  author    = {Mead, Harry and Lacerda, Bruno and Foerster, Jakob and Hawes, Nick},
+  title     = {Improving Regret Approximation for Unsupervised Dynamic Environment Generation},
+  year      = {2026},
+  eprint    = {2601.14957},
+  archivePrefix = {arXiv},
+  note      = {arXiv:2601.14957v1, 21 Jan 2026 (docs/paper/sources-recent.md section (a)).
+               VERIFY: venue (sources-recent.md says none is listed on arXiv;
+               novelty-and-outputs.md says NeurIPS 2025) and first names}
+}
+
+@misc{mna2026code,
+  author    = {Mead, Harry},
+  title     = {Dynamic-Environment-Generation-for-{UED} (source code)},
+  year      = {2026},
+  howpublished = {\url{https://github.com/HarryMJMead/Dynamic-Environment-Generation-for-UED}, commit 12340c7fe443278f4033bab977054af1e40b8188},
+  note      = {Repository and commit from docs/paper/sources-recent.md. VERIFY: author's
+               first name}
+}
+
+@inproceedings{cho2026traced,
+  author    = {Cho, Geonwoo and others},
+  title     = {{TRACED}},
+  booktitle = {International Conference on Learning Representations},
+  year      = {2026},
+  eprint    = {2506.19997},
+  archivePrefix = {arXiv},
+  note      = {arXiv:2506.19997v5, ICLR 2026; code https://github.com/Cho-Geonwoo/TRACED
+               (docs/paper/sources-recent.md section (b1)). VERIFY: full title, author list}
+}
+
+@inproceedings{yuan2026pace,
+  author    = {Yuan and others},
+  title     = {{PACE}},
+  booktitle = {International Conference on Machine Learning},
+  year      = {2026},
+  eprint    = {2605.01358},
+  archivePrefix = {arXiv},
+  note      = {arXiv:2605.01358v1, ICML 2026 (docs/paper/sources-recent.md section (b2)).
+               VERIFY: full title and author list}
+}
+
+@inproceedings{zhang2020vds,
+  author    = {Zhang, Yunzhi and Abbeel, Pieter and Pinto, Lerrel},
+  title     = {Automatic Curriculum Learning through Value Disagreement},
+  booktitle = {Advances in Neural Information Processing Systems},
+  year      = {2020},
+  eprint    = {2006.09641},
+  archivePrefix = {arXiv},
+  note      = {arXiv:2006.09641, NeurIPS 2020 (docs/paper/sources-recent.md section (d)).
+               VERIFY: title and first names}
+}
+
+@misc{kanitscheider2022autodime,
+  author    = {Kanitscheider, Ingmar and others},
+  title     = {{AutoDIME}},
+  year      = {2022},
+  eprint    = {2203.02481},
+  archivePrefix = {arXiv},
+  note      = {arXiv:2203.02481 (docs/paper/sources-recent.md section (d)). VERIFY: full
+               title, author list, venue}
+}
+
+@misc{tzannetos2023procurl,
+  author    = {Tzannetos and others},
+  title     = {{ProCuRL}},
+  year      = {2023},
+  note      = {VERIFY: the repo docs give only "Tzannetos et al. (ProCuRL)", cited by No Regrets
+               for the p(1-p) definition (docs/paper/sources-sfl.md section 1.1)}
+}
+
+% ------------------------------------------------------------------ racing, RL and optimal control
+
+@article{wurman2022sophy,
+  author    = {Wurman, Peter R. and others},
+  title     = {Outracing champion {Gran Turismo} drivers with deep reinforcement learning},
+  journal   = {Nature},
+  year      = {2022},
+  note      = {VERIFY: the repo docs name "GT Sophy" only (docs/plan/plan-v1.md section 4);
+               every bibliographic field from memory}
+}
+
+@misc{fuchs2021,
+  author    = {Fuchs, Florian and others},
+  title     = {Super-Human Performance in {Gran Turismo Sport} Using Deep Reinforcement Learning},
+  year      = {2021},
+  eprint    = {2008.07971},
+  archivePrefix = {arXiv},
+  note      = {arXiv:2008.07971 (docs/plan/plan-v1.md section 12). VERIFY: title, authors,
+               venue and year}
+}
+
+@article{song2023reaching,
+  author    = {Song, Yunlong and others},
+  title     = {Reaching the limit in autonomous racing: Optimal control versus reinforcement learning},
+  journal   = {Science Robotics},
+  year      = {2023},
+  eprint    = {2310.10943},
+  archivePrefix = {arXiv},
+  note      = {arXiv:2310.10943, Science Robotics 2023 (docs/plan/novelty-and-outputs.md,
+               appendix C1, which abbreviates the title). VERIFY: full title and authors}
+}
+
+@phdthesis{hoeppke2022thesis,
+  author    = {Hoeppke},
+  title     = {Optimal Control and Reinforcement Learning for {Formula One} Lap Simulation},
+  school    = {University of Oxford},
+  year      = {2022},
+  type      = {{DPhil} thesis},
+  howpublished = {\url{https://ora.ox.ac.uk/objects/uuid:491a5bb1-db1b-4cf6-b6f2-0ec06097ac9d}},
+  note      = {Title, institution, year and URL from docs/plan/novelty-and-outputs.md
+               (appendix C1). VERIFY: author's full name}
+}
+
+@misc{green2026drone,
+  author    = {Green and Xing and Messikommer and Romero and Scaramuzza},
+  title     = {Zero-shot generalist drone racing},
+  year      = {2026},
+  eprint    = {2606.27348},
+  archivePrefix = {arXiv},
+  note      = {arXiv:2606.27348; authors' surnames from docs/plan/novelty-and-outputs.md
+               (appendix C1). VERIFY: exact title (the docs only describe it) and first names}
+}
+
+@inproceedings{wang2025envaspolicy,
+  author    = {Wang and Xing and Messikommer and Scaramuzza},
+  title     = {Environment as Policy},
+  booktitle = {IEEE International Conference on Robotics and Automation},
+  year      = {2025},
+  eprint    = {2410.22308},
+  archivePrefix = {arXiv},
+  note      = {arXiv:2410.22308, ICRA 2025 (docs/plan/novelty-and-outputs.md, appendix C1 and
+               C2). VERIFY: full title and first names}
+}
+
+@misc{teoh2025cenie,
+  author    = {Teoh and others},
+  title     = {{CENIE}},
+  year      = {2025},
+  eprint    = {2502.05726},
+  archivePrefix = {arXiv},
+  note      = {arXiv:2502.05726 (docs/plan/novelty-and-outputs.md, appendix C2). VERIFY: full
+               title, authors and venue}
+}
+
+% ------------------------------------------------------------------ method precedents and tools
+
+@inproceedings{fu2021dope,
+  author    = {Fu, Justin and others},
+  title     = {Benchmarks for Deep Off-Policy Evaluation},
+  booktitle = {International Conference on Learning Representations},
+  year      = {2021},
+  note      = {VERIFY: only "DOPE" is named in docs/plan/two-track-plan.md section 2.7; every
+               field from memory}
+}
+
+@inproceedings{agarwal2021rliable,
+  author    = {Agarwal, Rishabh and others},
+  title     = {Deep Reinforcement Learning at the Edge of the Statistical Precipice},
+  booktitle = {Advances in Neural Information Processing Systems},
+  year      = {2021},
+  howpublished = {\url{https://github.com/google-research/rliable}},
+  note      = {Library URL from docs/plan/plan-v1.md section 12. VERIFY: paper title, authors,
+               venue and year}
+}
+
+@misc{schulman2017ppo,
+  author    = {Schulman, John and others},
+  title     = {Proximal Policy Optimization Algorithms},
+  year      = {2017},
+  note      = {VERIFY: named only as "PPO" in docs/plan/plan-v1.md section 12}
+}
+
+@inproceedings{schulman2016gae,
+  author    = {Schulman, John and others},
+  title     = {High-Dimensional Continuous Control Using Generalized Advantage Estimation},
+  booktitle = {International Conference on Learning Representations},
+  year      = {2016},
+  note      = {VERIFY: named only as "GAE" in docs/plan/plan-v1.md section 12}
+}
+
+@misc{rejax,
+  author    = {{rejax contributors}},
+  title     = {rejax},
+  howpublished = {\url{https://pypi.org/project/rejax/}},
+  year      = {2024},
+  note      = {URL from docs/plan/plan-v1.md section 12. VERIFY: authors, year and version
+               used in docs/findings/ppo-verification.md}
+}
+
+@misc{tumftm_laptime,
+  author    = {{TUMFTM}},
+  title     = {laptime-simulation},
+  howpublished = {\url{https://github.com/TUMFTM/laptime-simulation}},
+  year      = {2020},
+  note      = {URL from docs/plan/plan-v1.md section 12; parameter provenance in
+               src/apexzero/vehicle/params.py. VERIFY: year}
+}
+
+@misc{tumftm_tracks,
+  author    = {{TUMFTM}},
+  title     = {racetrack-database},
+  howpublished = {\url{https://github.com/TUMFTM/racetrack-database}, LGPL-3.0},
+  year      = {2020},
+  note      = {URL and licence from docs/plan/plan-v1.md section 12 and README.md. VERIFY: year}
+}
+
+@article{wachter2006ipopt,
+  author    = {W{\"a}chter, Andreas and Biegler, Lorenz T.},
+  title     = {On the implementation of an interior-point filter line-search algorithm for
+               large-scale nonlinear programming},
+  journal   = {Mathematical Programming},
+  year      = {2006},
+  note      = {VERIFY: IPOPT is used in the code (src/apexzero/ocp/window.py) but no citation
+               is given in the repo docs; every field from memory}
+}
+
+@article{andersson2019casadi,
+  author    = {Andersson, Joel A. E. and others},
+  title     = {{CasADi}: a software framework for nonlinear optimization and optimal control},
+  journal   = {Mathematical Programming Computation},
+  year      = {2019},
+  howpublished = {\url{https://pypi.org/project/casadi/}},
+  note      = {Package URL from docs/plan/plan-v1.md section 12. VERIFY: paper fields from memory}
+}
