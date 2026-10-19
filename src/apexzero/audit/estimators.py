@@ -37,24 +37,25 @@ LAMBDAS = (0.9, 0.95, 0.98, 1.0)
 
 def _next_values(v, term, trunc, vf, mode: str):
     """V used for s_{t+1}: 0 on termination; 0 (mode F) or V^f (mode B) on truncation."""
-    nxt = np.r_[v[1:], 0.0]
+    nxt = np.concatenate([v[..., 1:], np.zeros_like(v[..., :1])], axis=-1)
     nxt = np.where(trunc, vf if mode == "B" else 0.0, nxt)
     return np.where(term, 0.0, nxt)
 
 
 def scoring_gae(r, v, term, trunc, vf, cut, gamma, lam, mode: str = "F"):
-    """GAE for one trajectory. ``cut[t]`` = 1 where a chunk ends after step t (and the
-    episode does not): the lambda-sum restarts and V_{t+1} bootstraps it."""
+    """GAE for one trajectory, or a batch of them (time is the last axis; ``vf`` is a
+    scalar or broadcasts against ``r``). ``cut[..., t]`` = 1 where a chunk ends after step t
+    (and the episode does not): the lambda-sum restarts and V_{t+1} bootstraps it. The
+    in-training racing-PLR scorer calls this on all slots of a chunk at once."""
     r, v = np.asarray(r, float), np.asarray(v, float)
     term, trunc, cut = (np.asarray(a, bool) for a in (term, trunc, cut))
-    done = term | trunc
+    stop = term | trunc | cut
     delta = r + gamma * _next_values(v, term, trunc, vf, mode) - v
     adv = np.zeros_like(r)
-    acc = 0.0
-    for t in range(len(r) - 1, -1, -1):
-        cont = 0.0 if (done[t] or cut[t]) else 1.0
-        acc = delta[t] + gamma * lam * cont * acc
-        adv[t] = acc
+    acc = np.zeros(r.shape[:-1])
+    for t in range(r.shape[-1] - 1, -1, -1):
+        acc = delta[..., t] + gamma * lam * np.where(stop[..., t], 0.0, 1.0) * acc
+        adv[..., t] = acc
     return adv
 
 

@@ -186,3 +186,16 @@ def test_window_stats_and_level_scores_end_to_end():
     assert np.allclose(sc["pvl"], 0.5 * sc["l1"] + 0.5 * sc["mean_a"])     # E2 identity, aggregated
     assert np.all(sc["learnability_s1"] <= 0.25) and np.all(sc["learnability_s2"] <= 0.25)
     assert np.all(np.isfinite(sc["mna"]))
+
+
+def test_scoring_gae_batches_over_leading_axes():
+    rng = np.random.default_rng(5)
+    N, T = 6, 40
+    r, v, vf = rng.normal(size=(N, T)), rng.normal(size=(N, T)), rng.normal(size=(N, T))
+    term, trunc, cut = rng.random((N, T)) < 0.05, rng.random((N, T)) < 0.05, rng.random((N, T)) < 0.05
+    trunc &= ~term
+    for mode in ("F", "B"):
+        batched = scoring_gae(r, v, term, trunc, vf, cut, 0.99, 0.9, mode)
+        for i in range(N):
+            one = scoring_gae(r[i], v[i], term[i], trunc[i], vf[i], cut[i], 0.99, 0.9, mode)
+            assert np.array_equal(batched[i], one)
