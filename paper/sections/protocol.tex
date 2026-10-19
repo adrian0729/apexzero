@@ -144,11 +144,17 @@ and the top \num{1000} form the buffer; between refreshes, half of the environme
 draw uniformly from the buffer and half from the pool, and every transition is trained on.
 The shuffle restores the reference's random tie-breaking, and a NaN score raises an error
 where the reference would silently select it. A refresh costs 19.2\,M scoring steps
-against 13.1\,M training steps between refreshes (1.5$\times$; the reference ratios are
-7.6$\times$ on MiniGrid and 0.76$\times$ on JaxNav).
-% src: docs/paper/score-spec.md sections 2.3, 2.4
+($4000 \times 4 \times 1200$). The spec sets this against 13.1\,M training steps between
+refreshes ($50 \times 2048 \times 128$, a ratio of 1.5$\times$; the reference ratios are
+7.6$\times$ on MiniGrid and 0.76$\times$ on JaxNav), but that figure assumes 2,048
+environments and 128-step chunks. With the plan's E0 configuration of 8,192 environments
+$\times$ 64 steps it would be 26.2\,M training steps (0.73$\times$).
+% src: docs/paper/score-spec.md sections 2.3, 2.4; 8,192 x 64: docs/plan/two-track-plan.md
+%      section 4 (K4 row) and section 9 ("GPU configuration"); 50 x 8192 x 64 = 26,214,400;
+%      19.2M / 26.2M = 0.73
 \VERIFY{the SFL parameters $N$, $M$ and $T$ are proposals in the spec (section 6) and are
-not fixed in the plan}
+not fixed in the plan; the training-step count per refresh depends on the open chunk
+length and environment count (\cref{sec:est-notation})}
 
 \subsection{External check: JaxUED's maze (E5)}
 \label{sec:protocol-e5}

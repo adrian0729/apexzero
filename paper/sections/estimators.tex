@@ -21,12 +21,31 @@ $T_e$ steps including the terminal transition, as in JaxUED. $r_t$ is the raw re
 standard deviation $\sigma$, so we rescale every value to raw units, $V_t := \sigma \hat
 V_t$, and likewise the five ensemble heads $V^k_t$ (\dev{6}). $\mathrm{term}_t$ marks a
 crash and $\mathrm{trunc}_t$ the window end. $V^f_t$ is the value of the pre-reset final
-observation at a truncation, and $\kappa_t = 1$ marks the last step of a 128-step training
-chunk that does not end the episode. In the fresh audit, window starts are given a random
-phase $\varphi_e \sim U\{0, \dots, 127\}$ against chunk boundaries, as they have in
-training. We write $G_e = \sum_{t \in e} r_t$, $G^\gamma_e = \sum_{\tau=0}^{T_e-1}
+observation at a truncation, and $\kappa_t = 1$ marks the last step of an $L$-step
+training chunk that does not end the episode. The spec and the plan set $L = 128$; the
+current training code uses 64-step rollouts, and the choice is open (see below). In the
+fresh audit, window starts are given a random phase $\varphi_e \sim U\{0, \dots, L-1\}$
+against chunk boundaries, on the assumption that training phases are uniform. We write
+$G_e = \sum_{t \in e} r_t$, $G^\gamma_e = \sum_{\tau=0}^{T_e-1}
 \gamma^\tau r_{t_0+\tau}$ (no bootstrap) and $\bar V_e = T_e^{-1}\sum_{t\in e} V_t$.
-% src: docs/paper/score-spec.md section 0.2
+% src: docs/paper/score-spec.md sections 0.2 (kappa, phi ~ U{0..127}) and 6 ("Chunk length");
+%      docs/plan/two-track-plan.md section 2.2 ("128-step rollout chunks");
+%      src/apexzero/audit/estimators.py (CHUNK = 128); src/apexzero/agents/ppo.py
+%      (PPOConfig.num_steps = 64); scripts/train_dr.py (--num-steps default 64)
+
+\paragraph{Open item: chunk length} The scorer's chunk length $L$ must equal the PPO
+rollout length of the runs it scores, and the two disagree today: the plan and the spec
+use $L = 128$, while \code{PPOConfig.num\_steps}, \code{train\_dr.py} and the plan's E0
+GPU configuration ($8{,}192$ environments $\times$ 64 steps) use 64. Several numbers in
+this paper assume $L = 128$ and change with it: the phase range $U\{0,\dots,127\}$; up to
+11 parameter snapshots per window (20 at $L = 64$; \dev{3}); and the SFL refresh cost
+(\cref{sec:protocol-c}). The phase assumption also needs checking whatever $L$ is.
+Consecutive full-length windows on one environment slot advance the phase by
+$1200 \bmod L = 48$ steps, so a slot whose windows all complete visits only 8 phases at
+$L = 128$ (4 at $L = 64$); late in training, when most windows complete, the phase
+distribution is fixed by earlier crashes and resets and need not be uniform.
+\TODO{fix $L$ in \code{audit-v1} to the E0 rollout length; log the chunk phase of every
+training window and test the uniform-phase emulation of E1 against it}
 
 The reference codebases score levels with the PPO's own GAE tensor. Ours is in scaled
 units and bootstraps truncations, so we run a separate scoring pass in raw units
@@ -209,9 +228,10 @@ the sampler tests P-1--P-9 and S-1--S-4; the samplers themselves are not built y
 
 \Cref{tab:deviations} is the complete list of departures from the pinned reference code,
 reproduced from the scorer specification. Most follow from one fact: our episodes are
-\num{1200}-step windows that span several 128-step training chunks, while every
-reference scores whole episodes inside one rollout. The window-end row has no number
-because it follows the reference.
+\num{1200}-step windows that span several training chunks, while every reference scores
+whole episodes inside one rollout. Rows \dev{1}--\dev{3} quote the spec's 128-step
+chunks, which are not yet settled (\cref{sec:est-notation}). The window-end row has no
+number because it follows the reference.
 % src: docs/paper/score-spec.md section 3 (table reproduced row by row)
 
 {\footnotesize

@@ -224,7 +224,8 @@ against.
 % src: docs/STATUS.md (K5 row: "critic ensemble heads with per-head targets");
 %      docs/paper/score-spec.md section 1.7; scripts/train_dr.py (--ensemble-heads 5)
 \TODO{freeze the E0 network and PPO hyperparameters (8,192 environments $\times$ 64
-steps per the plan) in \code{sim-v1} and list them in an appendix table}
+steps per the plan) in \code{sim-v1} and list them in an appendix table; the 64-step
+rollout conflicts with the scorer's 128-step chunks (\cref{sec:est-notation})}
 
 \subsection{Physics gates}
 \label{sec:env-gates}
