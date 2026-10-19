@@ -147,6 +147,7 @@ def lap_table(label: str, sess: SessionData, timing: SessionTiming, seg: segment
         lap_time=np.array([timing.laps[k].duration for k in keys]),
         phase_t=phase_times(timing, seg, keys) if keys else np.zeros((0, len(seg.labels()))),
         labels=seg.labels(), acronym={n: d.acronym for n, d in sess.drivers.items()},
+        new_set=np.array([bool(statuses[k].new_set) for k in keys], dtype=bool),
     )
 
 

@@ -8,7 +8,8 @@ recorded with its reason so the filter can be audited lap by lap:
    out-lap, so this one ended in the pit lane);
 3. not deleted by race control (track limits);
 4. dry: no rainfall reading during the lap, and not on intermediates or wets;
-5. SOFT tyres, from the stints table;
+5. SOFT tyres, from the stints table (whether the set is new is kept as a covariate,
+   ``LapStatus.new_set``; the compound is not cross-checked against a second source);
 6. no yellow, double-yellow or red flag anywhere on track during the lap;
 7. within 102% of the driver's best lap in the same Q segment (among laps passing 1-6);
 8. no traffic: no other car within 1.0 s ahead of the driver in any corner window.
@@ -32,6 +33,7 @@ from apexzero.drivers.registration import Similarity
 PUSH_WITHIN = 1.02
 TRAFFIC_GAP_S = 1.0
 TOW_GAP_S = 2.0
+NEW_SET_MAX_AGE = 1     # laps on the set before this one (the stints table's tyre age)
 
 
 @dataclass
@@ -48,6 +50,12 @@ class LapStatus:
     @property
     def ok(self) -> bool:
         return not self.reasons
+
+    @property
+    def new_set(self) -> bool | None:
+        """First flying lap on a fresh set: at most the out-lap already done on it (the
+        plan's new-set covariate; a used set is back out after a run, age 3 or more)."""
+        return None if self.tyre_age is None else self.tyre_age <= NEW_SET_MAX_AGE
 
     @property
     def key(self) -> tuple[int, int]:
