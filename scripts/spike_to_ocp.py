@@ -24,6 +24,7 @@ for _k in ("OMP_NUM_THREADS", "OPENBLAS_NUM_THREADS", "VECLIB_MAXIMUM_THREADS", 
 
 import argparse
 import pickle
+import resource
 import time
 from pathlib import Path
 
@@ -141,42 +142,51 @@ def main():
                 solver_for(nxt)
                 runs["polish"] = solve_continuation(solver_for, track, x0, [nxt, H], None, extend,
                                                     overlap=args.overlap, p=p, previous=runs["forward"][-1])
-            stages = [r for rs in runs.values() for r in rs]
-            best_key = max(runs, key=lambda k: runs[k][-1].value)
-            best = runs[best_key][-1]
             spec = WindowSpec(steps=H)
-            ret, alive, xr = replay_window(track, x0, best.a)
-            row = dict(track=name, seconds=sec, method=args.method + ("+polish" if args.polish else ""),
-                       stages=" ".join(f"{len(r.a) * 0.05:.0f}" for r in stages), status=best.status,
-                       best_start=best_key, J_first=window_return(first[0][: H + 1], first[1][:H], spec),
-                       iterations=sum(r.iterations for r in stages), rounds=sum(r.rounds for r in stages),
-                       wall_s=sum(r.solve_seconds for r in stages),
-                       cpu_s=sum(r.meta["cpu_seconds"] for r in stages),
-                       J=best.value, J_starts={k: rs[-1].value for k, rs in runs.items()},
-                       J_check=window_return(best.x, best.a, spec), J_replay=ret,
-                       replay_rel=(ret - best.value) / abs(best.value), replay_survives=alive,
-                       max_state_dev=float(np.max(np.abs(xr - best.x))),
-                       stage_log=[dict(seconds=len(r.a) * 0.05, iterations=r.iterations, rounds=r.rounds,
-                                       cpu_s=r.meta["cpu_seconds"], J=r.value, status=r.status) for r in stages])
-            rows.append(row)
-            print(f"{name} {sec:.0f}s [{row['method']}; stages {row['stages']}]: {row['status']} "
-                  f"it={row['iterations']} rounds={row['rounds']} wall={row['wall_s']:.1f}s cpu={row['cpu_s']:.1f}s "
-                  f"J*={row['J']:.5f} (starts {', '.join(f'{k} {v:.5f}' for k, v in row['J_starts'].items())}) "
-                  f"replay={ret:.5f} ({row['replay_rel']:+.1e}) survives={alive}", flush=True)
+            # One row per method: the forward run alone, and (with --polish) the better of
+            # the two starts, charged with both runs' cost.
+            variants = [(args.method, ["forward"])]
+            if args.polish:
+                variants.append((args.method + "+polish", ["forward", "polish"]))
+            for method, keys in variants:
+                stages = [r for k in keys for r in runs[k]]
+                best_key = max(keys, key=lambda k: runs[k][-1].value)
+                best = runs[best_key][-1]
+                ret, alive, xr = replay_window(track, x0, best.a)
+                row = dict(track=name, seconds=sec, method=method,
+                           stages=" ".join(f"{len(r.a) * 0.05:.0f}" for r in stages), status=best.status,
+                           best_start=best_key, J_first=window_return(first[0][: H + 1], first[1][:H], spec),
+                           iterations=sum(r.iterations for r in stages), rounds=sum(r.rounds for r in stages),
+                           wall_s=sum(r.solve_seconds for r in stages),
+                           cpu_s=sum(r.meta["cpu_seconds"] for r in stages),
+                           J=best.value, J_starts={k: runs[k][-1].value for k in keys},
+                           J_check=window_return(best.x, best.a, spec), J_replay=ret,
+                           replay_rel=(ret - best.value) / abs(best.value), replay_survives=alive,
+                           max_state_dev=float(np.max(np.abs(xr - best.x))),
+                           peak_rss_gb=resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / 1e9,
+                           stage_log=[dict(seconds=len(r.a) * 0.05, iterations=r.iterations, rounds=r.rounds,
+                                           cpu_s=r.meta["cpu_seconds"], J=r.value, status=r.status)
+                                      for r in stages])
+                rows.append(row)
+                print(f"{name} {sec:.0f}s [{method}; stages {row['stages']}]: {row['status']} "
+                      f"it={row['iterations']} rounds={row['rounds']} wall={row['wall_s']:.1f}s "
+                      f"cpu={row['cpu_s']:.1f}s J*={row['J']:.5f} "
+                      f"(starts {', '.join(f'{k} {v:.5f}' for k, v in row['J_starts'].items())}) "
+                      f"replay={ret:.5f} ({row['replay_rel']:+.1e}) survives={alive}", flush=True)
+                with open(out / f"{name}-{int(sec)}s-{method}.pkl", "wb") as fh:
+                    pickle.dump({"result": best, "row": row}, fh)
             for st in row["stage_log"]:
                 print(f"    {st['seconds']:.0f}s: it={st['iterations']} rounds={st['rounds']} "
                       f"cpu={st['cpu_s']:.1f}s J*={st['J']:.5f} {st['status']}", flush=True)
-            with open(out / f"{name}-{int(sec)}s-{row['method']}.pkl", "wb") as fh:
-                pickle.dump({"result": best, "row": row}, fh)
         print(f"{name}: guess {guess_s:.1f}s; compile (cached after the first run) "
               + ", ".join(f"{T * 0.05:.0f}s window {v:.1f}s" for T, v in sorted(compile_s.items())), flush=True)
 
-    lines = ["| Track | Window | Method | Stages (s) | Iter | Rounds | Solve wall | CPU | J* | Replay diff | Survives |",
-             "|---|---|---|---|---|---|---|---|---|---|---|"]
+    lines = [("| Track | Window | Method | Stages (s) | Iter | Rounds | Solve wall | CPU | J* | Replay diff | "
+              "Survives | Peak RSS |"), "|---|---|---|---|---|---|---|---|---|---|---|---|"]
     for r in rows:
         lines.append(f"| {r['track']} | {r['seconds']:.0f} s | {r['method']} | {r['stages']} | {r['iterations']} | "
                      f"{r['rounds']} | {r['wall_s']:.0f} s | {r['cpu_s']:.0f} s | {r['J']:.5f} | "
-                     f"{r['replay_rel']:+.1e} | {r['replay_survives']} |")
+                     f"{r['replay_rel']:+.1e} | {r['replay_survives']} | {r['peak_rss_gb']:.1f} GB |")
     table = "\n".join(lines) + "\n"
     print(table)
     tag = "-".join(args.tracks) + f"-{args.method}" + ("-polish" if args.polish else "")
