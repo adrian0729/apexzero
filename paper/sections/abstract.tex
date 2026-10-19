@@ -1,0 +1,32 @@
+% Abstract. Results are placeholders only (\RESULT); the plan's outcome table
+% (docs/plan/two-track-plan.md section 2.5) lists the claims each outcome would license.
+\begin{center}
+  {\large\bfseries Abstract}
+\end{center}
+\vspace{-0.4em}
+\begin{quote}
+Curriculum methods for unsupervised environment design (UED) choose training levels with
+scores such as positive value loss and MaxMC, which stand in for the agent's regret on
+each level. Whether they rank levels by regret has so far been checked only
+indirectly: against success rate at a single checkpoint, or through the downstream
+performance of the curriculum. The reason is that outside gridworlds nobody knows a
+level's optimal return. We build a domain where it can be computed. In a JAX racing
+benchmark of
+% src: src/apexzero/tracks/levels.py (SIZES: 1,000 + 300 + 100 + 4,000)
+\num{5400} procedurally generated levels, a training-objective optimal control problem
+(TO-OCP) solves the agent's own discounted problem on each level, with the same
+integrator, 20\,Hz control rate and reward as the environment and its termination rules
+as constraints, tightened only in ways that can lower the optimum. Every
+solution is checked by replaying its controls in the float64 simulator. The solver
+returns a best-known rather than a certified global optimum, so the regret we measure is
+a lower bound on true regret. With this answer key we audit six headline level scores
+across training, on fresh rollouts and inside the buffers of real \PLRp{} and SFL runs,
+and we compare curricula, including an oracle-regret arm, on one labelled pool. Fresh
+scores \RESULT{rank fidelity (Spearman $\rho$, RC@10\%) per estimator and training
+phase}; in-buffer fidelity \RESULT{in-buffer $\rho$ and admission AUROC, relative to
+fresh fidelity}; the error is explained mainly by \RESULT{the dominant E2 term: critic
+bias, dispersion, ceiling gap, success saturation or staleness}; on held-out levels the
+oracle-regret curriculum \RESULT{beats / matches / loses to} PVL, MaxMC, SFL and domain
+randomisation; and a replication in JaxUED's maze with its own code \RESULT{agrees /
+disagrees}. The simulator, the labels and the audit harness will be released.
+\end{quote}

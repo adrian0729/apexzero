@@ -1,0 +1,325 @@
+\section{Experimental protocol}
+\label{sec:protocol}
+% Source of everything in this section: docs/plan/two-track-plan.md sections 2.2-2.6 (the
+% current plan), and docs/paper/score-spec.md section 2 (samplers). None of these
+% experiments has been run at full scale; sizes and thresholds are the planned ones and may
+% be re-sized at gate G1 (pilot audit), as the plan allows.
+
+\subsection{Audit subjects: the E0 family}
+\label{sec:protocol-e0}
+
+The scores are audited on checkpoints of domain-randomised (DR) PPO agents trained on the
+full generator (\cref{tab:experiments}). E0 is the main subject. Three manipulations
+separate the factors RQ2 asks about: E0-sym replaces E0's privileged critic with the
+symmetric one standard in UED and is co-primary; E0-const fixes the learning rate and the
+entropy coefficient, so that a change with training phase cannot be a change of schedule;
+and E0-short halves the preview distance $d_{\max}$, which changes what the agent can
+observe.
+% src: docs/plan/two-track-plan.md section 2.4 (experiments table)
+Checkpoints are log-spaced from 10\,M to 1\,B steps. Training phases are defined by window
+completion on A\textsubscript{DR}: below 50\%, 50--90\%, and 90\% or more.
+% src: docs/plan/two-track-plan.md section 2.3 ("All are reported by phase ...")
+
+\begin{table}[t]
+\centering
+\small
+\caption{Planned experiments. Seed counts for C are re-sized at the pilot gate G1 from
+E0's variance. A\textsubscript{QSS} is secondary and is not used for any claim in this
+paper.}
+\label{tab:experiments}
+% src: docs/plan/two-track-plan.md section 2.4 (table "Experiments")
+\begin{tabularx}{\linewidth}{@{}l>{\raggedright\arraybackslash}X>{\raggedright\arraybackslash}p{3.7cm}l@{}}
+\toprule
+ID & What & Size & Answers \\
+\midrule
+E0 & DR, asymmetric critic & 5 seeds $\times$ 1\,B steps; 16 checkpoints & RQ1, RQ2 \\
+E0-sym & DR, symmetric critic (co-primary) & 3 $\times$ 1\,B; 16 checkpoints & critic privilege \\
+E0-const & constant learning rate and entropy coefficient & 2 $\times$ 1\,B; 8 checkpoints & schedule vs.\ phase \\
+E0-short & preview distance $d_{\max}$ halved & 3 $\times$ 1\,B; 8 checkpoints & observability \\
+E1 & fresh-score audit of every E0-family checkpoint & 168 checkpoints $\times$ \num{1412}
+  levels $\times$ 32--64 windows & RQ1, RQ2 \\
+E2 & identities \eqref{eq:pvl-identity}, \eqref{eq:maxmc-identity}; tie fraction & logged during E1 & RQ2 \\
+C & curricula on the \num{4000}-level pool (\cref{sec:protocol-c}) & 21 runs $\times$ 1\,B;
+  buffer snapshots at 8 checkpoints & in-buffer RQ1; RQ3 \\
+E5 & JaxUED maze, JaxUED's and SFL's own code at defaults & 5 seeds $\times$ 16 checkpoints
+  $\times$ \num{2000} mazes & external check \\
+A\textsubscript{QSS} & bias of quasi-steady-state labels & \num{20000} levels, 1 seed, 8
+  checkpoints, 4 windows & secondary \\
+\bottomrule
+\end{tabularx}
+\end{table}
+% 168 = 5 x 16 + 3 x 16 + 2 x 8 + 3 x 8 (E0, E0-sym, E0-const, E0-short checkpoints).
+\VERIFY{the plan gives E1 as \num{1412} levels per checkpoint, but A\textsubscript{DR} +
+A\textsubscript{tail} + A\textsubscript{OOD} = \num{1400}; reconcile the extra 12 (they
+must not be real circuits)}
+\TODO{the asymmetric critic for E0 is not implemented yet (\cref{sec:env-mdp})}
+
+\subsection{Targets and windows}
+\label{sec:protocol-targets}
+
+The headline targets are absolute regret $\Reg = \Jstar - \Jpi$ and normalised regret
+$\Reg/\Jstar$, both primary. $\Jpi$ is the expected return of the \emph{stochastic}
+policy, as UED's samplers see it; the deterministic policy's return is secondary.
+% src: docs/plan/two-track-plan.md section 2.2 ("Episode", "Targets")
+For each level and checkpoint we roll out 32 stochastic windows, raised adaptively to 64
+when $0.05 < \hat p < 0.95$. Windows 1--4 feed the operational scores and windows 5 onward
+the target, so a score and its target never share a rollout; high-budget scores are
+cross-fitted on odd and even windows.
+% src: docs/plan/two-track-plan.md section 2.2 ("Window assignment")
+Two secondary targets remove known confounds: distance lost in 60\,s against the
+undiscounted maximum-distance optimum on 600 A\textsubscript{DR} levels, which removes the
+discount weighting; and a hurdle split into crash probability and regret given a
+completed window. Total regret stays the headline because it is what UED optimises.
+% src: docs/plan/two-track-plan.md section 2.2 ("Secondary targets")
+
+\paragraph{Label noise} Two hundred pilot levels get at least three extra starts, which
+gives a label standard deviation. A late-phase degradation is claimed only where the
+median regret is at least three times that standard deviation, and we report
+reliability-corrected correlations alongside raw ones.
+% src: docs/plan/two-track-plan.md section 2.2 ("Label noise")
+
+\subsection{Curricula on one labelled pool (C)}
+\label{sec:protocol-c}
+
+Every curriculum arm trains on the same \num{4000}-level pool, disjoint from the audit sets,
+so all arms can be scored against the same labels and the in-buffer audit sees real
+buffers. The arms are DR on the pool (5 seeds), \PLRp{} with PVL (5), \PLRp{} with
+oracle-latest (5), \PLRp{} with MaxMC as implemented (3), and SFL (3); E0 serves as DR on
+the full generator. Each runs for 1\,B steps with buffer snapshots at 8 checkpoints, and is
+evaluated on A\textsubscript{DR}, A\textsubscript{tail} and A\textsubscript{OOD}.
+% src: docs/plan/two-track-plan.md section 2.4 (row C; "Level sets")
+The oracle arm scores a write group by $\Jstar - \frac{1}{E}\sum_e G^\gamma_e$, the
+oracle-latest definition of \citet{abdelsadek2025goal} (in their code, \code{oracle-actor});
+unlike theirs, our score never includes a trailing partial episode.
+% src: docs/paper/score-spec.md section 2.2 ("An oracle-latest arm ..."); docs/paper/sources-recent.md (c)
+
+\paragraph{Racing \PLRp{}} We keep JaxUED's \code{LevelSampler}: rank prioritisation with
+temperature $\beta$, a staleness mix $\rho$, admission into the slot of lowest combined
+weight only if the new score is strictly higher, a duplicate check, and gradient steps
+only on replayed levels (\cref{tab:plr}).
+% src: docs/paper/score-spec.md section 2.1; docs/paper/sources-jaxued.md section 2
+Our windows outlast a training chunk, so the sampler works per slot and per chunk:
+replay assignments are pre-drawn from the buffer state at the chunk start, a finished
+window writes its score at the end of the chunk, a new level gets one full exploratory
+window before it can enter the buffer, and the PPO loss is masked to replayed transitions
+(\dev{15}--\dev{19}). Scores are accumulated across chunks with GAE bootstrapped at each
+chunk end and written when the window ends; the audit's operational score calls the same
+function. Unlike JaxUED, whose score is $-\infty$ when no episode completes within the
+rollout, no level can be scored $-\infty$ here.
+% src: docs/paper/score-spec.md section 2.2; docs/plan/two-track-plan.md section 2.2
+%      ("Racing-PLR scoring protocol")
+With $\beta = 0.3$ and \num{1000} slots, the top-ranked level carries 0.872 of the score
+weight and, after the staleness mix, at least 0.61 of all replays. This is the reference
+behaviour and C replicates it.
+% src: docs/paper/score-spec.md section 2.1 (paragraph after the parameter table; test P-9)
+
+\begin{table}[t]
+\centering
+\small
+\caption{\PLRp{} parameters: JaxUED's class defaults, its maze example's defaults, the
+Robust PLR paper (MiniGrid), and ours.}
+\label{tab:plr}
+% src: docs/paper/score-spec.md section 2.1 (parameter table)
+\begin{tabular}{@{}lllll@{}}
+\toprule
+Parameter & Class default & Maze example & Robust PLR & Ours (C) \\
+\midrule
+Capacity & required & 4000 & 4000 & 1000 (\dev{20}) \\
+Replay probability & 0.95 & 0.8 & 0.5 & 0.8 \\
+Staleness $\rho$ & 0.5 & 0.3 & 0.3 & 0.3 \\
+Prioritisation / $\beta$ & rank / 1.0 & rank / 0.3 & rank / 0.3 & rank / 0.3 \\
+Minimum fill ratio & 1.0 & 0.5 & -- & 0.5 \\
+Duplicate check & no & yes & -- & yes, by level id \\
+Exploratory gradient updates & -- & no (\PLRp{}) & -- & no \\
+$\gamma$ / $\lambda$ & -- & 0.995 / 0.98 & 0.995 / 0.95 & 0.995 / 0.95 \\
+\bottomrule
+\end{tabular}
+\end{table}
+\VERIFY{our minimum fill ratio of 0.5 is taken from the maze example's defaults and
+awaits sign-off (spec section 2.1)}
+
+\paragraph{Racing SFL} Every 50 chunks the parameters are frozen, the whole pool is
+shuffled, each level is scored by $\hat p(1-\hat p)$ from four independent windows (S1),
+and the top \num{1000} form the buffer; between refreshes, half of the environment slots
+draw uniformly from the buffer and half from the pool, and every transition is trained on.
+The shuffle restores the reference's random tie-breaking, and a NaN score raises an error
+where the reference would silently select it. A refresh costs 19.2\,M scoring steps
+($4000 \times 4 \times 1200$). The spec sets this against 13.1\,M training steps between
+refreshes ($50 \times 2048 \times 128$, a ratio of 1.5$\times$; the reference ratios are
+7.6$\times$ on MiniGrid and 0.76$\times$ on JaxNav), but that figure assumes 2,048
+environments and 128-step chunks. With the plan's E0 configuration of 8,192 environments
+$\times$ 64 steps it would be 26.2\,M training steps (0.73$\times$).
+% src: docs/paper/score-spec.md sections 2.3, 2.4; 8,192 x 64: docs/plan/two-track-plan.md
+%      section 4 (K4 row) and section 9 ("GPU configuration"); 50 x 8192 x 64 = 26,214,400;
+%      19.2M / 26.2M = 0.73
+\VERIFY{the SFL parameters $N$, $M$ and $T$ are proposals in the spec (section 6) and are
+not fixed in the plan; the training-step count per refresh depends on the open chunk
+length and environment count (\cref{sec:est-notation})}
+
+\subsection{External check: JaxUED's maze (E5)}
+\label{sec:protocol-e5}
+
+To check that the audit's conclusions are not specific to racing, E5 repeats it in
+JaxUED's 13$\times$13 maze with JaxUED's own DR and PLR-MaxMC code and the SFL authors'
+MiniGrid code, all at their defaults, with agent views of 5$\times$5 and 13$\times$13
+and a buffer audit as well as the fresh audit.
+% src: docs/plan/two-track-plan.md section 2.4 (row E5); docs/paper/sources-sfl.md section 1.3
+\VERIFY{the plan says ``JaxUED's own DR, PLR-MaxMC and SFL code''; the docs show no SFL
+implementation in JaxUED, so we read SFL as the SFL authors' \code{minigrid\_sfl.py}, which
+wraps JaxUED's maze}
+The optimum is exact: a breadth-first search over (position, direction) finds the fewest
+actions $k$ that end by stepping into the goal, so $J^* = \gamma^{k-1}(1 - 0.9\,k/250)$, or 0
+if the goal is unreachable within 250 steps.
+% src: src/apexzero/maze/oracle.py (module docstring)
+We do not use JaxUED's own \code{optimal\_value}, whose time penalty and discount appear to
+be one step off under the environment's reward timing.
+% src: docs/paper/sources-jaxued.md section 3.1 ("Possible off-by-one ... my derivation; I did not run it")
+\VERIFY{the off-by-one in JaxUED's \code{optimal\_value} is a derivation that has not been
+confirmed by running it; confirm or drop this sentence}
+Executing the search's plan in JaxUED's environment achieves exactly the computed optimal
+return on every solvable random maze we tested, and JaxUED's maze example runs unmodified
+from a vendored copy.
+% src: tests/test_maze_oracle.py::test_bfs_optimum_is_achieved_exactly_in_the_jaxued_env
+%      (atol 1e-6; at least 15 of 30 random mazes are solvable and checked);
+%      docs/STATUS.md (P harness row); third_party/jaxued_examples/
+
+\subsection{Endpoints and statistics}
+\label{sec:protocol-endpoints}
+
+\paragraph{Co-primary endpoints} With Holm correction within the family (to be listed in
+\code{protocol-v1}; see below), each reported by phase and by critic type:
+\begin{itemize}
+  \item Spearman $\rho$ between the score and absolute regret, and between the score and
+        normalised regret;
+  \item RC@10\%, the regret captured by the score's top 10\% of levels relative to the
+        most any 10\% could capture,
+        $\mathrm{RC@10\%} = \sum_{\theta \in \mathrm{top}_{10}(S)} \Reg^{+}(\theta) \big/
+        \sum_{\theta \in \mathrm{top}_{10}(\Reg)} \Reg^{+}(\theta)$, with
+        $\Reg^{+} = \max(\widehat{\Reg}, 0)$, so a perfect ranking scores 1 and a random
+        one scores $0.1\sum_\theta \Reg^{+} / \sum_{\mathrm{top}_{10}(\Reg)} \Reg^{+}$ in
+        expectation, which we report alongside;
+  \item in-buffer $\rho$, between the stored score and current regret, with score age as
+        a covariate;
+  \item admission AUROC, how well the score separates levels whose regret is in the top
+        quantile;
+  \item for RQ3, the interquartile mean of held-out regret at 1\,B steps.
+\end{itemize}
+% src: docs/plan/two-track-plan.md section 2.3 ("Co-primary endpoints")
+\paragraph{Negative regret estimates} A per-level estimate $\widehat{\Reg} = \Jstar -
+\Jhat$ can be negative, through Monte Carlo noise in $\Jhat$ or a label the agent beats.
+Rank correlations use the raw estimates; RC@10\% clips them at zero as above; and levels
+on which an observed agent return beats $\Jstar$ stay in the endpoints, flagged as label
+shortfalls and counted in the report of \cref{sec:answer-lb}.
+\VERIFY{the plan defines RC@10\% only in words (``the share of regret captured by the
+score's top 10\%''); the normalised form above and the handling of negative estimates are
+our proposal and must be signed off in \code{protocol-v1}, together with the admission
+quantile, which the plan leaves unspecified. Under this definition the provisional
+thresholds below should be checked against the random-score expectation, which depends on
+how concentrated regret is}
+\TODO{list the Holm family in \code{protocol-v1}: which of the seven estimator rows,
+the five co-primary endpoints, the three phases and the two critics (E0, E0-sym) form one
+family, and whether absolute and normalised regret, and S1 and S2 learnability, count as
+separate tests}
+
+\paragraph{Diagnostics} A two-loading regression
+$\mathrm{rank}(S) \sim a\,\mathrm{rank}(\Jstar) + b\,\mathrm{rank}(\Jhat)$, for which a
+faithful score has $a > 0$ and $b < 0$; partial $\rho$; precision and contamination at
+quantile $q$; a statistic $\eta$ computed from a simulated \PLRp{} replay process
+(buffer, admission rule, staleness mix, $\beta \in \{0.1, 0.3, 1\}$); and lagged
+fidelity, the score at checkpoint $k-1$ against regret at checkpoint $k$. We do not use
+a static rank$^{-1/0.3}$ weighting, which puts 87\% of its mass on one level.
+% src: docs/plan/two-track-plan.md section 2.3 ("Diagnostics")
+\VERIFY{the plan names $\eta$ without defining it; we intend the share of simulated replays
+that go to levels in the true top regret quantile, to be fixed in \code{audit-v1}}
+
+\paragraph{Thresholds} Provisionally, a score is \emph{faithful} if $\rho \ge 0.5$ and
+RC@10\% $\ge 0.6$, and \emph{uninformative} if $\rho \le 0.2$, or RC@10\% $\le 0.2$, or it
+does not beat the best agent-only and policy-agnostic baseline (paired interval). The
+final thresholds are set at G1 from the pilot's minimum detectable effect.
+% src: docs/plan/two-track-plan.md section 2.3 ("Thresholds")
+
+\paragraph{Statistics} Intervals come from a two-way bootstrap over seeds and levels, or a
+crossed-effects model on Fisher-$z$ correlations. The primary trend test is a $t$-test on
+per-seed slopes. Equivalence is tested by TOST with a margin from the pre-computed minimum
+detectable effect. The PPO return scale $\sigma$, the entropy coefficient and the
+observation-normalisation statistics enter as covariates. Aggregates follow
+rliable~\citep{agarwal2021rliable}.
+% src: docs/plan/two-track-plan.md section 2.3 ("Statistics")
+
+\subsection{Pre-registration}
+\label{sec:prereg}
+
+The scorer, the window assignment, the level partition and the fallback for an
+early-versus-mid comparison are frozen in the tag \code{audit-v1}; the endpoints,
+thresholds, predictions and the outcome table below are frozen in \code{protocol-v1}. Both
+are tagged at G1, after the pilot audit and before any full-scale result. A claim ledger
+written by the figure scripts ties every number in the paper to the script and data that
+produced it.
+% src: docs/plan/two-track-plan.md sections 2.2, 2.6 ("Forking paths"), 4 (lockbox rules), 5.2 (G1)
+\TODO{neither tag exists yet; this section describes what they will contain}
+
+\paragraph{Predictions}
+\begin{enumerate}[(P1)]
+  \item The ratio PVL/L1 tends to 0.5 as critic error shrinks, in mode B (in mode F the
+        window-end artefact of \cref{sec:est-notation} keeps it below 0.5).
+  \item MaxMC as implemented has a high $\rho$ against absolute regret and a $\rho$ near
+        zero against normalised regret.
+  \item The error of unit-consistent MaxMC is dominated by the ceiling gap on hard levels.
+  \item In-buffer fidelity is lower than fresh fidelity.
+\end{enumerate}
+% src: docs/plan/two-track-plan.md section 2.5 ("Pre-registered predictions");
+%      mode-B restriction from docs/paper/score-spec.md sections 0.3 and 6
+
+\paragraph{Outcomes} \Cref{tab:outcomes} maps each possible outcome to the claim it
+licenses. Rows B, D and E trigger a follow-up experiment (E4) only if they hold for PVL,
+MaxMC or learnability at the operational budget after Holm correction, the label-noise
+floor and the reliability correction; every E4 design includes both DR arms and uses the
+audit's units.
+% src: docs/plan/two-track-plan.md section 2.5 ("E4 trigger")
+
+\begin{table}[t]
+\centering
+\small
+\caption{Pre-registered outcome table. Each row's claim is licensed only if its test
+passes.}
+\label{tab:outcomes}
+% src: docs/plan/two-track-plan.md section 2.5 (outcome table)
+\begin{tabularx}{\linewidth}{@{}>{\raggedright\arraybackslash}p{2.0cm}>{\raggedright\arraybackslash}X>{\raggedright\arraybackslash}X>{\raggedright\arraybackslash}p{2.3cm}@{}}
+\toprule
+Row & Test & Claim & Follow-up \\
+\midrule
+A, faithful & faithful in every phase, for both critics, fresh and in-buffer; TOST passes &
+  ``With dense reward, scores track regret in continuous control'', scoped by E0-sym,
+  E0-short and E5 & none \\
+B, degrades late & $\rho_{\text{late}} - \rho_{\text{early}} \le -0.1$ with the interval
+  excluding 0, still present in E0-const & ``Scores guide the curriculum only while the
+  agent is incompetent, because of [E2 term]'' & E4-switch, with a $\Jhund$-scored control
+  arm \\
+C, uninformative & uninformative throughout & ``Ground truth confirms No Regrets in
+  continuous control'' & none \\
+D, track type & $\Delta\rho \ge 0.2$ between track-type strata & ``Score error is
+  structured, so samplers under-replay [type]'' & E4-type \\
+E, faithful but not useful & oracle-latest $\approx$ DR-pool in C & ``Regret is the wrong
+  target here'' & E4-hybrid \\
+F, manipulations disagree & symmetric vs.\ asymmetric critic, full vs.\ short preview, or
+  racing vs.\ maze differ by $\ge 0.2$ & ``Fidelity depends on [critic privilege /
+  observability]'' & none \\
+G, fresh $\ne$ buffer & in-buffer $\rho$ differs from fresh $\rho$ by $\ge 0.2$ &
+  ``DR-style audits misstate what curricula actually see'' & none \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\paragraph{Strata and lockbox} Track-type strata are tagged from the tokens in the first
+$\approx$1.4\,km of a strip, which carries 90\% of the discounted weight. No audit or
+curriculum experiment runs on a real circuit. The twelve development layouts supply the
+generator's statistics and hosted the development checks (the specialist, the
+minimum-time replay gate and the solver spike). No number in this paper is computed on
+the twelve lockbox circuits (\cref{sec:threats}).
+% src: docs/plan/two-track-plan.md sections 2.4 ("Level sets") and 4 ("Lockbox rules")
+
+\paragraph{Compute} The plan's total GPU budget, which also covers tuning and a companion
+project, is 62--127 GPU-hours on one RTX 4090 without E4; the labels are budgeted at
+1,200--3,000 CPU-hours, unverified until the TO-OCP spike finishes.
+% src: docs/plan/two-track-plan.md section 8 ("Compute")
+\RESULT{actual GPU-hours and CPU-hours used}

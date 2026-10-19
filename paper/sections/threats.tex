@@ -1,0 +1,146 @@
+\section{Threats to validity}
+\label{sec:threats}
+% Built from docs/plan/two-track-plan.md section 2.6 (threats and mitigations) and section 9
+% (reviewer and scope critiques), plus threats that follow from the code and the TO-OCP
+% formulation (sections 3 and 4 of this draft). Each paragraph states the threat, what
+% the design does about it, and what remains.
+
+\paragraph{The labels are local optima} IPOPT returns local optima, so every label is a
+lower bound (\cref{sec:answer-lb}). A lower bound is harmless for ranking only if the
+solver's shortfall is unrelated to what the scores respond to. If the solver fails more
+often on, say, hairpin-heavy levels, measured regret is biased low exactly there. The
+uniform three-start budget, including a start from the agent's own best rollout, the
+200-level repeatability study and the check against observed agent returns bound the
+shortfall; we report label quality per level set and per track-type stratum
+(\cref{sec:results-labels}).
+% src: docs/plan/two-track-plan.md sections 2.2 and 2.6 (row "Labels are local optima")
+
+\paragraph{Labels depend on the agent} One of the three warm starts is the final
+checkpoint's best rollout, so how tight a label is depends on how well that agent drives
+the level. Label error is then correlated with agent-derived quantities, including the
+agent returns that MaxMC's $\Rmax$ is built from: on levels where the final agent is
+strong, its rollout lifts the label, and a score that tracks the agent's own returns can
+look better aligned with regret than it is. The uniform budget keeps the effect the same
+for every level, but does not remove it. We pre-register a report of the label gain from
+the agent start, $\Jstar$ minus the best of the two agent-free starts, by level set and
+track-type stratum, and repeat the headline endpoints with labels from the agent-free
+starts only.
+\TODO{add both to \code{protocol-v1}}
+
+\paragraph{Label noise late in training} As the agent improves, regret shrinks towards
+the size of the label noise and any correlation is attenuated. A late-phase degradation
+is claimed only where median regret is at least three times the label standard deviation,
+correlations are also reported after reliability correction, and the E4 trigger requires
+both. If late-phase labels turn out too noisy, the paper falls back to early- and
+mid-phase claims and the buffer audit.
+% src: docs/plan/two-track-plan.md sections 2.2 ("Label noise"), 2.5 ("E4 trigger"), 7
+
+\paragraph{Regret no policy in the class can remove} Part of $\Reg$ is out of reach for
+our agent: it does not observe the hidden grip draw ($\pm2\%$), sees at most 500\,m ahead,
+and acts on noisy observations. This is regret in the sense UED defines it, but a
+regret-maximising sampler can fixate on exactly such levels~\citep{beukman2024remidi}. The
+design measures it rather than removing it: E0-short changes how much the agent can see,
+the oracle arm in C is compared with DR on held-out levels, and the E4-switch follow-up
+has a control arm scored against $\Jhund$.
+% src: src/apexzero/env/adapters.py (mu_jitter 0.02); src/apexzero/env/racing.py (preview_offsets);
+%      docs/plan/two-track-plan.md section 2.5 (row B follow-up)
+\TODO{estimate the share of regret due to the hidden grip by labelling a subset of levels
+twice, with the drawn and with the nominal grip}
+
+\paragraph{The finite window} The label maximises return over exactly \num{1200} steps,
+while PPO bootstraps the window end and learns a time-unaware policy. Two effects follow:
+the label omits the tail $\gamma^{T}V(x_T)$, and the optimiser may arrive at the window
+end in a state no time-unaware policy would choose, such as too fast for a corner just
+beyond it. Both are weighted by $\gamma^{1200} \approx 0.0024$.
+% src: docs/paper/sources-jaxued.md section 4 item 3 (gamma^1200)
+\RESULT{on a subset of levels, the change in $\Jstar$ when the window is extended by 10\,s
+and the extra steps are dropped from the objective, as a bound on both effects}
+
+\paragraph{An audit of a sampler nobody runs} Fresh scores on DR checkpoints are not what a
+curriculum sees: a curriculum's buffer holds old scores from earlier policies, chosen by
+an admission rule. C therefore runs real \PLRp{} and SFL, and in-buffer fidelity and
+admission AUROC are co-primary. Our samplers are adapted to windows that span chunks
+(\cref{tab:deviations}); E5 runs the reference code unmodified.
+% src: docs/plan/two-track-plan.md section 2.6 (row "It audits a sampler nobody runs")
+
+\paragraph{A privileged critic flatters value-based scores} E0's critic sees more than the
+actor, which may make PVL and MaxMC look better than in standard UED. E0-sym, with a
+symmetric critic, is co-primary, and the size of the drop is reported.
+% src: docs/plan/two-track-plan.md section 2.6
+\TODO{the asymmetric critic is not implemented yet; until it is, all runs are E0-sym}
+
+\paragraph{Training schedule moves with phase} Learning rate and entropy coefficient decay
+during training, so a change in fidelity with phase could be a change of schedule. E0-const
+holds both fixed, schedule variables enter as covariates, and deterministic-policy windows
+are reported separately.
+% src: docs/plan/two-track-plan.md section 2.6
+
+\paragraph{Discount weighting and mixed windows} With $\gamma = 0.995$ the first seconds of
+a window dominate its return, and windows that crash mix with clean ones. Levels start on
+a straight; strata and score variants are discount-weighted; the undiscounted
+maximum-distance target removes the weighting; and the hurdle split separates crash
+probability from regret given completion.
+% src: docs/plan/two-track-plan.md section 2.6
+
+\paragraph{One bespoke domain with dense reward} Racing is one domain, and its reward is
+dense. The maze replication uses JaxUED's own code and sparse reward; the critic and
+preview manipulations vary the racing agent itself. A sparse-reward racing arm was
+considered and rejected for this version, because it would need PPO re-tuned on an
+untested reward; claims about reward density are therefore stated as conjecture.
+% src: docs/plan/two-track-plan.md sections 2.6 and 9 ("One bespoke domain. Partly accepted")
+
+\paragraph{Forking paths} Six headline estimators are fixed in advance, with Holm
+correction within the co-primary family; \code{audit-v1} and \code{protocol-v1} are tagged
+before any full-scale result; and the claim ledger is written by the figure scripts, not by
+hand.
+% src: docs/plan/two-track-plan.md section 2.6
+
+\paragraph{Numerical artefacts} A label is wrong if the optimiser exploits a difference
+between its model and the simulator. Both evaluate the same $C^2$ spline and the same step
+map (\cref{tab:gates}), every label is replayed in float64, and a float32-against-float64
+error bar covers the fact that agents run in single precision.
+% src: docs/plan/two-track-plan.md section 2.6 (row "Numerical artefacts")
+\TODO{measure the float32-vs-float64 error bar}
+
+\paragraph{The optimiser finds what the model allows} An optimum is only as sensible as the
+model: an early minimum-time solution drifted far beyond the rear tyre's peak slip, on
+the soft post-peak tyre curve, which we then closed with a slip limit applied identically
+in the environment and the optimiser (\cref{sec:env-mdp}). An agent could find the same
+exploits, and then they are part of both sides of $\Reg$, but we want neither side to
+depend on them. Labels are computed only after the simulator is frozen as \code{sim-v1},
+and any exploit found later is reported, not silently fixed.
+% src: docs/STATUS.md ("Things found along the way"); docs/plan/two-track-plan.md section 4 (K5, K2b)
+
+\paragraph{Realism is not the point} The vehicle uses literature values where they exist
+and assumptions elsewhere (\cref{tab:params}); it is an F1-style car, not a calibrated
+one. The audit does not need realism. It needs the agent's and the optimiser's problems
+to be identical, which the parity, integrator and replay gates check. Realism only
+supports the weaker claim that the domain exercises racing-like control, which the
+terminal-speed, braking and skidpad gates support.
+
+\paragraph{Lockbox hygiene} Twelve real circuits are a lockbox, held out of this paper
+for later evaluation, and twelve disjoint ones are for development. No audit or
+curriculum experiment uses a real circuit. The generator is fitted on the development
+circuits only, and the development checks (the specialist, the minimum-time replay gate
+of \cref{tab:gates} and the solver spike) ran on development circuits only. No number in
+the paper is computed on a lockbox circuit. Two departures from a clean lockbox happened
+before the simulator was frozen, and we disclose both. First, minimum-time optima were
+once solved on every TUMFTM circuit, the lockbox included, against a plan that allows
+optimal control only on development circuits until the generator is frozen; the replay
+gate reported here was recomputed on the development circuits alone, and none of those
+lockbox results is used. Second, an earlier minimum-time optimum on a lockbox circuit
+revealed the slip exploit above, and the $10^\circ$ slip limit was introduced because of
+it. A lockbox circuit therefore shaped one simulator design choice. The exploit is a
+property of the tyre curve, which has the same post-peak shape on every track, but the
+decision to close it came from a lockbox result, so any later lockbox evaluation must
+report it.
+% src: docs/STATUS.md (K2a row; "Things found along the way", first item);
+%      src/apexzero/tracks/corners.py (R_DEV, R_TEST);
+%      docs/plan/two-track-plan.md section 4 ("OCPs run on R-dev only until generator-v1 is tagged",
+%      "The paper never touches R-test"); R-dev recomputation: see the src comment of tab:gates
+\VERIFY{the docs record the exploit and the fix (docs/STATUS.md) but not how the value
+$10^\circ$ was chosen; if it was tuned against the lockbox optimum, say so here}
+Separately, the public telemetry of \cref{app:snapping} covers qualifying sessions at
+real circuits, lockbox circuits among them. It is human data only: no agent, optimum,
+quasi-steady-state profile or simulator quantity is computed for any circuit there, and
+no claim depends on it.

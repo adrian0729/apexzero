@@ -1,0 +1,143 @@
+% Regret, Measured: Auditing Curriculum Level Scores Against Optimal Control
+% First draft (18 Oct 2026). Build:  cd paper && latexmk -pdf main.tex
+%
+% Conventions used throughout this draft
+%   \RESULT{...}  placeholder for a number or claim that only the experiments can supply.
+%                 Nothing inside a \RESULT is a finding.
+%   \VERIFY{...}  a fact, citation detail or definition that is NOT stated in the repo's
+%                 docs (docs/plan, docs/paper, docs/findings, docs/STATUS.md) and must be
+%                 checked against the primary source before submission.
+%   \TODO{...}    work that is planned but not done, or a known gap in the draft.
+%   % src: PATH   every number in the text carries a comment naming the repo file it comes
+%                 from (code, test or doc). Numbers without such a comment are definitions
+%                 or placeholders.
+%   refs.bib      bibliographic provenance lives in an unprinted `provenance` field; an
+%                 entry with an open VERIFY carries \bibverify in its printed note.
+% Set \draftfalse to hide the \VERIFY, \TODO and \bibverify markers. They must all be
+% resolved first: \draftfalse only hides them (each remaining \bibverify then logs a
+% warning), and placeholders such as the Monette et al. title in refs.bib and every
+% \RESULT still print.
+
+\documentclass[10pt]{article}
+
+% ---------------------------------------------------------------- page and fonts
+% ICLR-like single column: 5.5in x 9in text block, Times-like text and maths.
+\usepackage[letterpaper,textwidth=5.5in,textheight=9in,top=1in,headheight=12pt,headsep=25pt]{geometry}
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage{amsmath}
+\usepackage{newtxtext,newtxmath}
+\usepackage{microtype}
+\usepackage{bm}
+
+% ---------------------------------------------------------------- tables, figures, lists
+\usepackage{booktabs}
+\usepackage{array}
+\usepackage{tabularx}
+\usepackage{longtable}
+\usepackage{multirow}
+\usepackage{graphicx}
+\graphicspath{{../docs/findings/}}
+\usepackage[font=small,labelfont=bf,skip=4pt]{caption}
+\usepackage[shortlabels]{enumitem}
+\setlist{itemsep=1pt,topsep=3pt,parsep=0pt}
+\usepackage{siunitx}
+\sisetup{group-separator={,},group-minimum-digits=4}
+
+% ---------------------------------------------------------------- references
+\usepackage[round,authoryear]{natbib}
+\usepackage{xcolor}
+\definecolor{linkblue}{RGB}{0,0,128}
+\usepackage[colorlinks=true,linkcolor=linkblue,citecolor=linkblue,urlcolor=linkblue]{hyperref}
+\usepackage[capitalise,nameinlink,noabbrev]{cleveref}
+\usepackage{url}
+% Function names in typewriter that may break at underscores (url.sty breaks at "_").
+\DeclareUrlCommand\fn{\urlstyle{tt}}
+\renewcommand{\bibfont}{\small}
+\setlength{\bibsep}{2pt plus 1pt}
+
+% ---------------------------------------------------------------- section style
+\usepackage{titlesec}
+\titleformat{\section}{\normalfont\large\bfseries}{\thesection}{0.8em}{\MakeUppercase}
+\titleformat{\subsection}{\normalfont\normalsize\bfseries}{\thesubsection}{0.8em}{}
+\titleformat{\paragraph}[runin]{\normalfont\normalsize\bfseries}{}{0pt}{}[.]
+\titlespacing*{\section}{0pt}{12pt}{6pt}
+\titlespacing*{\subsection}{0pt}{9pt}{4pt}
+\titlespacing*{\paragraph}{0pt}{6pt}{0.6em}
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{5.5pt}
+
+% ---------------------------------------------------------------- draft markers
+\newif\ifdraft
+\drafttrue
+\definecolor{resultcol}{RGB}{0,110,60}
+\definecolor{verifycol}{RGB}{190,0,0}
+\definecolor{todocol}{RGB}{200,100,0}
+\newcommand{\RESULT}[1]{{\color{resultcol}[\textsc{result}: #1]}}
+\newcommand{\VERIFY}[1]{\ifdraft{\color{verifycol}\,[\textsc{verify}: #1]}\fi}
+\newcommand{\TODO}[1]{\ifdraft{\color{todocol}\,[\textsc{todo}: #1]}\fi}
+% Used in refs.bib notes for entries whose fields are not yet verified.
+\newcommand{\bibverify}{\ifdraft{\color{verifycol}\,[\textsc{verify}: fields, see
+  refs.bib]}\else\PackageWarning{refs.bib}{An entry still carries an unresolved
+  VERIFY}\fi}
+
+% ---------------------------------------------------------------- notation
+\newcommand{\Jstar}{J^{*}_{20}}
+\newcommand{\Jhund}{J^{*}_{100}}
+\newcommand{\Jpi}{J^{\pi}}
+\newcommand{\Jhat}{\hat{J}^{\pi}}
+\newcommand{\Reg}{\mathrm{Reg}}
+\newcommand{\Regn}{\mathrm{Reg}_{\mathrm{norm}}}
+\newcommand{\Rmax}{R_{\max}}
+\newcommand{\Rgmax}{R^{\gamma}_{\max}}
+\newcommand{\PLRp}{PLR\textsuperscript{$\perp$}}
+\newcommand{\code}[1]{\texttt{#1}}
+\newcommand{\ind}{\mathbf{1}}
+\newcommand{\dev}[1]{\textsc{dev}-#1}
+\newcommand{\eg}{e.g.,\ }
+\newcommand{\ie}{i.e.,\ }
+\DeclareMathOperator*{\argmax}{arg\,max}
+\DeclareMathOperator{\std}{std}
+
+% ---------------------------------------------------------------- title block
+\title{Regret, Measured: Auditing Curriculum Level Scores\\Against Optimal Control}
+\author{Anonymous authors\\Paper under double-blind review}
+\date{}
+
+\makeatletter
+\renewcommand{\maketitle}{%
+  \begin{flushleft}
+    {\LARGE\bfseries \@title \par}
+    \vspace{1.2em}
+    {\normalsize \@author \par}
+    \ifdraft\vspace{0.6em}{\small\color{todocol}Draft of 18 October 2026. Every
+      \textsc{result} is a placeholder; every \textsc{verify} must be checked before
+      submission.\par}\fi
+  \end{flushleft}
+  \vspace{0.8em}}
+\makeatother
+
+\begin{document}
+
+\maketitle
+
+\input{sections/abstract}
+\input{sections/introduction}
+\input{sections/related}
+\input{sections/environment}
+\input{sections/answer_key}
+\input{sections/estimators}
+\input{sections/protocol}
+\input{sections/results}
+\input{sections/threats}
+\input{sections/conclusion}
+
+\bibliographystyle{plainnat}
+\bibliography{refs}
+
+\clearpage
+\appendix
+\input{sections/appendix_braking}
+\input{sections/appendix_snapping}
+
+\end{document}

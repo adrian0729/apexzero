@@ -1,0 +1,53 @@
+\section{Results}
+\label{sec:results}
+% Skeleton only. No experiment in this section has been run; every number is a \RESULT
+% placeholder to be filled from the claim ledger after `protocol-v1` is tagged. The order
+% follows the co-primary endpoints of section 5.6.
+
+\newcommand{\placeholderfig}[1]{%
+  \fbox{\parbox[c][3.2cm][c]{0.94\linewidth}{\centering\color{resultcol}\small
+  [\textsc{figure placeholder}: #1]}}}
+
+\subsection{Labels}
+\label{sec:results-labels}
+\RESULT{fraction of the \num{5400} levels with an accepted, replay-verified label; solver
+failures by cause; distribution of $\Jstar$ per level set; which of the three starts won,
+and by how much; label gain from the agent warm start by level set and track-type
+stratum, and the headline endpoints recomputed with agent-free labels
+(\cref{sec:threats}); label standard deviation on the 200 repeatability levels; fraction
+of levels on which an observed agent return exceeds $\Jstar$}
+
+\subsection{RQ1: do fresh scores rank levels by regret?}
+\label{sec:results-fresh}
+\begin{figure}[h]
+\centering
+\placeholderfig{Spearman $\rho$ against absolute and normalised regret, per estimator, by
+training phase, E0 and E0-sym; baselines as horizontal bands}
+\caption{\RESULT{fresh-score fidelity}.}
+\label{fig:fresh}
+\end{figure}
+\RESULT{co-primary endpoints per estimator and phase (Holm-corrected); comparison with the
+agent-only, policy-agnostic and random baselines; outcome-table row reached}
+
+\subsection{RQ1: do scores inside real buffers rank levels by regret?}
+\label{sec:results-buffer}
+\RESULT{in-buffer $\rho$ with score age, admission AUROC, for \PLRp{}-PVL, \PLRp{}-MaxMC
+and SFL buffers at 8 checkpoints; difference from fresh fidelity (row G)}
+
+\subsection{RQ2: what explains the error?}
+\label{sec:results-dynamics}
+\RESULT{E2 decomposition: PVL/L1 ratio in modes F and B (P1); MaxMC against absolute and
+normalised regret (P2); ceiling gap vs.\ critic bias for unit-consistent MaxMC (P3);
+learnability tie fraction; effect of critic privilege (E0 vs.\ E0-sym), schedule (E0-const)
+and observability (E0-short); track-type strata (row D)}
+
+\subsection{RQ3: does the score matter for the curriculum?}
+\label{sec:results-curricula}
+\RESULT{held-out regret IQM at 1\,B steps on A\textsubscript{DR}, A\textsubscript{tail},
+A\textsubscript{OOD} for DR-pool, DR (E0), \PLRp{}-PVL, \PLRp{}-MaxMC, \PLRp{}-oracle-latest
+and SFL, with probability of improvement; row E}
+
+\subsection{External check: the maze}
+\label{sec:results-maze}
+\RESULT{E5 fresh and buffer fidelity against BFS regret, 5$\times$5 and 13$\times$13 views;
+agreement with the racing results (row F)}

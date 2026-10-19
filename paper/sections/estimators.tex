@@ -1,0 +1,322 @@
+\section{Level scores and how we compute them}
+\label{sec:estimators}
+% Everything in this section is condensed from docs/paper/score-spec.md (`audit-v1` scorer
+% spec, draft for sign-off, 18 Oct 2026) and implemented in src/apexzero/audit/estimators.py.
+% Section numbers "spec §x" refer to that file.
+
+An audit of a score is only meaningful if the score is the one practitioners run. We
+therefore port every score from pinned reference code, keep its behaviour wherever our
+setting allows, and list every departure. The references are JaxUED at commit
+\code{0f8f128} for PVL, MaxMC and the \PLRp{} buffer, minimax at \code{2ae9e04} for L1 value
+loss and ensemble disagreement, the MNA authors' repository at \code{12340c7}, and the SFL
+authors' repository at \code{8b14e2e}~\citep{coward2024jaxued,minimax2023code,mna2026code,sfl2024code}.
+% src: docs/paper/score-spec.md section 0.1 (pinned sources)
+
+\subsection{Notation and the scoring advantage}
+\label{sec:est-notation}
+
+One episode $e$ is one window, running over steps $t_0(e), \dots, t_{\text{end}}(e)$ with
+$T_e$ steps including the terminal transition, as in JaxUED. $r_t$ is the raw reward of
+\cref{eq:reward}. Our PPO trains its critic on rewards divided by a running return
+standard deviation $\sigma$, so we rescale every value to raw units, $V_t := \sigma \hat
+V_t$, and likewise the five ensemble heads $V^k_t$ (\dev{6}). $\mathrm{term}_t$ marks a
+crash and $\mathrm{trunc}_t$ the window end. $V^f_t$ is the value of the pre-reset final
+observation at a truncation, and $\kappa_t = 1$ marks the last step of an $L$-step
+training chunk that does not end the episode. The spec and the plan set $L = 128$; the
+current training code uses 64-step rollouts, and the choice is open (see below). In the
+fresh audit, window starts are given a random phase $\varphi_e \sim U\{0, \dots, L-1\}$
+against chunk boundaries, on the assumption that training phases are uniform. We write
+$G_e = \sum_{t \in e} r_t$, $G^\gamma_e = \sum_{\tau=0}^{T_e-1}
+\gamma^\tau r_{t_0+\tau}$ (no bootstrap) and $\bar V_e = T_e^{-1}\sum_{t\in e} V_t$.
+% src: docs/paper/score-spec.md sections 0.2 (kappa, phi ~ U{0..127}) and 6 ("Chunk length");
+%      docs/plan/two-track-plan.md section 2.2 ("128-step rollout chunks");
+%      src/apexzero/audit/estimators.py (CHUNK = 128); src/apexzero/agents/ppo.py
+%      (PPOConfig.num_steps = 64); scripts/train_dr.py (--num-steps default 64)
+
+\paragraph{Open item: chunk length} The scorer's chunk length $L$ must equal the PPO
+rollout length of the runs it scores, and the two disagree today: the plan and the spec
+use $L = 128$, while \code{PPOConfig.num\_steps}, \code{train\_dr.py} and the plan's E0
+GPU configuration ($8{,}192$ environments $\times$ 64 steps) use 64. Several numbers in
+this paper assume $L = 128$ and change with it: the phase range $U\{0,\dots,127\}$; up to
+11 parameter snapshots per window (20 at $L = 64$; \dev{3}); and the SFL refresh cost
+(\cref{sec:protocol-c}). The phase assumption also needs checking whatever $L$ is.
+Consecutive full-length windows on one environment slot advance the phase by
+$1200 \bmod L = 48$ steps, so a slot whose windows all complete visits only 8 phases at
+$L = 128$ (4 at $L = 64$); late in training, when most windows complete, the phase
+distribution is fixed by earlier crashes and resets and need not be uniform.
+\TODO{fix $L$ in \code{audit-v1} to the E0 rollout length; log the chunk phase of every
+training window and test the uniform-phase emulation of E1 against it}
+
+The reference codebases score levels with the PPO's own GAE tensor. Ours is in scaled
+units and bootstraps truncations, so we run a separate scoring pass in raw units
+(\dev{6}):
+\begin{equation}
+  \mathrm{nxt}_t =
+  \begin{cases}
+    0 & \text{if } \mathrm{term}_t,\\
+    0 \ \text{(mode F) or}\ V^f_t \ \text{(mode B)} & \text{if } \mathrm{trunc}_t,\\
+    V_{t+1} & \text{otherwise},
+  \end{cases}
+  \qquad
+  \begin{aligned}
+  \delta_t &= r_t + \gamma\,\mathrm{nxt}_t - V_t,\\
+  A_t &= \delta_t + \gamma\lambda\,(1-d_t)(1-\kappa_t)\,A_{t+1},
+  \end{aligned}
+  \label{eq:gae}
+\end{equation}
+with $d_t = \mathrm{term}_t \lor \mathrm{trunc}_t$, $\gamma = 0.995$ and the PPO's
+$\lambda = 0.95$. At a chunk end ($\kappa_t = 1$) the $\lambda$-sum restarts and $V_{t+1}$,
+computed with the parameters that produced $V_t$, bootstraps it.
+% src: docs/paper/score-spec.md section 0.3; src/apexzero/audit/estimators.py (scoring_gae)
+Mode F treats the window end as terminal, as JaxUED, minimax and the MNA code all do with
+their time limits; it is the headline. Mode B bootstraps, as our PPO does, and is stored
+as a variant.
+
+\paragraph{An expected artefact of mode F} The critic has no time-in-window input, so at
+every window end $\delta \approx r - V$, roughly $-60$ in raw units at racing speed. This
+pushes $A_t$ strongly negative over the last $1/(1-\gamma\lambda) \approx 18$ steps, adds
+about $|V_{\text{end}}| \cdot 18 / T_e$ to L1, and biases the mean advantage negative, so
+$\mathrm{PVL}/\mathrm{L1} < 0.5$ even with an accurate critic. The prediction that this
+ratio tends to $0.5$ as critic error shrinks can therefore only hold in mode B. We log
+both modes and the tail term, the summed $|A_t|$ over the last 64 steps of each completed
+window.
+% src: docs/paper/score-spec.md section 0.3 ("Notes on mode F") and section 6 ("E2 wording")
+
+\subsection{The six headline estimators}
+\label{sec:est-six}
+
+\Cref{tab:estimators} gives each score as we compute it per level from a set $\mathcal E$
+of $E$ completed windows. Apart from learnability (a pooled success rate) and MNA (a
+step-pooled mean), scores are episode-weighted means, as in the reference accumulator. We store every score for $\lambda \in \{0.9, 0.95, 0.98, 1\}$, in mode B, and
+in a discount-weighted form $\sum_\tau \gamma^\tau m_\tau / \sum_\tau \gamma^\tau$; the
+appendix variants are $1-p$, return variance and step-normalised absolute learning
+progress.
+% src: docs/paper/score-spec.md sections 1.1-1.8; docs/plan/two-track-plan.md section 2.2
+%      ("Six headline estimators", "Stored variants")
+\TODO{the three appendix variants are named in the plan but not yet specified or
+implemented}
+
+\begin{table}[t]
+\centering
+\small
+\caption{The six headline scores (seven rows: MaxMC has two variants). ``Reference'' is
+the pinned function we port. All are larger for levels the score deems more worth
+replaying.}
+\label{tab:estimators}
+% src: docs/paper/score-spec.md sections 1.1-1.7; src/apexzero/audit/estimators.py (level_scores)
+\renewcommand{\arraystretch}{1.25}
+\begin{tabularx}{\linewidth}{@{}>{\raggedright\arraybackslash}p{2.2cm}>{\raggedright\arraybackslash}X>{\raggedright\arraybackslash}p{2.9cm}@{}}
+\toprule
+Score & Per-level value & Reference \\
+\midrule
+L1 value loss & $\frac{1}{E}\sum_e \frac{1}{T_e}\sum_{t\in e} |A_t|$ &
+  minimax \fn{compute_l1_value_loss} \\
+PVL & $\frac{1}{E}\sum_e \frac{1}{T_e}\sum_{t\in e} \max(A_t, 0)$ &
+  JaxUED \fn{positive_value_loss} \\
+MaxMC (as implemented) & $\Rmax - \frac{1}{E}\sum_e \bar V_e$, \ $\Rmax = \max\!\big(0,
+  \max_e G_e\big)$: undiscounted and floored at zero &
+  JaxUED \fn{max_mc}, \fn{compute_max_returns} \\
+MaxMC (unit-consistent) & $\frac{1}{E}\sum_e \big(\Rgmax - V_{t_0(e)}\big)$, \
+  $\Rgmax = \max_e G^\gamma_e$: discounted, no floor, no time average & ours (\dev{22}) \\
+Learnability & $\hat p(1-\hat p)$, $\hat p$ the mean of a per-window success indicator:
+  S1 = the window completes; S2 = S1 and distance $\ge 0.97\,d_{\text{QSS}}(\theta)$ &
+  SFL \fn{_calc_outcomes_by_agent} \\
+MNA & $\hat C \cdot \sum_e\sum_{t\in e}\hat G_t \,/\, \sum_e T_e$ with the closed-form
+  clipped advantage $\hat G$ below; $\hat C = \ind[\text{any window satisfied S1}]$ &
+  MNA \fn{compute_clipped_gae}, \fn{negative_value_loss_solved_sum} \\
+Disagreement & $\frac{1}{E}\sum_e\frac{1}{T_e}\sum_{t\in e}\std_k V^k_t$ over the five
+  heads (population std; main critic excluded) & minimax
+  \fn{compute_value_disagreement} \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\paragraph{MaxMC's units} As implemented, MaxMC subtracts a discounted value (at most
+$1/(1-\gamma) = 200$ steps of reward) from an undiscounted return over up to \num{1200}
+steps, and floors the maximum at zero because the reference accumulator starts at zero.
+We keep this because it is what runs; the unit-consistent variant is our addition and is
+labelled as such.
+% src: docs/paper/score-spec.md sections 1.3, 1.4; docs/paper/sources-jaxued.md section 1.1
+
+\paragraph{Learnability under dense reward} Learnability is not offered as a regret
+estimate (\cref{sec:intro}); we score it because SFL runs it, and read its agreement with
+regret as a comparison of targets. A literal port of SFL's success count would
+count every step with positive reward and give $p > 1$, so success is a per-window
+indicator (\dev{9}). S1, window completion, saturates as the agent becomes competent;
+S2 also asks for at least 97\% of the distance the quasi-steady-state oracle covers from
+$x_0$ in 60\,s, and does not saturate. Because the tie fraction of $p(1-p)$ follows from
+how success is defined, we report it only descriptively.
+% src: docs/paper/score-spec.md section 1.5; docs/plan/two-track-plan.md section 2.5
+\TODO{define $d_{\text{QSS}}$ precisely (spec section 6, open item)}
+
+\paragraph{MNA in closed form} Let $A^{(n)}_s = \sum_{i<n}\gamma^i\delta_{s+i}$ with the
+next-value rule of \cref{eq:gae}, and $M_n = \max(0, A^{(1)}_s, \dots, A^{(n)}_s)$. The
+reference code's clipped running sum equals $A^{(n)}_s - M_n$, hence
+\begin{equation}
+  \hat G^{(n)}_s = M_n - A^{(n)}_s, \qquad
+  \hat G_s = \sum_{n=1}^{N_s-1}(1-\lambda)\lambda^{n-1}\hat G^{(n)}_s
+            + \lambda^{N_s-1}\hat G^{(N_s)}_s,
+\end{equation}
+with $N_s$ the number of steps from $s$ to the episode's end or the chunk end. This form
+is exact at $\lambda = 1$, where the code's $1/(1-\lambda)$ form divides by zero.
+% src: docs/paper/score-spec.md section 1.6; src/apexzero/audit/estimators.py (mna_terms)
+The reference sums $\hat G$ over a fixed 512-step rollout; our windows vary in length, so we
+normalise by the step count (\dev{11}), which ranks identically when $T$ is fixed. The
+reference gate $\ind[\Rmax > 0]$ is almost always true under dense reward, so we gate
+on ever completing a window (\dev{12}) and log the literal gate.
+
+\paragraph{Baselines} Every endpoint is also computed for four reference scores: the
+agent-only score $-\Jhat$, which knows nothing about the optimum; the policy-agnostic
+scores $\Jstar$ and a geometric difficulty measure, which know nothing about the agent;
+and a random score. An ``oracle-operational'' score $\Jstar - G_{\text{op}}$, the label
+minus the return on the operational windows, is a \emph{reference, not a ceiling}:
+critic-based scores pool earlier history and can beat it. The real ceiling on any score's
+correlation with the noisy target is $\sqrt{\text{reliability}}$.
+% src: docs/plan/two-track-plan.md section 2.2 ("Baselines")
+\TODO{define the geometric difficulty measure}
+
+\subsection{Two identities that split the error}
+\label{sec:est-identities}
+
+Two exact identities (experiment E2) turn RQ2's ``why'' into measured terms.
+% src: docs/paper/score-spec.md sections 1.2 and 1.4; docs/plan/two-track-plan.md section 2.4 (E2)
+Because $\max(a, 0) = (|a| + a)/2$, for every episode
+\begin{equation}
+  \mathrm{PVL}_e = \tfrac12\,\mathrm{L1}_e + \tfrac12\,\overline{A}_e,
+  \label{eq:pvl-identity}
+\end{equation}
+so PVL differs from L1 only through the mean advantage, which is a measure of critic bias
+on the level. For the unit-consistent MaxMC, with $\Jhat$ estimated on the disjoint
+target windows,
+\begin{equation}
+  S_{\text{MaxMC-unit}} - \Reg
+  = \underbrace{\big(\Rgmax - \Jstar\big)}_{\text{ceiling gap}}
+  + \underbrace{\Big(\Jhat - \tfrac{1}{E}\textstyle\sum_e V_{t_0(e)}\Big)}_{\text{critic bias}}.
+  \label{eq:maxmc-identity}
+\end{equation}
+The ceiling gap is at most zero unless the agent beats the label. We predict that on hard
+levels it dominates the error of unit-consistent MaxMC (\cref{sec:prereg}). With staleness
+(the age of a stored score) and success saturation (the tie fraction of $p(1-p)$), these
+terms are the candidate explanations RQ2 tests.
+
+\subsection{Aggregation and implementation checks}
+\label{sec:est-aggregation}
+
+In the fresh audit (E1), the \emph{operational} score of a level at a checkpoint uses
+windows 1--4, which mimics what a curriculum sees; MaxMC's maximum is taken over those
+four windows, which is exactly JaxUED's branch for a new level (\dev{23}).
+\emph{High-budget} scores are cross-fitted: odd windows for the score, even windows for
+the target. In training, a score is written when an episode ends, from the episodes of
+one slot that end in the same chunk.
+% src: docs/paper/score-spec.md section 1.8
+The offline scorer exists; the in-training scorer does not yet. The offline scorer's
+single-trajectory primitives, the scoring GAE and the closed-form MNA terms, are written to
+be shared with the in-training accumulator, and spec test E-18 will check that the two
+give identical scores on the same trajectory.
+% src: src/apexzero/audit/estimators.py (module docstring; scoring_gae, mna_terms);
+%      docs/paper/score-spec.md section 4 (E-18 "online vs offline")
+
+The unit tests reproduce the spec's hand-computed vectors E-1--E-6, E-8--E-11, E-13--E-16
+and E-19; PVL matches JaxUED's own function on completed episodes; and the closed-form
+MNA equals a port of the reference code to $10^{-10}$ for $\lambda \in \{0.9, 0.95,
+0.98\}$.
+% src: tests/test_estimators.py (test names E1 ... E19; test_pvl_matches_jaxued_on_completed_episodes;
+%      test_E15_mna_closed_form_equals_reference_port, atol 1e-10)
+\TODO{implement spec tests E-7 (R\textsubscript{max} history), E-12 (MNA incomplete tail),
+E-17 (chunk property test against JaxUED's accumulator), E-18 (online equals offline) and
+the sampler tests P-1--P-9 and S-1--S-4; the samplers themselves are not built yet}
+
+\subsection{Deviations from the reference code}
+\label{sec:est-deviations}
+
+\Cref{tab:deviations} is the complete list of departures from the pinned reference code,
+reproduced from the scorer specification. Most follow from one fact: our episodes are
+\num{1200}-step windows that span several training chunks, while every reference scores
+whole episodes inside one rollout. Rows \dev{1}--\dev{3} quote the spec's 128-step
+chunks, which are not yet settled (\cref{sec:est-notation}). The window-end row has no
+number because it follows the reference.
+% src: docs/paper/score-spec.md section 3 (table reproduced row by row)
+
+{\footnotesize
+\setlength{\tabcolsep}{4pt}
+\renewcommand{\arraystretch}{1.15}
+\begin{longtable}{@{}>{\raggedright\arraybackslash}p{1.05cm}>{\raggedright\arraybackslash}p{1.95cm}>{\raggedright\arraybackslash}p{3.2cm}>{\raggedright\arraybackslash}p{3.45cm}>{\raggedright\arraybackslash}p{2.6cm}@{}}
+\caption{Deviations from the reference code (score spec, section 3). ``Ours'' describes
+the racing audit and curricula; references to our code are to the spec's pinned commit
+\code{99ee5a0}, named by identifier rather than line. DEV-14 applies only if the ensemble
+heads share the main critic's target; the current code trains each head on its own GAE
+target, as minimax does, so DEV-14 no longer applies.}
+\label{tab:deviations}\\
+% src: docs/paper/score-spec.md section 3; DEV-14 status: src/apexzero/agents/ppo.py (gae_step,
+%      "Ensemble heads get their own GAE targets"), docs/STATUS.md (K5 row)
+\toprule
+ID & Item & Reference & Ours & Reason \\
+\midrule
+\endfirsthead
+\toprule
+ID & Item & Reference & Ours & Reason \\
+\midrule
+\endhead
+\midrule
+\multicolumn{5}{r@{}}{\emph{continued on next page}}\\
+\endfoot
+\bottomrule
+\endlastfoot
+DEV-1 & Episode and rollout structure & each update resets envs to their levels and runs
+  \code{num\_steps} with AutoReplay; scores cover the episodes completed in that rollout &
+  asynchronous \num{1200}-step windows across 128-step chunks; per-slot carries; write at
+  episode end & \num{1200}-step windows exceed the 128-step chunk \\
+DEV-2 & $\lambda$-sum inside a scored episode & cut only at the rollout end, which affects
+  only the dropped tail & cut and bootstrap at every chunk end; E1 emulates this with a
+  phase offset $\varphi_e$; an unchunked variant is stored & the plan's protocol; Craftax
+  precedent \\
+DEV-3 & Parameter snapshots per episode & 1 (maze) & up to 11 & the policy updates between
+  chunks; Craftax precedent \\
+DEV-4 & Incomplete episodes & dropped (MNA includes them); $-\infty$ or 0 or NaN when none
+  complete & carried until done; never scored at a chunk end & windows span chunks \\
+DEV-5 & Episodes per score & all completed in the rollout ($\ge 1$ at maze defaults) & 1 per
+  write in training (grouped within a chunk); 4 in E1 & window length \\
+DEV-6 & Units & no reward normalisation; scores reuse the PPO's advantage tensor &
+  $V := \sigma\hat V$; separate raw-unit scoring GAE & our PPO scales rewards by the
+  running return std (\code{ppo.py}, \code{ret\_rms}) \\
+-- & Window end (mode F) & time limit terminal & \textbf{same} (headline); mode B
+  (bootstrap $V^f$) stored as a variant & follows the reference \\
+DEV-8 & $\lambda$ & PPO $\lambda$ (maze 0.98) & PPO $\lambda = 0.95$ (+ variants) & same
+  rule, different parameter \\
+DEV-9 & Success & count of $r > 0$ steps, or GoalR & per-window indicator, S1 or S2 &
+  dense reward \\
+DEV-10 & Learnability trials & one AutoReplay stream, $\le 10$ episodes & $M$ independent
+  windows & \num{1200}-step episodes \\
+DEV-11 & MNA normalisation & $\Sigma$ over a fixed $T = 512$ steps & step-pooled mean
+  (paper Eq.~12) & $T_e$ varies; identical ranking when $T$ is fixed \\
+DEV-12 & MNA $\hat C$ & $\ind[\Rmax > 0]$ & $\ind[\text{ever S1}]$;
+  $\hat C_{\text{lit}}$ logged & $\Rmax > 0$ is almost always true under dense reward \\
+DEV-13 & Ensemble architecture & heads are the critic, with a shared trunk getting
+  gradients; head 0 drives GAE & 5 extra heads on a stop-gradient trunk; main critic
+  excluded; 64-unit ReLU & heads must not change the audited critic \\
+DEV-14 & Ensemble targets (only if not fixed) & own GAE target per head & main critic's
+  target (\code{ppo.py}, \code{critic\_loss}, \code{head\_loss}) & code at the spec's
+  commit; fix recommended \\
+DEV-15 & Replay decision & one Bernoulli per update for the whole batch & one per slot per
+  chunk & asynchronous resets \\
+DEV-16 & $\perp$ mechanism & whole update discarded; no gradient step on DR updates &
+  per-transition loss mask; a gradient step every chunk on $\sim$80\% of the data;
+  normalisers masked & asynchronous mix inside each batch \\
+DEV-17 & Weights during draws & re-evaluated per draw (sequential scan, 32 draws) & frozen
+  per chunk ($\sim$220 draws); commits in $(t, j)$ order & buffer operations at chunk
+  granularity \\
+DEV-18 & Stale replay write & cannot happen (synchronous) & dropped if the slot's level was
+  evicted & asynchrony \\
+DEV-19 & Concurrent $\Rmax$ & stale read, last write wins (\code{update\_batch}) &
+  sequential read of the latest value & asynchrony; the maximum is preserved \\
+DEV-20 & Buffer and level source & 4000; generator; exact-field duplicate check & 1000;
+  \num{4000}-level pool; duplicate check by \code{level\_id} & plan C \\
+DEV-21 & SFL & $N$ fresh levels; $L$ steps; per-update reassignment; NaN not handled &
+  $N$ = shuffled pool; $M$ windows; per-reset draw; $T$ in chunks; NaN asserted & finite
+  pool; windows \\
+DEV-22 & MaxMC-unit & -- & new estimator: discounted, $-\infty$ init, $V(o_0)$, no time
+  average & the plan's variant \\
+DEV-23 & E1 $\Rmax$ history & buffer history & windows 1--4 (= the new-level branch) &
+  fresh audit \\
+\end{longtable}
+}

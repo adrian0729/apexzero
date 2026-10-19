@@ -1,0 +1,119 @@
+\section{Introduction}
+\label{sec:intro}
+
+Unsupervised environment design (UED) trains a generalist by choosing which levels it
+practises on. Most current methods are motivated by minimax regret: a level is worth
+replaying when the gap between the best achievable return on it and the agent's return is
+large~\citep{jiang2021robustplr,dennis2020paired}. That gap needs the optimal return on
+every level, which is unknown in almost every domain of interest. So the methods use
+proxies computed from the agent's own rollouts. Robust Prioritised Level Replay
+(\PLRp{})~\citep{jiang2021robustplr}, which builds on level replay~\citep{jiang2021plr},
+ranks levels by positive value loss (PVL) or by MaxMC, the gap between the best return
+seen on a level and the critic's value. Newer regret proxies include maximised negative
+advantage (MNA)~\citep{mead2026mna} and a transition-prediction term added to PVL in
+TRACED~\citep{cho2026traced}. Other scores target something else. Sampling for
+Learnability (SFL) ranks levels by $p(1-p)$, where $p$ is the success
+rate~\citep{rutherford2024noregrets}; No Regrets proposes it in place of regret
+approximations, as the probability of improving times the room left to improve, not as
+an estimate of regret.
+% src: docs/paper/sources-sfl.md section 1.1 ("justified as (probability of improving) x
+%      (room left to improve)")
+PACE~\citep{yuan2026pace} scores the parameter change of a provisional update, a measure
+of learning progress, and the spread of a critic ensemble, an option in the minimax
+library~\citep{minimax2023code}, has antecedents in curricula driven by value-ensemble
+disagreement~\citep{zhang2020vds,kanitscheider2022autodime}.
+% src: docs/paper/sources-recent.md sections (b2) and (d)
+
+\paragraph{The problem} The regret proxies are treated as regret estimates, but whether
+they rank levels by regret has not been checked where it matters. For the scores that
+target something else, how far they agree with regret is a comparison of targets, which
+is also unmeasured. The closest test, in No
+Regrets~\citep{rutherford2024noregrets}, correlates PVL and MaxMC with \emph{success
+rate} for one policy, one seed and one checkpoint in single-agent JaxNav, on levels
+stratified by that same policy's success; it reports Pearson $r = 0.61$ for MaxMC and
+$0.51$ for PVL against success,
+% src: docs/paper/sources-sfl.md section 3.1 (Fig. 2a, 2b) and section 3.3
+and never compares any score with regret. Exact-regret curricula exist in gridworlds,
+where a shortest-path solver gives the optimum~\citep{beukman2024remidi,abdelsadek2025goal},
+but they use the oracle to sample levels rather than to audit the estimators. The newer
+scores are judged by the test performance of the curriculum they
+drive~\citep{mead2026mna,cho2026traced,yuan2026pace}, which mixes the quality of the score
+with everything else the curriculum does. In our literature search we found no paper from
+2024--26 that compares UED level scores with exact or best-known regret across training.
+% src: docs/plan/two-track-plan.md section 2.7 ("Verdict")
+\VERIFY{re-run the search before submission: ICLR 2027 submissions and NeurIPS 2027
+accepted papers, as scheduled in docs/plan/two-track-plan.md section 2.7}
+
+The difficulty is the answer key. Regret is defined in the agent's own units, its
+discounted return, so the reference has to be the optimum of that same objective, on the
+same dynamics, at the same control rate and under the same termination rules. A lap-time
+optimum or a success indicator measures something else. Any mismatch between the
+reference problem and the agent's problem then shows up as ``regret'' that no policy
+could remove.
+
+\paragraph{Our instrument} We build a continuous-control domain in which the level-wise
+optimum of the agent's own objective can be computed (\cref{sec:env,sec:answer}). A level
+is an open, procedurally generated race-track strip, a car, a hidden grip value and a
+start state. One vehicle model, a dynamic single-track car in curvilinear coordinates,
+is written once and compiled twice: to JAX for the reinforcement-learning simulator and to
+CasADi for optimal control. On $10^{4}$ random states the two agree to
+% src: tests/test_dynamics.py::test_jax_casadi_parity (threshold 1e-5);
+%      paper/tools/gate_values.py (measured 1.65e-14)
+$2\times10^{-14}$ (\cref{tab:gates}). On each level a
+\emph{training-objective OCP} (TO-OCP) maximises the agent's discounted reward over the
+agent's 60\,s window. It uses the environment's RK2 integrator with ten 5\,ms substeps per
+50\,ms control step, a zero-order hold at 20\,Hz, the environment's termination rules as
+constraints (tightened slightly where they differ, which can only lower the optimum), and
+the agent's reward as its objective. We replay the optimal controls
+open-loop in the float64 simulator and accept a label only if the replayed return matches.
+The solver finds local optima, so we report its value $\Jstar$ as a \emph{best-known}
+optimum and the measured regret $\Jstar - \Jpi$ as a \emph{lower bound} on the true
+regret (\cref{sec:answer-lb}).
+
+\paragraph{What we measure} We ask three questions (\cref{sec:protocol}). \textbf{RQ1,
+fidelity:} how well do PVL, L1 value loss, MaxMC (as implemented and in a unit-consistent
+variant), MNA and ensemble disagreement rank levels by regret, on fresh rollouts and
+inside the buffers that real \PLRp{} and SFL runs keep? We measure SFL's learnability
+the same way, but because it targets learning potential rather than regret, its
+agreement with regret is a comparison of two targets, not a test of an
+estimator. \textbf{RQ2,
+dynamics:} how does fidelity change with training phase, critic privilege and
+observability, and which measured term explains the change? Two exact identities split
+each score's error into critic bias, dispersion, the gap between the best observed and
+the optimal return, success saturation and staleness (\cref{sec:est-identities}).
+\textbf{RQ3, consequence:} on one labelled pool, does a \PLRp{} curriculum scored by
+oracle regret beat \PLRp{} with PVL or MaxMC, SFL and domain randomisation on held-out
+regret? A replication in JaxUED's maze~\citep{coward2024jaxued}, run with JaxUED's own
+code and an exact breadth-first-search optimum, checks that the racing results are not an
+artefact of one bespoke domain. The scorer, the window design, the level partition, the
+endpoints and the decision rules are frozen in two tags, \code{audit-v1} and
+\code{protocol-v1}, before any full-scale result exists (\cref{sec:prereg}).
+
+\paragraph{Contributions}
+% src: docs/plan/two-track-plan.md section 2.1 (contributions 1-4)
+\begin{enumerate}
+  \item A JAX racing benchmark of about \num{5400} levels, each labelled with the
+        replay-verified best-known optimum of the agent's own objective.
+  \item To our knowledge, the first audit of UED level scores against ground-truth (here
+        best-known) regret across training, both on fresh rollouts and inside real
+        curriculum buffers.
+  \item A comparison of curricula on a single shared labelled pool, including an
+        oracle-regret arm.
+  \item A replication of the audit in JaxUED's maze, using JaxUED's own training code at
+        its defaults.
+\end{enumerate}
+The algebraic identities we use to decompose score error (\cref{sec:est-identities}) are
+a measurement framework for RQ2, not a contribution.
+% src: docs/plan/two-track-plan.md section 2.1 ("The algebraic identities in E2 ...")
+
+\paragraph{Scope} Every claim is about the racing domain and, where stated, the maze. The
+racing reward is dense; whether our findings carry over to sparse-reward domains is a
+conjecture we do not test (\cref{sec:threats}). No audit or curriculum experiment uses a
+real circuit. Real circuits enter the paper in three ways only: twelve development
+circuits supply the generator's corner statistics; the development checks of
+\cref{sec:env,sec:answer} (one specialist agent, a minimum-time replay gate and the
+TO-OCP spike) ran on development circuits only; and \cref{app:snapping} audits public
+human telemetry, which no claim uses. No number in the paper is computed on the twelve
+lockbox circuits held out for later work (\cref{sec:threats}).
+% src: docs/plan/two-track-plan.md sections 2.4 ("Real circuits are left out of the paper"),
+%      2.6 (reward density stated as conjecture) and 4 (lockbox rules)
