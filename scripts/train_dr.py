@@ -44,6 +44,8 @@ def main():
     ap.add_argument("--fixed-car", action="store_true")
     ap.add_argument("--tilt-fraction", type=float, default=0.0,
                     help="share of strips from the tilted (hairpin-heavy) generator")
+    ap.add_argument("--tilt-alpha", type=float, default=1.0,
+                    help="tilted generator's corner weights are (1 / r_min)^alpha")
     ap.add_argument("--ensemble-heads", type=int, default=5)
     ap.add_argument("--seed", type=int, default=0)
     args = ap.parse_args()
@@ -53,7 +55,7 @@ def main():
     dev = [load_tumftm(f"data/tracks/tumftm/{n}.csv") for n in R_DEV]
     g = fit_grammar(dev)
     env = procedural_env(g, bank_size=args.bank, refresh_per_update=args.refresh,
-                         randomize_car=not args.fixed_car, g_alt=tilted(g),
+                         randomize_car=not args.fixed_car, g_alt=tilted(g, alpha=args.tilt_alpha),
                          alt_fraction=args.tilt_fraction)
     cfg = PPOConfig(num_envs=args.num_envs, num_steps=args.num_steps, total_timesteps=int(args.steps),
                     network=args.network, gamma=0.995, gae_lambda=0.95, actor_width=256,
