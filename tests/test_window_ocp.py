@@ -219,6 +219,39 @@ def test_short_window_solve_replays_exactly(scale):
     assert abs(window_return(res.x, res.a, spec) - res.value) < 1e-9
 
 
+def test_slip_riding_optimum_replays_without_terminating():
+    """A start in a slide makes the optimum ride the slip limit. Without slip_safety it sits
+    ~4e-9 rad inside alpha_max and the float64 replay terminates (found on Monza first)."""
+    from apexzero.vehicle.dynamics import tyre_forces
+    from apexzero.vehicle.ops import JAX
+
+    n = 500
+    s = np.arange(n) * 2.0
+    kappa = 0.07 * np.exp(-(((s - 300.0) / 12.0) ** 2)) - 0.05 * np.exp(-(((s - 360.0) / 10.0) ** 2))
+    theta = np.cumsum(kappa) * 2.0
+    tr = Track(name="chicane", s=s, x=np.cos(theta).cumsum() * 2.0, y=np.sin(theta).cumsum() * 2.0,
+               theta=theta, kappa=kappa, w_left=np.full(n, 5.0), w_right=np.full(n, 5.0), closed=False)
+    spec = WindowSpec(steps=24, radius=30.0)
+    x0 = np.array([280.0, 0.0, 0.0, 30.0, -3.3, 1.05, 0.1, 0.0])     # rear slip 0.95 alpha_max
+    ta = track_arrays(tr, dtype=jnp.float64)
+    step = jax.jit(lambda x, a: control_step(x, a, ta, P))
+    xs, acts = [x0], []
+    for _ in range(spec.steps):
+        x = xs[-1]
+        steer = np.clip(np.interp(x[0], tr.s, tr.kappa) * P.wheelbase / P.delta_max - 0.2 * x[1] - x[2], -1, 1)
+        acts.append(np.array([steer, -0.3]))
+        xs.append(np.asarray(step(jnp.asarray(x), jnp.asarray(acts[-1]))))
+    res = WindowSolver(spec, compile=False).solve(tr, x0, init=(np.array(xs), np.array(acts)))
+    assert res.success, res.status
+    fo = tyre_forces(jnp.asarray(res.x[1:]), P, JAX)
+    worst = max(np.max(np.abs(np.asarray(fo.alpha_f))), np.max(np.abs(np.asarray(fo.alpha_r))))
+    # IPOPT relaxes bounds by 1e-8 (relative), so the margin is what keeps the replay safe.
+    assert P.alpha_max - 2 * spec.slip_safety < worst <= P.alpha_max - spec.slip_safety + 1e-8
+    ret, alive, _ = replay_window(tr, x0, res.a)
+    assert alive
+    assert abs(ret - res.value) <= 1e-6 * abs(res.value)
+
+
 class _ConstantSpeedOCP:
     """An s-domain 'optimum' at constant speed v, with n = s / 1000 so lookups are visible."""
 

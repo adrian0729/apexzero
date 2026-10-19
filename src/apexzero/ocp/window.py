@@ -4,10 +4,10 @@ Same everything as the RL environment:
 - dynamics: the shared ODE, RK2 with ``substeps`` steps per 50 ms control period;
 - controls: zero-order hold at 20 Hz, a_t in [-1, 1]^2, a_{-1} = 0 (env reset);
 - track: the same C2 cubic B-spline the JAX simulator evaluates (see below);
-- constraints at every post-step state: the env's termination set, tightened by a small
-  ``safety`` margin so a float64 replay of a constraint-riding optimum does not terminate:
-  -(w_right(s) - edge) <= n <= w_left(s) - edge, |alpha_f|, |alpha_r| <= alpha_max,
-  |xi| <= pi/2, vx >= 2 m/s;
+- constraints at every post-step state: the env's termination set, tightened by small
+  margins (``safety`` 3 cm, ``slip_safety`` 1e-4 rad) so a float64 replay of a
+  constraint-riding optimum does not terminate: -(w_right(s) - edge) <= n <= w_left(s) - edge,
+  |alpha_f|, |alpha_r| <= alpha_max - slip_safety, |xi| <= pi/2, vx >= 2 m/s;
 - objective: maximise sum_t gamma^t [ (s_{t+1} - s_t) / 10 - 0.02 ||a_t - a_{t-1}||^2 ].
 
 **Exact, floor-indexed track lookup.** casadi.bspline only exists for MX graphs, which made
@@ -80,7 +80,8 @@ class WindowSpec:
     progress_scale: float = 10.0
     action_cost: float = 0.02
     edge_margin: float = 1.0
-    safety: float = 0.03
+    safety: float = 0.03        # m, corridor tightening
+    slip_safety: float = 1e-4   # rad, slip tightening (IPOPT may exceed a bound by ~1e-8)
     radius: float = 60.0        # m: s_t may move this far from its window centre
     ds: float = 2.0             # nominal knot spacing (sizes the window; the true per-track
                                 # spacing is a solver parameter)
@@ -559,8 +560,9 @@ class WindowSolver:
             lbX[:, 0] = ubX[:, 0] = x0
             lbx = (np.concatenate([lbX.T.reshape(-1), -np.ones(NA * T)]) - o) / d
             ubx = (np.concatenate([ubX.T.reshape(-1), np.ones(NA * T)]) - o) / d
-            lbg = np.concatenate([np.zeros(NX * T), np.full(2 * T, -np.inf), -np.ones(2 * T)])
-            ubg = np.concatenate([np.zeros(NX * T), np.zeros(2 * T), np.ones(2 * T)])
+            slip = 1.0 - spec.slip_safety / p.alpha_max        # |alpha| / alpha_max bound
+            lbg = np.concatenate([np.zeros(NX * T), np.full(2 * T, -np.inf), np.full(2 * T, -slip)])
+            ubg = np.concatenate([np.zeros(NX * T), np.zeros(2 * T), np.full(2 * T, slip)])
             w0 = np.clip((np.concatenate([xs.reshape(-1), acts.reshape(-1)]) - o) / d, lbx, ubx)
             kw = dict(x0=w0, p=P, lbx=lbx, ubx=ubx, lbg=lbg, ubg=ubg)
             solver = self.solver
