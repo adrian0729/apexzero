@@ -7,6 +7,7 @@
     nice -n 15 uv run python scripts/drivers_pilot.py tune           # smoother, R-dev synthetics
     nice -n 15 uv run python scripts/drivers_pilot.py pilot          # again, tuned smoother
     nice -n 15 uv run python scripts/drivers_pilot.py injection      # calibrate, inject, recover
+    nice -n 15 uv run python scripts/drivers_pilot.py persistent     # persistent per-car errors
     nice -n 15 uv run python scripts/drivers_pilot.py report         # writes the findings page
 
 The first ``pilot`` pass (default smoother) only supplies the feed's sampling intervals
@@ -16,7 +17,7 @@ circuits are the 2025 sessions that pass the registration gate (at most four). T
 and 2024 registrations are only used to check the proposed corridor-excursion gate on
 seasons it was not chosen on.
 Measured on the busy M3 Pro: registration ~2 s CPU per session, pilot ~80 s CPU for four
-sessions, tune ~2 min, injection ~4 min, report ~10 s.
+sessions, tune ~2 min, injection ~3 min, persistent ~3 min, report ~10 s.
 
 Lockbox: the pilot circuits are real F1 circuits, several of them R-test. Only telemetry
 is registered and timed there. No agent, OCP or QSS lap is computed on them: the
@@ -235,24 +236,37 @@ def stage_injection(pairs=10, reps=2, laps_per_driver=3):
         out["qss"][name] = rec
         print(f"{name} (QSS profile): [{time.process_time() - c0:.0f} s cpu]", flush=True)
     out["qss_config"] = qss_cfg
-    # Persistent per-car errors (a scenario, not a measurement): the same runs with a
-    # line pattern shared by all of a driver's laps, as large as one lap's calibrated
-    # wobble, and a per-car along-track position offset of sd SYS_OFFSET_M. Only these
-    # terms differ (separate random stream), so the difference is what they add.
-    out["systematic"], out["systematic_config"] = {}, {}
+    save(out, "injection.pkl")
+
+
+def stage_persistent(pairs=10, reps=2, laps_per_driver=3):
+    """Persistent per-car errors (a scenario, not a measurement).
+
+    The injection runs again with, in turn, a line pattern shared by all of a driver's
+    laps (as large as one lap's calibrated wobble), a per-car along-track position
+    offset of sd SYS_OFFSET_M, and both. Seeds, effects and natural variation are the
+    injection stage's and the persistent terms come from a separate random stream, so
+    the difference from the injection run is what they add.
+    """
+    cfg = tuned_config()
+    inj = load_pickle("injection.pkl")
+    out = {"config": {}, "runs": {}}
     for r in pilot_sessions():
         res = load_pickle(f"pilot_{r['tumftm']}.pkl")
-        c0 = time.process_time()
-        cal = out["calibration"][r["tumftm"]]
-        scfg = replace(cal.config(SynthConfig(pos_sigma=res.pos_sigma)),
-                       driver_wobble_sd=cal.wobble_sd, car_offset_sd=SYS_OFFSET_M)
-        out["systematic"][r["tumftm"]] = recovery.run(
-            res.model(), recovery.DEFAULT_EFFECTS, pairs=pairs, laps_per_driver=laps_per_driver,
-            reps=reps, cfg=cfg, synth_cfg=scfg, seed=100, held_out=True, natural=cal.natural)
-        out["systematic_config"][r["tumftm"]] = scfg
-        print(f"{r['tumftm']} (persistent per-car errors): "
-              f"[{time.process_time() - c0:.0f} s cpu]", flush=True)
-    save(out, "injection.pkl")
+        cal = inj["calibration"][r["tumftm"]]
+        base = cal.config(SynthConfig(pos_sigma=res.pos_sigma))
+        for variant, (wob, off) in {"line": (cal.wobble_sd, 0.0), "offset": (0.0, SYS_OFFSET_M),
+                                    "both": (cal.wobble_sd, SYS_OFFSET_M)}.items():
+            c0 = time.process_time()
+            scfg = replace(base, driver_wobble_sd=wob, car_offset_sd=off)
+            out["runs"].setdefault(variant, {})[r["tumftm"]] = recovery.run(
+                res.model(), recovery.DEFAULT_EFFECTS, pairs=pairs,
+                laps_per_driver=laps_per_driver, reps=reps, cfg=cfg, synth_cfg=scfg, seed=100,
+                held_out=True, natural=cal.natural)
+            out["config"].setdefault(variant, {})[r["tumftm"]] = scfg
+            print(f"{r['tumftm']} ({variant}): [{time.process_time() - c0:.0f} s cpu]",
+                  flush=True)
+    save(out, "persistent.pkl")
 
 
 def stage_report():
@@ -262,7 +276,7 @@ def stage_report():
 
 
 STAGES = {"registration": stage_registration, "pilot": stage_pilot, "tune": stage_tune,
-          "injection": stage_injection, "report": stage_report}
+          "injection": stage_injection, "persistent": stage_persistent, "report": stage_report}
 
 if __name__ == "__main__":
     ap = argparse.ArgumentParser()
