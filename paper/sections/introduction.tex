@@ -62,8 +62,9 @@ CasADi for optimal control. On $10^{4}$ random states the two agree to
 $2\times10^{-14}$ (\cref{tab:gates}). On each level a
 \emph{training-objective OCP} (TO-OCP) maximises the agent's discounted reward over the
 agent's 60\,s window. It uses the environment's RK2 integrator with ten 5\,ms substeps per
-50\,ms control step, a zero-order hold at 20\,Hz, the environment's termination set as
-constraints, and the agent's reward as its objective. We replay the optimal controls
+50\,ms control step, a zero-order hold at 20\,Hz, the environment's termination rules as
+constraints (tightened slightly where they differ, which can only lower the optimum), and
+the agent's reward as its objective. We replay the optimal controls
 open-loop in the float64 simulator and accept a label only if the replayed return matches.
 The solver finds local optima, so we report its value $\Jstar$ as a \emph{best-known}
 optimum and the measured regret $\Jstar - \Jpi$ as a \emph{lower bound} on the true

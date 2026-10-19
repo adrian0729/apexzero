@@ -15,6 +15,18 @@ shortfall; we report label quality per level set and per track-type stratum
 (\cref{sec:results-labels}).
 % src: docs/plan/two-track-plan.md sections 2.2 and 2.6 (row "Labels are local optima")
 
+\paragraph{Labels depend on the agent} One of the three warm starts is the final
+checkpoint's best rollout, so how tight a label is depends on how well that agent drives
+the level. Label error is then correlated with agent-derived quantities, including the
+agent returns that MaxMC's $\Rmax$ is built from: on levels where the final agent is
+strong, its rollout lifts the label, and a score that tracks the agent's own returns can
+look better aligned with regret than it is. The uniform budget keeps the effect the same
+for every level, but does not remove it. We pre-register a report of the label gain from
+the agent start, $\Jstar$ minus the best of the two agent-free starts, by level set and
+track-type stratum, and repeat the headline endpoints with labels from the agent-free
+starts only.
+\TODO{add both to \code{protocol-v1}}
+
 \paragraph{Label noise late in training} As the agent improves, regret shrinks towards
 the size of the label noise and any correlation is attenuated. A late-phase degradation
 is claimed only where median regret is at least three times the label standard deviation,

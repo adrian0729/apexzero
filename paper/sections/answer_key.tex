@@ -27,16 +27,28 @@ for $t = 0, \dots, T-1$, with $\gamma = 0.995$.
 % src: src/apexzero/ocp/window.py (module docstring; WindowSpec: steps 1200, gamma 0.995,
 %      edge_margin 1.0, safety 0.03; WindowSolver bounds)
 Here $\Phi_\theta$ is the simulator's own control-step map: RK2 with ten 5\,ms substeps
-and the action held for 50\,ms, the same vehicle ODE, and the level's car context and
-hidden grip as parameters. The constraints are the environment's non-termination set
-(\cref{sec:env-mdp}), applied at every post-step state and tightened by a safety margin
-$\epsilon = 3$\,cm so that a float64 replay of a solution that rides a constraint does not
-terminate. The objective is the environment's reward \eqref{eq:reward}; the crash penalty
-does not appear because terminating trajectories are infeasible. The solver also bounds
-$v_x \le 120$\,m/s, $|v_y| \le 25$\,m/s and $|r| \le 5$\,rad/s; like the safety margin,
-these can only lower the optimum.
-% src: src/apexzero/ocp/window.py (WindowSolver.solve: lbX/ubX)
-\TODO{log whether the auxiliary state bounds are ever active in the label runs}
+and the action held for 50\,ms, the same vehicle ODE, and the level's six-feature car
+context as a parameter. The solver has no separate grip input, so the hidden grip must
+be folded into the context: the solver receives the context with its global friction
+scale multiplied by $\mu_h$, which is how the environment builds its parameters from
+$(c, \mu_h)$.
+% src: src/apexzero/ocp/window.py (_context_params: ctx[0..5] only; WindowSolver.solve ctx);
+%      src/apexzero/env/racing.py (params_from_context: ctx[4] * hidden_mu)
+\TODO{no labelling code folds $\mu_h$ into the context yet; implement it and add a test
+that the solver's step map with folded grip equals the environment's step for
+$\mu_h \ne 1$}
+The constraints are the environment's non-termination set (\cref{sec:env-mdp}), applied
+at every post-step state and tightened in three ways that can only lower the optimum.
+First, a safety margin $\epsilon = 3$\,cm keeps a float64 replay of a solution that rides
+a constraint from terminating. Second, the environment terminates only after the car has
+stayed below 2\,m/s for 2\,s, while the OCP requires $v_x \ge 2$\,m/s at every step.
+Third, the solver bounds $v_x \le 120$\,m/s, $|v_y| \le 25$\,m/s and $|r| \le 5$\,rad/s.
+The objective is the environment's reward \eqref{eq:reward}; the crash penalty does not
+appear because terminating trajectories are infeasible.
+% src: src/apexzero/ocp/window.py (WindowSolver.solve: lbX/ubX, v_x lower bound 2.0);
+%      src/apexzero/env/racing.py (step_no_reset: slow-for-2-s termination)
+\TODO{log whether the stall bound and the auxiliary state bounds are ever active in the
+label runs}
 
 \paragraph{Exact track lookup} CasADi's B-spline node exists only for its MX graph type,
 which made exact Hessians about 50 times slower. Instead, each control step $t$ carries a
@@ -81,18 +93,25 @@ with $J$ the agent's own expected discounted return. \Cref{eq:toocp} is that max
 the agent's problem, with four properties that a generic reference (a lap-time optimum,
 a success indicator, a point-mass model) lacks.
 \begin{enumerate}
-  \item \textbf{Same objective.} Regret comes out in the agent's units. No conversion
-        between lap time and discounted progress is needed, and the discount weighting the
-        agent sees is the one the optimum sees. \Cref{app:braking} shows why this
-        matters: at short horizons the discounted optimum and the minimum-time optimum
-        brake at different points.
+  \item \textbf{Same objective.} Regret comes out in the agent's units, discounted
+        return, which is the quantity the level scores are meant to track. A time-based
+        reference is not in those units: turning a lap-time or distance gap into a return
+        gap needs a conversion that depends on where in the window the time is lost, and
+        that conversion would set the scale of every regret we report. The discount
+        weighting the agent sees is the one the optimum sees. In one dimension
+        (\cref{app:braking}) the two optima brake at the same point, to within one control
+        step, at the agent's $\gamma = 0.995$ and diverge only at horizons of a few tenths
+        of a second; the appendix is mainly an independent check that a discounted optimum
+        built from the environment's reward and crash penalty behaves as expected.
   \item \textbf{Same discretisation and control rate.} The optimiser cannot exploit a finer
         integrator or a faster controller than the agent has, so integration error and
         the cost of acting at 20\,Hz do not appear as regret.
-  \item \textbf{Same constraints and actuators.} The steering and pedal lags, the rate
-        limit, the corridor and the slip limit are all inside $\Phi_\theta$ or the
-        constraints, so the optimum is reachable by a policy acting through the same
-        actuators.
+  \item \textbf{Same actuators, and constraints that are never looser.} The steering and
+        pedal lags, the rate limit, the corridor and the slip limit are all inside
+        $\Phi_\theta$ or the constraints, so the optimum is reachable by a policy acting
+        through the same actuators. Where the constraints differ from the environment's
+        termination rules (the margin, the stall bound, the auxiliary bounds) they are
+        stricter.
   \item \textbf{Determinism per level.} Given $\theta$, the dynamics are deterministic
         (the hidden grip is fixed per level), so the best open-loop control sequence from
         $x_0$ achieves the optimal value over all policies, closed-loop or not. Optimising
@@ -110,8 +129,9 @@ on~\citep{beukman2024remidi}; we return to it in \cref{sec:threats}.
 
 Let $J^{\mathrm{opt}}(\theta)$ be the supremum of the window return over all control
 sequences, including those that terminate. Three things can make the label fall short of
-it: IPOPT returns a local optimum; the feasible set is tightened by the safety margin and
-the auxiliary state bounds; and terminating trajectories are excluded, although with
+it: IPOPT returns a local optimum; the feasible set is tightened by the safety margin, the
+stall bound and the auxiliary state bounds; and terminating trajectories are excluded,
+although with
 $\gamma^{1200} \approx 0.0024$ a late crash can in principle cost less than the progress it
 buys.
 % src: gamma^1200 ~ 0.0024 as stated in docs/paper/sources-jaxued.md section 4 item 3

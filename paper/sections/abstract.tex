@@ -15,7 +15,8 @@ benchmark of
 % src: src/apexzero/tracks/levels.py (SIZES: 1,000 + 300 + 100 + 4,000)
 \num{5400} procedurally generated levels, a training-objective optimal control problem
 (TO-OCP) solves the agent's own discounted problem on each level, with the same
-integrator, 20\,Hz control rate, constraints and reward as the environment. Every
+integrator, 20\,Hz control rate and reward as the environment and its termination rules
+as constraints, tightened only in ways that can lower the optimum. Every
 solution is checked by replaying its controls in the float64 simulator. The solver
 returns a best-known rather than a certified global optimum, so the regret we measure is
 a lower bound on true regret. With this answer key we audit six headline level scores
