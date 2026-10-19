@@ -395,6 +395,16 @@ def compile_functions(funcs: dict[str, ca.Function], cache_dir: Path | None = No
 
 # -------------------------------------------------------------------------------- solver
 
+# Refinement of a converged solve: warm-started from its primal-dual point with a tiny
+# barrier parameter, defects driven to <= 1e-10 and bounds not relaxed. tol = 1e-7 leaves
+# defects up to ~1e-8, which an open-loop-unstable optimum (a car near the limit)
+# amplifies ~1e6-fold over 60 s: production-like levels replayed off the track by 1 cm
+# (docs/findings/to-ocp-spike.md). Refined, they replay to ~1e-11, in 1-4 iterations.
+REFINE_IPOPT = {"warm_start_init_point": "yes", "mu_init": 1e-9, "warm_start_bound_push": 1e-12,
+                "warm_start_mult_bound_push": 1e-12, "warm_start_slack_bound_push": 1e-12,
+                "constr_viol_tol": 1e-10, "bound_relax_factor": 0.0, "max_iter": 100}
+
+
 def _window_centres(s: np.ndarray) -> np.ndarray:
     """Window centres sigma_t from a guess's arc lengths: non-decreasing, and advancing at
     most MAX_TRAVEL - 0.5 per step, so that node t+1's bounds
@@ -596,6 +606,15 @@ class WindowSolver:
         self.solver = ca.nlpsol("to_ocp", "ipopt", funcs["nlp"], opts)
         self._warm_ipopt = warm_ipopt
         self._warm_solver = None
+        self._refine_solver = None
+
+    def refine_solver(self):
+        """Solver for the refinement of a converged solve (``REFINE_IPOPT``)."""
+        if self._refine_solver is None:
+            opts = dict(self._opts)
+            opts.update({"ipopt." + k: v for k, v in REFINE_IPOPT.items()})
+            self._refine_solver = ca.nlpsol("to_ocp_refine", "ipopt", self.funcs["nlp"], opts)
+        return self._refine_solver
 
     def warm_solver(self):
         """Solver for re-centring rounds (IPOPT warm-start options), if any were given."""
@@ -622,15 +641,16 @@ class WindowSolver:
     def solve(self, track: Track, x0: np.ndarray, init: tuple[np.ndarray, np.ndarray],
               ctx: np.ndarray | None = None, p: VehicleParams = F1_2025,
               max_rounds: int = 6, lam0: tuple[np.ndarray, np.ndarray] | None = None,
-              hidden_mu: float = 1.0) -> WindowResult:
+              hidden_mu: float = 1.0, refine: bool = True) -> WindowResult:
         """Solve the window from x0, warm-started with ``init`` = (xs [T+1, 8], acts [T, 2]).
 
         ``ctx`` is the car context as the policy observes it (default: ``p``'s) and
         ``hidden_mu`` the level's unobserved grip multiplier; the env drives the car with
         mu_scale = ctx[4] * hidden_mu, and so does this solve (``replay_window`` takes the
-        same pair). ``success`` means IPOPT's Solve_Succeeded with no window bound active
-        and every RK stage inside its kappa block; the float64 replay
-        (``replay.verify_window``) is the separate acceptance test of a label.
+        same pair). A converged solve is then refined (``REFINE_IPOPT``: defects <= 1e-10,
+        bounds exact) unless ``refine`` is False. ``success`` means IPOPT's Solve_Succeeded
+        with no window bound active and every RK stage inside its kappa block; the float64
+        replay (``replay.verify_window``) is the separate acceptance test of a label.
         """
         spec, T = self.spec, self.T
         if abs(track.ds - spec.ds) > 0.05:
@@ -694,6 +714,23 @@ class WindowSolver:
             at_bound = bool(np.any(xs[1:, 0] < lo + 1.0) or np.any(xs[1:, 0] > hi - 1.0))
             if not at_bound:
                 break
+        status = str(st["return_status"])
+        if refine and status == "Solve_Succeeded" and not at_bound:
+            rs = self.refine_solver()
+            kw.update(x0=np.asarray(sol["x"]).ravel(), lam_g0=lam_g, lam_x0=lam_x)
+            t0, c0 = time.perf_counter(), time.process_time()
+            sol_r = rs(**kw)
+            wall += time.perf_counter() - t0
+            cpu += time.process_time() - c0
+            st_r = rs.stats()
+            iters += int(st_r["iter_count"])
+            log.append({"round": "refine", "iterations": int(st_r["iter_count"]), "status": st_r["return_status"]})
+            if st_r["return_status"] == "Solve_Succeeded":     # else keep the unrefined optimum
+                sol = sol_r
+                wv = np.asarray(sol["x"]).ravel() * d + o
+                xs = wv[: NX * (T + 1)].reshape(T + 1, NX)
+                acts = wv[NX * (T + 1):].reshape(T, NA)
+                lam_g, lam_x = np.asarray(sol["lam_g"]).ravel(), np.asarray(sol["lam_x"]).ravel()
         # Every RK stage's kappa lookup must have stayed inside its step's block (outside
         # it the lookup reads 0); recomputed at the optimum with the last round's windows.
         (Ck, _, _), j0 = coefficient_windows(track, sigma[:-1], spec)
@@ -702,8 +739,7 @@ class WindowSolver:
         off_lo, off_hi = float(np.min(np.asarray(o_lo))), float(np.max(np.asarray(o_hi)))
         rng = block_offset_range(spec.block)
         block_ok = rng[0] <= off_lo and off_hi <= rng[1]
-        status = str(st["return_status"])
-        flags = [f for f, bad in (("window bound active", at_bound), ("kappa block out of range", not block_ok))
+        flags =[f for f, bad in (("window bound active", at_bound), ("kappa block out of range", not block_ok))
                  if bad]
         return WindowResult(x=xs, a=acts, value=float(-sol["f"]),
                             success=status == "Solve_Succeeded" and not flags,

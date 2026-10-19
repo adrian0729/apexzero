@@ -234,18 +234,27 @@ def test_short_window_solve_replays_exactly(scale):
     assert alive
     assert abs(ret - res.value) <= 1e-6 * abs(res.value)
     assert abs(window_return(res.x, res.a, spec) - res.value) < 1e-9
-    # The controls are within the env's action box (IPOPT's relaxed bounds projected back),
-    # and every RK stage's kappa lookup stayed inside its block.
+    # The controls are within the env's action box, every RK stage's kappa lookup stayed
+    # inside its block, and the refinement drove the defects (in the simulator's own step)
+    # to ~1e-10, which is what lets open-loop-unstable optima replay.
     assert np.max(np.abs(res.a)) <= 1.0
     lo, hi = block_offset_range(spec.block)
     assert lo <= res.meta["block_offsets"][0] and res.meta["block_offsets"][1] <= hi
+    assert res.meta["rounds"][-1]["round"] == "refine"
+    assert res.meta["rounds"][-1]["status"] == "Solve_Succeeded"
+    ta = track_arrays(tr, dtype=jnp.float64)
+    sim = jax.vmap(lambda x, a: control_step(x, a, ta, P))
+    defects = res.x[1:] - np.asarray(sim(jnp.asarray(res.x[:-1]), jnp.asarray(res.a)))
+    assert np.max(np.abs(defects)) < 1e-9
 
 
-@pytest.mark.parametrize("slip_safety", [0.0, 1e-4])
-def test_slip_riding_optimum_replays_without_terminating(slip_safety):
-    """A start in a slide makes the optimum ride the slip limit. Without slip_safety it sits
-    within ~1e-8 rad of alpha_max and the float64 replay terminates (found on Monza first);
-    with the 1e-4 rad margin it replays exactly."""
+@pytest.mark.parametrize(("slip_safety", "refine"), [(0.0, False), (1e-4, False), (1e-4, True)])
+def test_slip_riding_optimum_replays_without_terminating(slip_safety, refine):
+    """A start in a slide makes the optimum ride the slip limit. IPOPT relaxes bounds by
+    ~1e-8, so without slip_safety the unrefined optimum sits a hair past alpha_max and the
+    float64 replay terminates (found on Monza first); with the 1e-4 rad margin it replays
+    exactly. (The refinement does not relax bounds, but riding the limit to the last bit
+    would still leave the replay to rounding, so the margin stays.)"""
     from apexzero.vehicle.dynamics import tyre_forces
     from apexzero.vehicle.ops import JAX
 
@@ -265,11 +274,10 @@ def test_slip_riding_optimum_replays_without_terminating(slip_safety):
         steer = np.clip(np.interp(x[0], tr.s, tr.kappa) * P.wheelbase / P.delta_max - 0.2 * x[1] - x[2], -1, 1)
         acts.append(np.array([steer, -0.3]))
         xs.append(np.asarray(step(jnp.asarray(x), jnp.asarray(acts[-1]))))
-    res = WindowSolver(spec, compile=False).solve(tr, x0, init=(np.array(xs), np.array(acts)))
+    res = WindowSolver(spec, compile=False).solve(tr, x0, init=(np.array(xs), np.array(acts)), refine=refine)
     assert res.success, res.status
     fo = tyre_forces(jnp.asarray(res.x[1:]), P, JAX)
     worst = max(np.max(np.abs(np.asarray(fo.alpha_f))), np.max(np.abs(np.asarray(fo.alpha_r))))
-    # IPOPT relaxes bounds by 1e-8 (relative), so the margin is what keeps the replay safe.
     assert P.alpha_max - 1e-4 - spec.slip_safety < worst <= P.alpha_max - spec.slip_safety + 1e-8
     ret, alive, _ = replay_window(tr, x0, res.a)
     if slip_safety == 0.0:
