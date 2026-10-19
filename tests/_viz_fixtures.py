@@ -32,25 +32,28 @@ def circle(radius=150.0, width=14.0, n=400):
     return from_centreline("circle", xy, w, w, ds=2.0)
 
 
-def synthetic_ocp(track, ds=3.0, v0=60.0, dv=15.0):
-    """An OCPResult with a known speed profile, its time from the trapezoidal dt/ds rule
-    exactly as ``solve_min_time`` computes it."""
+def synthetic_ocp(track, ds=3.0, v0=60.0, dv=15.0, n_amp=2.0):
+    """An OCPResult with a known speed profile and lateral offset, its time from the
+    trapezoidal dt/ds rule exactly as ``solve_min_time`` computes it:
+    dt/ds = (1 - n kappa) / vx with xi = vy = 0."""
     L = track.length
     n = round(L / ds)
     h = L / n
     s = np.arange(n) * h
     v = v0 + dv * np.sin(2 * np.pi * s / L)
+    kappa = np.interp(s, track.s, track.kappa)
     z = np.zeros((n, 7))
-    z[:, 0] = 2.0 * np.sin(4 * np.pi * s / L)
+    z[:, 0] = n_amp * np.sin(4 * np.pi * s / L)
     z[:, 2] = v
     z[:, 6] = 0.3
     u = np.zeros((n, 2))
     nxt = np.r_[1:n, 0]
-    seg = 0.5 * h * (1 / v + 1 / v[nxt])
+    dtds = (1.0 - z[:, 0] * kappa) / v
+    seg = 0.5 * h * (dtds + dtds[nxt])
     t = np.r_[0.0, np.cumsum(seg)][:n]
     return OCPResult(s=s, z=z, u=u, t=t, lap_time=float(seg.sum()), success=True,
                      status="synthetic", iterations=0, solve_seconds=0.0,
-                     kappa=np.interp(s, track.s, track.kappa), w_left=np.full(n, 7.0),
+                     kappa=kappa, w_left=np.full(n, 7.0),
                      w_right=np.full(n, 7.0), dual_left=np.zeros(n), dual_right=np.zeros(n),
                      meta={"ds": h, "margin": 1.0, "track": track.name})
 

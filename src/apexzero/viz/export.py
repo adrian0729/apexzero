@@ -450,6 +450,39 @@ def ghost_from_lap_trace(result, track: Track, lap: int = 2, lap_time: float | N
     return Ghost(id, label, "policy", float(tl[-1]), ch, None, dict(info, **(meta or {})))
 
 
+OCP_TIME_RTOL = 1e-4   # per segment; the OCP and this check evaluate the same formula
+
+
+def check_ocp_time(res, s_st: np.ndarray, t_st: np.ndarray, z_st: np.ndarray) -> None:
+    """Every segment of the OCP's time must be the trapezoid of its own dt/ds.
+
+    dt/ds = (1 - n kappa) / (vx cos xi - vy sin xi) at each station, from the states and
+    the OCP's station curvature (``res.kappa``), with the shared model's
+    ``frenet_rates``. ``s_st``/``t_st``/``z_st`` include the closing station on closed
+    circuits, so this also checks the closing segment ``lap_time - res.t[-1]`` that
+    ``ocp_ghost`` would otherwise take on trust: an ``OCPResult`` whose ``t`` and
+    ``lap_time`` disagree with its states fails here instead of showing up as a silent
+    jump in the last segment.
+    """
+    from apexzero.vehicle.dynamics import frenet_rates
+
+    kap = np.asarray(res.kappa, float)
+    if len(z_st) == len(kap) + 1:           # closing station repeats the first
+        kap = np.r_[kap, kap[:1]]
+    sdot = frenet_rates(np.c_[np.zeros(len(z_st)), z_st], kap, NUMPY)[0]
+    if np.any(sdot <= 0):
+        raise ValueError("OCP states do not move forward along the track")
+    dtds = 1.0 / sdot
+    seg = 0.5 * np.diff(s_st) * (dtds[:-1] + dtds[1:])
+    err = np.abs(np.diff(t_st) - seg) / seg
+    i = int(np.argmax(err))
+    if err[i] > OCP_TIME_RTOL:
+        raise ValueError(
+            f"OCP time is inconsistent with its states: segment {s_st[i]:.1f}-"
+            f"{s_st[i + 1]:.1f} m takes {t_st[i + 1] - t_st[i]:.6f} s, its dt/ds gives "
+            f"{seg[i]:.6f} s")
+
+
 def ocp_ghost(res, track: Track, p: VehicleParams = F1_2025, rate_hz: float | None = 20.0,
               id: str = "ocp", label: str = "Optimal lap (s-domain OCP)",
               badge: str | None = None, meta: dict | None = None,
@@ -479,10 +512,11 @@ def ocp_ghost(res, track: Track, p: VehicleParams = F1_2025, rate_hz: float | No
             raise ValueError(f"OCP grid spans {len(s_st) * h:.3f} m, track is {L:.3f} m")
         s_st, t_st = np.r_[s_st, L], np.r_[t_st, res.lap_time]
         z_st, u_st = np.vstack([z_st, z_st[:1]]), np.vstack([u_st, u_st[:1]])
+    elif not np.isclose(t_st[-1], res.lap_time, rtol=0, atol=1e-9):
+        raise ValueError(f"OCP time ends at {t_st[-1]} but lap_time is {res.lap_time}")
     if np.any(np.diff(t_st) <= 0) or np.any(np.diff(s_st) <= 0):
         raise ValueError("OCP time or arc length is not strictly increasing")
-    if not np.isclose(t_st[-1], res.lap_time, rtol=0, atol=1e-9):
-        raise ValueError(f"OCP time ends at {t_st[-1]} but lap_time is {res.lap_time}")
+    check_ocp_time(res, s_st, t_st, z_st)
 
     ch_st = state_channels(track, np.c_[s_st, z_st], p, cmd=u_st)
     if rate_hz is None:

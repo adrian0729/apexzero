@@ -63,16 +63,34 @@ def test_ocp_ghost_maps_stations_to_a_monotone_time_grid():
     g = export.ocp_ghost(res, tr, rate_hz=20.0)
     t, s = g.t, g.s
     assert t[0] == 0.0 and s[0] == 0.0
-    assert t[-1] == res.lap_time == g.lap_time        # the lap time is the OCP's own
+    assert t[-1] == res.lap_time == g.lap_time        # the contract: the OCP's own lap time
     assert s[-1] == pytest.approx(tr.length, abs=1e-9)
     assert np.all(np.diff(t) > export.MIN_GAP)
     assert np.all(np.diff(s) > 0)
     np.testing.assert_allclose(np.diff(t)[:-1], 0.05, atol=1e-9)
     # Distance at the OCP's own station times is reproduced (piecewise-linear error only).
     np.testing.assert_allclose(np.interp(res.t, t, s), res.s, atol=0.02)
-    # And the speed channel integrates back to the lap time.
-    lap = np.sum(np.diff(s) / (0.5 * (g.channels["speed"][1:] + g.channels["speed"][:-1])))
+    # And the resampled channels integrate back to the lap time: dt = ds (1 - n kappa) / v.
+    k = np.interp(s, res.s, res.kappa, period=tr.length)
+    dtds = (1.0 - g.channels["n"] * k) / g.channels["speed"]
+    lap = np.sum(np.diff(s) * 0.5 * (dtds[1:] + dtds[:-1]))
     assert lap == pytest.approx(res.lap_time, rel=1e-4)
+
+
+def test_ocp_ghost_rejects_a_result_whose_time_disagrees_with_its_states():
+    tr = rounded_square()
+    res = synthetic_ocp(tr)
+    res.lap_time += 0.5                 # the closing segment would jump by 0.5 s
+    with pytest.raises(ValueError, match="inconsistent"):
+        export.ocp_ghost(res, tr)
+    res = synthetic_ocp(tr)
+    res.t[len(res.t) // 2:] += 0.01     # a jump mid-lap
+    with pytest.raises(ValueError, match="inconsistent"):
+        export.ocp_ghost(res, tr)
+    res = synthetic_ocp(tr)
+    res.z[:, 2] *= 1.01                 # states that do not produce this time
+    with pytest.raises(ValueError, match="inconsistent"):
+        export.ocp_ghost(res, tr)
 
 
 def test_ocp_ghost_can_keep_the_stations():
@@ -88,8 +106,7 @@ def test_ocp_ghost_can_keep_the_stations():
 
 def test_ocp_ghost_positions_lie_on_the_line():
     tr = circle()
-    res = synthetic_ocp(tr)
-    res.z[:, 0] = 0.0
+    res = synthetic_ocp(tr, n_amp=0.0)
     g = export.ocp_ghost(res, tr)
     r = np.hypot(g.channels["x"], g.channels["y"])
     # On the (spline-smoothed, so +/-0.1 m) centreline wherever it is between stations.
@@ -119,10 +136,16 @@ def test_hockenheim_ocp_ghost_keeps_the_solved_lap_time():
     tr = refine_reference(load_tumftm(TUMFTM / "Hockenheim.csv"))
     with open(HOCKENHEIM_OCP, "rb") as fh:
         res = pickle.load(fh)
+    # The solved result passes the station-by-station time check (every segment of res.t,
+    # including the closing one, is the trapezoid of its own dt/ds) ...
     g = export.ocp_ghost(res, tr)
     assert g.lap_time == res.lap_time and g.t[-1] == res.lap_time
     assert np.all(np.diff(g.t) > 0) and np.all(np.diff(g.s) > 0)
     assert g.channels["ellipse_use"].max() <= 1.0 + 1e-6
+    # ... and the check is not vacuous on it: a lap time off by 0.5 s is refused.
+    res.lap_time += 0.5
+    with pytest.raises(ValueError, match="inconsistent"):
+        export.ocp_ghost(res, tr)
 
 
 # --------------------------------------------------------------------------- policy laps
