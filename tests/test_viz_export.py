@@ -140,19 +140,49 @@ def test_lap_window_times_laps_like_the_harness():
         export.lap_window(t, {"s": s}, L, 1e6)
 
 
-def test_ghost_from_a_timed_laps_trace():
+def test_ghost_from_a_real_timed_laps_trace():
+    """The harness cuts its trace before the sample that crosses the end of the timed
+    lap, so the ghost has to close the lap with the harness's own lap time."""
+    import jax
+
+    from apexzero.eval.laps import timed_laps
+
     tr = circle()
-    v, dt = 30.0, 0.05
-    k = np.arange(1, 2500)
-    trace = {"t": k * dt, "s": v * k * dt, "n": np.zeros(len(k)), "vx": np.full(len(k), v),
-             "action": np.tile([0.05, 0.2], (len(k), 1))}
-    g = export.ghost_from_lap_trace(trace, tr, lap=2)
-    assert g.lap_time == pytest.approx(tr.length / v, abs=1e-6)
+    with jax.enable_x64(False):          # the harness is float32-only
+        res = timed_laps(_ring_policy, tr, 30.0, runs=1)
+        ro = export.rollout_policy(_ring_policy, tr, 30.0)
+    assert res.completed[0]
+    L = tr.length
+    assert res.trace["s"].max() < 2 * L          # the shape that used to break the cut
+
+    g = export.ghost_from_lap_trace(res, tr)     # the LapResult itself
+    assert g.lap_time == pytest.approx(float(res.lap_time[0]), abs=1e-9)
+    assert g.s[0] == 0.0 and g.s[-1] == pytest.approx(L)
+    assert np.all(np.diff(g.t) > export.MIN_GAP) and np.all(np.diff(g.s) > 0)
+    assert g.meta["lap_end_from"] == "harness lap time"
     assert "util_front" not in g.channels and "ellipse_use" not in g.channels
-    # The course angle of a centred car is the track heading.
+    # Independent check: the full-state rollout of the same policy gives the same t(s)
+    # and the same line.
+    full = export.policy_ghost(ro, tr)
+    s = np.linspace(0.0, L, 500)
+    np.testing.assert_allclose(g.time_at(s), full.time_at(s), atol=1e-3)
+    np.testing.assert_allclose(np.interp(s, g.s, g.channels["n"]),
+                               np.interp(s, full.s, full.channels["n"]), atol=1e-3)
+    # The course angle of a near-centred car is close to the track heading.
     _, _, th = export.frenet_to_world(tr, g.s, 0 * g.s)
     d = np.angle(np.exp(1j * (g.channels["heading"] - th)))
     assert np.max(np.abs(d[1:-1])) < 0.02
+
+    # The dict route needs the lap time for the timed lap, and checks it fits.
+    with pytest.raises(ValueError, match="stops at"):
+        export.ghost_from_lap_trace(res.trace, tr)
+    same = export.ghost_from_lap_trace(res.trace, tr, lap_time=float(res.lap_time[0]))
+    np.testing.assert_array_equal(same.t, g.t)
+    with pytest.raises(ValueError, match="within"):
+        export.ghost_from_lap_trace(res.trace, tr, lap_time=float(res.lap_time[0]) + 0.5)
+    # Lap 1 lies wholly inside the trace: no lap time needed.
+    g1 = export.ghost_from_lap_trace(res.trace, tr, lap=1)
+    assert g1.meta["lap_end_from"] == "trace" and g1.s[-1] == pytest.approx(L)
 
 
 def _ring_policy(obs):

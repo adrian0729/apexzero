@@ -11,7 +11,8 @@ A *ghost* is one timed lap: struct-of-arrays channels sampled at increasing time
 - a policy: :func:`rollout_policy` drives the deterministic policy with the timed-lap
   protocol of ``apexzero.eval.laps.timed_laps`` (rolling start at s = 0, lap 2 is timed)
   and keeps the full vehicle state; :func:`policy_ghost` cuts out the timed lap.
-  :func:`ghost_from_lap_trace` accepts ``timed_laps``' own (thinner) trace instead.
+  :func:`ghost_from_lap_trace` accepts ``timed_laps``' own result instead (a thinner
+  trace that stops one sample short of the lap end, closed with the harness's lap time).
 - the s-domain OCP: :func:`ocp_ghost` maps an ``OCPResult`` from stations in s to time,
   using the OCP's own t(s) (trapezoidal dt/ds), so the ghost's lap time *is*
   ``OCPResult.lap_time``.
@@ -364,37 +365,82 @@ def policy_ghost(ro: PolicyRollout, track: Track, lap: int | None = None, id: st
     return Ghost(id, label, "policy", float(t[-1]), ch, badge, dict(info, **(meta or {})))
 
 
-def ghost_from_lap_trace(trace: dict, track: Track, lap: int = 2, id: str = "agent",
-                         label: str = "RL agent", delta_max: float = F1_2025.delta_max,
-                         meta: dict | None = None, unsealed: bool = False) -> Ghost:
-    """A ghost from ``timed_laps(...).trace`` (keys t, s, n, vx, action).
+def ghost_from_lap_trace(result, track: Track, lap: int = 2, lap_time: float | None = None,
+                         id: str = "agent", label: str = "RL agent",
+                         delta_max: float = F1_2025.delta_max, meta: dict | None = None,
+                         unsealed: bool = False) -> Ghost:
+    """A ghost from what ``timed_laps`` returns: the ``LapResult`` itself, or its ``.trace``
+    dict (keys t, s, n, vx, action) together with ``lap_time``.
 
-    That trace has no heading error, side slip or actuator states, so: ``heading`` is the
-    course angle of the path, ``speed`` is vx, throttle/brake/steering are the *commands*
-    (steering scaled by ``delta_max``), and the friction-ellipse channels are absent.
-    Prefer :func:`rollout_policy` + :func:`policy_ghost` when the policy is at hand.
+    ``timed_laps`` keeps its first run's trace only up to the sample *before* the car
+    crosses the end of the timed lap (the crossing sample is cut off), so the trace alone
+    cannot close that lap. The lap is closed with the harness's own lap time
+    (``LapResult.lap_time[0]``, or ``lap_time``): a final sample at s = lap * L and
+    t = (start crossing) + lap_time, which must fall within one control step after the
+    last sample; its n, vx and course are extrapolated linearly over that part step.
+    ``lap_time`` is not needed for a lap the trace does reach (lap 1 of 2).
+
+    The trace has no heading error, side slip or actuator states, so: ``heading`` is the
+    course angle of the path, ``speed`` is vx, throttle/brake/steering are the applied
+    *commands* (steering scaled by ``delta_max``), and the friction-ellipse channels are
+    absent. Prefer :func:`rollout_policy` + :func:`policy_ghost` when the policy is at hand.
     """
     lockbox_guard(track.name, unsealed)
+    if hasattr(result, "trace"):            # a LapResult
+        if lap_time is None:
+            if not bool(np.asarray(result.completed)[0]):
+                raise ValueError("run 0 of the LapResult did not complete its timed lap")
+            lap_time = float(np.asarray(result.lap_time)[0])
+        trace = result.trace
+    else:
+        trace = result
     L = float(track.length)
     t = np.r_[0.0, np.asarray(trace["t"], float)]
     s = np.r_[0.0, np.asarray(trace["s"], float)]
     n = np.r_[0.0, np.asarray(trace["n"], float)]
     vx = np.asarray(trace["vx"], float)
     vx = np.r_[vx[0], vx]
-    acts = np.asarray(trace["action"], float)
     # Row k of the trace is the state after the step driven by action k, so the command
-    # active from sample k on is action k (with the initial sample prepended above).
+    # active from sample k on is action k (with the initial sample prepended above). The
+    # simulator clips actions to [-1, 1]; the channels hold what it applied.
+    acts = np.clip(np.asarray(trace["action"], float), -1.0, 1.0)
     cmd = np.vstack([acts, acts[-1:]])
+    end, start = lap * L, (lap - 1) * L
+    closed_by = "trace"
+    if s.max() < end:
+        if lap_time is None:
+            raise ValueError(
+                f"the trace stops at s = {s.max():.2f} m, before the lap ends at {end:.2f} m "
+                "(timed_laps cuts the crossing sample off): pass the LapResult itself, or "
+                "lap_time=LapResult.lap_time[0]")
+        k = int(np.nonzero(s >= start)[0][0])
+        t_start = t[k] if s[k] == start else (
+            t[k - 1] + (start - s[k - 1]) / (s[k] - s[k - 1]) * (t[k] - t[k - 1]))
+        t_end = t_start + float(lap_time)
+        dt = float(t[-1] - t[-2])
+        if not (t[-1] < t_end <= t[-1] + dt * (1.0 + 1e-6)):
+            raise ValueError(
+                f"lap_time {lap_time:.4f} s puts the lap end at t = {t_end:.4f} s, not within "
+                f"one step ({dt:g} s) after the trace's last sample at {t[-1]:.4f} s")
+        w = (t_end - t[-1]) / dt
+
+        def extend(a):
+            return np.r_[a, a[-1] + w * (a[-1] - a[-2])]
+
+        t, n, vx = np.r_[t, t_end], extend(n), extend(vx)
+        s = np.r_[s, end]
+        cmd = np.vstack([cmd, cmd[-1:]])
+        closed_by = "harness lap time"
     wx, wy, _ = frenet_to_world(track, s, n)
     course = np.unwrap(np.arctan2(np.gradient(wy), np.gradient(wx)))
-    pedal = np.clip(cmd[:, 1], -1.0, 1.0)
+    pedal = cmd[:, 1]
     ch = {"s": s, "n": n, "x": wx, "y": wy, "heading": course, "speed": vx, "vx": vx,
-          "steering": np.clip(cmd[:, 0], -1, 1) * delta_max,
+          "steering": cmd[:, 0] * delta_max,
           "throttle": np.clip(pedal, 0, 1), "brake": np.clip(-pedal, 0, 1),
           "cmd_steer": cmd[:, 0], "cmd_pedal": cmd[:, 1]}
-    tl, ch = lap_window(t, ch, (lap - 1) * L, lap * L)
+    tl, ch = lap_window(t, ch, start, end)
     ch["t"] = tl
-    info = {"source": "timed_laps trace", "lap": lap,
+    info = {"source": "timed_laps trace", "lap": lap, "lap_end_from": closed_by,
             "caveats": "heading is the course angle; steering/throttle/brake are commands; "
                        "no friction-ellipse channels"}
     return Ghost(id, label, "policy", float(tl[-1]), ch, None, dict(info, **(meta or {})))
