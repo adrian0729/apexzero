@@ -289,10 +289,12 @@ def rollout_policy(policy_fn: Callable, track: Track, v_start: float, laps: int 
     as ``timed_laps`` does for its first (unjittered) run, but record every state.
 
     Float32 track arrays and the same step function as the harness, so the lap matches the
-    harness's run 0 up to batch-size rounding in the network. The harness only runs in
-    float32 (its scan carry mixes float32 state with default-dtype context), so the rollout
-    forces float32 even if the caller has enabled ``jax_enable_x64`` (the OCP checks do).
-    Refuses lockbox circuits.
+    harness's run 0 up to float32 rounding: on Hockenheim 1.1e-6 s against the 20-run
+    eval.json and 1.6e-4 s against a fresh one-run call. The harness vmaps the step and
+    this does not, so the programs compile differently; the cause is not isolated (it is
+    not the batch size). The harness only runs in float32 (its scan carry mixes float32
+    state with default-dtype context), so the rollout forces float32 even if the caller
+    has enabled ``jax_enable_x64`` (the OCP checks do). Refuses lockbox circuits.
     """
     import contextlib
 
