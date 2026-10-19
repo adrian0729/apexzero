@@ -22,11 +22,20 @@ D. ``chunk_events`` turns the chunk's completed episodes into buffer operations,
    ``apply_events`` commits in (t, slot) order inside one jitted scan:
    - first use of a replay draw: c += 1 and the level's timestamp <- c (unused draws are
      discarded; if the level was evicted since the draw, the timestamp is left alone);
+     at the same (t, slot), the finished episode's write comes before this first use;
    - a finished exploratory write group: S from the group, then ``LevelSampler.insert``
      (a duplicate hit by level overwrites score and extras, as in JaxUED);
    - a finished replay write group: dropped if the level has left that index (DEV-18),
      otherwise R_max <- max(stored, group) read from the latest buffer state (DEV-19) and
      ``LevelSampler.update``.
+
+Stale replays (part of DEV-18). A replay level can leave its buffer index between the
+pre-draw and the slot's first use, or while its window runs. The slot still plays that
+window to its end and it is still trained on: the loss mask is 1[the window is a replay]
+(spec 2.2 C), fixed when the window starts. Only the score write is dropped, and if the
+first use came after the eviction, the timestamp of whatever now holds the index is left
+alone (the counter c still increments). The trainer logs how many trained-on transitions
+this affects (``replay_steps_dropped`` against ``replay_steps_scored``).
 
 A write group is the episodes of one slot on one assignment that end in the same chunk:
 the slot's first episode (its assignment from before the chunk) and then all later ones
@@ -173,8 +182,10 @@ class RacingPLR:
     # ------------------------------------------------------------------ D. events
 
     @staticmethod
-    def chunk_events(records: dict, cur: Assignment, nxt: Assignment) -> tuple[Events, np.ndarray]:
-        """Buffer operations of one chunk, plus the kind of every record.
+    def chunk_events(records: dict, cur: Assignment, nxt: Assignment
+                     ) -> tuple[Events, np.ndarray, np.ndarray]:
+        """Buffer operations of one chunk, the kind of every record, and for every record
+        the event (row of ``Events``) that writes its write group.
 
         Per slot with completed episodes: write group 0 is its first episode (on ``cur``),
         committed at that episode's end; then the first use of ``nxt`` if it is a replay;
@@ -224,7 +235,14 @@ class RacingPLR:
         for k, dt in dtypes.items():
             ev[k] = np.full(E, -1 if k == "buf_idx" else 0, dt)
             ev[k][:n_ev] = cat[k][o]
-        return Events(**ev), kinds
+        # Write group of each record (groups are the first start.size rows of ``cat``), then
+        # that group's row after sorting.
+        row_of = np.empty(n_ev, np.int64)
+        row_of[o] = np.arange(n_ev)
+        group = np.searchsorted(start, np.arange(s.size), side="right") - 1
+        rec_event = np.empty(s.size, np.int32)
+        rec_event[order] = row_of[group]
+        return Events(**ev), kinds, rec_event
 
     def group_score(self, ev, r_max, oracle_j):
         """S for a write group (JAX; ``r_max`` already combined with the stored value)."""
@@ -240,7 +258,7 @@ class RacingPLR:
 
         def step(buf, ev):
             def noop(buf):
-                return buf, (jnp.int32(OUT_NONE), jnp.int32(-1), nan)
+                return buf, (jnp.int32(OUT_NONE), jnp.int32(-1), nan, nan)
 
             def first_use(buf):
                 c = buf["episode_count"] + 1
@@ -248,7 +266,7 @@ class RacingPLR:
                 ts = buf["timestamps"]
                 ts = ts.at[ev.buf_idx].set(jnp.where(here, c, ts[ev.buf_idx]).astype(ts.dtype))
                 out = jnp.where(here, OUT_TIMESTAMP, OUT_STALE_DRAW).astype(jnp.int32)
-                return {**buf, "timestamps": ts, "episode_count": c}, (out, ev.buf_idx, nan)
+                return {**buf, "timestamps": ts, "episode_count": c}, (out, ev.buf_idx, nan, nan)
 
             def insert(buf):
                 level = jax.tree.map(lambda a: a[ev.level_id], levels)
@@ -259,7 +277,7 @@ class RacingPLR:
                 dup = s.find(buf, level) >= 0 if s.duplicate_check else jnp.bool_(False)
                 buf, idx = s.insert(buf, level, score, extra)
                 out = jnp.where(dup, OUT_DUPLICATE, jnp.where(idx >= 0, OUT_INSERTED, OUT_REJECTED))
-                return buf, (out.astype(jnp.int32), idx.astype(jnp.int32), score)
+                return buf, (out.astype(jnp.int32), idx.astype(jnp.int32), score, r_max)
 
             def update(buf):
                 i = ev.buf_idx
@@ -273,21 +291,43 @@ class RacingPLR:
                 new = s.update(buf, i, score, extra)
                 buf = jax.tree.map(lambda a, b: jnp.where(here, a, b), new, buf)
                 out = jnp.where(here, OUT_UPDATED, OUT_DROPPED).astype(jnp.int32)
-                return buf, (out, i, score)
+                return buf, (out, i, score, r_max)
 
             return jax.lax.switch(ev.op, [noop, first_use, insert, update], buf)
 
         return jax.lax.scan(step, buf, Events(*(jnp.asarray(a) for a in events)))
 
     def apply_events(self, buf: dict, events: Events, chunk: int) -> tuple[dict, dict]:
-        """Commit one chunk's events; returns the buffer and per-event (outcome, index,
-        score) as host arrays. Raises if a non-finite score was written."""
-        buf, (out, idx, score) = self._apply(buf, events, self.levels, self.oracle_j, jnp.int32(chunk))
-        out, idx, score = (np.asarray(a) for a in jax.device_get((out, idx, score)))
+        """Commit one chunk's events; returns the buffer and, per event, host arrays
+
+            outcome     OUT_* code (inserted, duplicate hit, rejected, updated, dropped, ...)
+            index       buffer index written, -1 for a rejected insert
+            score       S computed for the write group (also for rejected / dropped writes)
+            max_return  R_max that goes with S (the stored history combined, for replays)
+
+        Raises if a non-finite score was written."""
+        buf, res = self._apply(buf, events, self.levels, self.oracle_j, jnp.int32(chunk))
+        out, idx, score, r_max = (np.asarray(a) for a in jax.device_get(res))
         written = np.isin(out, (OUT_INSERTED, OUT_DUPLICATE, OUT_UPDATED, OUT_REJECTED))
         if not np.all(np.isfinite(score[written])):
             raise AssertionError("a non-finite level score reached the buffer")
-        return buf, {"outcome": out, "index": idx, "score": score}
+        return buf, {"outcome": out, "index": idx, "score": score, "max_return": r_max}
+
+
+def event_rows(events: Events, outcomes: dict, chunk: int, steps: np.ndarray) -> dict:
+    """One chunk's committed buffer operations with their outcomes, as columns (one row per
+    non-padding event, in commit order; ``row`` is the position, which records point to).
+
+    This is the run's admission log: which exploratory write group was admitted, rejected
+    or hit a duplicate, the score and R_max actually written, and the buffer index, which
+    the records alone cannot give (a replay's MaxMC score depends on the stored R_max
+    history). ``steps`` [E] is the number of transitions in each write group."""
+    n = int(np.count_nonzero(events.op != OP_NOOP))     # no-ops only pad the end
+    cols = {"chunk": np.full(n, chunk, np.int32), "row": np.arange(n, dtype=np.int32)}
+    cols.update({k: np.asarray(getattr(events, k))[:n] for k in Events._fields})
+    cols["steps"] = np.asarray(steps)[:n].astype(np.int32)
+    cols.update({k: np.asarray(v)[:n] for k, v in outcomes.items()})
+    return cols
 
 
 def buffer_snapshot(buf: dict) -> dict:

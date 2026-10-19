@@ -63,6 +63,7 @@ from apexzero.ued.plr import (
     OUT_DROPPED,
     OUT_DUPLICATE,
     OUT_INSERTED,
+    OUT_NONE,
     OUT_REJECTED,
     OUT_STALE_DRAW,
     OUT_UPDATED,
@@ -71,6 +72,7 @@ from apexzero.ued.plr import (
     PLRConfig,
     RacingPLR,
     buffer_snapshot,
+    event_rows,
 )
 from apexzero.ued.scoring import ChunkData, ChunkScorer
 
@@ -117,11 +119,15 @@ class TrainerState:
 
 class ChunkLog(NamedTuple):
     metrics: dict
-    records: dict                  # one row per completed episode (``ued.scoring``) + "kind"
+    records: dict                  # one row per completed episode (``ued.scoring``), plus
+                                   # kind and the write of its group: write_row (row of
+                                   # ``event_rows``), write_outcome, write_score (-1 / OUT_NONE
+                                   # / nan outside PLR)
     mask: np.ndarray               # [T, N] loss mask of the chunk (all True outside PLR)
     nxt: Assignment | None = None  # PLR: the chunk's pre-draw
-    events: Events | None = None   # PLR: the committed buffer operations
-    outcomes: dict | None = None   # PLR: per-event outcome, buffer index, score
+    events: Events | None = None   # PLR: the committed buffer operations (padded)
+    outcomes: dict | None = None   # PLR: per-event outcome, buffer index, score, R_max
+    event_rows: dict | None = None  # PLR: ``plr.event_rows``, the admission log of the chunk
 
 
 class UEDTrainer:
@@ -228,26 +234,34 @@ class UEDTrainer:
             raise AssertionError("a pool window reached the end of its strip")
 
         # D. buffer events
-        events = outcomes = None
+        events = outcomes = rows = None
+        n_rec = records["slot"].size
+        write_row = np.full(n_rec, -1, np.int32)
+        write_out = np.full(n_rec, OUT_NONE, np.int32)
+        write_score = np.full(n_rec, np.nan, np.float32)
         if self.plr is not None:
-            events, kinds = RacingPLR.chunk_events(records, st.cur, nxt)
+            events, kinds, write_row = RacingPLR.chunk_events(records, st.cur, nxt)
             st.buffer, outcomes = self.plr.apply_events(st.buffer, events, k)
+            steps = np.bincount(write_row, weights=records["T"], minlength=events.op.size)
+            rows = event_rows(events, outcomes, k, steps)
+            write_out, write_score = outcomes["outcome"][write_row], outcomes["score"][write_row]
             reset = np.zeros(N, bool)
             reset[records["slot"]] = True
             st.cur = Assignment(*(np.where(reset, n, c) for c, n in zip(st.cur, nxt, strict=True)))
         elif self.ued.arm == "sfl":
             kinds = np.where(self.sources[records["slot"]] == sfl.SOURCE_BUFFER, KIND_SFL, KIND_DR)
         else:
-            kinds = np.full(records["slot"].size, KIND_DR)
+            kinds = np.full(n_rec, KIND_DR)
         records["kind"] = kinds.astype(np.int32)
-        records["timesteps"] = np.full(kinds.size, (k + 1) * cfg.batch_size, np.int64)
+        records["timesteps"] = np.full(n_rec, (k + 1) * cfg.batch_size, np.int64)
+        records.update(write_row=write_row, write_outcome=write_out, write_score=write_score)
 
         mask_np = np.asarray(ro.mask) if mask is not None else np.ones((cfg.num_steps, N), bool)
-        metrics = self._metrics(st, k, records, mask_np, m, self._diag(tr, targets, mask), outcomes)
+        metrics = self._metrics(st, k, records, mask_np, m, self._diag(tr, targets, mask), rows, nxt)
         st.chunk = k + 1
-        return st, ChunkLog(metrics, records, mask_np, nxt, events, outcomes)
+        return st, ChunkLog(metrics, records, mask_np, nxt, events, outcomes, rows)
 
-    def _metrics(self, st, k, rec, mask, m, diag, outcomes) -> dict:
+    def _metrics(self, st, k, rec, mask, m, diag, rows, nxt) -> dict:
         m = jax.device_get(m)
         out = {
             "chunk": k, "timesteps": (k + 1) * self.cfg.batch_size,
@@ -267,12 +281,20 @@ class UEDTrainer:
             out[f"{name}_return"] = mean(rec["G"])
             out[f"{name}_completion"] = mean(rec["s1"])
             out[f"{name}_length"] = mean(rec["T"])
-        if outcomes is not None:
-            o = outcomes["outcome"]
+        if rows is not None:
+            o = rows["outcome"]
             for name, code in (("inserted", OUT_INSERTED), ("duplicate", OUT_DUPLICATE),
                                ("rejected", OUT_REJECTED), ("updated", OUT_UPDATED),
                                ("dropped", OUT_DROPPED), ("stale_draw", OUT_STALE_DRAW)):
                 out[f"buf_{name}"] = int((o == code).sum())
+            # Trained-on transitions of the replay windows that ended here, split by whether
+            # their score reached the buffer or was dropped because the level had been
+            # evicted (DEV-18): PLR-perp trains on the latter but never scores them.
+            scored = int(rows["steps"][o == OUT_UPDATED].sum())
+            dropped = int(rows["steps"][o == OUT_DROPPED].sum())
+            out.update(predraw_replay=int((nxt.kind == KIND_REPLAY).sum()), replay_steps_scored=scored,
+                       replay_steps_dropped=dropped,
+                       replay_dropped_frac=dropped / (scored + dropped) if scored + dropped else float("nan"))
             size = int(st.buffer["size"])
             scores = np.asarray(st.buffer["scores"][:size])
             out.update(buf_size=size, buf_score_mean=float(scores.mean()) if size else float("nan"),

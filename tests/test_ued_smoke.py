@@ -10,7 +10,7 @@ import jax.numpy as jnp
 import numpy as np
 import pytest
 
-from apexzero.agents.ppo import PPOConfig
+from apexzero.agents.ppo import PPOConfig, RunningMeanStd
 from apexzero.env import racing
 from apexzero.tracks.corners import R_DEV
 from apexzero.tracks.generator import fit_grammar
@@ -19,13 +19,17 @@ from apexzero.tracks.track import load_tumftm
 from apexzero.ued import pool
 from apexzero.ued.plr import (
     KIND_DR,
+    KIND_EXPLORE,
     KIND_REPLAY,
     KIND_SFL,
     OP_INSERT,
+    OP_NOOP,
     OP_UPDATE,
+    OUT_DROPPED,
     OUT_DUPLICATE,
     OUT_INSERTED,
     OUT_UPDATED,
+    Assignment,
     PLRConfig,
 )
 from apexzero.ued.sfl import SFLConfig
@@ -119,6 +123,35 @@ def _check_plr_chunk(k, before, cur, st, log, trainer):
         last = np.nonzero(ok & (log.outcomes["index"] == i))[0][-1]
         assert scores[i] == pytest.approx(log.outcomes["score"][last])
 
+    # The admission log: every record points to its group's write, and the per-event
+    # transition counts add up to the records'.
+    rows = log.event_rows
+    assert rows["row"].size == int((log.events.op != OP_NOOP).sum())
+    assert np.all(np.isin(rows["op"][rec["write_row"]], (OP_INSERT, OP_UPDATE)))
+    assert np.array_equal(rec["write_outcome"], rows["outcome"][rec["write_row"]])
+    assert np.array_equal(rec["write_score"], rows["score"][rec["write_row"]], equal_nan=True)
+    assert np.all(rows["level_id"][rec["write_row"]] == rec["level"])
+    assert rows["steps"].sum() == rec["T"].sum()
+    replay = rec["kind"] == KIND_REPLAY
+    m = log.metrics
+    assert m["replay_steps_scored"] + m["replay_steps_dropped"] == rec["T"][replay].sum()
+    dropped = rec["write_outcome"] == OUT_DROPPED
+    assert m["replay_steps_dropped"] == rec["T"][dropped].sum() and np.all(replay[dropped])
+
+
+def _agent_parts(st):
+    return (st.agent.actor, st.agent.critic, st.agent.obs_rms, st.agent.ret_rms)
+
+
+def _evict(st, j, tree):
+    """Overwrite the buffer entry slot j is replaying with a pool level not in the buffer
+    (what an exploratory insert does), keeping its score."""
+    buf, i = st.buffer, int(st.cur.buf_idx[j])
+    ids = set(np.asarray(buf["levels"]["level_id"][: int(buf["size"])]).tolist())
+    new = next(lv for lv in range(N_LEVELS) if lv not in ids)
+    levels = jax.tree.map(lambda a, b: a.at[i].set(b[new]), buf["levels"], tree)
+    st.buffer = {**buf, "levels": levels}
+
 
 def test_plr_perp_smoke(pool_setup):
     bank, tree = pool_setup
@@ -127,16 +160,30 @@ def test_plr_perp_smoke(pool_setup):
     st = trainer.init(jax.random.PRNGKey(0))
     agent0 = st.agent
     saw_replay = saw_update = False
-    for k in range(6):
-        before, cur = st.buffer, st.cur
+    evicted = None                                     # (slot, level) of a forced eviction
+    for k in range(8):
+        if evicted is None and k >= 3 and (st.cur.kind == KIND_REPLAY).any():
+            j = int(np.nonzero(st.cur.kind == KIND_REPLAY)[0][0])
+            evicted = (j, int(st.cur.level_id[j]))
+            _evict(st, j, tree)
+        before, cur, parts = st.buffer, st.cur, _agent_parts(st)
         st, log = trainer.step(st)
         _check_plr_chunk(k, before, cur, st, log, trainer)
-        if k == 0:
-            # The buffer starts empty: every window is exploratory, so PLR-perp neither
-            # trains nor moves the normalisers on this chunk.
-            assert not log.mask.any()
-            assert _same((agent0.actor, agent0.critic, agent0.obs_rms, agent0.ret_rms),
-                         (st.agent.actor, st.agent.critic, st.agent.obs_rms, st.agent.ret_rms))
+        if not log.mask.any():
+            # Every window exploratory (chunk 0: the buffer starts empty): PLR-perp neither
+            # trains nor moves the normalisers.
+            assert _same(parts, _agent_parts(st))
+        if evicted is not None and evicted[0] in log.records["slot"]:
+            # DEV-18 at the trainer: the evicted replay was played and trained on to its
+            # end, and its score write was dropped.
+            j, lv = evicted
+            first = np.nonzero(log.records["slot"] == j)[0]
+            first = first[np.argmin(log.records["t"][first])]
+            if log.records["level"][first] == lv and log.records["kind"][first] == KIND_REPLAY:
+                assert log.mask[: log.records["t"][first] + 1, j].all()
+                assert log.records["write_outcome"][first] == OUT_DROPPED
+                assert log.metrics["replay_steps_dropped"] >= log.records["T"][first]
+                evicted = (-1, -1)
         saw_replay |= bool((log.records["kind"] == KIND_REPLAY).any())
         saw_update |= bool((log.outcomes["outcome"] == OUT_UPDATED).any())
         m = log.metrics
@@ -146,9 +193,29 @@ def test_plr_perp_smoke(pool_setup):
             if isinstance(v, float) and key != "explained_var":
                 assert np.isfinite(v) == (m.get(per_kind, 1) > 0), key
     assert saw_replay and saw_update and int(st.buffer["size"]) == 16
+    assert evicted == (-1, -1)                       # the forced eviction was checked
     assert not _same(agent0.actor.params, st.agent.actor.params)
     snap = trainer.sampler_snapshot(st)
     assert snap["level_id"].size == 16 and np.all(np.isfinite(snap["scores"]))
+
+    # An all-exploratory chunk from a trained state: still bit-identical networks, optimiser
+    # state and normalisers. The counts here are integers, for which the plain merge happens
+    # to round-trip, so the normalisers get a count it does not (var * c / c != var).
+    c = jnp.float32(729655.7)
+    st.agent = st.agent._replace(obs_rms=st.agent.obs_rms._replace(count=c),
+                                 ret_rms=RunningMeanStd(jnp.float32(-2.3250308), jnp.float32(0.4324972), c))
+    n = N_ENVS
+    explore = Assignment(np.full(n, KIND_EXPLORE, np.int32), np.arange(n, dtype=np.int32) % N_LEVELS,
+                         np.full(n, -1, np.int32))
+    st.cur = explore._replace(level_id=st.cur.level_id)
+    st.env_state = st.env_state._replace(mask=jnp.zeros(n, bool), next_mask=jnp.zeros(n, bool))
+    trainer.plr.predraw = lambda buf, key, n: explore
+    before, cur, parts = st.buffer, st.cur, _agent_parts(st)
+    st, log = trainer.step(st)
+    assert not log.mask.any()
+    _check_plr_chunk(8, before, cur, st, log, trainer)
+    assert _same(parts, _agent_parts(st))
+    assert not _same(agent0.ret_rms, st.agent.ret_rms)
 
 
 def test_sfl_smoke(pool_setup):

@@ -27,6 +27,7 @@ from apexzero.ued.plr import (
     Events,
     PLRConfig,
     RacingPLR,
+    event_rows,
     init_buffer,
     make_sampler,
 )
@@ -198,6 +199,26 @@ def test_E7_rmax_history_replay_then_duplicate_hit():
     assert list(res["outcome"][:2]) == [OUT_UPDATED, OUT_DUPLICATE]
     assert res["score"][0] == pytest.approx(4.0) and res["score"][1] == pytest.approx(1.0)
     assert float(out["levels_extra"]["max_return"][0]) == 2.0
+    assert list(res["max_return"][:2]) == [5.0, 2.0]   # the R_max written with each score
+
+
+def test_event_rows_are_the_admission_log():
+    plr = RacingPLR(PLRConfig(capacity=2, score="maxmc"), LEVELS)
+    buf = _buf(plr.sampler, [30, 31], [1.0, 2.0], [1, 2], c=2, extras={"max_return": [4.0, 0.0]})
+    ev = _events([dict(op=OP_INSERT, level_id=40, g_max=1.0, v_bar=0.5, t=3, slot=1),   # rejected
+                  dict(op=OP_UPDATE, level_id=30, buf_idx=0, g_max=2.0, v_bar=1.0, t=3, slot=2),
+                  dict(op=OP_FIRST_USE, level_id=31, buf_idx=1, t=3, slot=2, n=0),
+                  dict(op=OP_INSERT, level_id=41, g_max=9.0, v_bar=0.0, t=7, slot=0)])  # admitted
+    _, res = plr.apply_events(buf, ev, chunk=5)
+    rows = event_rows(ev, res, 5, steps=np.array([40, 80, 0, 120] + [0] * 8))
+    assert all(v.shape == (4,) for v in rows.values())
+    assert rows["row"].tolist() == [0, 1, 2, 3] and set(rows["chunk"].tolist()) == {5}
+    assert rows["outcome"].tolist() == [OUT_REJECTED, OUT_UPDATED, OUT_TIMESTAMP, OUT_INSERTED]
+    # The last insert replaces index 1: lower score than index 0 (now 3.0), fresh timestamp.
+    assert rows["index"].tolist() == [-1, 0, 1, 1]
+    assert rows["score"][[0, 1, 3]].tolist() == [0.5, 3.0, 9.0]           # S = R_max - V_bar
+    assert rows["max_return"][[0, 1, 3]].tolist() == [1.0, 4.0, 9.0]      # stored history on replay
+    assert rows["level_id"].tolist() == [40, 30, 31, 41] and rows["steps"].tolist() == [40, 80, 0, 120]
 
 
 def test_DEV19_concurrent_replay_writes_read_the_latest_rmax():
@@ -288,8 +309,10 @@ def test_chunk_events_group_and_order():
                      np.array([-1, 4, -1]))
     nxt = Assignment(np.array([KIND_REPLAY, KIND_EXPLORE, KIND_REPLAY]), np.array([11, 13, 15]),
                      np.array([3, -1, 6]))
-    ev, kinds = RacingPLR.chunk_events(rec, cur, nxt)
+    ev, kinds, write_row = RacingPLR.chunk_events(rec, cur, nxt)
     assert ev.op.shape == (64,)
+    # Each record points to the write of its group: slot 0's two replay episodes share one.
+    assert write_row.tolist() == [3, 2, 0, 3]
     got = [(int(ev.t[e]), int(ev.slot[e]), int(ev.op[e]), int(ev.level_id[e]), int(ev.buf_idx[e]))
            for e in range(4)]
     assert got == [(5, 0, OP_INSERT, 10, -1), (5, 0, OP_FIRST_USE, 11, 3), (5, 1, OP_UPDATE, 12, 4),
@@ -341,13 +364,20 @@ def test_chunk_events_matches_a_per_slot_loop():
         first = np.zeros(n_rec, bool)
         first[order[np.r_[True, slot[order][1:] != slot[order][:-1]]] if n_rec else []] = True
         rec["level"] = np.where(first, cur.level_id[slot], nxt.level_id[slot])
-        ev, _ = RacingPLR.chunk_events(rec, cur, nxt)
+        ev, _, write_row = RacingPLR.chunk_events(rec, cur, nxt)
         ref = _chunk_events_loop(rec, cur, nxt)
         assert (ev.op != OP_NOOP).sum() == len(ref)
         for e, r in enumerate(ref):
             got = (ev.t[e], ev.slot[e], ev.op[e], ev.level_id[e], ev.buf_idx[e], ev.n[e], ev.pvl[e],
                    ev.g_max[e], ev.v_bar[e], ev.g_disc_max[e], ev.g_disc_mean[e], ev.any_s1[e])
             assert np.allclose(np.array(got, float), np.array(r[:2] + r[3:], float), atol=1e-6)
+        # Every record points to a write of its own slot and level, committed at or after
+        # its end, and every write is pointed to by exactly its group's n records.
+        assert np.all(np.isin(ev.op[write_row], (OP_INSERT, OP_UPDATE)))
+        assert np.all(ev.slot[write_row] == rec["slot"]) and np.all(ev.level_id[write_row] == rec["level"])
+        assert np.all(ev.t[write_row] >= rec["t"])
+        writes = np.nonzero(np.isin(ev.op, (OP_INSERT, OP_UPDATE)))[0]
+        assert np.array_equal(np.bincount(write_row, minlength=ev.op.size)[writes], ev.n[writes])
 
 
 def test_duplicate_check_by_full_level_equals_check_by_level_id():
