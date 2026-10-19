@@ -119,7 +119,9 @@ We keep this because it is what runs; the unit-consistent variant is our additio
 labelled as such.
 % src: docs/paper/score-spec.md sections 1.3, 1.4; docs/paper/sources-jaxued.md section 1.1
 
-\paragraph{Learnability under dense reward} A literal port of SFL's success count would
+\paragraph{Learnability under dense reward} Learnability is not offered as a regret
+estimate (\cref{sec:intro}); we score it because SFL runs it, and read its agreement with
+regret as a comparison of targets. A literal port of SFL's success count would
 count every step with positive reward and give $p > 1$, so success is a per-window
 indicator (\dev{9}). S1, window completion, saturates as the agent becomes competent;
 S2 also asks for at least 97\% of the distance the quasi-steady-state oracle covers from
