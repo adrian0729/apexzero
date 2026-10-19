@@ -150,16 +150,65 @@ def load(directory: str | Path, telemetry: bool = True) -> SessionData:
 
 # ----------------------------------------------------------------------------- race control
 
-_DELETED = re.compile(r"CAR (\d+) \(\w+\) (?:TIME \S+ )?(?:LAP )?DELETED\b.*?\bLAP (\d+)\b")
+_CAR = re.compile(r"\bCAR (\d+) \(")
+_TIME = re.compile(r"\bTIME (\d+):(\d{2}\.\d{3})\b")
+_RC_LAP = re.compile(r"\bLAP (\d+)\b")
+# Race control counts laps one ahead of OpenF1: in 2023-25 qualifying, 483 of the 489
+# deletion messages that carry both a lap number and the deleted time give a time that
+# is OpenF1 lap n - 1's duration to the millisecond (3 point to n - 2, 3 match nothing).
+RC_LAP_OFFSET = 1
+
+
+def _laps_of(sess: SessionData, driver: int) -> list[LapRecord]:
+    return sorted((lap for lap in sess.laps if lap.driver == driver), key=lambda lap: lap.number)
+
+
+def _referenced_laps(sess: SessionData, driver: int, msg: str, t: float) -> set[tuple[int, int]]:
+    """The OpenF1 lap(s) a deletion or reinstatement message refers to.
+
+    In order of reliability: the deleted TIME matched to a lap duration (the latest such
+    lap that started before the message); else the race-control LAP n, which is OpenF1
+    lap n - 1; else (no time and no lap, e.g. 'LAP DELETED - DOUBLE YELLOW' or
+    '(NEXT LAP PIT)') the lap in progress at the message, plus for messages that do not
+    say NEXT LAP also the lap completed just before it, because a message can arrive
+    after the lap ends. That last case over-excludes on purpose.
+    """
+    laps = _laps_of(sess, driver)
+    tm = _TIME.search(msg)
+    if tm:
+        dur = 60 * int(tm.group(1)) + float(tm.group(2))
+        hits = [lap for lap in laps if lap.duration is not None and abs(lap.duration - dur) < 1.5e-3
+                and (lap.date_start is None or lap.date_start <= t)]
+        if hits:
+            return {(driver, hits[-1].number)}
+    rc = _RC_LAP.search(msg)
+    if rc:
+        return {(driver, int(rc.group(1)) - RC_LAP_OFFSET)}
+    started = [lap for lap in laps if lap.date_start is not None and lap.date_start <= t]
+    if not started:
+        return set()
+    cur = started[-1].number
+    return {(driver, cur)} if "NEXT LAP" in msg else {(driver, cur - 1), (driver, cur)}
 
 
 def deleted_laps(sess: SessionData) -> set[tuple[int, int]]:
-    """(driver, lap) pairs whose time was deleted (track limits and the like)."""
-    out = set()
+    """(driver, OpenF1 lap) pairs whose time was deleted (track limits, double yellows).
+
+    Messages are processed in time order; 'WILL BE REINSTATED' removes the lap again.
+    The race_control ``lap_number`` field is not used: it is empty on every deletion
+    message in the 2023-25 qualifying archive.
+    """
+    out: set[tuple[int, int]] = set()
     for m in sess.race_control:
-        hit = _DELETED.search(m.get("message") or "")
-        if hit and "REINSTATED" not in m["message"]:
-            out.add((int(hit.group(1)), int(hit.group(2))))
+        msg = m.get("message") or ""
+        reinstated = "REINSTATED" in msg
+        if "DELETED" not in msg and not reinstated:
+            continue
+        car = _CAR.search(msg)
+        if not car:
+            continue
+        keys = _referenced_laps(sess, int(car.group(1)), msg, m["t"])
+        out = out - keys if reinstated else out | keys
     return out
 
 

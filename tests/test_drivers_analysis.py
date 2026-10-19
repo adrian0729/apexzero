@@ -141,7 +141,7 @@ def test_classify_applies_every_rule():
         {"t": 0.0, "category": "SessionStatus", "qualifying_phase": 1,
          "message": "SESSION STARTED"},
         {"t": 812.0, "category": "Other", "message": "CAR 1 (AAA) TIME 1:20.200 DELETED - TRACK "
-                                                    "LIMITS AT TURN 4 LAP 7 14:00:00"},
+                                                    "LIMITS AT TURN 4 LAP 8 14:00:00"},
         {"t": 850.0, "category": "Flag", "flag": "YELLOW", "scope": "Sector", "sector": 3},
         {"t": 870.0, "category": "Flag", "flag": "CLEAR", "scope": "Sector", "sector": 3},
     ]

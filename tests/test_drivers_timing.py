@@ -178,9 +178,42 @@ def test_race_control_parsing():
         {"t": 900.0, "category": "SessionStatus", "qualifying_phase": 2,
          "message": "SESSION STARTED"},
     ])
-    assert sx.deleted_laps(sess) == {(55, 3), (30, 6)}
+    # No lap durations to match: race control's LAP n is OpenF1 lap n - 1.
+    assert sx.deleted_laps(sess) == {(55, 2), (30, 5)}
     assert sx.q_segment(sess, 50.0) == 1 and sx.q_segment(sess, 950.0) == 2
     assert sx.flag_intervals(sess) == [(200.0, 230.0, "YELLOW")]
+
+
+def _rec(driver, number, start, duration, pit_out=False):
+    return sx.LapRecord(driver, number, start, duration, (None, None, None) if duration is None
+                        else (1.0, 1.0, duration - 2.0), pit_out)
+
+
+def test_deleted_laps_match_the_time_and_handle_every_message_form():
+    laps = [_rec(55, 2, 0.0, 80.470), _rec(55, 3, 80.5, 95.0),
+            _rec(1, 7, 0.0, 66.0), _rec(1, 8, 66.1, 137.209), _rec(1, 9, 203.4, 66.5),
+            _rec(10, 4, 0.0, 66.9), _rec(10, 5, 67.0, 66.966), _rec(10, 6, 134.0, 90.0),
+            _rec(22, 2, 0.0, 92.0), _rec(22, 3, 92.1, None),
+            _rec(4, 11, 0.0, 87.871), _rec(4, 12, 88.0, 116.36)]
+    msg = [
+        # TIME wins over the LAP number (which would say lap 2 here as well).
+        "CAR 55 (SAI) TIME 1:20.470 DELETED - TRACK LIMITS AT TURN 7 LAP 3 16:03:35",
+        # (NEXT LAP) with a time: the time identifies the lap.
+        "CAR 1 (VER) TIME 2:17.209 DELETED - TRACK LIMITS AT TURN 10 (NEXT LAP)",
+        # Deleted, then reinstated by time.
+        "CAR 10 (GAS) TIME 1:06.966 DELETED - DOUBLE YELLOW AT TURN 1",
+        "CAR 10 (GAS) TIME 1:06.966 WILL BE REINSTATED",
+        # No time, no lap, NEXT LAP PIT: the lap in progress (the in-lap).
+        "CAR 22 (TSU) LAP DELETED - TRACK LIMITS AT TURN 15 (NEXT LAP PIT)",
+        # No time, no lap: the lap in progress and the one just completed.
+        "CAR 4 (NOR) LAP DELETED - DOUBLE YELLOW AT TURN 17",
+    ]
+    rc = [{"t": 300.0 + i, "category": "Other", "message": m} for i, m in enumerate(msg)]
+    sess = _sess(rc, laps)
+    assert sx.deleted_laps(sess) == {(55, 2), (1, 8), (22, 3), (4, 11), (4, 12)}
+    # A reinstatement only undoes deletions that came before it.
+    rc_rev = [dict(rc[3], t=290.0), dict(rc[2], t=291.0)]
+    assert sx.deleted_laps(_sess(rc_rev, laps)) == {(10, 5)}
 
 
 # ----------------------------------------------------------------------------- smoother
