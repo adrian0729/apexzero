@@ -1053,34 +1053,36 @@ def twin_for(track: Track, corner: Corner) -> TwinFit:
 @dataclass(frozen=True)
 class CrashPair:
     """One (agent, real crash) unit of P8, from the deterministic real-lap crash tables
-    (docs/findings/<run>-crashes.md: lap, crash s, the doc's local R_min label)."""
+    (docs/findings/<run>-crashes.md: lap and crash s). A unit carries no radius label:
+    its corner is the ``corners.segment`` corner containing the crash (``crash_corner``,
+    D15) and its regime comes from that corner's R_seg against the agent's frozen q1 / q10
+    (ruling R2, ``analysis.p8_set``)."""
 
     agent: str
     track: str
     lap: int
     s_crash: float       # m on the circuit
-    label_R: float       # m, the radius the protocol's tables quote for this crash
 
 
 CRASH_PAIRS = (
-    CrashPair("G1", "YasMarina", 1, 2832.0, 9.2),
-    CrashPair("G1", "Norisring", 1, 480.0, 13.2),
-    CrashPair("G1", "Hockenheim", 1, 265.0, 18.3),
-    CrashPair("G1", "Melbourne", 1, 377.0, 19.3),
-    CrashPair("G1", "Sochi", 1, 2058.0, 21.1),
-    CrashPair("G1", "Zandvoort", 1, 369.0, 24.4),
-    CrashPair("G1", "BrandsHatch", 1, 2750.0, 33.6),
-    CrashPair("G1", "Oschersleben", 1, 474.0, 47.2),
-    CrashPair("G2", "Norisring", 1, 910.0, 12.6),
-    CrashPair("G2", "YasMarina", 1, 1369.0, 12.7),
-    CrashPair("G2", "Melbourne", 1, 2562.0, 14.0),
-    CrashPair("G2", "Catalunya", 1, 4182.0, 13.9),
-    CrashPair("G2", "Zandvoort", 1, 3228.0, 12.1),
-    CrashPair("G2", "Sochi", 1, 2060.0, 21.1),
-    CrashPair("G2", "Oschersleben", 1, 469.0, 47.2),
+    CrashPair("G1", "YasMarina", 1, 2832.0),
+    CrashPair("G1", "Norisring", 1, 480.0),
+    CrashPair("G1", "Hockenheim", 1, 265.0),
+    CrashPair("G1", "Melbourne", 1, 377.0),
+    CrashPair("G1", "Sochi", 1, 2058.0),
+    CrashPair("G1", "Zandvoort", 1, 369.0),
+    CrashPair("G1", "BrandsHatch", 1, 2750.0),
+    CrashPair("G1", "Oschersleben", 1, 474.0),
+    CrashPair("G2", "Norisring", 1, 910.0),
+    CrashPair("G2", "YasMarina", 1, 1369.0),
+    CrashPair("G2", "Melbourne", 1, 2562.0),
+    CrashPair("G2", "Catalunya", 1, 4182.0),
+    CrashPair("G2", "Zandvoort", 1, 3228.0),
+    CrashPair("G2", "Sochi", 1, 2060.0),
+    CrashPair("G2", "Oschersleben", 1, 469.0),
 )
-LABEL_MISMATCH = 0.10    # flag a crash corner whose R_seg differs from its label by > 10%
 EXTRA_CRASH_PAIRS_FILE = "crash_pairs_extra.json"   # under io.STIMULI_DIR (G3's own crashes)
+_CRASH_PAIR_FIELDS = ("agent", "track", "lap", "s_crash")
 
 
 def crash_pairs(path: Path | None = None) -> tuple[CrashPair, ...]:
@@ -1088,11 +1090,13 @@ def crash_pairs(path: Path | None = None) -> tuple[CrashPair, ...]:
     crash corners, which protocol 2.4 P8 adds "by the same construction rule" from G3's
     standard R_DEV evaluation. Those come from G3's deterministic real-lap runs
     (``crash_pairs_from_laps``, written by ``rollouts --real-laps`` to
-    stimuli/crash_pairs_extra.json); until then only the named pairs exist."""
+    stimuli/crash_pairs_extra.json); until then only the named pairs exist. A radius label
+    in an older file is ignored (R2)."""
     f = io.STIMULI_DIR / EXTRA_CRASH_PAIRS_FILE if path is None else Path(path)
     extra = ()
     if f.exists():
-        extra = tuple(CrashPair(**d) for d in io.read_json(f)["pairs"])
+        extra = tuple(CrashPair(**{k: d[k] for k in _CRASH_PAIR_FIELDS})
+                      for d in io.read_json(f)["pairs"])
     return CRASH_PAIRS + tuple(p for p in extra if p not in CRASH_PAIRS)
 
 
@@ -1100,8 +1104,8 @@ def crash_pairs_from_laps(agent: str, laps: dict) -> list[CrashPair]:
     """An agent's crash units from its deterministic real laps ({circuit: lap} with
     ``x`` [K, 8] (s unwrapped), ``valid``, ``term_step``, ``length``; ``agents.RealLap``):
     each R_DEV circuit where the run terminated gives one pair at the crash s (the terminal
-    state's s modulo the lap length), on that lap; its label is the containing corner's
-    R_seg (no crash doc quotes one)."""
+    state's s modulo the lap length), on that lap. Its corner and regime follow from the
+    crash s (``crash_corner``, R2)."""
     out = []
     for name, lap in sorted(laps.items()):
         if name not in R_DEV or int(lap.term_step) < 0:
@@ -1111,9 +1115,15 @@ def crash_pairs_from_laps(agent: str, laps: dict) -> list[CrashPair]:
         L = float(lap.length)
         lap_index = int(s_unwrapped // L) + 1
         s = s_unwrapped % L
-        c = crash_corner(real_track(name), s)
-        out.append(CrashPair(agent, name, lap_index, round(s, 1), round(float(c.r_min), 1)))
+        out.append(CrashPair(agent, name, lap_index, round(s, 1)))
     return out
+
+
+def crash_unit_R_seg(pair: CrashPair) -> float:
+    """R_seg (m) of a crash unit's corner: the ``corners.segment`` corner containing the
+    crash point (D15). The unit's regime is this radius against the crashing agent's
+    frozen q1 / q10 (ruling R2: one estimator for every crash corner)."""
+    return float(crash_corner(real_track(pair.track), pair.s_crash).r_min)
 
 
 def _contains(c: Corner, s: float, ds: float, length: float) -> bool:
@@ -1125,9 +1135,9 @@ def _contains(c: Corner, s: float, ds: float, length: float) -> bool:
 
 def crash_corner(track: Track, s_crash: float) -> Corner:
     """The ``corners.segment`` corner containing s_crash (s_start <= s_crash <= s_end + ds,
-    wrapping), else the last corner starting before it (cyclically). The two G2 crashes
-    whose protocol label differs from this corner's R_seg by > 10% (YasMarina, Zandvoort;
-    see IMPLEMENTATION.md) are flagged by ``build_real_design``, not re-targeted."""
+    wrapping), else the last corner starting before it (cyclically). This is the crash
+    corner of ruling R2 (D15); its R_seg sets the unit's regime. A tighter neighbour inside
+    the ladder's [s_c - 800, s_c + 400] window still acts through the context rungs."""
     from apexzero.viz.export import lockbox_guard
 
     lockbox_guard(track.name)
@@ -1814,8 +1824,7 @@ def build_real_design(bank: StimulusBank, cells: list[Cell],
         sts = [(p.agent, states.get(p.agent, {}).get(key)) for p in pairs]
         sts = [(a, s) for a, s in sts if s is not None]
         if sts:
-            label = {p.agent: p.label_R for p in pairs}
-            jobs.append(("E1", key, tname, corner, sts, LADDER_VERSIONS, label))
+            jobs.append(("E1", key, tname, corner, sts, LADDER_VERSIONS))
     for key, st in sorted(states.get("G2", {}).items()):
         if not key.startswith("E2/"):
             continue
@@ -1823,8 +1832,8 @@ def build_real_design(bank: StimulusBank, cells: list[Cell],
         cs = [c for c in real_corners(real_track(tname)) if abs(c.s_start - float(s_c)) < 1.0]
         if len(cs) != 1:
             raise ValueError(f"E2 state {key} matches {len(cs)} corners")
-        jobs.append(("E2", key, tname, cs[0], [("G2", st)], E2_VERSIONS, {}))
-    for tier, key, tname, corner, sts, versions, label in jobs:
+        jobs.append(("E2", key, tname, cs[0], [("G2", st)], E2_VERSIONS))
+    for tier, key, tname, corner, sts, versions in jobs:
         track = real_track(tname)
         exc = _excision_of(track, tname, corner, E_CUT_BEFORE, E_CUT_AFTER)
         lead = min(exc.to_strip(s.s_real) for _, s in sts)
@@ -1834,10 +1843,14 @@ def build_real_design(bank: StimulusBank, cells: list[Cell],
                            math.floor(lead / DS + 1e-9))
         pts = dict(a=rr_pts.i_a, b=rr_pts.i_b, lead1=rr_pts.lead1, c0=rr_pts.c0, c1=rr_pts.c1)
         base = f"{tier}/{tname}/{corner.s_start:.0f}"
-        r_seg_flags = set()
-        for agent, lab in label.items():
-            if abs(corner.r_min - lab) / lab > LABEL_MISMATCH:
-                r_seg_flags.add(f"label_mismatch:{agent}:{lab:g}")
+        # R4: a twin that matches R_seg and the angle (to < 1e-3) but is shorter than its
+        # corner is flagged 'twin_length_short' and listed with its length shortfall
+        # (``twin_length_shortfall``); any other miss keeps 'twin_fit_fail'.
+        twin_flags = set()
+        if not twin.ok:
+            short = (twin_r4_match(twin.achieved["R_seg"], twin.achieved["theta_deg"], twin.target)
+                     and twin.achieved["L_seg"] < twin.target["L_seg"])
+            twin_flags = {"twin_length_short" if short else "twin_fit_fail"}
         for v, p in profs.items():
             src = rr_pts.source_info(version=v, exact=_exact(_LADDER_EXACT[v], pts),
                                      mirrored=v == "mirror", twin_l_r=twin.spec.l_r,
@@ -1846,7 +1859,7 @@ def build_real_design(bank: StimulusBank, cells: list[Cell],
             sign = -corner.sign if v == "mirror" else corner.sign
             row = _Row(f"{base}/{v}", p, "twin" if v == "twin" else "transplant", sign,
                        twin.spec if v == "twin" else None, {tier}, src,
-                       set(r_seg_flags) | ({"twin_fit_fail"} if v == "twin" and not twin.ok else set()))
+                       set(twin_flags) if v == "twin" else set())
             if v == "twin":
                 row.l_r, row.kappa_peak = twin.spec.l_r, twin.spec.kappa_peak
             if v in ("real", "mirror"):
@@ -1862,7 +1875,7 @@ def build_real_design(bank: StimulusBank, cells: list[Cell],
                 pid = pair_real if v in ("real", "mirror") else pair
                 if v not in ("real", "mirror"):
                     pair += 1
-                fl = set(r_seg_flags) | ({"start_state"} if start else set())
+                fl = {"start_state"} if start else set()
                 add_cell(f"{base}/{v}", st, "real", (tier,), (), fl, pid, mir, x0, pa, ac,
                          f"{agent}:lap{st.lap}@{key}")
     # Tier D.
@@ -2003,6 +2016,41 @@ def real_state_requests(reachable: dict[str, float] | None = None) -> list[dict]
 # ------------------------------------------------------------------------- checks
 
 
+THETA_EFF_TOL_DEG = 0.3            # step 1: realised angle within 0.3 deg of nominal
+THETA_SAMPLE_AREA_TOL_DEG = 0.02   # R3: theta_eff equals the knot samples' area (spline)
+THETA_SPEC_AREA_TOL_DEG = 1e-6     # the continuous trapezoid turns exactly its nominal angle
+# Ruling R4: a twin shorter than its real corner is accepted only if it matches R_seg
+# (relative) and the angle (deg) to < 1e-3, the twin fit's own convergence (``_twin_match``).
+TWIN_R4_TOL = {"R_seg_rel": 1e-3, "angle_deg": 1e-3}
+
+
+def theta_sampling_bound_deg(spec: CornerSpec, ds: float = DS) -> float:
+    """Ruling R3's bound on the sampling miss (deg): how far the knot samples' area
+    (sum kappa ds, which the C2 spline integrates exactly) can lie from the continuous
+    trapezoid's area when its kinks fall between knots. The trapezoid rule on a piecewise
+    linear profile errs by |slope change| ds^2 t (1 - t) / 2 at a kink a fraction t into its
+    knot interval, at most |slope change| ds^2 / 8; the trapezoid's four kinks change the
+    slope by kappa_peak / l_r each (the triangle's apex twice that, once), so the miss is at
+    most kappa_peak ds^2 / (2 l_r)."""
+    return float(np.degrees(spec.kappa_peak * ds * ds / (2.0 * spec.l_r)))
+
+
+def spec_area_deg(spec: CornerSpec) -> float:
+    """The continuous trapezoid's own turning angle (deg): kappa_peak times the area under its
+    unit profile, integrated from its vertices (the ones ``kappa_formula`` checks the samples
+    against). Equals theta_deg for a consistent spec."""
+    a = spec.s_c
+    xs = [a, a + spec.l_r, a + spec.l_r + spec.L_p, a + spec.L_c]
+    return float(np.degrees(spec.kappa_peak * np.trapezoid([0.0, 1.0, 1.0, 0.0], xs)))
+
+
+def twin_r4_match(R_seg: float, theta_deg: float, target: dict) -> bool:
+    """Ruling R4: the twin matches its real corner's R_seg and angle to < 1e-3
+    (``TWIN_R4_TOL``)."""
+    return bool(abs(R_seg / target["R_seg"] - 1.0) < TWIN_R4_TOL["R_seg_rel"]
+                and abs(theta_deg - target["theta_deg"]) < TWIN_R4_TOL["angle_deg"])
+
+
 def check_design_details(bank: StimulusBank, cells: list[Cell]) -> dict[str, dict]:
     """Step 1's builder checks with their numbers (``check_design`` keeps the verdicts)."""
     from apexzero.vehicle.sim import track_arrays
@@ -2020,18 +2068,51 @@ def check_design_details(bank: StimulusBank, cells: list[Cell]) -> dict[str, dic
         ref = sp.direction * sp.kappa_peak * np.interp(grid, xs, ys)
         worst = max(worst, float(np.max(np.abs(bank.kappa[s.stim_id] - ref))))
     res["kappa_formula"] = dict(ok=worst <= 1e-12, max_abs=worst, rows=len(syn))
-    # Realised angle within 0.3 deg of nominal (synthetic rows, including twins).
-    dev, fails = [], []
+    # Realised angle within 0.3 deg of nominal (synthetic rows, including twins), and every
+    # spec's continuous trapezoid turning exactly its nominal angle (``spec_area_deg``: the
+    # samples follow the spec, so only this catches a spec whose parameters disagree with
+    # its angle). Ruling R3: a miss from the 2 m knot sampling of the trapezoid's kinks is
+    # accepted and listed; theta_eff stays recorded per row (Geometry). A miss is sampling
+    # only on a synthetic or pilot row (its samples are the trapezoid's, ``kappa_formula``)
+    # whose spec area is exact, whose theta_eff is the knot samples' own area (the spline
+    # integrates as the samples' trapezoid sum) and whose samples' area lies within the
+    # kinks' sampling bound of the nominal angle (``theta_sampling_bound_deg``). Any other
+    # miss fails.
+    dev, fails, accepted = [], [], []
+    worst_spec = 0.0
     for s in bank.stimuli:
         if s.spec is None:
             continue
-        d = abs(s.geometry.theta_eff_deg - s.direction * s.spec.theta_deg)
+        sp = s.spec
+        sa = spec_area_deg(sp)
+        spec_miss = abs(sa - sp.theta_deg)
+        worst_spec = max(worst_spec, spec_miss)
+        nominal = s.direction * sp.theta_deg
+        d = abs(s.geometry.theta_eff_deg - nominal)
         dev.append(d)
-        if d > 0.3:
-            area = float(np.degrees(np.sum(bank.kappa[s.stim_id]) * bank.ds))
-            fails.append(dict(name=s.name, theta_eff=s.geometry.theta_eff_deg,
-                              sample_area_deg=area, l_r=s.spec.l_r, L_p=s.spec.L_p))
-    res["theta_eff"] = dict(ok=not fails, max_deg=max(dev, default=0.0), fails=fails)
+        if d <= THETA_EFF_TOL_DEG and spec_miss <= THETA_SPEC_AREA_TOL_DEG:
+            continue
+        area = float(np.degrees(np.sum(bank.kappa[s.stim_id]) * bank.ds))
+        bound = theta_sampling_bound_deg(sp, float(bank.ds))
+        if spec_miss > THETA_SPEC_AREA_TOL_DEG:
+            why = "spec area is not the nominal angle"
+        elif s.kind not in ("synthetic", "pilot"):
+            why = "not a synthetic row"
+        elif abs(s.geometry.theta_eff_deg - area) > THETA_SAMPLE_AREA_TOL_DEG:
+            why = "theta_eff is not the knot samples' area"
+        elif abs(area - nominal) > bound + 1e-9:
+            why = "samples' area beyond the kinks' sampling bound"
+        else:
+            why = ""
+        row = dict(name=s.name, theta_eff=s.geometry.theta_eff_deg, sample_area_deg=area,
+                   spec_area_deg=sa, sampling_bound_deg=bound, l_r=sp.l_r, L_p=sp.L_p)
+        if why:
+            fails.append(dict(row, why=why))
+        else:
+            accepted.append(row)
+    res["theta_eff"] = dict(ok=not fails, max_deg=max(dev, default=0.0), fails=fails,
+                            accepted=accepted, accepted_by="R3" if accepted else "",
+                            spec_area_max_deg=worst_spec)
     # track_arrays(to_track(.)) equals the bank's float32 arrays, every row.
     tr_b = bank.arrays()
     worst, bad = 0.0, []
@@ -2114,30 +2195,60 @@ def check_design_details(bank: StimulusBank, cells: list[Cell]) -> dict[str, dic
     # ``vacuous``: no row to check (a synthetic-only design); reported, not a pass.
     res["transplant_source"] = dict(ok=worst <= 1e-9, max_abs=worst, rows=nrows,
                                     vacuous=nrows == 0)
-    # Twin fits within tolerance, re-measured on the bank row.
-    fails, n_twins = [], 0
+    # Twin fits within tolerance, re-measured on the bank row. Ruling R4: a twin that matches
+    # R_seg and the angle to < 1e-3 (``twin_r4_match``) but is shorter than its real corner
+    # (the real corner is longer than the longest symmetric trapezoid with that R_seg and
+    # angle) is accepted and listed with its length shortfall, which the twin-transfer
+    # analysis carries as a covariate. A twin outside the protocol's 2% / 1 deg, a length
+    # miss on a twin that matches R_seg or the angle only to 1e-3 or worse, or a twin longer
+    # than its corner, fails.
+    fails, accepted, shortfall, n_twins = [], [], {}, 0
+    worst_r = worst_a = 0.0
     for s in bank.stimuli:
         if s.kind != "twin":
             continue
         n_twins += 1
         t = s.source["twin_target"]
         g = s.geometry
-        r = (abs(g.R_seg / t["R_seg"] - 1.0) <= TWIN_TOL["R_seg_rel"] + 1e-9
-             and abs(g.theta_seg_deg - t["theta_deg"]) <= TWIN_TOL["angle_deg"] + 1e-9
-             and abs(g.L_seg - t["L_seg"]) <= TWIN_TOL["length"] + 1e-9)
-        if not r:
-            fails.append(dict(name=s.name, target=t, R_seg=g.R_seg, theta=g.theta_seg_deg,
-                              L_seg=g.L_seg, note=s.source.get("twin_achieved", {}).get("note", "")))
-    res["twin_fit"] = dict(ok=not fails, fails=fails, rows=n_twins, vacuous=n_twins == 0)
+        dr, da = abs(g.R_seg / t["R_seg"] - 1.0), abs(g.theta_seg_deg - t["theta_deg"])
+        short = twin_length_shortfall(s)
+        shortfall[s.name] = short
+        r_ok = dr <= TWIN_TOL["R_seg_rel"] + 1e-9 and da <= TWIN_TOL["angle_deg"] + 1e-9
+        if r_ok and abs(short) <= TWIN_TOL["length"] + 1e-9:
+            continue
+        row = dict(name=s.name, target=t, R_seg=g.R_seg, theta=g.theta_seg_deg, L_seg=g.L_seg,
+                   length_shortfall=short,
+                   note=s.source.get("twin_achieved", {}).get("note", ""))
+        if r_ok and short > 0.0 and twin_r4_match(g.R_seg, g.theta_seg_deg, t):
+            accepted.append(row)
+            worst_r, worst_a = max(worst_r, dr), max(worst_a, da)
+        else:
+            fails.append(row)
+    res["twin_fit"] = dict(ok=not fails, fails=fails, accepted=accepted,
+                           accepted_by="R4" if accepted else "", rows=n_twins,
+                           vacuous=n_twins == 0, length_shortfall=shortfall,
+                           accepted_max_R_rel=worst_r, accepted_max_angle_deg=worst_a)
     return res
+
+
+def twin_length_shortfall(stim: Stimulus) -> float:
+    """Ruling R4: the real corner's L_seg minus its twin's, re-measured on the bank row (m;
+    > 0 when the twin is shorter). NaN for a row that is not a twin."""
+    if stim.kind != "twin":
+        return float("nan")
+    return float(stim.source["twin_target"]["L_seg"] - stim.geometry.L_seg)
 
 
 def check_design(bank: StimulusBank, cells: list[Cell]) -> dict[str, bool]:
     """Step 1's builder checks (protocol 10): kappa matches the trapezoid formula to 1e-12;
-    theta_eff within 0.3 deg of nominal; ``track_arrays(to_track(.))`` equals the bank's
-    arrays; mirrors exact; (w_in - 1)|kappa| <= 0.6 (capped rows); s_c1 + 250 < 4598 and
-    every key window ends before 4598 m; R_TEST names raise PermissionError; transplant
-    kappa equals the source to 1e-9; twin fits within tolerance. Returns {check: passed}."""
+    theta_eff within 0.3 deg of nominal and every spec's trapezoid turning its nominal angle;
+    ``track_arrays(to_track(.))`` equals the bank's arrays; mirrors exact;
+    (w_in - 1)|kappa| <= 0.6 (capped rows); s_c1 + 250 < 4598 and every key window ends
+    before 4598 m; R_TEST names raise PermissionError; transplant kappa equals the source to
+    1e-9; twin fits within tolerance. The theta_eff misses of ruling R3 (knot sampling of
+    the kinks, within its bound) and the twin length shortfalls of R4 (R_seg and angle
+    matched to < 1e-3) pass and are listed in ``check_design_details``. Returns
+    {check: passed}."""
     return {k: bool(v["ok"]) for k, v in check_design_details(bank, cells).items()}
 
 

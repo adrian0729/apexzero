@@ -385,10 +385,11 @@ def _standin_states() -> tuple[dict, dict]:
 
 def stage_stimuli(args: argparse.Namespace) -> None:
     """Step 1 (stimuli.build_design, check_design, save_design, cell_support_table). The
-    real-road tiers need real-lap states: without them (pending ruling Q1) the D / E1 / E2
-    rows are built from stand-in states for the transplant and twin checks only. With
-    --real, ``outputs/psychophysics/stimuli/real_states.json`` (from the Integrate phase) is
-    appended to the design. Resumes from a saved design unless --force."""
+    real-road tiers need real-lap states (``rollouts --real-laps``, ruling R1): without them
+    the D / E1 / E2 rows are built from stand-in states for the transplant and twin checks
+    only. With --real, ``outputs/psychophysics/stimuli/real_states.json`` is appended to the
+    design. Resumes from a saved design unless --force. The theta_eff misses of ruling R3 and
+    the twin length shortfalls of R4 pass and are listed."""
     from apexzero.interp import agents, io, stimuli, support
 
     _refuse_after_tag("the stimuli stage", args)
@@ -434,13 +435,26 @@ def stage_stimuli(args: argparse.Namespace) -> None:
         _say(log, f"design: {len(bank)} rows, {len(cells)} cells, rows per tier {tiers}; "
                   f"hash {h[:16]}")
         for k, v in checks.items():
-            num = {kk: vv for kk, vv in v.items() if kk not in ("ok", "fails", "mismatches")}
-            nf = len(v.get("fails", []) or [])
-            verdict = "N/A (no rows)" if v.get("vacuous") else ("PASS" if v["ok"] else "FAIL")
-            _say(log, f"check {k}: {verdict} {_jsonable(num)}"
-                      + (f" ({nf} failing rows)" if nf else ""))
+            _say(log, check_line(k, v))
         agents.update_manifest(lambda m: setattr(m, "stimulus_hash", h))
         _log_design_deviation(h, "stimuli stage after the tag")
+
+
+def check_line(name: str, v: dict) -> str:
+    """One step-1 check for the log. Rows accepted by a ruling (R3: theta_eff misses from
+    knot sampling of the trapezoid's kinks, within their bound; R4: length shortfalls of
+    twins matching R_seg and the angle to < 1e-3) pass and are listed as
+    'accepted per R3/R4'."""
+    skip = ("ok", "fails", "mismatches", "accepted", "accepted_by", "length_shortfall")
+    num = {kk: vv for kk, vv in v.items() if kk not in skip}
+    nf = len(v.get("fails", []) or [])
+    acc = v.get("accepted", []) or []
+    verdict = "N/A (no rows)" if v.get("vacuous") else ("PASS" if v["ok"] else "FAIL")
+    out = f"check {name}: {verdict} {_jsonable(num)}" + (f" ({nf} failing rows)" if nf else "")
+    if acc:
+        out += (f"; {len(acc)} rows accepted per {v.get('accepted_by') or 'R3/R4'} (listed): "
+                + ", ".join(str(r.get("name")) for r in acc))
+    return out
 
 
 def _append_real(bank, cells, f6_scale: float = 1.0):
@@ -453,7 +467,7 @@ def _append_real(bank, cells, f6_scale: float = 1.0):
     p = io.STIMULI_DIR / "real_states.json"
     if not p.exists():
         raise SystemExit("--real needs outputs/psychophysics/stimuli/real_states.json (real-lap "
-                         "states; pending ruling Q1 in docs/interp/IMPLEMENTATION.md)")
+                         "states: run `psychophysics.py rollouts --real-laps` first, ruling R1)")
     raw = io.read_json(p)
     states = {a: {k: stimuli.RealState(**v) for k, v in d.items()} for a, d in raw.items()}
     sw = io.STIMULI_DIR / "swap.json"
@@ -641,7 +655,10 @@ def _benchmark(log) -> dict:
 def stage_rollouts(args: argparse.Namespace) -> None:
     """Step 2 with --pilot-replication (harness gates, then the pilot replication of G1 and
     G2, then the throughput benchmark; a failed gate or a pilot mismatch blocks everything
-    after step 2). Otherwise step 6 (post-tag only): agent rollouts per snapshot."""
+    after step 2). With --real-laps, the standard R_DEV evaluation that gives the real-lap
+    states, the fidelity-gate traces and G3's crash corners: allowed before the tag (ruling
+    R1), on the frozen code after it. Otherwise step 6 (post-tag only): agent rollouts per
+    snapshot, and --yasmarina."""
     from apexzero.interp import io
 
     if args.pilot_replication:
@@ -672,8 +689,8 @@ def stage_rollouts(args: argparse.Namespace) -> None:
             agents.update_manifest(upd)
         return
     if args.real_laps:
-        _require_tag("real-lap rollouts", design=False)
-        _real_laps(args)
+        before_tag = real_laps_gate()
+        _real_laps(args, before_tag)
         return
     _require_tag("agent rollouts")
     if args.yasmarina:
@@ -1079,6 +1096,67 @@ def _phase_indices(c) -> list[int]:
     return [step, 2 * step, 3 * step]
 
 
+ANCHORED_G_PROTOCOL = 96     # protocol 10: re-anchored A1 keys for the G finals, about 96
+
+
+def _frozen_regimes() -> dict | None:
+    """The frozen q1 / q10 per agent (support stage), or None before they exist."""
+    from apexzero.interp import io, support
+
+    try:
+        return support.load_support(io.SUPPORT_DIR).regimes
+    except (FileNotFoundError, OSError, KeyError, ValueError):
+        return None
+
+
+def _r12_extra_anchored(bank, cells: list, regimes: dict | None = None) -> int:
+    """Ruling R12's addition to P0's re-anchored keys: the non-clipped below-support A1
+    cells of every generalist (design-time clipping; the stage applies the run-time one),
+    from the frozen regimes. 0 before the support stage has frozen them."""
+    from apexzero.interp import support
+
+    regimes = _frozen_regimes() if regimes is None else regimes
+    if not regimes:
+        return 0
+    n = 0
+    for a in ("G1", "G2", "G3"):
+        if a in regimes:
+            n += sum(1 for c in anchored_cells(cells, bank, regimes, a, "P0", True)
+                     if support.regime(bank.stimuli[c.stim_id].geometry.R_seg, regimes[a])
+                     == "below")
+    return n
+
+
+def _anchored_g_count(bank, cells: list) -> dict:
+    """P0's re-anchored A1 keys for the generalist finals, for the budget projection. Once
+    the regimes are frozen, every key is counted on the design (``anchored_cells`` at P0:
+    tail, bulk and R12's non-clipped below-support cells, design-time clipping), so R12's
+    addition and the rest are counted alike; before that, the protocol's 96. Anchored keys
+    start from each agent's own state, so both directions count (no mirror shortcut)."""
+    regimes = _frozen_regimes()
+    if not regimes or not any(a in regimes for a in ("G1", "G2", "G3")):
+        return dict(n=ANCHORED_G_PROTOCOL, source="protocol (regimes not frozen)",
+                    r12_below_support=0, protocol=ANCHORED_G_PROTOCOL)
+    n = sum(len(anchored_cells(cells, bank, regimes, a, "P0", True))
+            for a in ("G1", "G2", "G3") if a in regimes)
+    return dict(n=n, source="design", r12_below_support=_r12_extra_anchored(bank, cells, regimes),
+                protocol=ANCHORED_G_PROTOCOL)
+
+
+def _rule2_cut_counts(bank, sets: dict) -> dict[str, int]:
+    """Budget rule 2's credit per item, counted on the item sets the projection counts (one
+    direction with the mirror shortcut, both without it): the nominal keys of the cut cells
+    (``budget_cut``: 6 with the shortcut, 12 without) and 3 phase-matched keys per non-180
+    deg phase cell. The backed-off item is the protocol's fixed one-direction estimate (66),
+    so its credit stays ``answer_key.DEFAULT_CUTS['backoff']`` (one per cut geometry and
+    approach)."""
+    from apexzero.interp import answer_key as ak
+
+    return {"nominal_A": sum(1 for c in sets["nominal_A"] if budget_cut(bank, c)),
+            "backoff": ak.DEFAULT_CUTS["backoff"],
+            "phase": 3 * sum(1 for c in sets["phase"] if _spec(bank, c).theta_deg != 180.0)}
+
+
 def _budget(bank, cells: list, both: bool, m, workers: int) -> dict:
     from apexzero.interp import answer_key as ak
 
@@ -1088,25 +1166,41 @@ def _budget(bank, cells: list, both: bool, m, workers: int) -> dict:
         timings["rollout_sps"] = min(m.budget["rollout_sps"].values())
     sets = _key_sets(bank, cells, both)
     n_a2 = sum(1 for c in cells if c.approach == "A2")
+    anchored_g = _anchored_g_count(bank, cells)
     counts = {"layout_socp": n_a2, "v8_socp": 36, "validation": 30,
               "nominal_A": len(sets["nominal_A"]), "nominal_E1": len(sets["nominal_E1"]) or 30,
               "null": len(sets["null"]), "backoff": 66, "phase": 3 * len(sets["phase"]),
-              "anchored_G": 96, "viability": 200, "E1_twins": len(sets["E1_twins"]) or 15,
+              "anchored_G": anchored_g["n"],
+              "viability": 200, "E1_twins": len(sets["E1_twins"]) or 15,
               "E2": len(sets["E2"]) or 39, "E3": len(sets["E3"]), "tierD_socp": 140,
               "anchored_S": 50, "anchored_B": 108, "tierC": len(sets["tierC"]),
               "recovery": len(sets["recovery"]), "anchored_ckpt": 216}
-    proj = ak.project_budget(timings, counts, workers=workers)
+    proj = ak.project_budget(timings, counts, cut_counts=_rule2_cut_counts(bank, sets),
+                             workers=workers)
+    proj["anchored_G"] = anchored_g
     proj["timings_used"] = timings
     proj["timings_source"] = "validation" if m.budget.get("timings") else "protocol defaults"
     return proj
 
 
+R7_CUT_R = 35.8      # budget rule 2: tier A 180 deg cells with R >= 35.8 lose their keys
+
+
+def budget_cut(bank, c) -> bool:
+    """Budget rule 2's keys-only cut (ruling R7): a tier A A1 or A2 cell at 180 deg with
+    R >= 35.8 m. At 180 deg tier A reaches R 55.9, so the cut is 3 geometries (35.8, 44.7,
+    55.9) x 2 approaches."""
+    sp = _spec(bank, c)
+    return bool("A" in c.tiers and c.approach in ("A1", "A2") and sp is not None
+                and sp.theta_deg == 180.0 and sp.R >= R7_CUT_R)
+
+
 def _cut(bank, cells: list, proj: dict, item: str) -> list:
-    """Budget rule 2's cuts applied to one item's cells."""
+    """Budget rule 2's cuts applied to one item's cells (keys only, R7)."""
     if not any(c.startswith("rule 2") for c in proj["cuts"]):
         return cells
     if item in ("nominal_A", "backoff"):
-        return [c for c in cells if not (_spec(bank, c).theta_deg == 180.0 and _spec(bank, c).R >= 35.8)]
+        return [c for c in cells if not budget_cut(bank, c)]
     if item == "phase":
         return [c for c in cells if _spec(bank, c).theta_deg == 180.0]
     return cells
@@ -1237,23 +1331,39 @@ def stage_keys(args: argparse.Namespace) -> None:
         _acceptance(bank, cells, cache, tables, results, log)
 
 
-def _flag_budget_cuts(bank, cells: list, proj: dict, log) -> list:
-    """Budget rule 2's dropped cells (tier A 180 deg, R >= 35.8) are flagged 'budget_cut' in
-    the design, so the rollouts skip them instead of running cells without keys."""
-    if not any(c.startswith("rule 2") for c in proj["cuts"]):
-        return cells
-    keep = {c.cell_id for c in _cut(bank, [c for c in cells if "A" in c.tiers
-                                           and c.approach in ("A1", "A2")], proj, "nominal_A")}
+def flag_budget_cuts(bank, cells: list, proj: dict) -> tuple[list, int]:
+    """Ruling R7: budget rule 2's cells (``budget_cut``: tier A 180 deg, R >= 35.8, 3
+    geometries x 2 approaches) lose their keys only. They are flagged 'budget_cut' and
+    'no_key': they are still rolled out, and analysis excludes them from every key-based
+    error (``analysis.has_no_key``). The flags follow the current projection: when rule 2
+    no longer fires, they are cleared again, so a cell whose key ``_cut`` now solves is not
+    hidden by a stale 'no_key'. Returns (cells, number of cells whose flags changed)."""
+    from apexzero.interp.analysis import NO_KEY_FLAG
+
+    cut_flags = {"budget_cut", NO_KEY_FLAG}
+    rule2 = any(c.startswith("rule 2") for c in proj["cuts"])
     out, n = [], 0
     for c in cells:
-        cut = ("A" in c.tiers and c.approach in ("A1", "A2") and c.cell_id not in keep
-               and "budget_cut" not in c.flags)
-        if cut:
-            c = dataclasses.replace(c, flags=tuple(sorted({*c.flags, "budget_cut"})))
+        want = rule2 and budget_cut(bank, c)
+        if want and not cut_flags <= set(c.flags):
+            c = dataclasses.replace(c, flags=tuple(sorted({*c.flags, *cut_flags})))
+            n += 1
+        elif not want and "budget_cut" in c.flags:
+            c = dataclasses.replace(c, flags=tuple(f for f in c.flags if f not in cut_flags))
             n += 1
         out.append(c)
+    return (out, n) if n else (cells, 0)
+
+
+def _flag_budget_cuts(bank, cells: list, proj: dict, log) -> list:
+    """``flag_budget_cuts``, saved into the design when it changes any flag."""
+    out, n = flag_budget_cuts(bank, cells, proj)
     if n:
-        _, out = _save_cells(bank, out, log, f"budget rule 2: {n} cells flagged budget_cut")
+        rule2 = any(c.startswith("rule 2") for c in proj["cuts"])
+        msg = (f"budget rule 2 (R7): budget_cut / no_key updated on {n} cells (keys only; "
+               "still rolled out)" if rule2 else
+               f"budget rule 2 no longer fires: budget_cut / no_key cleared on {n} cells")
+        _, out = _save_cells(bank, out, log, msg)
     return out
 
 
@@ -1947,6 +2057,13 @@ def _groups_in(path: Path) -> set[str]:
         return {k.partition("_")[0] for k in d.files if k.partition("_")[0] in ("det", "nat", "mat")}
 
 
+def rollout_cells(cells: list, tiers=None) -> list:
+    """The cells a snapshot's rollout groups run (``tiers``: REPLICATION's det tiers, None for
+    every tier). Budget rule 2's cut cells are among them: ruling R7 cuts their keys only,
+    so they are rolled out and carry 'no_key' into the analysis."""
+    return [c for c in cells if tiers is None or set(c.tiers) & set(tiers)]
+
+
 def _rollout_job(job: dict) -> dict:
     """Every requested group of one snapshot (resumes groups already in its file unless
     ``force``). The snapshot is marked evaluated in the manifest before its first group is
@@ -1963,12 +2080,12 @@ def _rollout_job(job: dict) -> dict:
         if job.get("design_hash") and job["design_hash"] != _R["design_hash"]:
             raise RuntimeError("the design on disk changed since the stage started")
         bank, cells = _R["bank"], _R["cells"]
-        cells_run = [c for c in cells if "budget_cut" not in c.flags]
+        cells_run = rollout_cells(cells)     # R7: budget-cut (no_key) cells included
         ag = agents.load_agent(ROOT / job["path"], job["agent"])
         target = io.rollout_path(job["agent"], ag.timesteps)
         rep = REPLICATION[job["kind"]]
         tiers = rep.get("det_tiers")
-        cs = [c for c in cells_run if tiers is None or set(c.tiers) & set(tiers)]
+        cs = rollout_cells(cells_run, tiers)
         pol = rollout.agent_policy(ag.cfg)
         marked = False
         for mode in job["modes"]:
@@ -2133,21 +2250,37 @@ def _u0_rows(det: dict, cells: list) -> dict[int, int]:
 
 
 def anchored_cells(cells: list, bank, regimes: dict, agent: str, prio: str,
-                   generalist: bool) -> list:
+                   generalist: bool, kappa_clipped: set[int] | None = None) -> list:
     """The cells that get re-anchored keys (protocol 6.1, 10 step 7): P0, a generalist's
-    final: A1 tail and bulk cells; P1, a specialist's final: A1 and tier B D = 600 cells,
-    and a generalist's final: tier B D = 600 cells (A1 done at P0); P2, a generalist's
-    checkpoint: A1 tail and bulk cells (P6c)."""
+    final: A1 tail and bulk cells and, by ruling R12, the non-clipped below-support A1 cells,
+    so P1b's Kendall tau (and P2's set O) read e_ve^RA throughout A1; P1, a specialist's
+    final: A1 and tier B D = 600 cells, and a generalist's final: tier B D = 600 cells (A1
+    done at P0); P2, a generalist's checkpoint: A1 tail and bulk cells (P6c).
+
+    Below support is R_seg < q1 (regimes 'below' and 'clip'). "Non-clipped" is the binding
+    run-time definition (protocol 2.3, AD9: no deterministic run of the pair drove a preview
+    kappa channel to the clip) when ``kappa_clipped`` (the agent's kappa-clipped pair ids)
+    is given, else the design-time one (regime 'below', R_seg > R_clip^max). Budget rule 2's
+    'no_key' cells get no key (R7)."""
     from apexzero.interp import support
+    from apexzero.interp.analysis import has_no_key
 
     rt = regimes.get(agent)
     out = []
     for c in cells:
+        if has_no_key(c):
+            continue
         st = bank.stimuli[c.stim_id]
         a1 = c.approach == "A1" and "A" in c.tiers
         b600 = c.approach == "B" and c.D is not None and abs(float(c.D) - 600.0) < 1e-6
         reg = support.regime(st.geometry.R_seg, rt) if rt is not None else "bulk"
-        if prio in ("P0", "P2"):
+        if prio == "P0":
+            if kappa_clipped is None:
+                below = reg == "below"
+            else:
+                below = reg in ("below", "clip") and int(c.pair_id) not in kappa_clipped
+            want = generalist and a1 and (reg in ("tail", "bulk") or below)
+        elif prio == "P2":
             want = generalist and a1 and reg in ("tail", "bulk")
         else:
             want = b600 if generalist else (a1 or b600)
@@ -2223,8 +2356,9 @@ def stage_anchored_keys(args: argparse.Namespace) -> None:
     'agent beats the key' re-solves on the finals' u = 0 returns (a deviation is logged per
     re-solved cell); then re-anchored keys (W = 400, from the agent's own deterministic
     u = 0 state, protocol 6.1) and viability solves (9.1: crashed u = 0 runs, or the first
-    crashed phase; at most 200 solves, a seeded subset beyond the cap). P0: A1 tail and
-    bulk cells of the generalist finals, plus viability; P1: the specialists' finals (A1 and
+    crashed phase; at most 200 solves, a seeded subset beyond the cap). P0: A1 tail, bulk
+    and non-clipped below-support cells of the generalist finals (R12; clipping from each
+    final's runs), plus viability; P1: the specialists' finals (A1 and
     tier B D = 600) and the generalist finals' tier B D = 600 cells; P2: the generalists'
     P6c checkpoints (first gate-passing, two log-spaced middle; the final is P0), skipped
     when the finals show re-anchoring is immaterial or budget rule 1 cut P2. Pool of
@@ -2286,6 +2420,18 @@ def stage_anchored_keys(args: argparse.Namespace) -> None:
                     _say(log, f"P6c checkpoints {a}: {chosen}")
             if p6_note:
                 _say(log, p6_note)
+        # The generalist finals' run tables: their kappa-clipped pairs fix P0's non-clipped
+        # below-support A1 cells (R12, run-time definition), and their crashed u = 0 runs get
+        # viability solves (9.1).
+        keys = A.CachedKeys(bank, cells, cache, tables=tables)
+        kt = A.key_table(cells, bank, keys)
+        final_rt: dict[str, dict] = {}
+        for agent in gen:
+            f = io.rollout_path(agent, finals[agent].timesteps)
+            if f.exists():
+                groups, _ = rollout.load_rollouts(f)
+                final_rt[agent] = A.run_table(agent, finals[agent].timesteps, groups, cells,
+                                              bank, keys, tables)
         jobs = []
         for agent, e, prio in targets:
             f = io.rollout_path(agent, e.timesteps)
@@ -2295,22 +2441,17 @@ def stage_anchored_keys(args: argparse.Namespace) -> None:
             if "det" not in groups:
                 continue
             rows = _u0_rows(groups["det"], cells)
-            for c in anchored_cells(cells, bank, sup.regimes, agent, prio, agent in gen):
+            clipped = (A.kappa_clipped_pairs(final_rt[agent])
+                       if prio == "P0" and agent in final_rt else None)
+            for c in anchored_cells(cells, bank, sup.regimes, agent, prio, agent in gen,
+                                    clipped):
                 if c.cell_id in rows:
                     jobs.append(dict(what="anchored", force=force,
                                      label=f"RA {agent}@{e.timesteps} cell {c.cell_id} ({prio})",
                                      agent=agent, timesteps=e.timesteps, cell=c, file=str(f),
                                      row=rows[c.cell_id]))
         # Viability solves on the generalist finals' crashed u = 0 runs (9.1), within the cap.
-        keys = A.CachedKeys(bank, cells, cache, tables=tables)
-        kt = A.key_table(cells, bank, keys)
-        vt_rows = []
-        for agent in gen:
-            f = io.rollout_path(agent, finals[agent].timesteps)
-            if f.exists():
-                groups, _ = rollout.load_rollouts(f)
-                vt_rows.append(A.run_table(agent, finals[agent].timesteps, groups, cells, bank,
-                                           keys, tables))
+        vt_rows = list(final_rt.values())
         if vt_rows:
             vt = A.viability_targets(io.concat_tables(vt_rows), kt)
             by = {c.cell_id: c for c in cells}
@@ -2531,7 +2672,9 @@ def confirmatory_problems(m, finals: dict, have_groups: dict[str, set[str]],
 
 def _p8_units(bank, cells) -> tuple[list[dict], list[dict]]:
     """P8's crash units (one per CrashPair, with the E1 cells built from that agent's state)
-    and the twin-transfer corners (E1 and E2, every state pooled)."""
+    and the twin-transfer corners (E1 and E2, every state pooled). A unit's set is the regime
+    of its crash corner's R_seg under the crashing agent's frozen q1 / q10 (ruling R2); a
+    corner carries its twin's length shortfall (R4)."""
     from apexzero.interp import analysis as A
     from apexzero.interp import io, stimuli, support
 
@@ -2546,30 +2689,36 @@ def _p8_units(bank, cells) -> tuple[list[dict], list[dict]]:
         for x in mine:
             vers.setdefault(_version(bank, x), []).append(x.cell_id)
         units.append(dict(agent=p.agent, unit=f"{p.agent}/{p.track}/{p.s_crash:.0f}",
-                          set=A.p8_set(p.agent, p.track, float(c.r_min), regimes), cells=vers,
-                          key=key))
+                          set=A.p8_set(p.agent, float(c.r_min), regimes), R_seg=float(c.r_min),
+                          cells=vers, key=key))
     for x in cells:
         if not ({"E1", "E2"} & set(x.tiers)):
             continue
         name = bank.stimuli[x.stim_id].name
         base = name.rsplit("/", 1)[0]
         d = corners.setdefault(base, dict(corner=base, source="E1" if "E1" in x.tiers else "E2",
-                                          cells={}, R_seg=np.nan, theta_deg=np.nan))
+                                          cells={}, R_seg=np.nan, theta_deg=np.nan,
+                                          length_shortfall=np.nan))
         d["cells"].setdefault(_version(bank, x), []).append(x.cell_id)
         if _version(bank, x) == "twin":
-            g = bank.stimuli[x.stim_id].geometry
+            st = bank.stimuli[x.stim_id]
+            g = st.geometry
             d["R_seg"], d["theta_deg"] = float(g.R_seg), float(abs(g.theta_seg_deg))
+            d["length_shortfall"] = stimuli.twin_length_shortfall(st)
     return units, [c for c in corners.values() if "twin" in c["cells"]]
 
 
-def _fidelity(bank, cells, rt, units) -> dict[str, bool]:
+def _fidelity(bank, cells, rt, units) -> dict[str, bool | None]:
     """3.2's fidelity gate per unit: the real rung's deterministic u = 0 run from the
     crashing agent's own state matches its real lap to |dv| <= 0.1 m/s up to s_c - 100 m
-    (real laps saved by the Integrate phase under stimuli/real_laps/; missing: False)."""
+    (real laps saved by the Integrate phase under stimuli/real_laps/). None when the gate
+    cannot be evaluated (no real rung, real lap, state index entry or u = 0 run): missing
+    data is not a failed gate, so the unit stays in P8 as unreproduced and is listed
+    (``analysis.p8``), where a failed gate excludes it (3.2)."""
     from apexzero.interp import analysis as A
     from apexzero.interp import io
 
-    out = {}
+    out: dict[str, bool | None] = {}
     fi = io.STIMULI_DIR / "real_states_index.json"
     index = io.read_json(fi) if fi.exists() else {}
     for u in units:
@@ -2577,13 +2726,13 @@ def _fidelity(bank, cells, rt, units) -> dict[str, bool]:
         lap_f = io.STIMULI_DIR / "real_laps" / f"{u['agent']}_{u['unit'].split('/')[1]}.npz"
         k0 = index.get(u["agent"], {}).get(u["key"])
         if not ids or not lap_f.exists() or k0 is None:
-            out[u["unit"]] = False
+            out[u["unit"]] = None
             continue
         cell = next(c for c in cells if c.cell_id == ids[0])
         m = (A._it(rt, "cell") == cell.cell_id) & (A._st(rt, "mode") == "det") \
             & (A._it(rt, "phase", 0) == 0)
         if not m.any():
-            out[u["unit"]] = False
+            out[u["unit"]] = None
             continue
         with np.load(lap_f) as z:
             lap = {k: z[k] for k in z.files}
@@ -2698,9 +2847,15 @@ def stage_analyse(args: argparse.Namespace) -> None:
                     vtop[a][snap.timesteps] = A.v_top(t, kt)
             log.step(note=f"{a}: {A._n(rt)} runs")
         units, corners = _p8_units(bank, cells)
-        ladder = [A.ladder_table(runs[a], kt, [u for u in units if u["agent"] == a],
-                                 _fidelity(bank, cells, runs[a], [u for u in units if u["agent"] == a]))
-                  for a in ("G1", "G2", "G3") if a in runs]
+        ladder = []
+        for a in [x for x in ("G1", "G2", "G3") if x in runs]:
+            mine = [u for u in units if u["agent"] == a]
+            fid = _fidelity(bank, cells, runs[a], mine)
+            unevaluated = sorted(k for k, v in fid.items() if v is None)
+            if unevaluated:
+                _say(log, f"{a}: fidelity gate not evaluated (inputs missing) for "
+                          f"{unevaluated}: kept in P8 as unreproduced")
+            ladder.append(A.ladder_table(runs[a], kt, mine, fid))
         twins = [A.twin_table(runs[a], kt, A.pair_values(runs[a], kt, sup.regimes, b), corners)
                  for a in ("G1", "G2", "G3") if a in runs]
         log.step(note="P8 tables")
@@ -2896,13 +3051,57 @@ def _state_index(lap, s_target: float, lap_index: int) -> int:
     return int(np.nonzero(live & (s >= target))[0][0])
 
 
-def _real_laps(args) -> None:
+R1_CATEGORY = "standard evaluation (R1)"
+R1_CONVENTION = ("the standard R_DEV evaluation's convention (eval/laps.py: s = 0, v0 = 0.9 "
+                 "v_QSS(0), default car, deterministic, two laps on the refined R_DEV circuit), "
+                 "run as scripts/diagnose_crashes.py runs it (agents.real_lap: "
+                 "laps * 3 L / max(v0, 20) / dt steps, without eval/laps.py's 200-step margin)")
+
+
+def _r1_outcome(rl) -> str:
+    return "two laps" if rl.term_step < 0 else f"terminated: {rl.cause}"
+
+
+def _log_r1_once(mm, rec: dict) -> None:
+    """Append ``rec`` to the manifest's standard evaluations unless its lap file is logged."""
+    ev = mm.lists.setdefault("standard_evaluations", [])
+    if not any(e.get("file") == rec["file"] for e in ev):
+        ev.append(rec)
+
+
+def real_laps_gate() -> bool:
+    """Ruling R1 (protocol 12): the real-lap rollouts of ``rollouts --real-laps`` (states for
+    tiers D, E1 and E2, the fidelity-gate traces, G3's crash corners) repeat the standard
+    R_DEV evaluation every agent already had (eval_rdev.json / eval.json) and put no
+    protocol stimulus in front of an agent, so they run before the tag. After the tag they
+    run like every post-tag stage, on the tagged code. Every other agent rollout stays
+    tag-gated. Returns True when the run is before the tag."""
+    if not _tag_exists():
+        return True
+    _require_tag("real-lap rollouts", design=False)
+    return False
+
+
+def r1_entry(agent: str, track: str, snapshot: str, before_tag: bool, outcome: str,
+             file: str = "") -> dict:
+    """The manifest record of one real-lap run: a 'standard evaluation (R1)' entry in
+    ``manifest.lists['standard_evaluations']``, apart from the protocol's two pre-tag
+    exceptions (``pre_tag_agent_rollouts``)."""
+    return dict(category=R1_CATEGORY, agent=agent, track=track, snapshot=snapshot,
+                before_tag=bool(before_tag), outcome=outcome, file=file,
+                convention=R1_CONVENTION, time=time.strftime("%Y-%m-%dT%H:%M:%S"),
+                why="real-lap states (tiers D, E1, E2), fidelity-gate traces and G3's crash "
+                    "corners (ruling R1)")
+
+
+def _real_laps(args, before_tag: bool = False) -> None:
     """The real-lap states of tiers D, E1 and E2 (stimuli.real_state_requests) and the traces
     the fidelity gate compares with: the standard deterministic two-lap evaluation of each
     named agent on its R_DEV circuit (agents.real_lap; G2 on every R_DEV circuit first, for
-    its reach, which selects E2). These are agent rollouts on real circuits, not stimuli, but
-    they are not among the protocol's two pre-tag exceptions, so this mode needs the tag
-    unless a ruling (IMPLEMENTATION.md, open question 1) adds them. Writes
+    its reach, which selects E2; G3 on every R_DEV circuit for its own crash corners). These
+    are agent rollouts on real circuits, not stimuli: ruling R1 allows them before the tag
+    (``real_laps_gate``), and each run is logged in the manifest as a 'standard evaluation
+    (R1)' entry (``r1_entry``) as soon as its lap file is written. Writes
     stimuli/real_states.json, stimuli/real_states_index.json and stimuli/real_laps/*.npz."""
     from apexzero.interp import agents, io, stimuli
     from apexzero.tracks.corners import R_DEV
@@ -2923,6 +3122,14 @@ def _real_laps(args) -> None:
                                 prev_action=d["prev_action"], accel=d["accel"],
                                 valid=d["valid"].astype(bool), term_step=int(d["term_step"]),
                                 cause=str(d["cause"]), length=float(d["length"]))
+            rel = str(f.relative_to(ROOT))
+            if not any(e.get("file") == rel for e in m.lists.get("standard_evaluations", [])):
+                # A lap whose run stopped between writing it and logging it: R1 logs every
+                # real-lap run, so the resume logs it (when it ran is not known after the tag).
+                rec = dict(r1_entry(agent, track, finals[agent].path, before_tag, _r1_outcome(rl),
+                                    rel), logged_on_resume=True,
+                           before_tag=True if before_tag else None)
+                agents.update_manifest(lambda mm, rec=rec: _log_r1_once(mm, rec))
         else:
             rl = agents.real_lap(_load(finals[agent]), track)
             ds = float(stimuli.real_track(track).ds)
@@ -2930,6 +3137,10 @@ def _real_laps(args) -> None:
                           term_step=rl.term_step, cause=rl.cause, length=rl.length,
                           v_start=rl.v_start, ds=ds)
             io._atomic(f, lambda fh: np.savez(fh, **arrays))     # a resume never reads half a file
+            rec = r1_entry(agent, track, finals[agent].path, before_tag, _r1_outcome(rl),
+                           str(f.relative_to(ROOT)))
+            agents.update_manifest(
+                lambda mm: mm.lists.setdefault("standard_evaluations", []).append(rec))
         laps[(agent, track)] = rl
         return rl
 
@@ -2963,10 +3174,6 @@ def _real_laps(args) -> None:
             index.setdefault(r["agent"], {})[r["key"]] = _state_index(rl, r["s_target"], r["lap"])
         io.write_json(io.STIMULI_DIR / "real_states.json", states)
         io.write_json(io.STIMULI_DIR / "real_states_index.json", index)
-        rec = dict(time=time.strftime("%Y-%m-%dT%H:%M:%S"),
-                   laps=sorted(f"{a}/{t}" for a, t in laps),
-                   why="real-lap states (tiers D, E1, E2) and G3's crash units")
-        agents.update_manifest(lambda mm: mm.lists.setdefault("real_lap_rollouts", []).append(rec))
         log.step(note=f"{sum(len(v) for v in states.values())} states")
 
 
@@ -3062,7 +3269,10 @@ def build_parser() -> argparse.ArgumentParser:
             p.add_argument("--pilot-replication", action="store_true",
                            help="step 2: harness gates, pilot replication, throughput")
             p.add_argument("--real-laps", action="store_true",
-                           help="real-lap states of tiers D and E (needs the tag or a ruling)")
+                           help="the standard R_DEV evaluation (real-lap states of tiers D, "
+                                "E1, E2, fidelity-gate traces, G3's crash corners); allowed "
+                                "before the tag by ruling R1 and logged in the manifest as "
+                                "standard evaluations")
             p.add_argument("--yasmarina", action="store_true",
                            help="protocol 3.2's YasMarina diagnosis (post-tag)")
         if name == "analyse":

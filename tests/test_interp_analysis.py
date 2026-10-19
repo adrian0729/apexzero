@@ -504,6 +504,22 @@ def test_p1b_verdicts(sims):
     assert d.details["slope_refuted"] and d.verdict == "confirm"
 
 
+def test_R12_p1b_reads_e_ve_ra_throughout_a1(sims):
+    """Ruling R12: P0's re-anchored keys cover the non-clipped below-support A1 cells, so
+    P1b's A1 set is on e_ve^RA throughout; a pair whose runs fell back to the nominal key is
+    counted (0 when every A1 run has its re-anchored key; A2 pairs never use one)."""
+    _, lawful = sims["lawful"]
+    assert int(lawful["ra_fallback"].max()) == 0          # simulated runs carry their RA key
+    assert A.p1b(lawful, B).details["ra_fallback_pairs"] == 0
+    a1 = np.flatnonzero(A._below_mask(lawful, "A1"))
+    assert A.p1b(_set(lawful, "ra_fallback", a1[:2], 8), B).details["ra_fallback_pairs"] == 2
+    a2 = np.flatnonzero(A._below_mask(lawful, "A2"))
+    assert A.p1b(_set(lawful, "ra_fallback", a2[:2], 8), B).details["ra_fallback_pairs"] == 0
+    e, _ = A.band_errors(lawful)
+    m = A._below_mask(lawful, "A1")
+    np.testing.assert_array_equal(e[m], lawful["e_ve_ra"][m])
+
+
 def test_r_dep_and_p1c(sims):
     _, lawful = sims["lawful"]
     assert A.r_dep(lawful, "A2", B) == min(R_BRAKING)
@@ -672,6 +688,21 @@ def _with(cond, mask, **cols):
     return out
 
 
+def test_R10_vacuous_class_2_is_flagged_in_the_p4_decision():
+    """Ruling R10 (AD16): P4 reads only the single-factor F1 conditions, and a class 2 met
+    vacuously (no F6 perturbation as far OOD as the failing condition) is flagged in the
+    decision's details, which the decision table reports."""
+    base = A.simulate_conds("reader", DESIGN, np.random.default_rng(0), agent="S9")
+    gen = A.simulate_conds("reader", DESIGN, np.random.default_rng(1), agent="G1")
+    cn = base["condition"]
+    wk = _with(base, np.isin(cn, [c for c in A.F1_CONDS if c.endswith("/const")]),
+               complete=False, d_ood=1.5)
+    vac = _with(wk, np.isin(cn, A.F6_CONDS), d_ood=0.5)
+    d = A.p4(A.p4_classify(vac, gen))
+    assert d.verdict == "class 2" and d.details["vacuous"] is True
+    assert A.p4(A.p4_classify(wk, gen)).details["vacuous"] is False
+
+
 def test_p4_other_classes():
     base = A.simulate_conds("reader", DESIGN, np.random.default_rng(0), agent="S9")
     gen = A.simulate_conds("reader", DESIGN, np.random.default_rng(1), agent="G1")
@@ -786,6 +817,19 @@ def _ckpt_pairs(levels, competent_from, tail_e=None, ckpt=0):
                              e_ve_ra=(tail_e or {}).get(ckpt, 0.0), e_ve_bo_ra=0.0,
                              uses_ra=True, regime="tail"))
     return A._to_table(rows, sorted({k for r in rows for k in r}))
+
+
+def test_R11_p6a_confirm_needs_the_permutation_p(monkeypatch):
+    """Ruling R11 (AD18): rho <= -0.5 confirms P6a only with permutation p <= 0.05."""
+    levels = (11.7, 14.6, 22.9, 44.7, 87.3, 109.0)
+    order = {109.0: 1, 87.3: 2, 44.7: 3, 22.9: 4, 14.6: 5, 11.7: 6}
+    by = {c: _ckpt_pairs(levels, order, None, c) for c in range(1, 8)}
+    gate = {c: True for c in by}
+    monkeypatch.setattr(A, "permutation_spearman", lambda *a, **k: (-0.9, 0.2))
+    d = A.p6(by, B, gate)[0]
+    assert d.verdict == "inconclusive" and d.details["p"] == 0.2
+    monkeypatch.setattr(A, "permutation_spearman", lambda *a, **k: (-0.9, 0.05))
+    assert A.p6(by, B, gate)[0].verdict == "confirm"
 
 
 def test_p6_order_and_overspeed_timing():
@@ -1151,6 +1195,23 @@ def test_decision_table_confirmatory(sims, tmp_path):
         A.decision_table(inp, True, tmp_path)
 
 
+def test_R12_p1b_reports_the_history_snapshots_ra_fallback(sims):
+    """R12 re-anchors the below-support A1 cells at P0, the finals, only. P1b's stability
+    check re-reads P1b on the two snapshots before the final; a history snapshot whose A1
+    runs fell back to the nominal key (no P0 keys for it) is reported per snapshot."""
+    inp = _inputs(sims)
+    a1 = np.asarray(KEYS["cell"])[np.asarray(KEYS["approach"]).astype(str) == "A1"]
+    h0, h1 = inp.history["G1"]
+    h0 = {**h0, "ra_key": ~np.isin(h0["cell"], a1)}
+    inp.history["G1"] = [h0, dict(h1)]
+    d = next(x for x in A.decisions(inp) if x.prediction == "P1b" and x.agent == "G1")
+    assert d.details["ra_fallback_pairs"] == 0
+    fb = d.details["history_ra_fallback_pairs"]
+    assert len(fb) == 2 and fb[0] > 0 and fb[1] == 0
+    d3 = next(x for x in A.decisions(inp) if x.prediction == "P1b" and x.agent == "G3")
+    assert "history_ra_fallback_pairs" not in d3.details          # G3 has no history here
+
+
 def test_decision_table_all_and_clip_sensitivity(sims, tmp_path):
     inp = _inputs(sims)
     # ego-group clipping on half the deterministic bulk A2 runs of G1, which overspeed: with
@@ -1320,10 +1381,11 @@ def test_twin_table_uses_the_real_rung_v_b_for_the_approach(sims):
     runs, keys = _ladder_runs()
     _, lawful = sims["lawful"]
     corners = [dict(corner="E1/Norisring/850", source="E1", R_seg=13.0, theta_deg=90.0,
-                    cells={"real": [0, 1], "isolated": [2], "twin": [3]})]
+                    cells={"real": [0, 1], "isolated": [2], "twin": [3]}, length_shortfall=26.0)]
     t = A.twin_table(runs, keys, lawful, corners)
     assert A._n(t) == 1 and t["source"][0] == "E1"
     assert t["e_ve_twin"][0] == pytest.approx(0.125)
+    assert t["length_shortfall"][0] == 26.0                    # R4: carried as a covariate
     # real v_b 80 m/s >= 250 km/h -> the A1 curve
     assert t["e_ve_curve"][0] == pytest.approx(A.tier_a_curve_at(lawful, 13.0, 90.0, "A1"))
 

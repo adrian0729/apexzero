@@ -915,7 +915,8 @@ class ResponseMetrics:
     n_sight: float = np.nan
     xi_sight: float = np.nan
     pedal_sight: float = np.nan
-    unsettled: bool = False        # |n| > 1 m or pedal < 0.9 at first sight
+    unsettled: bool = False        # |n| > 1 m or pedal < 0.9 at first sight; never when
+                                   # sight_at_start (ruling R6)
     sight_at_start: bool = False   # the corner start is in the preview at the initial state
     # braking (beta_f)
     has_brake: bool = False        # a sustained brake run starting before s_apex
@@ -1029,8 +1030,11 @@ def response_metrics(traj: Trajectory, marks: Marks, null: Trajectory | None = N
     if k >= 0:
         m.k_sight, m.s_sight, m.d_sight = k, float(s[k]), float(s[k] - s[0])
         m.n_sight, m.xi_sight, m.pedal_sight = float(x[k, 1]), float(x[k, 2]), float(x[k, 7])
-        m.unsettled = bool(abs(m.n_sight) > UNSETTLED_N or m.pedal_sight < UNSETTLED_PEDAL)
         m.sight_at_start = k == 0
+        # Ruling R6: when the corner is in view at the initial state (A2 by design, D <
+        # d_max), first sight is the designed initial state, so the flag does not apply.
+        m.unsettled = bool(not m.sight_at_start and (abs(m.n_sight) > UNSETTLED_N
+                                                     or m.pedal_sight < UNSETTLED_PEDAL))
 
     # braking
     beta = v.beta_f

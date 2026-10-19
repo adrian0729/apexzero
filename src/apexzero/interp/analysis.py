@@ -26,7 +26,8 @@ the crash analyses). An error's pair value is the median of the per-run errors, 
 against the key solved at that run's phase when one exists, else the u = 0 key. Onset
 values are the median over runs with a sustained brake (at least 5 required).
 
-Choices where the protocol leaves room (AD1-AD22; also in the builder's report):
+Choices where the protocol leaves room (AD1-AD25), signed off as written by the study
+owner before the tag (protocol 12, ruling R13):
 - AD1  An overspeed crash is +inf even when it ends before s_c0 (the +inf rule comes first:
        it exists to stop survivorship bias, M4); other crashes before s_c0 are missing.
 - AD2  "Crash" is any termination within the window (the run's ``crashed`` flag).
@@ -35,7 +36,10 @@ Choices where the protocol leaves room (AD1-AD22; also in the builder's report):
 - AD4  Forced onsets are left out of the d_b, Δd_b and v_b pair values (9.4) and still
        count in n_brake and forced_frac.
 - AD5  Where e_ve uses the re-anchored key (A1, tier B D = 600), S and r use v_e*RA too
-       (column v_e_star_band); elsewhere v_e*.
+       (column v_e_star_band); elsewhere v_e*. Ruling R12: P0's re-anchored keys cover every
+       non-clipped below-support, tail and bulk A1 cell, so P1b and P2 read e_ve^RA
+       throughout A1; a run without one falls back to e_ve and is counted (ra_key,
+       ra_fallback).
 - AD6  "Pooled within-θ range of log v_e*" = max - min of the within-θ-centred values.
 - AD7  A leave-one-R-out slope that cannot be computed fails the confirm criterion and does
        not count as "outside" for the refute.
@@ -111,6 +115,7 @@ from apexzero.interp.constants import (
     STREAM_OFFSET,
     STREAMS,
     THETA_CLASS_EDGE_DEG,
+    TWIN_TOL,
     V_MIN_MARGIN,
     VIABILITY_CAP,
     VIABILITY_SUBSET,
@@ -145,6 +150,7 @@ RUN_EXTRA_COLUMNS = {
     "v_e_star_ra": "m/s: v_e* of the key behind e_ve_ra (the nominal v_e* without re-anchoring)",
     "v_e_star_k": "m/s: v_e* of the key behind the onset errors (phase-matched where solved)",
     "v_b_star_k": "m/s: its v_b*", "d_b_star_k": "m: its d_b*",
+    "ra_key": "bool: e_ve_ra is against a re-anchored key (False: the nominal u = 0 fallback)",
 }
 RUN_COLUMNS = (tuple(RUN_INDEX_COLUMNS) + METRIC_COLUMNS + KEY_ERROR_COLUMNS
                + tuple(RUN_EXTRA_COLUMNS))
@@ -200,6 +206,9 @@ PAIR_COLUMNS = {
     # deterministic speed values
     "n_runs": "int (8)", "n_missing": "int", "defined": "bool: <= 3 of 8 missing",
     "uses_ra": "bool: the band and S use the re-anchored key (A1, tier B D = 600)",
+    "ra_fallback": "int: deterministic runs of a uses_ra pair with no re-anchored key, whose "
+                   "e_ve_ra fell back to e_ve (R12: none in P1b's A1 set once P0's anchored "
+                   "keys exist)",
     "v_e": "m/s median (+inf for overspeed crashes)",
     "v_e_obs": "m/s median of the observed v_e (no +inf; P2b)",
     "e_ve": "median per-run error", "e_ve_bo": "", "e_ve_ra": "",
@@ -238,6 +247,8 @@ LADDER_COLUMNS = {
     "agent": "str: the crashing agent", "unit": "str: '<agent>/<circuit>/<s_crash>'",
     "set": "str: tail | bulk | below (P8 prediction sets)",
     "version": "str: stimuli.LADDER_VERSIONS", "fidelity_ok": "bool (real rung: gate passed)",
+    "fidelity_missing": "bool (real rung: gate not evaluated, its inputs missing; not a "
+                        "failure, the unit stays in P8 as unreproduced)",
     "det_crashes": "int (of det_n phases)", "det_n": "int", "nat_k": "int", "nat_n": "int",
     "e_ve": "median e_ve (+inf for overspeed crashes)", "det_overspeed": "int",
 }
@@ -246,6 +257,8 @@ TWIN_COLUMNS = {
     "agent": "str", "corner": "str", "source": "str: E1 | E2",
     "e_ve_real": "real rung", "e_ve_isolated": "", "e_ve_twin": "",
     "e_ve_curve": "the agent's tier A e_ve curve at the twin's R_seg, theta class, approach",
+    "length_shortfall": "m: real L_seg minus the twin's (R4 covariate; > 2 m misses the "
+                        "length tolerance)",
 }
 
 P7_SD_COLUMNS = {
@@ -321,7 +334,12 @@ P7_EXCESS_M, P7_FLAT_M, P7_FRACTION, P7_ALIAS_RATIO = 2.0, 1.0, 0.75, 2.0
 P7_SHORT_R = 14.6
 P8_FAIL_PCRASH, P8_REPRO_PCRASH, P8_REPRO_DET = 0.2, 0.5, 2
 P8_TWIN_PP, P8_TWIN_FRACTION, P8_SPEARMAN = 0.05, 0.80, 0.5
-P8_TAIL_MIN, P8_TAIL_REFUTE_MAX, P8_BULK_CONTEXT = 3, 1, 2.0 / 3.0
+# P8 thresholds are proportional (ruling R2): of the n tail units, confirm on >= ceil(3n/5)
+# reproduced and single-corner with twin agreement, refute on <= floor(n/5); a tail of
+# n < 3 is not testable (R2). The bulk set's rule is unchanged: context in >= 2/3 of its n
+# reproduced units (>= ceil(2n/3)), not testable only with none reproduced.
+P8_TAIL_CONFIRM, P8_TAIL_REFUTE, P8_BULK_CONTEXT = (3, 5), (1, 5), (2, 3)
+P8_MIN_UNITS = 3             # P8-tail only
 UNSETTLED_REGIME = 0.20      # a regime is flagged if > 20% of its runs are unsettled
 GATE_COMPLETION, GATE_OSC = 0.90, 0.10
 GENTLE_R = 87.3              # with R_CONTROLS: the checkpoint gate's gentle cells
@@ -550,6 +568,45 @@ class KeySource(Protocol):
                   key_traj) -> Any: ...
 
 
+NO_KEY_FLAG = "no_key"     # Cell flag of budget rule 2's cut cells (ruling R7)
+
+
+def has_no_key(cell) -> bool:
+    """Ruling R7: a cell cut from the keys by budget rule 2 carries the flag 'no_key'. It is
+    still rolled out, but no key (nominal, phase, backed-off, re-anchored, viability) is
+    read for it, so it drops out of every key-based error (excluded = 'no_key')."""
+    return NO_KEY_FLAG in tuple(getattr(cell, "flags", ()) or ())
+
+
+class _NoKeyFilter:
+    """A ``KeySource`` that hides every key of a 'no_key' cell (R7) and passes the rest
+    through; nulls and the layout s-OCP are not keys of the cut and stay."""
+
+    def __init__(self, keys):
+        self._keys = keys
+
+    def __getattr__(self, name):
+        return getattr(self._keys, name)
+
+    def nominal(self, cell, phase: int):
+        return None if has_no_key(cell) else self._keys.nominal(cell, phase)
+
+    def backoff(self, cell):
+        return None if has_no_key(cell) else self._keys.backoff(cell)
+
+    def anchored(self, cell, agent: str, timesteps: int):
+        return None if has_no_key(cell) else self._keys.anchored(cell, agent, timesteps)
+
+    def null(self, cell):
+        return self._keys.null(cell)
+
+    def socp(self, cell):
+        return self._keys.socp(cell)
+
+    def no_return(self, cell, *args):
+        return None if has_no_key(cell) else self._keys.no_return(cell, *args)
+
+
 def _attr(m: Any, name: str, default=float("nan")):
     if m is None:
         return default
@@ -679,15 +736,17 @@ def key_table(cells: list, bank, keys: KeySource, extra: dict[int, dict] | None 
     """KEY_COLUMNS for every cell: geometry from the bank, the u = 0 nominal, backed-off and
     s-OCP keys' values from ``keys``, and the braking/flat class (2.3: a sustained brake and
     v_min* < v0 - tau, tau the key's v_min tolerance, floor 0.5 km/h). ``extra`` adds or
-    overrides columns per cell_id (e.g. v_min_qss)."""
+    overrides columns per cell_id (e.g. v_min_qss). A budget rule 2 cut cell has key_status
+    'no_key' and no key values (R7)."""
     floor = MULTI_BASIN_FLOORS["v_min"]
+    keys = _NoKeyFilter(keys)
     rows = []
     for c in cells:
         st = bank.stimuli[c.stim_id]
         sp, geo, lm = st.spec, st.geometry, st.landmarks
         nom, bo, so = keys.nominal(c, 0), keys.backoff(c), keys.socp(c)
         mm = nom.metrics if nom is not None else None
-        status = nom.status if nom is not None else "missing"
+        status = NO_KEY_FLAG if has_no_key(c) else (nom.status if nom is not None else "missing")
         tau_v = float((nom.tau or {}).get("v_min", floor)) if nom is not None else floor
         v_min_star = float(_attr(mm, "v_min"))
         has_b = bool(_attr(mm, "has_brake", False))
@@ -803,6 +862,7 @@ def run_table(agent: str, timesteps: int, rollouts: dict | tuple, cells: list, b
     paired with the wrong keys."""
     groups = rollouts[0] if isinstance(rollouts, tuple) else rollouts
     by_id = {c.cell_id: c for c in cells}
+    keys = _NoKeyFilter(keys)          # R7: budget-cut cells are rolled out, never keyed
     if check_design:
         for g in MODES:
             arr = groups.get(g)
@@ -885,7 +945,9 @@ def _run_row(agent, timesteps, g, arr, i, by_id, bank, keys, tables, nulls) -> d
     v_bo = float(_attr(bo.metrics, "v_e")) if bo is not None and bo.status == "verified" \
         else np.nan
     ra = keys.anchored(cell, agent, timesteps)
-    if ra is not None and ra.status == "verified" and np.isfinite(_attr(ra.metrics, "v_e")):
+    ra_key = bool(ra is not None and ra.status == "verified"
+                  and np.isfinite(_attr(ra.metrics, "v_e")))
+    if ra_key:
         v_ra = float(_attr(ra.metrics, "v_e"))
         e_ra = v_e / v_ra - 1.0
     else:
@@ -907,7 +969,7 @@ def _run_row(agent, timesteps, g, arr, i, by_id, bank, keys, tables, nulls) -> d
     row.update({f: getattr(ke, f) for f in KEY_ERROR_COLUMNS})
     row.update(e_ve_bo=v_e / v_bo - 1.0 if np.isfinite(v_bo) else np.nan, e_ve_ra=float(e_ra),
                key_at_phase=bool(nom.at_phase) if ok else False, crash_type=ctype,
-               v_e_star_ra=float(v_ra), **k_ph)
+               v_e_star_ra=float(v_ra), ra_key=ra_key, **k_ph)
     return row
 
 
@@ -916,7 +978,7 @@ _RUN_F = ("s_crash", "v_e", "v_min", "e_ve", "e_ve_bo", "e_ve_ra", "v_e_star_ra"
           "clip_frac_edges", "clip_frac_ego", "clip_frac_context", "dt_corner", "regret",
           "osc_index", "v_e_star_k", "v_b_star_k", "d_b_star_k")
 _RUN_B = ("crashed", "completed", "has_brake", "forced_onset", "unsettled", "time_censored",
-          "kappa_clipped")
+          "kappa_clipped", "ra_key")
 
 
 def _clip_other_runs(runs: Table) -> np.ndarray:
@@ -1031,8 +1093,8 @@ def _pair_row(cols: dict, idx: np.ndarray, keys: Table, kidx: dict, kdir: np.nda
     R_seg = float(K("R_seg"))
     reg = regime_of(R_seg, rt.q1, rt.q10, getattr(rt, "r_clip_max", np.nan)) if rt else ""
     status = str(K("key_status", "missing"))
-    if kr is None or status == "missing":
-        excluded = "no_key"
+    if kr is None or status in ("missing", NO_KEY_FLAG):
+        excluded = NO_KEY_FLAG
     elif status in EXCL_ALL:
         excluded = status
     elif bool(K("multi_basin", False)):
@@ -1069,7 +1131,8 @@ def _pair_row(cols: dict, idx: np.ndarray, keys: Table, kidx: dict, kdir: np.nda
         log_support=np.nan, log_support_tightfast=np.nan,
         n_runs=nr, n_missing=missing["v_e"], defined=bool(nr > 0 and missing["v_e"]
                                                           <= _max_missing(nr)),
-        uses_ra=bool(uses_ra), v_e=vals["v_e"], v_e_obs=_median(v_e_obs), e_ve=vals["e_ve"],
+        uses_ra=bool(uses_ra), ra_fallback=int((~cols["ra_key"][det]).sum()) if uses_ra else 0,
+        v_e=vals["v_e"], v_e_obs=_median(v_e_obs), e_ve=vals["e_ve"],
         e_ve_bo=vals["e_ve_bo"], e_ve_ra=vals["e_ve_ra"], e_ve_bo_ra=vals["e_ve_bo_ra"],
         side=band_side(e_b, e_bo, b), v_min=vals["v_min"], e_vmin=vals["e_vmin"],
         e_vmin_line=vals["e_vmin_line"], e_vmin_line_excess=vals["e_vmin_line_excess"],
@@ -1613,6 +1676,15 @@ def p1_tail(pairs: Table, b: float) -> Decision:
     return _d("P1-tail", agent, verdict, **details)
 
 
+def kappa_clipped_pairs(runs: Table) -> set[int]:
+    """Pair ids kappa-clipped at run time in one snapshot's run table (protocol 2.3's binding
+    definition, the pair table's ``kappa_clipped``: any deterministic run of the pair drove a
+    preview kappa channel to the clip). The anchored-keys stage uses it to pick P0's
+    non-clipped below-support A1 cells (ruling R12)."""
+    m = (_st(runs, "mode") == "det") & _bo(runs, "kappa_clipped")
+    return {int(p) for p in _it(runs, "pair")[m]}
+
+
 def _below_mask(pairs: Table, approach: str, exclude=EXCL_KEY) -> np.ndarray:
     """Below-support pairs not kappa-clipped at run time (AD9), no-cap variants excluded."""
     return (_mask(pairs, approach=approach, regimes=("below", "clip"), exclude=exclude)
@@ -1629,7 +1701,10 @@ def p1b(pairs: Table, b: float, bulk_fits: dict[str, SlopeFit] | None = None,
     """P1b over below-support, non-clipped pairs at A1 and A2. r is the residual against
     the agent's bulk fit at the same approach (``bulk_fits``; default fitted here), or
     log(1 + e_ve) if P1a is refuted on its slope (``slope_refuted``; default: P1a's slope
-    refute rule on the A2 bulk fit)."""
+    refute rule on the A2 bulk fit). At A1 every error is e_ve^RA (``band_errors``): ruling
+    R12 extends P0's re-anchored keys to the non-clipped below-support A1 cells, so Kendall
+    tau does not mix keys; ``ra_fallback_pairs`` in the details counts A1 pairs of its scope
+    whose runs still fell back to the nominal key (0 once those keys exist)."""
     agent = _agent(pairs)
     approaches = ("A1", "A2")
     masks = {ap: _below_mask(pairs, ap) for ap in approaches}
@@ -1653,6 +1728,8 @@ def p1b(pairs: Table, b: float, bulk_fits: dict[str, SlopeFit] | None = None,
 
     r_all, ov_all, crash_all, taus = [], [], [], {}
     R_seg = _fl(pairs, "R_seg")
+    fallback = _bo(pairs, "uses_ra") & (_it(pairs, "ra_fallback", 0) > 0)
+    n_fallback = 0
     for ap in approaches:
         m = masks[ap]
         if not m.any():
@@ -1663,6 +1740,7 @@ def p1b(pairs: Table, b: float, bulk_fits: dict[str, SlopeFit] | None = None,
         crash_all.append(_it(pairs, "det_crashes", 0)[m] > 0)
         scope = m | _mask(pairs, approach=ap, regimes=("tail",))
         taus[ap] = kendall_tau(resid(scope, ap), R_seg[scope])
+        n_fallback += int((fallback & scope).sum())
     r, ov, crash = np.concatenate(r_all), np.concatenate(ov_all), np.concatenate(crash_all)
     with np.errstate(invalid="ignore"):
         frac_dep = _frac((r > thr) | ov)
@@ -1670,7 +1748,7 @@ def p1b(pairs: Table, b: float, bulk_fits: dict[str, SlopeFit] | None = None,
     tau_ok = bool(taus) and all(np.isfinite(t) and t <= P1B_KENDALL for t in taus.values())
     details = dict(n_pairs=n_below, slope_refuted=bool(slope_refuted), threshold=thr,
                    frac_departure=frac_dep, frac_lawful=frac_lawful, kendall_tau=taus,
-                   det_crash_pairs=int(crash.sum()))
+                   det_crash_pairs=int(crash.sum()), ra_fallback_pairs=n_fallback)
     if frac_dep >= P1B_FRACTION and tau_ok:
         verdict = "confirm"
     elif frac_lawful >= P1B_FRACTION and not crash.any():
@@ -2627,7 +2705,9 @@ def p8_units(ladder: Table, b: float = BAND_EXPECTED, knife_edge: tuple[str, ...
              ) -> Table:
     """Per (agent, crash unit): reproduced, single-corner or which context factor is
     necessary, and twin agreement (P8). A unit in ``knife_edge`` (3.2's YasMarina diagnosis:
-    real-track P_crash < 0.5) stays in P8 as unreproduced."""
+    real-track P_crash < 0.5) stays in P8 as unreproduced. ``fidelity_missing``: the unit's
+    fidelity gate was not evaluated (no real rung, or the gate's inputs are missing); it is
+    unreproduced but did not fail the gate (``p8`` keeps it in P8-tail's n)."""
     unit, ver = _st(ladder, "unit"), _st(ladder, "version")
     rows = []
     for u in np.unique(unit):
@@ -2645,6 +2725,7 @@ def p8_units(ladder: Table, b: float = BAND_EXPECTED, knife_edge: tuple[str, ...
 
         real = rung("real")
         fid = bool(_bo(ladder, "fidelity_ok")[real]) if real is not None else False
+        missing = real is None or (not fid and bool(_bo(ladder, "fidelity_missing")[real]))
         knife = str(u) in set(knife_edge)
         repro = fid and crash(real) and not knife
         single = repro and crash(rung("isolated"))
@@ -2653,7 +2734,9 @@ def p8_units(ladder: Table, b: float = BAND_EXPECTED, knife_edge: tuple[str, ...
         tw = rung("twin")
         twin_agree = bool(single and tw is not None and (
             crash(tw) or _fl(ladder, "e_ve")[tw] > b or _it(ladder, "det_overspeed", 0)[tw] > 0))
-        if not fid:
+        if missing:
+            label = "fidelity not evaluated (unreproduced)"
+        elif not fid:
             label = "fidelity failed"
         elif knife:
             label = "knife-edge (unreproduced)"
@@ -2664,10 +2747,11 @@ def p8_units(ladder: Table, b: float = BAND_EXPECTED, knife_edge: tuple[str, ...
         else:
             label = "context: " + ",".join(necessary) if necessary else "joint context"
         rows.append(dict(agent=str(_st(ladder, "agent")[mu][0]), unit=str(u),
-                         set=str(_st(ladder, "set")[mu][0]), fidelity_ok=fid, reproduced=repro,
+                         set=str(_st(ladder, "set")[mu][0]), fidelity_ok=fid,
+                         fidelity_missing=missing, reproduced=repro,
                          single_corner=single, twin_agree=twin_agree, label=label))
-    return _to_table(rows, ("agent", "unit", "set", "fidelity_ok", "reproduced", "single_corner",
-                            "twin_agree", "label"))
+    return _to_table(rows, ("agent", "unit", "set", "fidelity_ok", "fidelity_missing",
+                            "reproduced", "single_corner", "twin_agree", "label"))
 
 
 def tier_a_curve_at(pairs: Table, R_seg: float, theta_deg: float, approach: str) -> float:
@@ -2685,33 +2769,68 @@ def tier_a_curve_at(pairs: Table, R_seg: float, theta_deg: float, approach: str)
     return float(np.interp(math.log(R_seg), x[ok][o], y[ok][o]))
 
 
+def p8_tail_thresholds(n: int) -> tuple[int, int]:
+    """Ruling R2: (confirm minimum ceil(0.6 n), refute maximum floor(0.2 n)) for n tail
+    units, in integer arithmetic; n = 5 gives the protocol's original 3 and 1."""
+    (cn, cd), (rn, rd) = P8_TAIL_CONFIRM, P8_TAIL_REFUTE
+    return -(-cn * n // cd), rn * n // rd
+
+
+def p8_bulk_minimum(n: int) -> int:
+    """Ruling R2's treatment of the bulk set: context in at least ceil(2n/3) of the n
+    reproduced bulk units."""
+    num, den = P8_BULK_CONTEXT
+    return -(-num * n // den)
+
+
 def p8(ladder: Table, twins: Table | None = None, b: float = BAND_EXPECTED,
        knife_edge: tuple[str, ...] = ()) -> list[Decision]:
-    """P8-tail (G2's tail units: confirm if >= 3 reproduced and >= 3 single-corner with twin
-    agreement; refute if <= 1 is), P8-bulk (context in >= 2/3 of reproduced bulk units),
-    P8-F per agent (descriptive F) and P8-twin per agent (twin transfer)."""
+    """P8-tail (G2's tail units, n of them after transplants failing the fidelity gate are
+    excluded (3.2; knife-edge units and units whose gate could not be evaluated stay, as
+    unreproduced, and are listed): confirm if >= ceil(0.6 n) are reproduced and
+    >= ceil(0.6 n) are single-corner with twin agreement; refute if at most floor(0.2 n)
+    are; not testable if n < 3 (ruling R2)), P8-bulk (context in >= 2/3, i.e.
+    >= ceil(2n/3), of the n reproduced bulk units; not testable only when none is
+    reproduced: R2 changes the tail rule only), P8-F per agent (descriptive F) and P8-twin
+    per agent (twin transfer, with the twins' length shortfall as a covariate, R4). The sets
+    are the units' regimes from their crash corners' R_seg (``p8_set``)."""
     out = []
     u = p8_units(ladder, b, knife_edge)
     ag, st = _st(u, "agent"), _st(u, "set")
     rep, sing, tw = _bo(u, "reproduced"), _bo(u, "single_corner"), _bo(u, "twin_agree")
-    tail = (ag == "G2") & (st == "tail")
-    if not tail.any():
-        out.append(_d("P8-tail", "G2", "not testable"))
+    fid, missing = _bo(u, "fidelity_ok"), _bo(u, "fidelity_missing")
+    names = _st(u, "unit")
+    tail_all = (ag == "G2") & (st == "tail")
+    gate_failed = tail_all & ~fid & ~missing
+    tail = tail_all & ~gate_failed
+    n_tail = int(tail.sum())
+    failed = names[gate_failed].tolist()
+    not_evaluated = names[tail & missing].tolist()
+    if n_tail < P8_MIN_UNITS:
+        out.append(_d("P8-tail", "G2", "not testable", n_units=n_tail,
+                      min_units=P8_MIN_UNITS, fidelity_failed=failed,
+                      fidelity_missing=not_evaluated))
     else:
         n_rep, n_ok = int(rep[tail].sum()), int((sing & tw)[tail].sum())
-        verdict = "confirm" if n_rep >= P8_TAIL_MIN and n_ok >= P8_TAIL_MIN else (
-            "refute" if n_ok <= P8_TAIL_REFUTE_MAX else "inconclusive")
-        out.append(_d("P8-tail", "G2", verdict, n_units=int(tail.sum()), reproduced=n_rep,
-                      single_with_twin=n_ok, labels=dict(zip(_st(u, "unit")[tail].tolist(),
-                                                             _st(u, "label")[tail].tolist(),
-                                                             strict=True))))
+        need, refute_max = p8_tail_thresholds(n_tail)
+        verdict = "confirm" if n_rep >= need and n_ok >= need else (
+            "refute" if n_ok <= refute_max else "inconclusive")
+        out.append(_d("P8-tail", "G2", verdict, n_units=n_tail, reproduced=n_rep,
+                      single_with_twin=n_ok, confirm_min=need, refute_max=refute_max,
+                      fidelity_failed=failed, fidelity_missing=not_evaluated,
+                      labels=dict(zip(names[tail].tolist(),
+                                      _st(u, "label")[tail].tolist(), strict=True))))
     bulk = (st == "bulk") & rep
-    if not bulk.any():
-        out.append(_d("P8-bulk", "G1,G2", "not testable", n_units=int((st == "bulk").sum())))
+    n_bulk = int(bulk.sum())
+    if not n_bulk:
+        out.append(_d("P8-bulk", "G1,G2", "not testable", n_units=int((st == "bulk").sum()),
+                      n_reproduced=0))
     else:
-        frac = _frac(~sing[bulk])
-        out.append(_d("P8-bulk", "G1,G2", "confirm" if frac >= P8_BULK_CONTEXT - 1e-12
-                      else "refute", n_reproduced=int(bulk.sum()), frac_context=frac))
+        n_ctx = int((~sing[bulk]).sum())
+        need = p8_bulk_minimum(n_bulk)
+        out.append(_d("P8-bulk", "G1,G2", "confirm" if n_ctx >= need else "refute",
+                      n_reproduced=n_bulk, n_context=n_ctx, confirm_min=need,
+                      frac_context=n_ctx / n_bulk))
     for a in np.unique(ag):
         ma = ag == a
         n_rep = int(rep[ma].sum())
@@ -2734,8 +2853,28 @@ def p8(ladder: Table, twins: Table | None = None, b: float = BAND_EXPECTED,
                                                        else "inconclusive")
             ctx = _median(_fl(twins, "e_ve_real")[m] - _fl(twins, "e_ve_isolated")[m])
             out.append(_d("P8-twin", str(a), verdict, frac_agree=f_agree, spearman=rho,
-                          n=int(m.sum()), context_effect=ctx))
+                          n=int(m.sum()), context_effect=ctx,
+                          **twin_shortfall_covariate(_fl(twins, "length_shortfall")[m],
+                                                     agree, defined, iso - twn)))
     return out
+
+
+def twin_shortfall_covariate(short: np.ndarray, agree: np.ndarray, defined: np.ndarray,
+                             diff: np.ndarray) -> dict:
+    """Ruling R4: the twins' length shortfall (real L_seg minus the twin's, m) reported as a
+    covariate of the twin transfer: how many twins miss the 2 m length tolerance, the
+    agreement fraction among them and among the rest, and the Spearman correlation of the
+    shortfall with |e_ve(isolated) - e_ve(twin)| over corners where both are finite. The
+    verdict does not use it."""
+    short = np.asarray(short, float)
+    with np.errstate(invalid="ignore"):
+        long_miss = short > TWIN_TOL["length"]
+    fin = np.isfinite(short) & np.isfinite(diff)
+    rho = spearman(short[fin], np.abs(diff[fin])) if fin.sum() >= 3 else float("nan")
+    return dict(length_shortfall_median=_median(short), n_length_short=int(long_miss.sum()),
+                frac_agree_length_short=_frac(agree[defined & long_miss]),
+                frac_agree_length_ok=_frac(agree[defined & ~long_miss & np.isfinite(short)]),
+                spearman_shortfall_disagreement=rho)
 
 
 # ------------------------------------------------------------------------- descriptive (9.1, 9.3)
@@ -2751,7 +2890,7 @@ def viability_targets(runs: Table, keys: Table, cap: int = VIABILITY_CAP,
     kept. ``runs`` may hold several agents and snapshots."""
     det = (_st(runs, "mode") == "det") & _bo(runs, "crashed")
     k = _join_keys(runs, keys, ("s_c0", "s_a0", "key_status"))
-    det &= ~np.isin(k["key_status"].astype(str), EXCL_ALL)
+    det &= ~np.isin(k["key_status"].astype(str), EXCL_ALL + (NO_KEY_FLAG,))     # R7
     agent, ts, cell = _st(runs, "agent"), _it(runs, "timesteps", 0), _it(runs, "cell")
     phase, pair, s_crash = _it(runs, "phase", 0), _it(runs, "pair"), _fl(runs, "s_crash")
     sample = _it(runs, "sample")
@@ -3039,9 +3178,16 @@ def decisions(inp: AnalysisInputs, confirmatory: bool = True) -> list[Decision]:
         hist_gates = [_gate_of(r, inp, agent) for r in hist]
         for name, rule in rules.items():
             d = _gated(_with_sensitivity(rule, runs, inp), gate)
-            past = [_gated(_with_sensitivity(rule, r, inp), g).verdict
-                    for r, g in zip(hist, hist_gates, strict=True)]
-            d = _stabilise(d, past)
+            past_d = [_gated(_with_sensitivity(rule, r, inp), g)
+                      for r, g in zip(hist, hist_gates, strict=True)]
+            d = _stabilise(d, [p.verdict for p in past_d])
+            if name == "P1b" and past_d:
+                # R12 re-anchors the below-support A1 cells at P0 (the finals) only; a
+                # history snapshot that is also a P6c checkpoint has re-anchored tail and
+                # bulk keys but nominal below-support ones, so its Kendall tau mixes keys.
+                # Reported per history snapshot, not acted on (ruling R12's scope).
+                d.details["history_ra_fallback_pairs"] = [
+                    p.details.get("ra_fallback_pairs") for p in past_d]
             if name == "P3" and inp.demote_p3 and d.family == "primary":
                 d.family = "secondary"
                 d.details["demoted"] = "pre-tag P3 separation check failed (protocol 2.4 P3)"
@@ -3247,7 +3393,7 @@ def simulate_runs(kind: str, keys_table: Table, rng: np.random.Generator,
                                     L_c, clipped, {}))
     cols = ("agent", "timesteps", "cell", "stim", "pair", "phase", "sample", "mode",
             "steer_sign", "W", "s0", "crashed", "completed", "s_crash", "crash_type",
-            "kappa_clipped", "unsettled", "time_censored", "key_at_phase", "osc_index",
+            "kappa_clipped", "unsettled", "time_censored", "key_at_phase", "osc_index", "ra_key",
             "v_e", "e_ve", "e_ve_bo", "e_ve_ra", "v_e_star_ra", "v_min", "e_vmin", "has_brake",
             "forced_onset", "d_b", "dd_b", "v_b", "d_resp", "dd_resp")
     return _to_table(out, cols)
@@ -3263,7 +3409,7 @@ def _sim_run(agent: str, r: dict, k: int, sample: int, mode: str, steer: int, cr
                crashed=crash, completed=not crash,
                s_crash=float(r["s_c0"] + 0.5 * L_c) if crash else np.nan,
                crash_type="overspeed" if crash else "", kappa_clipped=clipped, unsettled=False,
-               time_censored=False, key_at_phase=True, osc_index=0.0)
+               time_censored=False, key_at_phase=True, osc_index=0.0, ra_key=True)
     for c in ("v_e", "e_ve", "e_ve_bo", "e_ve_ra", "v_e_star_ra", "v_min", "e_vmin", "d_b",
               "dd_b", "v_b", "d_resp", "dd_resp"):
         row[c] = float(extra.get(c, np.nan))
@@ -3501,31 +3647,17 @@ def power_table(keys_table: Table, support, b: float, tables=None,
 # the joint-support densities per pair, and P7's aliasing table. scripts/psychophysics.py
 # (analyse) builds them from the run tables, the design and the probes.
 
-# P8's pre-registered sets, by (crashing agent, circuit): protocol 2.4 P8 names G2's five tail
-# crashes and the six bulk crashes explicitly; G1's other units (below support at YasMarina,
-# tail elsewhere) enter only the per-agent F. The names, not regimes recomputed from the
-# frozen q1 / q10, define the sets (G1's Sochi 21.1 m sits just under its frozen q10 21.3).
-P8_SETS = {
-    ("G2", "Norisring"): "tail", ("G2", "YasMarina"): "tail", ("G2", "Melbourne"): "tail",
-    ("G2", "Catalunya"): "tail", ("G2", "Zandvoort"): "tail",
-    ("G1", "BrandsHatch"): "bulk", ("G1", "Oschersleben"): "bulk", ("G1", "Sochi"): "bulk",
-    ("G1", "Zandvoort"): "bulk", ("G2", "Oschersleben"): "bulk", ("G2", "Sochi"): "bulk",
-    ("G1", "YasMarina"): "below", ("G1", "Norisring"): "tail", ("G1", "Hockenheim"): "tail",
-    ("G1", "Melbourne"): "tail",
-}
-
-
-def p8_set(agent: str, track: str, R_seg: float, regimes: dict | None = None) -> str:
-    """The P8 set of a crash unit: the protocol's named sets for G1 and G2 (``P8_SETS``);
-    G3's own R_DEV crash corners, added "by the same construction rule", by their R_seg
-    against G3's frozen q1 / q10 ('below', 'tail' or 'bulk'; 'clip' counts as below)."""
-    named = P8_SETS.get((agent, track))
-    if named is not None:
-        return named
+def p8_set(agent: str, R_seg: float, regimes: dict | None = None) -> str:
+    """The P8 set of a crash unit (ruling R2): the regime of its crash corner, the
+    ``corners.segment`` corner containing the crash (D15, ``stimuli.crash_unit_R_seg``),
+    from that corner's R_seg against the crashing agent's frozen q1 / q10 ('below', 'tail'
+    or 'bulk'; 'clip' counts as below). The same rule for every agent's units, G3's own R_DEV
+    crashes included; no unit carries a radius label of its own. 'other' without the
+    agent's frozen regimes or a finite radius."""
     rt = (regimes or {}).get(agent)
     if rt is None or not np.isfinite(R_seg):
         return "other"
-    reg = regime_of(float(R_seg), rt.q1, rt.q10)
+    reg = regime_of(float(R_seg), rt.q1, rt.q10, getattr(rt, "r_clip_max", float("nan")))
     return {"clip": "below"}.get(reg, reg) or "other"
 
 
@@ -3534,19 +3666,22 @@ def ladder_table(runs: Table, keys: Table, units: list[dict],
     """LADDER_COLUMNS for the crash units of one agent's final run table. ``units``: one
     dict per (agent, crash) with 'agent', 'unit', 'set' and 'cells' {version: [cell ids]}
     (the E1 cells built from that agent's state at that corner); ``fidelity`` maps a unit to
-    the real rung's fidelity gate (3.2). e_ve is the median per-run error with overspeed
-    crashes at +inf (9.1)."""
+    the real rung's fidelity gate (3.2): True (passed), False (evaluated and failed), None or
+    absent (not evaluated: its inputs are missing; ``fidelity_missing``). A unit without
+    cells keeps one empty real row, so missing data never drops it from P8's n. e_ve is the
+    median per-run error with overspeed crashes at +inf (9.1)."""
     fidelity = fidelity or {}
     cell, mode = _it(runs, "cell"), _st(runs, "mode")
     crashed, ct = _bo(runs, "crashed"), _st(runs, "crash_type")
     e = _run_speed(runs, keys, "e_ve")
     rows = []
     for u in units:
-        for ver, ids in u["cells"].items():
+        gate = fidelity.get(u["unit"])
+        for ver, ids in (u["cells"] or {"real": []}).items():
             m = np.isin(cell, np.asarray(ids, np.int64))
             det, nat = m & (mode == "det"), m & (mode == "nat")
             rows.append(dict(agent=u["agent"], unit=u["unit"], set=u["set"], version=ver,
-                             fidelity_ok=bool(fidelity.get(u["unit"], False)),
+                             fidelity_ok=bool(gate), fidelity_missing=gate is None,
                              det_crashes=int((crashed & det).sum()), det_n=int(det.sum()),
                              nat_k=int((crashed & nat).sum()), nat_n=int(nat.sum()),
                              e_ve=_median(e[det]) if det.any() else float("nan"),
@@ -3559,7 +3694,8 @@ def twin_table(runs: Table, keys: Table, pairs: Table, corners: list[dict]) -> T
     state pooled) the median deterministic e_ve on the real, isolated and twin versions
     (+inf for overspeed crashes), and the agent's tier A e_ve curve at the twin's R_seg,
     theta class and approach (A1 when the real rung's v_b is >= 250 km/h, else A2).
-    ``corners``: {'corner', 'source', 'R_seg', 'theta_deg', 'cells': {version: [ids]}}."""
+    ``corners``: {'corner', 'source', 'R_seg', 'theta_deg', 'cells': {version: [ids]},
+    'length_shortfall'} (the twin's length shortfall, R4; NaN when absent)."""
     cell, mode = _it(runs, "cell"), _st(runs, "mode")
     e = _run_speed(runs, keys, "e_ve")
     v_b = _fl(runs, "v_b")
@@ -3575,7 +3711,8 @@ def twin_table(runs: Table, keys: Table, pairs: Table, corners: list[dict]) -> T
         rows.append(dict(agent=agent, corner=c["corner"], source=c["source"],
                          e_ve_real=med("real"), e_ve_isolated=med("isolated"),
                          e_ve_twin=med("twin"),
-                         e_ve_curve=tier_a_curve_at(pairs, c["R_seg"], c["theta_deg"], approach)))
+                         e_ve_curve=tier_a_curve_at(pairs, c["R_seg"], c["theta_deg"], approach),
+                         length_shortfall=float(c.get("length_shortfall", np.nan))))
     return _to_table(rows, TWIN_COLUMNS)
 
 

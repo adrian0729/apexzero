@@ -349,7 +349,8 @@ def test_M5_failed_separation_check_demotes_p3(lawful):
 
 def test_M6_g3_crash_units_join_p8(tmp_path):
     """Fidelity M6: G3's own R_DEV crashes (from its deterministic real laps) become P8
-    units by the same construction, with sets from G3's frozen q1 / q10."""
+    units by the same construction, with sets from G3's frozen q1 / q10 (and, by ruling R2,
+    every agent's units the same way)."""
     tr = stimuli.real_track("Norisring")
     L = float(tr.length)
     x = np.zeros((50, 8))
@@ -363,15 +364,16 @@ def test_M6_g3_crash_units_join_p8(tmp_path):
     assert (p.agent, p.track, p.lap) == ("G3", "Norisring", 2)
     assert p.s_crash == pytest.approx(910.0, abs=0.1)
     c = stimuli.crash_corner(tr, 910.0)
-    assert p.label_R == pytest.approx(round(c.r_min, 1))
+    assert stimuli.crash_unit_R_seg(p) == pytest.approx(float(c.r_min))
     f = tmp_path / "extra.json"
-    io.write_json(f, dict(pairs=[dataclasses.asdict(p)]))
+    io.write_json(f, dict(pairs=[dict(dataclasses.asdict(p), label_R=99.0)]))  # old label: ignored
     allp = stimuli.crash_pairs(f)
     assert allp[:len(stimuli.CRASH_PAIRS)] == stimuli.CRASH_PAIRS and allp[-1] == p
-    rt = {"G3": A.Regime(10.2, 14.5)}
-    assert A.p8_set("G3", "Norisring", 12.0, rt) == "tail"
-    assert A.p8_set("G3", "Norisring", 30.0, rt) == "bulk"
-    assert A.p8_set("G2", "Norisring", 30.0, rt) == "tail"      # named sets stand
+    rt = {"G3": A.Regime(10.2, 14.5), "G2": A.Regime(11.1, 17.7)}
+    assert A.p8_set("G3", 12.0, rt) == "tail"
+    assert A.p8_set("G3", 30.0, rt) == "bulk"
+    assert A.p8_set("G2", 30.0, rt) == "bulk"                    # R2: no named sets
+    assert A.p8_set("S9", 30.0, rt) == "other"
 
 
 def test_M7_knife_edge_unit_stays_unreproduced():

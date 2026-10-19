@@ -332,6 +332,25 @@ def test_flat_out_run_has_no_brake_and_unsettled_sight():
     assert M.first_sight(np.array([0.0]), np.array([10.0]), 760.0) == -1
 
 
+def test_R6_unsettled_does_not_apply_when_the_corner_is_in_view_at_the_start():
+    """Ruling R6: on a cell whose corner is in view at state 0 (A2: D < d_max), first sight
+    is the designed initial state (pedal state 0), so the unsettled flag does not apply; it
+    keeps its meaning when first sight comes later."""
+    K = 401
+    vx = np.full(K, 80.0)
+    s = integrate(vx, 300.0)                       # the corner start is in the preview at k = 0
+    pedal, n = np.ones(K), np.zeros(K)
+    pedal[0], n[0] = 0.0, 1.5                      # unsettled by the rule's numbers
+    m = M.response_metrics(traj(s, vx, pedal=pedal, n=n), marks(s0=300.0))
+    assert m.sight_at_start and m.k_sight == 0 and m.pedal_sight == 0.0
+    assert not m.unsettled
+    s2 = integrate(vx, 100.0)                      # in view only from state 45
+    pedal2 = np.ones(K)
+    pedal2[45] = 0.5
+    m2 = M.response_metrics(traj(s2, vx, pedal=pedal2), marks(s0=100.0))
+    assert not m2.sight_at_start and m2.k_sight == 45 and m2.unsettled
+
+
 def test_crash_censors_window_measures():
     K = 401
     vx = np.full(K, 60.0)
@@ -482,6 +501,23 @@ def test_oscillation_index():
     sm = np.r_[0.1 * (-1.0) ** np.arange(100), np.full(100, 5.0)]
     assert M.oscillation_index(sm) == pytest.approx(0.2)
     assert np.isnan(M.oscillation_index(np.array([0.3])))
+
+
+def test_R8_crash_typing_ellipse_search_starts_at_s_c0_minus_50():
+    """Ruling R8 (M11): with the point of no return unresolved, the ellipse rule searches
+    from s_c0 - 50 m to the crash, so saturation on an earlier stretch cannot type it."""
+    K = 401
+    key_v = np.full(K, 50.0)
+    key = traj(integrate(key_v, 300.0), key_v)
+    mk = marks()
+    s = integrate(np.full(K, 60.0), 300.0)
+    early, inside = np.full(K, 0.5), np.full(K, 0.5)
+    k_early = int(np.argmax(s >= LM.s_c0 - 50.0 - 40.0))          # 40 m before the window
+    k_inside = int(np.argmax(s >= LM.s_c0 - 50.0 + 6.0))          # just inside it
+    early[k_early: k_early + 4] = 0.99
+    inside[k_inside: k_inside + 4] = 0.99
+    assert M.crash_type(crash_run(util_r=early)[0], mk, key, None) == "line_steer"
+    assert M.crash_type(crash_run(util_r=inside)[0], mk, key, None) == "overspeed"
 
 
 # ------------------------------------------------------------------------- errors vs keys

@@ -33,9 +33,10 @@ def ps():
 
 def test_agent_stages_refuse_without_the_tag(ps, monkeypatch):
     """Hygiene minor 11 / freeze rule: no agent rollout, anchored key, probe or analysis
-    runs before the tag (the pilot replication is the exception)."""
+    runs before the tag (the pilot replication is an exception; the real laps are allowed by
+    ruling R1, tested in test_interp_rulings.py)."""
     monkeypatch.setattr(ps, "_tag_exists", lambda: False)
-    for argv in (["rollouts"], ["rollouts", "--real-laps"], ["rollouts", "--yasmarina"],
+    for argv in (["rollouts"], ["rollouts", "--yasmarina"],
                  ["anchored-keys"], ["probes"], ["analyse"]):
         with pytest.raises(SystemExit, match="does not exist yet"):
             ps.main(argv)

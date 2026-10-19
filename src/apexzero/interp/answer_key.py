@@ -2784,8 +2784,9 @@ BUDGET_ITEMS = {
     "tierC": ("nominal", "P2"), "recovery": ("nominal", "P2"), "anchored_ckpt": ("anchored", "P2"),
 }
 # Budget rule 2's cuts: tier A 180 deg cells with R >= 35.8 (3 radii <= 55.9 x A1, A2, each a
-# nominal and a backed-off key) and the phase-matched keys of the 90 deg cells (A1, R <= 18.3:
-# 10 geometries x 3 phases).
+# nominal and a backed-off key; ruling R7 corrects the protocol's "5 geometries" and keeps the
+# cells in the rollouts with no_key) and the phase-matched keys of the 90 deg cells (A1,
+# R <= 18.3: 10 geometries x 3 phases).
 _N_180_LARGE = 2 * sum(1 for r in R_BRAKING if 35.8 <= r <= R_180_MAX)
 _N_PHASE_90 = 3 * sum(1 for r in R_BRAKING if r <= 18.3)
 DEFAULT_CUTS = {"nominal_A": _N_180_LARGE, "backoff": _N_180_LARGE, "phase": _N_PHASE_90}
@@ -2825,7 +2826,9 @@ def project_budget(timings: dict[str, float], counts: dict[str, int | tuple],
                 i = items[label]
                 i["n"] = max(i["n"] - int(n_cut), 0)
                 i["cpu_h"] = i["n"] * i["cpu_s_each"] / 3600.0
-        cuts.append("rule 2: tier A 180 deg R >= 35.8 dropped; phase-matched keys for 180 deg only")
+        cuts.append("rule 2: tier A 180 deg R >= 35.8 dropped from the keys (3 geometries x 2 "
+                    "approaches, R7: still rolled out, no_key); phase-matched keys for 180 deg "
+                    "only")
     if "rollout_sps" in timings and timings["rollout_sps"] < MIN_ROLLOUT_SPS:
         cuts.append("rule 3: checkpoint stochastic and tier E matched-noise runs dropped")
     after = totals()

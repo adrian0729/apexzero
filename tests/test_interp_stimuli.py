@@ -237,15 +237,17 @@ def test_transplant_matches_its_source():
     assert ph.kappa[k0] == h.kappa[(k0 - eh.i_c + eh.j_c) % h.n_points]
 
 
-def test_crash_corners_and_labels():
+def test_crash_corners_carry_no_radius_labels():
     dc = T.distinct_crash_corners()
     assert len(dc) == 13
     assert sum(len(v[2]) for v in dc.values()) == 15
     shared = {k for k, v in dc.items() if len(v[2]) == 2}
     assert {k.split("/")[1] for k in shared} == {"Sochi", "Oschersleben"}
-    mism = {(p.agent, p.track) for _, c, ps in dc.values() for p in ps
-            if abs(c.r_min - p.label_R) / p.label_R > T.LABEL_MISMATCH}
-    assert {("G2", "YasMarina"), ("G2", "Zandvoort")} <= mism
+    # R2: no unit carries a radius label; each crash corner is the segment corner that
+    # contains the crash (D15), and its R_seg is what the regimes read.
+    assert not any(hasattr(p, "label_R") for _, _, ps in dc.values() for p in ps)
+    r_seg = {(p.agent, p.track): c.r_min for _, c, ps in dc.values() for p in ps}
+    assert 19.0 < r_seg[("G2", "YasMarina")] < 22.0 and 26.0 < r_seg[("G2", "Zandvoort")] < 30.0
 
 
 def test_twin_fit_recovers_a_trapezoid_and_flags_long_corners():
@@ -400,16 +402,22 @@ def test_design_checks(design):
         assert res[k]["vacuous"] and res[k]["rows"] == 0, (k, res[k])
     assert res["lengths"]["longest_corner"] <= 521.0
     assert res["lengths"]["max_window_reach"] < S_TRUNC
-    # theta_eff: the protocol's 0.3 deg check fails on exactly the known rows (pending a
-    # ruling, IMPLEMENTATION.md step-1 notes), and each failure is the samples' own area
-    # (kinks between knots).
-    assert not res["theta_eff"]["ok"]
-    failing = sorted(f["name"] for f in res["theta_eff"]["fails"])
+    # theta_eff: the protocol's 0.3 deg check misses exactly the known rows, each by the
+    # samples' own area (kinks between knots); ruling R3 accepts and lists them.
+    assert res["theta_eff"]["ok"] and not res["theta_eff"]["fails"]
+    assert res["theta_eff"]["accepted_by"] == "R3"
+    failing = sorted(f["name"] for f in res["theta_eff"]["accepted"])
     assert len(failing) == 6 and all(("/R6/" in n and "/T180/" in n) or ("/R8.4/" in n and "/T90/" in n)
                                      for n in failing), failing
-    for f in res["theta_eff"]["fails"]:
+    for f in res["theta_eff"]["accepted"]:
         assert f["theta_eff"] == pytest.approx(math.copysign(abs(f["sample_area_deg"]), f["theta_eff"]),
                                                abs=0.01)
+        # R3 accepts a sampling miss only: the spec's trapezoid turns its nominal angle and
+        # the samples' area lies within the kinks' sampling bound of it.
+        nominal = 180.0 if "/T180/" in f["name"] else 90.0
+        assert f["spec_area_deg"] == pytest.approx(nominal, abs=1e-6)
+        assert 0.3 < nominal - abs(f["sample_area_deg"]) <= f["sampling_bound_deg"]
+    assert res["theta_eff"]["spec_area_max_deg"] <= 1e-6
 
 
 def test_pilot_minigrid():
@@ -448,13 +456,25 @@ def test_build_real_design_with_stand_in_states(design):
     assert real.x0[0] == pytest.approx(S_C - 800.0, abs=DS) and real.D == pytest.approx(800.0, abs=DS)
     assert mir.x0[1] == -real.x0[1] and mir.prev_action0 == (-0.1, 1.0) and mir.accel0 == (2.0, -0.5)
     assert len({c.pair_id for c in e1_cells}) == 6
-    assert any(f.startswith("label_mismatch") for f in real.flags)
+    assert not any(f.startswith("label_mismatch") for f in real.flags)     # R2: no labels
     d_cells = [c for c in new if c.tiers == ("D",)]
     assert all(c.runners == T.RUNNERS_FROM_S1 for c in d_cells)
     assert d_cells[0].D == pytest.approx(T.hockenheim_corners(hk)[14].before, abs=DS)
     res = T.check_design_details(bank2, cells2)
     assert res["transplant_source"]["ok"] and res["transplant_source"]["rows"] == 29
     assert res["lockbox"]["ok"] and res["mirror_exact"]["ok"] and res["track_arrays_roundtrip"]["ok"]
+    # R4: Norisring 874 is 76 m long, longer than any trapezoid with its R_seg and angle; its
+    # twin matches both to < 1e-3, so it is accepted with its shortfall and flagged as short,
+    # not as a failed fit.
+    twin = next(s for s in bank2.stimuli if s.name.startswith("E1/Norisring/874")
+                and s.name.endswith("/twin"))
+    assert "twin_length_short" in twin.flags and "twin_fit_fail" not in twin.flags
+    tw = res["twin_fit"]
+    assert tw["ok"] and [r["name"] for r in tw["accepted"]] == [twin.name]
+    assert tw["accepted_max_R_rel"] < 1e-3 and tw["accepted_max_angle_deg"] < 1e-3
+    # the twin's spec turns its angle exactly; only the 6 known synthetic rows miss 0.3 deg
+    th = res["theta_eff"]
+    assert th["ok"] and th["spec_area_max_deg"] <= 1e-6 and len(th["accepted"]) == 6
 
 
 def test_cell_support_table(tmp_path, design):
