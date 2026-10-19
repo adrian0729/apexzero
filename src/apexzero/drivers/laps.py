@@ -104,15 +104,40 @@ class CarTrack:
     s: np.ndarray
 
 
+def plausible_steps(t: np.ndarray, s: np.ndarray, length: float, v_max: float = 100.0,
+                    slack: float = 30.0, reacquire: int = 3) -> np.ndarray:
+    """Mask of samples whose step from the last kept sample a car could have driven.
+
+    The global projection jumps between branches where a circuit crosses itself
+    (Suzuka) and interpolating across such a jump sweeps a phantom car along the track.
+    A sample is dropped if it is more than ``v_max * dt + slack`` from the last kept one;
+    after ``reacquire`` consecutive drops the next sample is kept anyway, so one bad
+    reference sample cannot lock the track out.
+    """
+    keep = np.ones(len(t), bool)
+    last, rejects = 0, 0
+    for i in range(1, len(t)):
+        step = abs(float(wrap(s[i] - s[last], length)))
+        if step <= v_max * (t[i] - t[last]) + slack or rejects >= reacquire:
+            last, rejects = i, 0
+        else:
+            keep[i] = False
+            rejects += 1
+    return keep
+
+
 def car_tracks(sess: sx.SessionData, tf: Similarity, line: Centreline,
                max_offset: float = 7.0) -> dict[int, CarTrack]:
     """Every car's samples projected globally; pit-lane and garage samples (more than
-    ``max_offset`` m from the centreline) are dropped so they cannot count as traffic."""
+    ``max_offset`` m from the centreline) are dropped so they cannot count as traffic,
+    and so are branch jumps at crossovers (``plausible_steps``)."""
     out = {}
     for drv, (t, xy) in sess.location.items():
         s, d = line.nearest(tf.apply(xy))
         keep = d <= max_offset
-        out[drv] = CarTrack(t[keep], s[keep])
+        t, s = t[keep], s[keep]
+        ok = plausible_steps(t, s, line.length)
+        out[drv] = CarTrack(t[ok], s[ok])
     return out
 
 

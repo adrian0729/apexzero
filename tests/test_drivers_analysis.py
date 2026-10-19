@@ -10,7 +10,7 @@ from apexzero.drivers import laps as lapf
 from apexzero.drivers import recovery, segments
 from apexzero.drivers import session as sx
 from apexzero.drivers.circuits import CIRCUITS, NOT_ON_CALENDAR, circuit_for
-from apexzero.drivers.geometry import Centreline
+from apexzero.drivers.geometry import Centreline, wrap
 from apexzero.drivers.registration import Similarity
 from apexzero.drivers.synth import CircuitModel, SynthConfig, phase_bumps, qss_model
 from apexzero.oracle.qss import GG, speed_profile
@@ -176,6 +176,36 @@ def test_gap_ahead_measures_time_to_the_car_in_front():
     assert np.allclose(gap, 0.6, atol=1e-6)
     gap3 = lapf.gap_ahead(ego, 0.0, {3: others[3]}, length, x)
     assert np.allclose(gap3, 8.0, atol=1e-6)
+
+
+def test_gap_ahead_ignores_a_branch_jump_at_a_crossover():
+    t_ = np.linspace(0, 2 * np.pi, 800, endpoint=False)
+    xy8 = np.stack([300 * np.sin(t_), 300 * np.sin(t_) * np.cos(t_)], axis=1)
+    line = Centreline(from_centreline("eight", xy8, np.full(800, 6.0), np.full(800, 6.0), ds=2.0,
+                                      smoothing=0.01))
+    length = line.length
+    grid = np.arange(0.0, length, 0.25)
+    r = np.linalg.norm(line.point(grid), axis=1)
+    s_a = grid[np.argmin(np.where(grid < 0.25 * length, r, np.inf))]     # the crossing ...
+    s_b = grid[np.argmin(np.where(abs(grid - 0.5 * length) < 0.25 * length, r, np.inf))]
+    v, s_line = 50.0, 0.25 * length
+    ego = SimpleNamespace(driver=1, t_start=100.0, duration=length / v,
+                          elapsed=lambda x: np.asarray(x) / v,
+                          speed=lambda x: np.full(np.shape(x), v))
+    # Car 2 runs 30 m (0.6 s) ahead. At the crossing the feed snaps one of its samples
+    # onto the other branch, half a lap away along the centreline.
+    t = np.arange(90.0, 100.0 + length / v + 10.0, 0.27)
+    s2 = s_line + 30.0 + v * (t - 100.0)
+    xy = line.point(s2)
+    j = int(np.argmin(np.abs(wrap(s2 - s_b, length))))
+    xy[j] = line.point(s_a + 0.5)
+    sess = sx.SessionData(1, 2025, "Qualifying", "X", {}, [], [], np.zeros(0), np.zeros(0), [],
+                          location={2: (t, xy)})
+    tracks = lapf.car_tracks(sess, Similarity(1.0, np.eye(2), np.zeros(2)), line)
+    assert len(tracks[2].t) == len(t) - 1                  # only the jump is dropped
+    x = np.arange(0.0, length, 2.0)
+    gap = lapf.gap_ahead(ego, s_line, tracks, length, x)
+    assert np.allclose(gap, 0.6, atol=0.01)
 
 
 # ----------------------------------------------------------------------------- deltas
