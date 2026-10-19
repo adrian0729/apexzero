@@ -384,6 +384,31 @@ def test_injection_recovery_end_to_end(synthetic_model):
     assert agg[("slow", "entry")]["injected_ms"] == pytest.approx(160.0)
 
 
+def test_held_out_rates_and_persistent_errors(synthetic_model):
+    nat = np.full(len(synthetic_model.seg.labels()), 0.02)
+    base = recovery.run(synthetic_model, {("slow", "entry"): 0.040}, pairs=3,
+                        laps_per_driver=3, reps=2, seed=31, natural=nat)
+    assert list(base.rep) == [0, 0, 0, 1, 1, 1] and set(base.lap_rep) == {0, 1}
+    assert base.subset([1]).pair_est.shape == (3, base.pair_est.shape[1])
+    rates = recovery.held_out_rates([base])
+    fpr, n = rates["fpr"]
+    assert n == 6 * int((base.injected == 0).sum()) and 0.0 <= fpr <= 0.3
+    assert set(rates["detection"]) == {("slow", "entry")}
+    # Persistent per-car errors come from their own random stream: the truth is
+    # unchanged and only the estimates move, by an amount that grows with the error.
+    small = SynthConfig(driver_wobble_sd=0.002, car_offset_sd=0.2)
+    large = SynthConfig(driver_wobble_sd=0.02, car_offset_sd=2.0)
+    runs = [recovery.run(synthetic_model, {("slow", "entry"): 0.040}, pairs=3,
+                         laps_per_driver=3, reps=2, seed=31, natural=nat, synth_cfg=c)
+            for c in (small, large)]
+    for r in runs:
+        assert np.array_equal(r.pair_true, base.pair_true)
+    sys_small = recovery.systematic_error([base], [runs[0]])
+    sys_large = recovery.systematic_error([base], [runs[1]])
+    for k in sys_small:
+        assert 0.0 < sys_small[k][0] < sys_large[k][0]
+
+
 def test_within_driver_sd_pools_laps_of_one_driver_in_one_q_segment():
     tab = _table(np.zeros(6), n_laps=6, noise=0.02, seed=3)
     # Shifting one Q segment wholesale (track evolution) must not change the estimate.
@@ -396,17 +421,19 @@ def test_within_driver_sd_pools_laps_of_one_driver_in_one_q_segment():
 
 
 def test_calibration_picks_the_wobble_that_matches_the_real_held_out_error(synthetic_model):
-    # Pretend the "real" session had the held-out error of a noisy synthetic feed.
-    noisy = recovery.run(synthetic_model, {}, pairs=2, laps_per_driver=2, reps=1,
-                         synth_cfg=SynthConfig(wobble_sd=0.03), seed=9,
-                         held_out=True)
+    # Pretend the "real" session had the held-out error of a synthetic feed whose wobble
+    # (0.025) is not on the calibration grid, drawn with a seed the calibration never
+    # uses: the nearest grid wobble must win, not an exact replay.
+    real = recovery.run(synthetic_model, {}, pairs=3, laps_per_driver=3, reps=1,
+                        synth_cfg=SynthConfig(wobble_sd=0.025), seed=21, held_out=True)
     n_phase = len(synthetic_model.seg.labels())
     tab = _table(np.zeros(n_phase), n_laps=4, n_phase=n_phase, noise=0.03, seed=4)
     tab.labels = synthetic_model.seg.labels()
-    cal = recovery.calibrate(synthetic_model, noisy.held_out_s2, tab, wobbles=(0.003, 0.03),
-                             pairs=2, laps_per_driver=2, seed=9)
+    cal = recovery.calibrate(synthetic_model, real.held_out_s2, tab,
+                             wobbles=(0.003, 0.01, 0.03), pairs=3, laps_per_driver=3, seed=5)
     assert cal.wobble_sd == 0.03
-    assert cal.tried[0.003] < cal.tried[0.03]
+    assert cal.tried[0.003] < cal.tried[0.01] < cal.tried[0.03]
+    assert cal.synth_held_sd != pytest.approx(cal.real_held_sd, rel=1e-6)
     assert cal.natural.shape == (len(synthetic_model.seg.labels()),)
     for (real, meas) in cal.by_cell.values():
         assert real > 0 and meas > 0

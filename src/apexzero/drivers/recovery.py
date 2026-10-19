@@ -50,10 +50,18 @@ class Recovery:
     laps_per_driver: int
     top_n: int | None
     held_out_s2: np.ndarray | None = None   # synthetic held-out S2 errors (s)
+    rep: np.ndarray | None = None           # [pairs] which synthetic session (rep) each came from
+    lap_rep: np.ndarray | None = None       # [laps] the same for lap_err rows
 
     @property
     def pair_err(self) -> np.ndarray:
         return self.pair_est - self.pair_true
+
+    def subset(self, reps) -> Recovery:
+        """Only the pairs and laps of the given synthetic sessions (reps)."""
+        mp, ml = np.isin(self.rep, list(reps)), np.isin(self.lap_rep, list(reps))
+        return replace(self, lap_err=self.lap_err[ml], pair_est=self.pair_est[mp],
+                       pair_true=self.pair_true[mp], rep=self.rep[mp], lap_rep=self.lap_rep[ml])
 
     def lap_total_err(self) -> np.ndarray:
         """Per-lap error of the whole lap: zero by construction (anchored lap time)."""
@@ -65,12 +73,13 @@ def run(model: CircuitModel, effects: dict = DEFAULT_EFFECTS, pairs: int = 10,
         cfg: SmootherConfig = DEFAULT_CONFIG, synth_cfg: SynthConfig = DEFAULT_SYNTH,
         seed: int = 0, held_out: bool = False, natural: np.ndarray | None = None) -> Recovery:
     inj = effect_vector(model, effects)
-    lap_err, est, true, held = [], [], [], []
+    lap_err, est, true, held, rep, lap_rep = [], [], [], [], [], []
     for r in range(reps):
         ss = synth_session(model, pairs, laps_per_driver, inj, synth_cfg, seed=seed + r,
                            natural=natural)
         res = fit_synthetic(ss, model, cfg, held_out=held_out)
         lap_err.append(res.est - res.true)
+        lap_rep.append(np.full(len(res.est), r))
         if held_out:
             held.append(res.held_out_s2)
         d_est = {d.team: d.delta for d in teammate_deltas(res.table, top_n)}
@@ -78,9 +87,11 @@ def run(model: CircuitModel, effects: dict = DEFAULT_EFFECTS, pairs: int = 10,
         for team in sorted(d_est):
             est.append(d_est[team])
             true.append(d_true[team])
+            rep.append(r)
     return Recovery(model.name, model.seg.labels(), inj, np.concatenate(lap_err),
                     np.array(est), np.array(true), laps_per_driver, top_n,
-                    np.concatenate(held) if held else None)
+                    np.concatenate(held) if held else None, np.array(rep),
+                    np.concatenate(lap_rep))
 
 
 @dataclass
@@ -145,6 +156,64 @@ def aggregate_budget(recs: list[Recovery]) -> dict:
                 "recovered_sd_ms": 1e3 * float(np.std([x[1] for x in v], ddof=1)),
                 "injected_ms": 1e3 * float(np.mean([x[2] for x in v]))}
             for k, v in out.items()}
+
+
+def held_out_rates(recs: list[Recovery]) -> dict:
+    """False-positive and detection rates against claim limits fitted on *other* synthetic
+    sessions: for each rep, the limits come from every other rep (all circuits pooled),
+    so the ~5% false-positive rate is not guaranteed by construction.
+
+    Returns {"fpr": (rate, cells), "detection": {(type, phase): (rate, cells)}}; a
+    detection needs the right sign and |estimate| above the limit.
+    """
+    reps = sorted(set(np.concatenate([r.rep for r in recs]).tolist()))
+    if len(reps) < 2:
+        raise ValueError("held-out rates need at least two reps")
+    fp = [0, 0]
+    det: dict = {}
+    for k in reps:
+        train = [r.subset([q for q in reps if q != k]) for r in recs]
+        limits = {(b.kind, b.phase): 1e-3 * b.claim_limit_ms for b in budget(train)}
+        for rec in (r.subset([k]) for r in recs):
+            for i, (_, ph, kind) in enumerate(rec.labels):
+                lim = limits.get((kind, ph))
+                if lim is None:
+                    continue
+                est = rec.pair_est[:, i]
+                if rec.injected[i] == 0:
+                    fp[0] += int(np.sum(np.abs(est) > lim))
+                    fp[1] += len(est)
+                else:
+                    hit = (np.sign(est) == np.sign(rec.injected[i])) & (np.abs(est) > lim)
+                    h, n = det.get((kind, ph), (0, 0))
+                    det[(kind, ph)] = (h + int(hit.sum()), n + len(est))
+    return {"fpr": (fp[0] / max(fp[1], 1), fp[1]),
+            "detection": {k: (h / max(n, 1), n) for k, (h, n) in det.items()}}
+
+
+def systematic_error(base: list[Recovery], other: list[Recovery]) -> dict:
+    """Extra teammate-delta error from persistent per-car errors.
+
+    ``other`` must be the same runs as ``base`` (same seeds, effects and natural
+    variation) with only the persistent terms switched on: those come from a separate
+    random stream, so the true phase times and every other draw are identical and the
+    difference of the estimates is the error the persistent terms add. Returns
+    {(type, phase): (sd per phase cell, sd of the lap-sum cell, cells)} in seconds.
+    """
+    out: dict = {}
+    for b, o in zip(base, other, strict=True):
+        if not np.array_equal(b.pair_true, o.pair_true):
+            raise ValueError(f"{b.circuit}: runs differ in more than the persistent terms")
+        diff = o.pair_est - b.pair_est
+        for kind in ("slow", "medium", "fast"):
+            for ph in PHASES:
+                cols = [i for i, (_, p, k) in enumerate(b.labels) if k == kind and p == ph]
+                if cols:
+                    cell, lap_sum, _ = out.setdefault((kind, ph), ([], [], 0))
+                    cell.extend(diff[:, cols].ravel())
+                    lap_sum.extend(diff[:, cols].sum(axis=1))
+    return {k: (float(np.std(c, ddof=1)), float(np.std(s, ddof=1)), len(c))
+            for k, (c, s, _) in out.items()}
 
 
 def robust_sd(x: np.ndarray) -> float:

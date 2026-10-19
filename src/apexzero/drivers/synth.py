@@ -15,7 +15,11 @@ the feed degrades real laps, and pushed through the unchanged pipeline:
   rounded to decimetres;
 - speed: centreline rate x path ratio x a per-lap scale x a smooth per-lap line wobble,
   rounded to whole km/h; brake binarised (100 above a deceleration threshold, else 0);
-- timing: lap and sector durations to the millisecond, start time off by up to 0.1 s.
+- timing: lap and sector durations to the millisecond, start time off by up to 0.1 s;
+- optionally, persistent per-car errors that do not average down over laps: a line
+  wobble shared by all of a driver's laps (a driver who always takes a different line
+  has a different speed / centreline-rate ratio than the pooled profile assumes), and
+  an along-track position offset per car.
 
 Two speed profiles are supported. ``empirical_model`` uses the real session's pooled
 reference speed (the realistic case, and no optimum is computed). ``qss_model`` uses a
@@ -47,6 +51,11 @@ class SynthConfig:
     #                                synthetic and real held-out S2 errors match (Monza)
     wobble_len: float = 150.0      # its correlation length (m)
     natural_sd: float = 0.010      # natural per-phase lap-to-lap variation (s)
+    # Persistent per-car errors (default off). Each car gets one draw, shared by all of
+    # its laps, from a separate random stream (so turning them on leaves every other
+    # draw, and the true phase times, unchanged):
+    driver_wobble_sd: float = 0.0  # relative path-ratio pattern of the car's own line
+    car_offset_sd: float = 0.0     # along-track position offset (m), e.g. antenna position
     brake_decel: float = 5.0       # m/s^2
     dx: float = 0.5                # synthesis grid (m)
     pad_s: float = 5.0             # driving before and after each timed lap (s)
@@ -139,6 +148,7 @@ def synth_session(model: CircuitModel, pairs: int, laps_per_driver: int,
     variation is several times larger in slow phases than in fast ones.
     """
     rng = np.random.default_rng(seed)
+    rng_sys = np.random.default_rng([seed, 1])     # persistent per-car errors only
     length = model.length
     s_line = model.s_lines[0]
     x = (np.arange(int(np.ceil(length / cfg.dx))) + 0.5) * cfg.dx
@@ -164,6 +174,9 @@ def synth_session(model: CircuitModel, pairs: int, laps_per_driver: int,
             teams[drv] = f"T{pair:02d}"
             eff_inj = injected if j == 1 else np.zeros(len(cuts) - 1)
             out.injected[drv] = eff_inj
+            wob_drv = cfg.driver_wobble_sd * _smooth_noise(rng_sys, len(x), cfg.dx,
+                                                           cfg.wobble_len)
+            off_drv = cfg.car_offset_sd * rng_sys.standard_normal()
             t_pos, xy_pos, t_car, v_car, b_car = [], [], [], [], []
             for lap_no in range(1, laps_per_driver + 1):
                 sd_nat = cfg.natural_sd if natural is None else natural
@@ -181,7 +194,8 @@ def synth_session(model: CircuitModel, pairs: int, laps_per_driver: int,
                 phase_t = np.diff(t_at)
                 lap_time = float(t_at[-1] - t_at[0])
                 k = 1.0 + cfg.speed_scale_sd * rng.standard_normal()
-                wob = 1.0 + cfg.wobble_sd * _smooth_noise(rng, len(x), cfg.dx, cfg.wobble_len)
+                wob = (1.0 + cfg.wobble_sd * _smooth_noise(rng, len(x), cfg.dx, cfg.wobble_len)
+                       + wob_drv)
                 ratio_ext = np.r_[np.tile(ratio, 2)[-n_pad:], ratio * wob,
                                   np.tile(ratio, 2)[:n_pad]]
                 # Clocks.
@@ -191,7 +205,7 @@ def synth_session(model: CircuitModel, pairs: int, laps_per_driver: int,
                 xp = np.interp(tp, t_ext, xe)
                 noise = cfg.pos_sigma / 1.4826 / _t_mad(cfg.pos_df) * rng.standard_t(
                     cfg.pos_df, len(tp))
-                sp = s_line + xp + noise
+                sp = s_line + xp + noise + off_drv
                 tan = model.line.tangent(sp)
                 nrm = np.stack([-tan[:, 1], tan[:, 0]], axis=1)
                 lat = cfg.lat_sd * rng.standard_normal(len(tp))
