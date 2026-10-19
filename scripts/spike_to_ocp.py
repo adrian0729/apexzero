@@ -99,7 +99,6 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--tracks", nargs="+", default=["Hockenheim"])
     ap.add_argument("--seconds", type=float, nargs="+", default=[20, 40, 60])
-    ap.add_argument("--threads", type=int, default=4)
     ap.add_argument("--init", choices=["ocp", "policy"], default="policy")
     ap.add_argument("--agent", default="runs/hockenheim-specialist-mlp/agent.pkl")
     ap.add_argument("--radius", type=float, default=15.0)
@@ -124,7 +123,7 @@ def main():
                 xs0, a0 = warm_start(track, ocp, x0, spec)
             j_init = window_return(xs0, a0, spec)
             t0 = time.perf_counter()
-            solver = WindowSolver(spec, threads=args.threads)
+            solver = WindowSolver(spec)
             build = time.perf_counter() - t0
             t0 = time.perf_counter()
             res = solver.solve(track, x0, init=(xs0, a0))

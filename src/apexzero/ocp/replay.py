@@ -93,3 +93,32 @@ def replay(res: OCPResult, track: Track, p: VehicleParams, h: float = 0.005,
     return Replay(t=t[sl], x=xs[sl], u=us[sl], lap_time=lap, completed=bool(completed),
                   max_lateral_error=float(np.max(lat_err[sl])),
                   max_corridor_violation=float(np.max(viol[sl])))
+
+
+def replay_window(track: Track, x0: np.ndarray, acts: np.ndarray, ctx: np.ndarray | None = None,
+                  gamma: float = 0.995, substeps: int = 10) -> tuple[float, bool, np.ndarray]:
+    """Open-loop replay of TO-OCP controls through the RL env's own float64 step.
+
+    Returns the discounted return, whether every step survived the env's termination
+    checks, and the states [T+1, 8]. This is the TO-OCP's acceptance test: the return must
+    reproduce J* and the car must never terminate.
+    """
+    from apexzero.env import racing
+
+    jax.config.update("jax_enable_x64", True)
+    tr = track_arrays(track, dtype=jnp.float64)
+    params = racing.EnvParams(window_steps=10**9, substeps=substeps)
+    c = racing.default_context() if ctx is None else jnp.asarray(ctx)
+    st = racing.EnvState(x=jnp.asarray(x0, jnp.float64), prev_action=jnp.zeros(2), accel=jnp.zeros(2),
+                         ctx=c.astype(jnp.float64), hidden_mu=jnp.array(1.0), t=jnp.array(0),
+                         slow=jnp.array(0.0), s0=jnp.asarray(x0[0], jnp.float64))
+
+    def body(carry, a):
+        st, alive = carry
+        _, st2, r, term, _, _ = racing.step_no_reset(st, a, tr, params)
+        return (st2, alive & ~term), (st2.x, r, alive & ~term)
+
+    _, (xs, rs, alive) = jax.lax.scan(body, (st, jnp.array(True)), jnp.asarray(acts, jnp.float64))
+    rs = np.asarray(rs)
+    ret = float(np.sum(gamma ** np.arange(len(rs)) * rs))
+    return ret, bool(np.asarray(alive).all()), np.vstack([np.asarray(x0)[None], np.asarray(xs)])
