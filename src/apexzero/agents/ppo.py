@@ -264,7 +264,8 @@ class RunningMeanStd(NamedTuple):
     def update_masked(self, x, w):
         """``update`` restricted to the rows of ``x`` where ``w`` [B] is set (PLR-perp trains
         only on replayed levels, so only those transitions may move the normalisers). An
-        all-zero ``w`` leaves the statistics unchanged."""
+        all-zero ``w`` returns the statistics bit for bit: the merge itself would not, since
+        var * count / count need not round back to var."""
         w = w.astype(bool)
         wb = w.reshape(w.shape + (1,) * (x.ndim - 1))
         b_n = w.sum().astype(x.dtype)
@@ -275,7 +276,8 @@ class RunningMeanStd(NamedTuple):
         tot = self.count + b_n
         mean = self.mean + delta * b_n / tot
         m2 = self.var * self.count + b_var * b_n + delta**2 * self.count * b_n / tot
-        return RunningMeanStd(mean, m2 / tot, tot)
+        merged = RunningMeanStd(mean, m2 / tot, tot)
+        return jax.tree.map(lambda new, old: jnp.where(b_n > 0, new, old), merged, self)
 
     def normalize(self, x, clip=10.0):
         return jnp.clip((x - self.mean) / jnp.sqrt(self.var + 1e-8), -clip, clip)

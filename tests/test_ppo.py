@@ -3,6 +3,7 @@
 import jax
 import jax.numpy as jnp
 import numpy as np
+import pytest
 
 from apexzero.agents.ppo import PPOConfig, RunningMeanStd, from_gymnax, make_train
 
@@ -119,6 +120,26 @@ def test_masked_normaliser_update_uses_only_masked_rows():
         assert np.array_equal(a, b)
 
 
+def test_all_zero_mask_returns_any_normaliser_state_bit_for_bit():
+    # The merge alone gives var * count / count, which is 1 ulp off var for ~10% of states
+    # (e.g. this one); PLR-perp hits the all-zero case on every step with no replay slot.
+    rms = RunningMeanStd(jnp.float32(-2.3250308), jnp.float32(0.4324972), jnp.float32(729655.7))
+    x, zero = jnp.ones(8, jnp.float32), jnp.zeros(8, bool)
+    m2 = rms.var * rms.count
+    assert float(m2 / (rms.count + 0.0)) != float(rms.var)               # the merge would drift
+    rng = np.random.default_rng(3)
+    n = 500
+    states = RunningMeanStd(jnp.asarray(rng.normal(0, 3, n), jnp.float32),
+                            jnp.asarray(rng.lognormal(0, 2, n), jnp.float32),
+                            jnp.asarray(rng.uniform(1, 1e7, n), jnp.float32))
+    states = jax.tree.map(lambda a, b: jnp.r_[a, b], states, jax.tree.map(jnp.atleast_1d, rms))
+    for upd in (jax.vmap(lambda s: s.update_masked(x, zero)),
+                jax.jit(jax.vmap(lambda s: s.update_masked(x, zero)))):
+        out = upd(states)
+        for a, b in zip(states, out, strict=True):
+            assert np.array_equal(a, b)
+
+
 def _synthetic_rollout(seed, T=8, N=4, obs_dim=3, E=2):
     from apexzero.agents.ppo import Transition
 
@@ -197,3 +218,58 @@ def test_rollout_hooks_mask_the_return_normaliser_and_trace_steps():
     assert np.array_equal(a1.ret_rms.var, agent.ret_rms.var)            # nothing masked in
     assert np.allclose(a2.ret_rms.var, a0.ret_rms.var, rtol=1e-5)        # everything masked in
     assert np.array_equal(r1.traj.raw_reward, r0.traj.raw_reward)        # same trajectory
+
+
+# --------------------------------------------------------------------------- make_train regression
+
+# ``make_train`` after the rollout/learner split (with the loss-mask hooks unused) must be
+# the update it always was. These values come from the pre-split ppo.py (main at eec2db8,
+# float32, seed 0); the current code reproduces them bit for bit on CPU. The tolerance only
+# absorbs XLA and threading differences, far below what any change to the update moves.
+GOLDEN = {
+    "CartPole-v1": (
+        dict(network="mlp", actor_width=16, critic_width=16, mlp_layers=2, ensemble_heads=3),
+        dict(actor_abs=91.54582977294922, critic_abs=553.800048828125, ret_var=64.99221801757812,
+             obs_mean=[-0.00036305608227849007, 0.010611623525619507, -0.011272345669567585,
+                       -0.038575321435928345],
+             value_loss=[1337.63525390625, 0.46902555227279663, 0.38561996817588806, 0.28633105754852295],
+             entropy=[0.6931328773498535, 0.6931387782096863, 0.6931270360946655, 0.6931142807006836],
+             explained_var=[-0.002987384796142578, 0.29632729291915894, -0.3124886751174927,
+                            -0.3991580009460449],
+             episode_return=[12.25, 19.799999237060547, 21.66666603088379, 21.571428298950195])),
+    "Pendulum-v1": (
+        dict(network="simba", actor_width=16, critic_width=24, ensemble_heads=2, obs_noise=0.05),
+        dict(actor_abs=410.1749572753906, critic_abs=1178.59033203125, ret_var=12067.1826171875,
+             obs_mean=[-0.38481807708740234, -0.001642625778913498, -0.4735945761203766],
+             value_loss=[4.188169956207275, 0.7255499362945557, 0.2377621829509735, 0.2738664150238037],
+             entropy=[0.9198107719421387, 0.9214058518409729, 0.9219473600387573, 0.9219004511833191],
+             explained_var=[0.0431479811668396, -0.34396255016326904, -0.09163141250610352,
+                            -0.1630481481552124],
+             episode_return=[0.0, 0.0, 0.0, 0.0])),
+}
+
+
+@pytest.fixture
+def float32():
+    """Some test modules switch JAX to float64 when imported; the golden values are float32."""
+    old = jax.config.jax_enable_x64
+    jax.config.update("jax_enable_x64", False)
+    yield
+    jax.config.update("jax_enable_x64", old)
+
+
+@pytest.mark.parametrize("env_name", sorted(GOLDEN))
+def test_make_train_reproduces_the_pre_split_update(float32, env_name):
+    kw, want = GOLDEN[env_name]
+    cfg = PPOConfig(num_envs=8, num_steps=16, total_timesteps=8 * 16 * 4, num_minibatches=4,
+                    update_epochs=2, **kw)
+    train, _, _ = make_train(cfg, from_gymnax(env_name))
+    agent, metrics = jax.jit(train)(jax.random.PRNGKey(0))
+    abs_sum = lambda p: float(sum(np.abs(np.asarray(x, np.float64)).sum() for x in jax.tree.leaves(p)))
+    got = dict(actor_abs=abs_sum(agent.actor.params), critic_abs=abs_sum(agent.critic.params),
+               ret_var=float(agent.ret_rms.var), obs_mean=np.asarray(agent.obs_rms.mean),
+               **{k: np.asarray(metrics[k]) for k in ("value_loss", "entropy", "explained_var",
+                                                      "episode_return")})
+    assert float(agent.ret_rms.count) == pytest.approx(8 * 16 * 4 + 1e-4)
+    for k, v in want.items():
+        assert np.allclose(got[k], v, rtol=1e-4, atol=1e-6), k
