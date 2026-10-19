@@ -35,10 +35,24 @@ circuits, and the specialist crashes on a plain synthetic straight. Next: answer
 positive controls, the `psychophysics-prereg-v2` tag, then rollouts. Step 2 measures
 receptive fields; idea 2 asks whether the networks encode Pontryagin's costate.
 
-## Running now
+## Paused (19 Oct, 15:05): resume checklist
 
-Answer-key layout (`psychophysics.py keys --layout-only`) and the rulings round; `scripts/dashboard.py`
-shows everything running.
+Psychophysics step 1, pre-tag. Done: harness, rulings R1–R17 (protocol Section 12), stimuli
+(753 rows, 2,009 cells), controls Q/Qp/c1/c2/K, validation V1–V11, and **all 1,613 answer keys**
+(verified by replay; 0 unsolved, 0 infeasible, 15 multi-basin). No agent has been rolled out
+on any protocol stimulus. To resume, in order:
+
+1. `git stash pop`, which restores the interrupted R17 edits (per-phase re-anchored keys; keys at
+   all 16 phases on P7 cells). They are untested: finish them, then review and test.
+2. `psychophysics.py keys --priority P2`, which solves R17's extra P7 phase keys (resumes from the cache).
+3. `psychophysics.py stimuli --real --force`, which adds the F5 swap-A rows now that tier D's braking
+   corners are known. Then `keys --layout-only` and `keys --priority P2` for the new rows.
+4. `psychophysics.py controls`, which runs T and c3 now that keys exist.
+5. `psychophysics.py dryrun`. Every control must return its planted verdict. Then tag
+   `psychophysics-prereg-v2`.
+6. After the tag: `rollouts`, `anchored-keys`, `probes`, `analyse --confirmatory`, `plots`.
+
+`scripts/dashboard.py` shows anything running.
 
 ## Protocol deviation (recorded)
 
