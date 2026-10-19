@@ -4,6 +4,8 @@
     uv run python scripts/dashboard.py            # refresh every 5 s (Ctrl-C to quit)
     uv run python scripts/dashboard.py --once     # print one frame and exit
 
+The live view restarts itself when this file changes, so edits show up without a restart.
+
 Shows:
 - the training queue (scripts/queue_overnight.sh): each job's status, progress, speed,
   return, crash rate, checkpoints and ETA, and the queue's estimated finish;
@@ -355,16 +357,16 @@ def render(width: int) -> list[str]:
     else:
         head = f"{DIM}not running{RESET}"
     lines.append(f"{BOLD}TRAINING QUEUE{RESET} {DIM}(scripts/queue_overnight.sh){RESET}   {head}")
-    lines.append(f"{DIM}  #  {'job':<36} {'status':<11} {'progress':<24} {'steps':>11} "
-                 f"{'speed':>9} {'return':>8} {'crash':>7} {'ckpt':>4}  eta{RESET}")
+    lines.append(f"{DIM}  #  {'job':<34} {'status':<10} {'progress':<17} {'eta':<20} {'steps':>11} "
+                 f"{'speed':>9} {'return':>7} {'crash':>7} {'ckpt':>4}{RESET}")
     for i, st in enumerate(states, 1):
         col = STATUS_COLOUR.get(st.status, "")
         frac = st.steps / st.total if st.total else 0.0
-        prog = f"{bar(frac)} {frac * 100:3.0f}%" if st.steps else ""
+        prog = f"{bar(frac, 12)} {frac * 100:3.0f}%" if st.steps else ""
         steps = (f"{st.steps / 1e6:5.1f}/{st.total / 1e6:.0f}M" if st.steps
                  else f"{st.total / 1e6:.0f}M" if st.total else "")
         speed = (("~" if st.estimated else "") + f"{st.sps / 1e3:.1f}k/s") if st.sps else ""
-        ret = f"{st.ret:8.1f}" if st.ret is not None else ""
+        ret = f"{st.ret:7.1f}" if st.ret is not None else ""
         crash = f"{st.crash * 100:6.2f}%" if st.crash is not None else ""
         if st.status in ("running", "pending", "compiling") and st.job.name in finish:
             f_at = finish[st.job.name]
@@ -376,8 +378,8 @@ def render(width: int) -> list[str]:
             eta = ""
         else:
             eta = st.status
-        lines.append(f"  {i}  {st.job.name:<36} {col}{st.status:<11}{RESET} {prog:<24} {steps:>11} "
-                     f"{speed:>9} {ret:>8} {crash:>7} {st.ckpts or '':>4}  {eta}")
+        lines.append(f"  {i}  {st.job.name:<34} {col}{st.status:<10}{RESET} {prog:<17} {eta:<20} {steps:>11} "
+                     f"{speed:>9} {ret:>7} {crash:>7} {st.ckpts or '':>4}")
     lines.append("")
 
     # --- other experiment processes
@@ -435,12 +437,17 @@ def main() -> None:
         print(frame if sys.stdout.isatty() else ANSI.sub("", frame))
         return
     sys.stdout.write("\x1b[?25l\x1b[2J")
+    src = Path(__file__).resolve()
+    born = src.stat().st_mtime
     try:
         while True:
             frame = render(shutil.get_terminal_size((160, 40)).columns)
             sys.stdout.write("\x1b[H" + "\x1b[K\n".join(frame) + "\x1b[K\n\x1b[J")
             sys.stdout.flush()
             time.sleep(args.every)
+            if src.stat().st_mtime != born:          # edited: restart on the new code
+                sys.stdout.write("\x1b[?25h")
+                os.execv(sys.executable, [sys.executable, str(src), *sys.argv[1:]])
     except KeyboardInterrupt:
         pass
     finally:
