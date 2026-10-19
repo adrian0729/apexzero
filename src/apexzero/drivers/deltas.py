@@ -123,14 +123,24 @@ class PlaceboResult:
     placebo_abs_mean: float       # same, averaged over shuffles
     placebo_mean: float           # signed mean over shuffles and cells (should be ~0)
     placebo_mean_se: float
-    frac_real_above: float        # share of real cells with |delta| > placebo 95th pct
+    ss_p_value: float             # permutation p of sum(delta^2) over all cells, real vs shuffled
+    n_cells: int
     n_shuffles: int
     cell_null_sd: np.ndarray      # [cells] placebo sd per (pair, phase), flattened
 
 
 def placebo(tabs: list[LapTable], top_n: int | None = 2, n_shuffles: int = 200,
             seed: int = 0) -> PlaceboResult:
-    """Shuffle driver labels within each car-session (lap counts per driver preserved)."""
+    """Shuffle driver labels within each car-session (lap counts per driver preserved).
+
+    Two readings. Shuffled deltas must average zero (the pipeline and the top-n
+    selection create no driver effect by themselves). And the real labels should explain
+    more phase-level variance than shuffled ones: ``ss_p_value`` compares the sum of
+    squared deltas over every cell with the same sum under shuffled labels (one shuffle
+    per car-session, drawn independently). A per-cell permutation test is not offered:
+    with two laps per driver there are only three distinct splits, so no single cell can
+    reach p < 0.05.
+    """
     rng = np.random.default_rng(seed)
     real, null = [], []
     for tab in tabs:
@@ -153,15 +163,17 @@ def placebo(tabs: list[LapTable], top_n: int | None = 2, n_shuffles: int = 200,
     real_arr = np.concatenate(real)
     s_min = min(len(n) for n in null)
     null_arr = np.concatenate([n[:s_min] for n in null], axis=1)  # [shuffles, cells]
-    q95 = np.percentile(np.abs(null_arr), 95, axis=0)
+    ss_null = (null_arr**2).sum(axis=1)
+    ss_real = float((real_arr**2).sum())
     flat = null_arr.mean(axis=1)
     return PlaceboResult(
         real_abs_mean=float(np.abs(real_arr).mean()),
         placebo_abs_mean=float(np.abs(null_arr).mean()),
         placebo_mean=float(null_arr.mean()),
         placebo_mean_se=float(flat.std(ddof=1) / np.sqrt(len(flat))),
-        frac_real_above=float(np.mean(np.abs(real_arr) > q95)),
-        n_shuffles=n_shuffles,
+        ss_p_value=float((1 + np.sum(ss_null >= ss_real)) / (1 + len(ss_null))),
+        n_cells=len(real_arr),
+        n_shuffles=s_min,
         cell_null_sd=null_arr.std(axis=0),
     )
 

@@ -304,7 +304,8 @@ def fit_session(inputs: list[LapInput], line: Centreline, cfg: SmootherConfig = 
             x = (fit0.s_at(li.t_spd[ok]) - s0) % length
             good = rate > 5.0
             k = float(np.median(li.v_spd[ok][good] / rate[good] / r_at(x[good])))
-        # Path ratio is evaluated at the positions-and-anchors estimate of s (fixed point).
+        # The path ratio is evaluated where the unanchored fit puts the car: good to about
+        # a metre, against a ratio profile smoothed over 50 m (one fixed-point step).
         pre = free[li.key]
         x_spd = (pre.s_at(li.t_spd) - s0) % length
         t, kind, z, g = _measurements(li, use_speed=True, anchors=(ta, sa),

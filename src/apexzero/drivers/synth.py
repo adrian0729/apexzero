@@ -41,9 +41,10 @@ class SynthConfig:
     pos_sigma: float = 1.9         # robust sigma of along-track position noise (m)
     pos_df: float = 3.0            # Student-t degrees of freedom (the real tails are heavy)
     lat_sd: float = 0.13           # lateral scatter (snapping audit)
-    speed_scale_sd: float = 0.0012  # per-lap speed-sensor scale
+    speed_scale_sd: float = 0.002  # per-lap speed scale (real fits: 0.0017-0.0026)
     start_jitter: float = 0.1      # date_start error, uniform +/- (s)
-    wobble_sd: float = 0.004       # per-lap smooth relative change of the path ratio
+    wobble_sd: float = 0.009       # per-lap smooth relative change of the path ratio, set so
+    #                                synthetic and real held-out S2 errors match (Monza)
     wobble_len: float = 150.0      # its correlation length (m)
     natural_sd: float = 0.010      # natural per-phase lap-to-lap variation (s)
     brake_decel: float = 5.0       # m/s^2
@@ -131,8 +132,12 @@ class SynthSession:
 
 def synth_session(model: CircuitModel, pairs: int, laps_per_driver: int,
                   injected: np.ndarray, cfg: SynthConfig = DEFAULT_SYNTH,
-                  seed: int = 0) -> SynthSession:
-    """``pairs`` teams of two; driver 2i+1 ("B") carries ``injected`` (per phase, s)."""
+                  seed: int = 0, natural: np.ndarray | None = None) -> SynthSession:
+    """``pairs`` teams of two; driver 2i+1 ("B") carries ``injected`` (per phase, s).
+
+    ``natural`` (per phase, s) overrides the scalar ``cfg.natural_sd``: real lap-to-lap
+    variation is several times larger in slow phases than in fast ones.
+    """
     rng = np.random.default_rng(seed)
     length = model.length
     s_line = model.s_lines[0]
@@ -161,7 +166,8 @@ def synth_session(model: CircuitModel, pairs: int, laps_per_driver: int,
             out.injected[drv] = eff_inj
             t_pos, xy_pos, t_car, v_car, b_car = [], [], [], [], []
             for lap_no in range(1, laps_per_driver + 1):
-                eff = eff_inj + cfg.natural_sd * rng.standard_normal(len(cuts) - 1)
+                sd_nat = cfg.natural_sd if natural is None else natural
+                eff = eff_inj + sd_nat * rng.standard_normal(len(cuts) - 1)
                 pace = base + eff @ bumps
                 # Before and after the timed lap the car runs the base profile.
                 n_pad = int(cfg.pad_s * 95.0 / cfg.dx)
@@ -176,7 +182,8 @@ def synth_session(model: CircuitModel, pairs: int, laps_per_driver: int,
                 lap_time = float(t_at[-1] - t_at[0])
                 k = 1.0 + cfg.speed_scale_sd * rng.standard_normal()
                 wob = 1.0 + cfg.wobble_sd * _smooth_noise(rng, len(x), cfg.dx, cfg.wobble_len)
-                ratio_ext = np.r_[np.tile(ratio, 2)[-n_pad:], ratio * wob, np.tile(ratio, 2)[:n_pad]]
+                ratio_ext = np.r_[np.tile(ratio, 2)[-n_pad:], ratio * wob,
+                                  np.tile(ratio, 2)[:n_pad]]
                 # Clocks.
                 tp = _draw_clock(rng, t_ext[0], t_ext[-1], model.dt_location)
                 tc = _draw_clock(rng, t_ext[0], t_ext[-1], model.dt_car)
@@ -187,7 +194,8 @@ def synth_session(model: CircuitModel, pairs: int, laps_per_driver: int,
                 sp = s_line + xp + noise
                 tan = model.line.tangent(sp)
                 nrm = np.stack([-tan[:, 1], tan[:, 0]], axis=1)
-                xy = model.line.point(sp) + nrm * (cfg.lat_sd * rng.standard_normal(len(tp)))[:, None]
+                lat = cfg.lat_sd * rng.standard_normal(len(tp))
+                xy = model.line.point(sp) + nrm * lat[:, None]
                 xy = np.round(model.transform.inverse(xy) * 10.0) / 10.0
                 # Speed and brake.
                 xc = np.interp(tc, t_ext, xe)

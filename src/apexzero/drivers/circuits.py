@@ -55,7 +55,8 @@ CIRCUITS: dict[str, Circuit] = {c.openf1: c for c in [
     Circuit("Spielberg", "Spielberg", True),
     Circuit("Suzuka", "Suzuka", True),
     Circuit("Yas Marina Circuit", "YasMarina", False, f"{_OLD} (2021 rework of several sections)"),
-    Circuit("Zandvoort", "Zandvoort", False, f"{_OLD} (2020 rework with banked T3 and final corner)"),
+    Circuit("Zandvoort", "Zandvoort", False,
+            f"{_OLD} (2020 rework with banked T3 and final corner)"),
     # Current F1 circuits without a TUMFTM centreline.
     *[Circuit(name, None, False, "not in the TUMFTM database") for name in (
         "Baku", "Imola", "Jeddah", "Kuala Lumpur", "Las Vegas", "Lusail", "Madring", "Miami",

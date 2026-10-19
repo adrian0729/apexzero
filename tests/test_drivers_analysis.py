@@ -12,7 +12,7 @@ from apexzero.drivers import session as sx
 from apexzero.drivers.circuits import CIRCUITS, NOT_ON_CALENDAR, circuit_for
 from apexzero.drivers.geometry import Centreline
 from apexzero.drivers.registration import Similarity
-from apexzero.drivers.synth import CircuitModel, phase_bumps, qss_model
+from apexzero.drivers.synth import CircuitModel, SynthConfig, phase_bumps, qss_model
 from apexzero.oracle.qss import GG, speed_profile
 from apexzero.tracks.track import from_centreline
 from apexzero.vehicle.params import F1_2025
@@ -138,7 +138,8 @@ def test_classify_applies_every_rule():
         _lap(2, 2, 220.0, 80.1),                    # medium tyres
     ]
     rc = [
-        {"t": 0.0, "category": "SessionStatus", "qualifying_phase": 1, "message": "SESSION STARTED"},
+        {"t": 0.0, "category": "SessionStatus", "qualifying_phase": 1,
+         "message": "SESSION STARTED"},
         {"t": 812.0, "category": "Other", "message": "CAR 1 (AAA) TIME 1:20.200 DELETED - TRACK "
                                                     "LIMITS AT TURN 4 LAP 7 14:00:00"},
         {"t": 850.0, "category": "Flag", "flag": "YELLOW", "scope": "Sector", "sector": 3},
@@ -236,12 +237,12 @@ def test_placebo_collapses_effects_and_split_half_finds_real_ones():
     pb = dl.placebo(tabs, top_n=None, n_shuffles=100)
     assert abs(pb.placebo_mean) < 3 * pb.placebo_mean_se + 1e-3
     assert pb.real_abs_mean > 2 * pb.placebo_abs_mean
-    assert pb.frac_real_above > 0.8
+    assert pb.ss_p_value < 0.02
     sh = dl.split_half_within(tabs)
     assert sh.rho > 0.8
     null_tabs = [_table(np.zeros(6), n_laps=6, noise=0.02, seed=s) for s in range(3)]
     pb0 = dl.placebo(null_tabs, top_n=None, n_shuffles=100)
-    assert pb0.frac_real_above < 0.3
+    assert pb0.ss_p_value > 0.05
     assert abs(dl.split_half_within(null_tabs).rho) < 0.5
 
 
@@ -274,3 +275,32 @@ def test_injection_recovery_end_to_end(synthetic_model):
     assert {(r.kind, r.phase) for r in rows} == {("slow", p) for p in segments.PHASES}
     agg = recovery.aggregate_budget([rec])
     assert agg[("slow", "entry")]["injected_ms"] == pytest.approx(160.0)
+
+
+def test_within_driver_sd_pools_laps_of_one_driver_in_one_q_segment():
+    tab = _table(np.zeros(6), n_laps=6, noise=0.02, seed=3)
+    # Shifting one Q segment wholesale (track evolution) must not change the estimate.
+    shifted = dl.LapTable(tab.session, tab.keys, tab.driver, tab.team, tab.q_segment,
+                          tab.lap_time, tab.phase_t + 0.5 * (tab.q_segment == 2)[:, None],
+                          tab.labels, {})
+    sd = recovery.within_driver_sd(tab)
+    assert np.allclose(sd, recovery.within_driver_sd(shifted))
+    assert np.all((sd > 0.012) & (sd < 0.03))
+
+
+def test_calibration_picks_the_wobble_that_matches_the_real_held_out_error(synthetic_model):
+    # Pretend the "real" session had the held-out error of a noisy synthetic feed.
+    noisy = recovery.run(synthetic_model, {}, pairs=2, laps_per_driver=2, reps=1,
+                         synth_cfg=SynthConfig(wobble_sd=0.03), seed=9,
+                         held_out=True)
+    n_phase = len(synthetic_model.seg.labels())
+    tab = _table(np.zeros(n_phase), n_laps=4, n_phase=n_phase, noise=0.03, seed=4)
+    tab.labels = synthetic_model.seg.labels()
+    cal = recovery.calibrate(synthetic_model, noisy.held_out_s2, tab, wobbles=(0.003, 0.03),
+                             pairs=2, laps_per_driver=2, seed=9)
+    assert cal.wobble_sd == 0.03
+    assert cal.tried[0.003] < cal.tried[0.03]
+    assert cal.natural.shape == (len(synthetic_model.seg.labels()),)
+    for (real, meas) in cal.by_cell.values():
+        assert real > 0 and meas > 0
+    assert np.all(cal.natural >= 0.0)

@@ -83,8 +83,16 @@ def car_speed(timing: SessionTiming, x: np.ndarray, rate: np.ndarray) -> np.ndar
 
 
 def phase_times(timing: SessionTiming, seg: segments.Segmentation, keys) -> np.ndarray:
+    """[laps, phases] times. The ends are pinned to 0 and the official lap time (the
+    anchored fit already passes within microseconds of them), so phases add up to the
+    official lap time exactly."""
     cuts = seg.cuts
-    return np.stack([np.diff(timing.laps[k].elapsed(cuts)) for k in keys])
+    out = []
+    for k in keys:
+        e = timing.laps[k].elapsed(cuts)
+        e[0], e[-1] = 0.0, timing.laps[k].duration
+        out.append(np.diff(e))
+    return np.stack(out)
 
 
 def position_noise(timing: SessionTiming) -> float:
@@ -190,14 +198,18 @@ class SynthResult:
     table: LapTable        # estimated, ready for teammate deltas
     table_true: LapTable   # same laps, true phase times
     injected: dict[int, np.ndarray]
+    held_out_s2: np.ndarray | None = None   # same statistic as on real sessions
 
 
-def fit_synthetic(ss: SynthSession, model: CircuitModel,
-                  cfg: SmootherConfig = DEFAULT_CONFIG) -> SynthResult:
+def fit_synthetic(ss: SynthSession, model: CircuitModel, cfg: SmootherConfig = DEFAULT_CONFIG,
+                  held_out: bool = False) -> SynthResult:
     """Run the real pipeline's s(t) and phase steps on a synthetic session.
 
     Lap checks are not exercised (every synthetic lap is a clean push lap); the
     segmentation is the circuit model's, as it would be fixed per circuit in real use.
+    ``held_out`` also runs the held-out S2 anchor check, which can be compared with the
+    real sessions' value: that is the test of whether the synthetic feed is as bad as the
+    real one.
     """
     sess = ss.session
     inputs, dropped = lap_inputs(sess, model.transform, model.line, sess.laps)
@@ -217,4 +229,5 @@ def fit_synthetic(ss: SynthSession, model: CircuitModel,
 
     # The truth table must use the official (rounded) lap time so additivity holds.
     true_adj = true + ((lap_time - true.sum(axis=1)) / true.shape[1])[:, None]
-    return SynthResult(est, true, table(est), table(true_adj), ss.injected)
+    held = held_out_sector(inputs, model.line, timing, cfg) if held_out else None
+    return SynthResult(est, true, table(est), table(true_adj), ss.injected, held)

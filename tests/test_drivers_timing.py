@@ -6,7 +6,13 @@ import pytest
 from apexzero.drivers import session as sx
 from apexzero.drivers.geometry import Centreline, wrap
 from apexzero.drivers.progress import LapInput, fit_session, held_out_sector, track_samples
-from apexzero.drivers.registration import Similarity, register, umeyama
+from apexzero.drivers.registration import (
+    Similarity,
+    corridor_excursion,
+    inside_offset,
+    register,
+    umeyama,
+)
 from apexzero.drivers.smoother import ANCHOR, POS, SPEED, SmootherConfig, hermite, smooth
 from apexzero.tracks.track import from_centreline
 
@@ -120,6 +126,28 @@ def test_registration_gate_rejects_a_length_mismatch(rect_line):
     assert "length mismatch" in reg.reason
 
 
+def test_corridor_and_inside_offset_diagnostics(rect_line):
+    """A line cutting 2 m to the inside of every corner stays in the 6 m corridor; a
+    section displaced by 25 m (a different layout) leaves it."""
+    eye = Similarity(1.0, np.eye(2), np.zeros(2))
+    s = np.linspace(0, rect_line.length, 4000, endpoint=False)
+    tan = rect_line.tangent(s)
+    left = np.stack([-tan[:, 1], tan[:, 0]], axis=1)
+    k = rect_line.curvature(s)
+    inside = 2.0 * np.sign(k) * (np.abs(k) > 1 / 150)
+    pts = rect_line.point(s) + left * inside[:, None]
+    # The diagnostic averages over a smoothed-curvature window a little wider than the
+    # arcs, where this test line is back on the centreline, so it reads 1-2 m.
+    assert 1.0 < inside_offset(pts, rect_line, eye) <= 2.0
+    assert abs(inside_offset(rect_line.point(s), rect_line, eye)) < 0.01
+    frac, p99 = corridor_excursion(pts, rect_line, eye)
+    assert frac == 0.0 and p99 < -3.5
+    moved = pts.copy()
+    moved[:200] += left[:200] * 25.0
+    frac, p99 = corridor_excursion(moved, rect_line, eye)
+    assert frac == pytest.approx(0.05, abs=0.002) and p99 > 15.0
+
+
 # ----------------------------------------------------------------------------- session parsing
 
 
@@ -139,14 +167,16 @@ def _sess(race_control, laps=(), stints=()):
 
 def test_race_control_parsing():
     sess = _sess([
-        {"t": 0.0, "category": "SessionStatus", "qualifying_phase": 1, "message": "SESSION STARTED"},
+        {"t": 0.0, "category": "SessionStatus", "qualifying_phase": 1,
+         "message": "SESSION STARTED"},
         {"t": 100.0, "category": "Other", "message":
          "CAR 55 (SAI) TIME 1:20.470 DELETED - TRACK LIMITS AT TURN 7 LAP 3 16:03:35"},
         {"t": 110.0, "category": "Other", "message":
          "CAR 30 (LAW) LAP DELETED - TRACK LIMITS AT TURN 6 LAP 6 16:16:28 (PIT)"},
         {"t": 200.0, "category": "Flag", "flag": "YELLOW", "scope": "Sector", "sector": 7},
         {"t": 230.0, "category": "Flag", "flag": "CLEAR", "scope": "Sector", "sector": 7},
-        {"t": 900.0, "category": "SessionStatus", "qualifying_phase": 2, "message": "SESSION STARTED"},
+        {"t": 900.0, "category": "SessionStatus", "qualifying_phase": 2,
+         "message": "SESSION STARTED"},
     ])
     assert sx.deleted_laps(sess) == {(55, 3), (30, 6)}
     assert sx.q_segment(sess, 50.0) == 1 and sx.q_segment(sess, 950.0) == 2
@@ -203,6 +233,18 @@ def test_gate_rejects_a_position_glitch():
     z[20] += 80.0
     fit = smooth(t, np.full(len(t), POS), z)
     assert not fit.used[20] and fit.used.sum() == len(t) - 1
+
+
+def test_gate_cannot_lock_out_after_a_persistent_shift():
+    """If positions really are elsewhere (here a persistent +80 m), the filter re-acquires
+    after a few rejections instead of rejecting every later sample."""
+    cfg = SmootherConfig(jerk_psd=100.0, max_rejects=3)
+    t = np.arange(0, 20, 0.25)
+    z = 50.0 * t + np.where(t >= 5.0, 80.0, 0.0)
+    fit = smooth(t, np.full(len(t), POS), z, cfg=cfg)
+    late = t >= 8.0
+    assert fit.used[late].all()
+    assert np.allclose(fit.x[late, 0], z[late], atol=1.0)
 
 
 # ----------------------------------------------------------------------------- s(t) per lap

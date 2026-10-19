@@ -13,8 +13,12 @@ resampled onto each other:
 - ``SPEED``:  z = gain * v                  (gain = per-lap scale * path ratio at s)
 - ``ANCHOR``: z = s with ~1 mm noise        (a timing line crossed at a known time)
 
-Innovations beyond ``gate`` standard deviations are rejected (position glitches). Anchors
-are never gated.
+Position innovations beyond ``gate`` standard deviations are rejected (glitches, and the
+heavy tails of the along-track scatter). A gate alone can lock out: once the state drifts,
+every later sample looks like an outlier and the drift grows (seen on synthetic Suzuka
+laps, 159 rejections in one lap). So after ``max_rejects`` consecutive rejections the next
+position is accepted regardless, which re-acquires the track. Speed is gated only at
+``speed_gate`` (whole-km/h readings have no heavy tails), and anchors are never gated.
 """
 
 from __future__ import annotations
@@ -32,7 +36,9 @@ class SmootherConfig:
     sigma_pos: float = 2.2       # along-track position noise (m), measured at Monza 2025
     sigma_speed: float = 0.35    # speed noise (m/s): 1 km/h quantisation plus model error
     sigma_anchor: float = 1e-3   # a timing line, effectively exact
-    gate: float = 6.0            # innovation gate (standard deviations); anchors exempt
+    gate: float = 6.0            # position innovation gate (standard deviations)
+    speed_gate: float = 20.0     # speed innovation gate; anchors are never gated
+    max_rejects: int = 3         # consecutive position rejections before forced re-acquire
     p0: tuple[float, float, float] = (25.0**2, 10.0**2, 20.0**2)
 
 
@@ -112,6 +118,7 @@ def smooth(t: np.ndarray, kind: np.ndarray, z: np.ndarray, gain: np.ndarray | No
     x = np.asarray(x0, float).copy()
     p = np.diag(cfg.p0).astype(float)
     nis_sum, nis_n = 0.0, 0
+    run = 0                      # consecutive rejected positions
     t_prev = t[0]
     for k in range(n):
         f, qm = _transition(t[k] - t_prev, cfg.jerk_psd)
@@ -122,7 +129,12 @@ def smooth(t: np.ndarray, kind: np.ndarray, z: np.ndarray, gain: np.ndarray | No
         innov = z[k] - h @ x
         ph = p @ h
         s_var = h @ ph + sig[k] ** 2
-        if kind[k] == ANCHOR or innov * innov <= cfg.gate**2 * s_var:
+        gate = cfg.speed_gate if kind[k] == SPEED else cfg.gate
+        accept = (kind[k] == ANCHOR or innov * innov <= gate**2 * s_var
+                  or (kind[k] == POS and run >= cfg.max_rejects))
+        if kind[k] == POS:
+            run = 0 if accept else run + 1
+        if accept:
             kg = ph / s_var
             x = x + kg * innov
             p = p - np.outer(kg, ph)

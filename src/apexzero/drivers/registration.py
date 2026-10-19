@@ -177,13 +177,12 @@ def register(points: np.ndarray, line: Centreline, length_openf1: float,
     )
 
 
-def corridor_excursion(points: np.ndarray, line: Centreline, transform: Similarity,
-                       q: float = 99.0) -> tuple[float, float]:
-    """(share of points outside the TUMFTM edges, q-th percentile of the excursion in m).
+def lateral_offsets(points: np.ndarray, line: Centreline,
+                    transform: Similarity) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """(s, signed lateral offset n, excursion beyond the nearer TUMFTM edge) per point.
 
-    Excursion is the signed distance beyond the nearer edge (negative = inside the
-    track). A racing line stays inside the corridor up to survey error; a section of a
-    different layout leaves it by tens of metres.
+    n is positive to the left of the driving direction; excursion is negative inside the
+    track corridor.
     """
     xy = transform.apply(points)
     s, dist = line.nearest(xy)
@@ -194,8 +193,35 @@ def corridor_excursion(points: np.ndarray, line: Centreline, transform: Similari
     grid = np.r_[tr.s, tr.length] * (line.length / tr.length)
     wl = np.interp(s, grid, np.r_[tr.w_left, tr.w_left[0]])
     wr = np.interp(s, grid, np.r_[tr.w_right, tr.w_right[0]])
-    exc = np.maximum(n - wl, -n - wr)
+    return s, n, np.maximum(n - wl, -n - wr)
+
+
+def corridor_excursion(points: np.ndarray, line: Centreline, transform: Similarity,
+                       q: float = 99.0) -> tuple[float, float]:
+    """(share of points outside the TUMFTM edges, q-th percentile of the excursion in m).
+
+    A racing line stays inside the corridor up to survey error; a section of a
+    different layout leaves it by tens of metres.
+    """
+    _, _, exc = lateral_offsets(points, line, transform)
     return float(np.mean(exc > 0)), float(np.percentile(exc, q))
+
+
+def inside_offset(points: np.ndarray, line: Centreline, transform: Similarity,
+                  tight_radius: float = 150.0, smooth_m: float = 60.0) -> float:
+    """Mean offset towards the inside of corners tighter than ``tight_radius`` (m).
+
+    About zero if the feed's track model is the centreline; positive (metres) if it
+    cuts to the inside like a racing line.
+    """
+    from apexzero.tracks.corners import smooth
+
+    s, n, _ = lateral_offsets(points, line, transform)
+    tr = line.track
+    ks = smooth(tr.kappa, tr.ds, smooth_m, True)
+    k = np.interp(s, np.r_[tr.s, tr.length] * (line.length / tr.length), np.r_[ks, ks[0]])
+    tight = np.abs(k) > 1.0 / tight_radius
+    return float(np.mean(n[tight] * np.sign(k[tight]))) if tight.any() else float("nan")
 
 
 def lap_path_length(t: np.ndarray, xy: np.ndarray, t0: float, duration: float,

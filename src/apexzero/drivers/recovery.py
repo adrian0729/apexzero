@@ -9,19 +9,23 @@ compared with the truth at three levels:
 - **per pair**: estimated minus true teammate delta over the same laps (measurement
   error of the published quantity; natural lap-to-lap variation is in both and cancels);
 - **recovered vs injected**: estimated delta minus the injected effect (adds the
-  sampling noise of a few laps per driver).
+  natural lap-to-lap variation of the few laps each driver has).
 
-The smallest claimable effect is 2 sigma of the per-pair measurement error at the lap
-counts the real data have (plan: "claim nothing below 2 sigma of the resulting error").
+The smallest claimable effect is 2 sigma of recovered minus injected, at the lap counts
+the real data have (plan: "claim nothing below 2 sigma of the resulting error"). That is
+only meaningful if the synthetic feed is as noisy as the real one, so ``calibrate`` first
+matches two statistics that can be measured on both: the held-out S2 timing error (sets
+the line wobble, the dominant measurement-noise knob) and the within-driver spread of
+phase times (sets the natural lap-to-lap variation once measurement noise is removed).
 """
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 import numpy as np
 
-from apexzero.drivers.deltas import aggregate, teammate_deltas
+from apexzero.drivers.deltas import LapTable, aggregate, teammate_deltas
 from apexzero.drivers.pipeline import fit_synthetic
 from apexzero.drivers.segments import PHASES
 from apexzero.drivers.smoother import DEFAULT_CONFIG, SmootherConfig
@@ -45,6 +49,7 @@ class Recovery:
     pair_true: np.ndarray       # [pairs, P] true delta over the same laps
     laps_per_driver: int
     top_n: int | None
+    held_out_s2: np.ndarray | None = None   # synthetic held-out S2 errors (s)
 
     @property
     def pair_err(self) -> np.ndarray:
@@ -58,20 +63,24 @@ class Recovery:
 def run(model: CircuitModel, effects: dict = DEFAULT_EFFECTS, pairs: int = 10,
         laps_per_driver: int = 3, reps: int = 2, top_n: int | None = 2,
         cfg: SmootherConfig = DEFAULT_CONFIG, synth_cfg: SynthConfig = DEFAULT_SYNTH,
-        seed: int = 0) -> Recovery:
+        seed: int = 0, held_out: bool = False, natural: np.ndarray | None = None) -> Recovery:
     inj = effect_vector(model, effects)
-    lap_err, est, true = [], [], []
+    lap_err, est, true, held = [], [], [], []
     for r in range(reps):
-        ss = synth_session(model, pairs, laps_per_driver, inj, synth_cfg, seed=seed + r)
-        res = fit_synthetic(ss, model, cfg)
+        ss = synth_session(model, pairs, laps_per_driver, inj, synth_cfg, seed=seed + r,
+                           natural=natural)
+        res = fit_synthetic(ss, model, cfg, held_out=held_out)
         lap_err.append(res.est - res.true)
+        if held_out:
+            held.append(res.held_out_s2)
         d_est = {d.team: d.delta for d in teammate_deltas(res.table, top_n)}
         d_true = {d.team: d.delta for d in teammate_deltas(res.table_true, top_n)}
         for team in sorted(d_est):
             est.append(d_est[team])
             true.append(d_true[team])
     return Recovery(model.name, model.seg.labels(), inj, np.concatenate(lap_err),
-                    np.array(est), np.array(true), laps_per_driver, top_n)
+                    np.array(est), np.array(true), laps_per_driver, top_n,
+                    np.concatenate(held) if held else None)
 
 
 @dataclass
@@ -84,10 +93,15 @@ class BudgetRow:
     pair_sd_ms: float           # sd of per-pair measurement error -> 2 sigma claim limit
     injected_ms: float          # mean injected effect in these cells
     recovered_ms: float         # mean estimated delta in these cells
-    recovered_sd_ms: float      # sd of estimated - injected
+    recovered_sd_ms: float      # sd of estimated - injected -> 2 sigma claim limit
 
     @property
     def claim_limit_ms(self) -> float:
+        return 2.0 * self.recovered_sd_ms
+
+    @property
+    def measurement_limit_ms(self) -> float:
+        """2 sigma of the pipeline's own error (what more laps cannot average away)."""
         return 2.0 * self.pair_sd_ms
 
 
@@ -131,3 +145,81 @@ def aggregate_budget(recs: list[Recovery]) -> dict:
                 "recovered_sd_ms": 1e3 * float(np.std([x[1] for x in v], ddof=1)),
                 "injected_ms": 1e3 * float(np.mean([x[2] for x in v]))}
             for k, v in out.items()}
+
+
+def robust_sd(x: np.ndarray) -> float:
+    x = np.asarray(x)
+    return float(1.4826 * np.median(np.abs(x - np.median(x))))
+
+
+def within_driver_sd(tab: LapTable) -> np.ndarray:
+    """[P] pooled within-(driver, Q segment) sd of phase times, from laps of one driver
+    in one Q segment (so track evolution between segments is not counted)."""
+    num = np.zeros(tab.phase_t.shape[1])
+    dof = 0
+    for d in np.unique(tab.driver):
+        for q in np.unique(tab.q_segment):
+            idx = np.flatnonzero((tab.driver == d) & (tab.q_segment == q))
+            if len(idx) >= 2:
+                x = tab.phase_t[idx]
+                num += ((x - x.mean(axis=0)) ** 2).sum(axis=0)
+                dof += len(idx) - 1
+    return np.sqrt(num / dof) if dof else np.full(len(num), np.nan)
+
+
+@dataclass
+class Calibration:
+    wobble_sd: float
+    natural: np.ndarray          # [P] natural lap-to-lap sd per phase (s)
+    real_held_sd: float          # robust sd of real held-out S2 errors (s)
+    synth_held_sd: float         # same on synthetic laps at the chosen wobble
+    by_cell: dict                # (type, phase) -> (real spread, synthetic measurement) (s)
+    tried: dict                  # wobble -> synthetic held-out robust sd
+
+    def config(self, base: SynthConfig) -> SynthConfig:
+        return replace(base, wobble_sd=self.wobble_sd)
+
+    @property
+    def over_noisy(self) -> list:
+        """Cells where synthetic measurement error alone exceeds the real total spread:
+        there the synthetic feed is noisier than the real one (a conservative budget)."""
+        return [k for k, (real, meas) in self.by_cell.items() if meas > real]
+
+
+def calibrate(model: CircuitModel, real_held_out: np.ndarray, real_table: LapTable,
+              cfg: SmootherConfig = DEFAULT_CONFIG, base: SynthConfig = DEFAULT_SYNTH,
+              wobbles: tuple[float, ...] = (0.005, 0.009, 0.015, 0.022, 0.03),
+              pairs: int = 4, laps_per_driver: int = 3, seed: int = 7) -> Calibration:
+    """Match the synthetic feed to one real session (see the module docstring).
+
+    The wobble whose synthetic held-out S2 robust sd is closest (in ratio) to the real
+    one is kept. Natural variation is then set per corner type x phase to whatever
+    within-driver spread the synthetic measurement error does not explain,
+    sqrt(real^2 - measurement^2), floored at zero (medians over that type's cells).
+    """
+    target = robust_sd(real_held_out)
+    tried, best = {}, None
+    for w in wobbles:
+        rec = run(model, {}, pairs=pairs, laps_per_driver=laps_per_driver, reps=1, cfg=cfg,
+                  synth_cfg=replace(base, wobble_sd=w), seed=seed, held_out=True,
+                  natural=np.zeros(len(model.seg.labels())))
+        h = robust_sd(rec.held_out_s2)
+        tried[w] = h
+        score = abs(np.log(h / target))
+        if best is None or score < best[0]:
+            best = (score, w, h, rec)
+    _, w, h, rec = best
+    labels = model.seg.labels()
+    real = within_driver_sd(real_table)
+    meas = rec.lap_err.std(axis=0)
+    natural = np.zeros(len(labels))
+    by_cell = {}
+    for kind in ("slow", "medium", "fast"):
+        for ph in PHASES:
+            cols = [i for i, (_, p, k) in enumerate(labels) if k == kind and p == ph]
+            if not cols:
+                continue
+            r, m = float(np.nanmedian(real[cols])), float(np.median(meas[cols]))
+            by_cell[(kind, ph)] = (r, m)
+            natural[cols] = np.sqrt(max(r**2 - m**2, 0.0)) if np.isfinite(r) else 0.0
+    return Calibration(w, natural, target, h, by_cell, tried)
