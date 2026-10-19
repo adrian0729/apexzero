@@ -1,0 +1,145 @@
+"""Export a policy's timed lap and the optimal lap for the demo viewer and figures.
+
+    uv run python scripts/export_demo.py                      # Hockenheim specialist showcase
+    uv run python scripts/export_demo.py --track Catalunya --agent runs/<dr-run>/ckpt/<step>.pkl \
+        --name catalunya-generalist
+    uv run --group rerun python scripts/export_demo.py --rrd /tmp/hockenheim.rrd
+
+Writes, under --out (default docs/demo):
+    <name>.json                 apexzero.trajectory export (apexzero.viz.export)
+    <name>.html                 the static viewer with that export embedded (opens from disk)
+    <name>-map.png, <name>-speed-delta.png, <name>-sectors.png
+and, with --rrd PATH, a Rerun recording (not committed: .rrd files are tied to the SDK
+version that wrote them).
+
+Lockbox: refuses R_TEST circuits (and their mirrored/reversed variants) unless
+--unseal-lockbox is given, which protocol-v1 allows only after the unseal.
+"""
+
+import argparse
+import hashlib
+import json
+import pickle
+import resource
+import subprocess
+import time
+from pathlib import Path
+
+import _bootstrap  # noqa: F401  (makes src/ importable)
+import numpy as np
+
+from apexzero.env.adapters import reference_speed
+from apexzero.eval.laps import timed_laps
+from apexzero.tracks.reference import refine_reference
+from apexzero.tracks.track import load_tumftm
+from apexzero.viz import export, figures
+
+
+def sha256(path: Path) -> str:
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def git_commit() -> str:
+    """Short HEAD hash, suffixed "+dirty" when tracked files have uncommitted changes."""
+    try:
+        head = subprocess.run(["git", "rev-parse", "--short", "HEAD"], capture_output=True,
+                              text=True, check=True).stdout.strip()
+        dirty = subprocess.run(["git", "status", "--porcelain", "--untracked-files=no"],
+                               capture_output=True, text=True, check=True).stdout.strip()
+        return head + ("+dirty" if dirty else "")
+    except (OSError, subprocess.CalledProcessError):
+        return "unknown"
+
+
+def main():
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--track", default="Hockenheim")
+    ap.add_argument("--agent", default="runs/hockenheim-specialist-mlp-200M/agent.pkl")
+    ap.add_argument("--agent-label", default="RL specialist (200M steps)")
+    ap.add_argument("--ocp", default=None, help="default: outputs/ocp/<track>.pkl")
+    ap.add_argument("--out", default="docs/demo")
+    ap.add_argument("--name", default="hockenheim-specialist")
+    ap.add_argument("--rate", type=float, default=20.0, help="OCP ghost sample rate (Hz)")
+    ap.add_argument("--v-start-frac", type=float, default=0.9,
+                    help="rolling-start speed as a fraction of the QSS reference (train.py: 0.9)")
+    ap.add_argument("--rrd", default=None, help="also write a Rerun recording here")
+    ap.add_argument("--unseal-lockbox", action="store_true")
+    args = ap.parse_args()
+
+    export.lockbox_guard(args.track, unsealed=args.unseal_lockbox)
+    wall0, cpu0 = time.perf_counter(), time.process_time()
+    out = Path(args.out)
+    agent_path = Path(args.agent)
+    ocp_path = Path(args.ocp or f"outputs/ocp/{args.track}.pkl")
+
+    track = refine_reference(load_tumftm(f"data/tracks/tumftm/{args.track}.csv"))
+    with open(ocp_path, "rb") as fh:
+        res = pickle.load(fh)
+    g_ocp = export.ocp_ghost(res, track, rate_hz=args.rate, label="Optimum (s-domain OCP)")
+
+    policy = export.load_policy(agent_path)
+    v0 = float(reference_speed(track)[0]) * args.v_start_frac
+    ro = export.rollout_policy(policy, track, v0)
+    g_agent = export.policy_ghost(ro, track, label=args.agent_label)
+
+    # The export must reproduce the evaluation harness's own number for this run.
+    harness = timed_laps(policy, track, v0, runs=1)
+    harness_lap = float(harness.lap_time[0])
+    if not np.isclose(harness_lap, g_agent.lap_time, rtol=0, atol=1e-3):
+        raise SystemExit(f"export lap {g_agent.lap_time:.4f} s != harness {harness_lap:.4f} s")
+
+    gap = g_agent.lap_time / g_ocp.lap_time - 1.0
+    notes = [
+        f"{args.track} is a development (R-dev) circuit; no lockbox circuit is used.",
+        ("The optimum is the s-domain minimum-time OCP with continuous controls (T_cont), on "
+         "the same vehicle ODE, car and corridor margin. It is not the CERTIFIED 20 Hz answer "
+         "key T*_20 (TO-OCP lap mode is not built yet). T_cont <= T*_20, so this gap "
+         "overstates the time left for a 20 Hz policy."),
+        (f"Agent: deterministic mean action, rolling start at s = 0, n = 0 at "
+         f"{args.v_start_frac:.0%} of the QSS reference speed, lap 2 timed (the protocol of "
+         "apexzero.eval.laps). Its lap time equals the harness's to "
+         f"{abs(harness_lap - g_agent.lap_time):.1e} s."),
+        f"Gap to the optimum: {gap:+.2%} ({g_agent.lap_time - g_ocp.lap_time:+.3f} s).",
+        ("Sectors C1, C2, ... are corner complexes from apexzero.tracks.corners.segment plus "
+         "half of each neighbouring straight; they are not official turn numbers."),
+        "Track geometry: TUMFTM racetrack-database (LGPL-3.0).",
+    ]
+    provenance = {
+        "script": "scripts/export_demo.py", "code_commit": git_commit(),
+        "agent": str(agent_path), "agent_sha256": sha256(agent_path),
+        "ocp": str(ocp_path), "ocp_sha256": sha256(ocp_path),
+        "ocp_status": res.status, "harness_lap_time_s": harness_lap,
+        "v_start_mps": v0,
+    }
+    eval_json = agent_path.parent / "eval.json"
+    if eval_json.exists():
+        ev = json.loads(eval_json.read_text()).get(args.track, {})
+        if ev.get("lap_times"):
+            provenance["eval_json_run0_lap_time_s"] = ev["lap_times"][0]
+    doc = export.build_document(
+        track, [g_agent, g_ocp], reference="ocp",
+        title=f"{args.track}: {args.agent_label} vs the optimal lap", notes=notes,
+        provenance=provenance)
+
+    paths = [export.write_document(doc, out / f"{args.name}.json")]
+    paths.append(export.embed_in_viewer(doc, out / f"{args.name}.html"))
+    paths += figures.save_figures(doc, out, args.name)
+    if args.rrd:
+        from apexzero.viz.rerun_log import log_document
+
+        paths.append(log_document(doc, args.rrd))
+
+    comp = doc["comparisons"][0]
+    worst = int(np.argmax(comp["sector_delta_s"]))
+    rss = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / 1e9
+    print(f"{args.track}: agent {g_agent.lap_time:.3f} s (harness {harness_lap:.3f} s), "
+          f"optimum {g_ocp.lap_time:.3f} s, gap {gap:+.2%}; costliest sector "
+          f"{doc['track']['sectors'][worst]['name']} {comp['sector_delta_s'][worst]:+.3f} s")
+    for p in paths:
+        print(f"  {p}  ({p.stat().st_size / 1e3:.0f} kB)")
+    print(f"wall {time.perf_counter() - wall0:.1f} s, CPU {time.process_time() - cpu0:.1f} s, "
+          f"peak RSS {rss:.2f} GB")
+
+
+if __name__ == "__main__":
+    main()
