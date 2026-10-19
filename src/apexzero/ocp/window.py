@@ -20,8 +20,11 @@ have zero derivative, so first and second derivatives flow only through the cubi
 t. (The previous lookup summed K smooth-kernel terms, all of which entered every
 derivative; it cost ~4x more per Hessian at the same K.) The 20 RK2 stages of a control step
 look up kappa from a small *block* of coefficients picked once per step at the node's
-interval, so a wide window (no re-centring) costs little. The window bounds |s_t - sigma_t|
-<= radius; an outer loop re-centres the windows if the solution reaches a bound.
+interval, so a wider window costs little. The window bounds |s_t - sigma_t| <= radius; an
+outer loop re-centres the windows if the solution reaches a bound. (A very wide window is
+not a substitute for a good guess: the bound also acts as a trust region, and from a poor
+guess a 300 m radius converged to worse local optima. ``solve_continuation`` supplies
+guesses within about a metre of the optimum instead.)
 
 **Structured exact derivatives.** The step map is a composition Phi = psi^10 of RK2
 substeps psi. IPOPT gets the constraint Jacobian from forward sensitivities and the
@@ -32,9 +35,10 @@ Hessian of the Lagrangian from the second-order adjoint of the composition,
 
 assembled into fixed sparsity patterns (custom ``jac_g`` / ``hess_lag``). This is the same
 derivative CasADi's AD computes (tests check it to ~1e-14), but only small per-substep SX
-functions are generated, so the code compiles in seconds and fits in cache: compiled to C
-it is ~10x faster than CasADi's generic AD in its virtual machine. Compiled libraries are
-cached by a hash of their source (one per window length; every level reuses it).
+functions are generated, so the C stays small enough to compile in about a minute and to
+run from cache: compiled, it is ~10x faster than CasADi's generic AD in its virtual
+machine. Compiled libraries are cached by a hash of their source (one per window length;
+every level reuses it).
 
 The track, the car context and x0 are all *parameters*, so one solver serves every level
 with the same window length. The optimum J*_20 is a best-known value (IPOPT finds local
@@ -320,11 +324,18 @@ def compile_functions(funcs: dict[str, ca.Function], cache_dir: Path | None = No
 # -------------------------------------------------------------------------------- solver
 
 class WindowSolver:
-    """One IPOPT solver for every level with the same window length (and spec)."""
+    """One IPOPT solver for every level with the same window length (and spec).
+
+    ``scale`` (8 state scales, optional) makes IPOPT work in scaled variables: x = D x~ + o
+    with s offset by its window centre, and the defect rows divided by the same D. IPOPT
+    does not scale variables itself, so this changes its path (regularisation, barrier,
+    bound pushes); see docs/findings/to-ocp-spike.md for what it was worth.
+    """
 
     def __init__(self, spec: WindowSpec = WindowSpec(), max_iter: int = 3000, tol: float = 1e-7,
                  print_level: int = 0, compile: bool = True, ipopt: dict | None = None,
-                 warm_ipopt: dict | None = None, cache_dir: Path | None = None):
+                 warm_ipopt: dict | None = None, cache_dir: Path | None = None,
+                 scale: tuple[float, ...] | None = None):
         self.spec = spec
         T, K = spec.steps, spec.n_coef
         self.T, self.K = T, K
@@ -338,7 +349,16 @@ class WindowSolver:
         def iz(e, t):                 # (x_t, a_t) -> index in w = [vec(X); vec(A)]
             return NX * t + e if e < NX else NX * (T + 1) + NA * t + (e - NX)
 
-        w = ca.MX.sym("x", nw)
+        self.scaled = scale is not None
+        sx = np.ones(NX) if scale is None else np.asarray(scale, float)
+        self.var_scale = np.concatenate([np.tile(sx, T + 1), np.ones(NA * T)])
+        self.con_scale = np.concatenate([np.tile(1.0 / sx, T), np.ones(4 * T)])
+        wt = ca.MX.sym("x", nw)                 # IPOPT's variables
+        if self.scaled:
+            offset = ca.MX.sym("offset", nw)
+            w = ca.DM(self.var_scale) * wt + offset
+        else:
+            w = wt
         X = ca.reshape(w[: NX * (T + 1)], NX, T + 1)
         A = ca.reshape(w[NX * (T + 1):], NA, T)
         Pk, Pl, Pr = (ca.MX.sym(nm, K, T) for nm in ("Pk", "Pl", "Pr"))
@@ -347,6 +367,8 @@ class WindowSolver:
         ctx = ca.MX.sym("ctx", 6)
         amax = ca.MX.sym("alpha_max")
         P = ca.vertcat(ca.vec(Pk), ca.vec(Pl), ca.vec(Pr), ca.vec(J0), q, ctx, amax)
+        if self.scaled:
+            P = ca.vertcat(P, offset)
         qT, cT, aT = ca.repmat(q, 1, T), ca.repmat(ctx, 1, T), ca.repmat(amax, 1, T)
         phi, phi_jac, phi_hess = step_functions(spec)
         path, path_jac, path_hess = path_functions(spec)
@@ -440,19 +462,26 @@ class WindowSolver:
         uniq, slot = np.unique(key, return_inverse=True)
         hess_sp = ca.Sparsity.triplet(nw, nw, [int(k) for k in uniq % nw], [int(k) for k in uniq // nw])
         gather = ca.DM(ca.Sparsity.triplet(len(uniq), n_src, [int(k) for k in slot], src), 1.0)
-        lam_dyn = ca.reshape(lam_g[: NX * T], NX, T)
-        nu = ca.vertcat(ca.reshape(lam_g[NX * T: 10 * T], 2, T), ca.reshape(lam_g[10 * T:], 2, T))
+        lam = ca.DM(self.con_scale) * lam_g if self.scaled else lam_g   # multipliers of g
+        lam_dyn = ca.reshape(lam[: NX * T], NX, T)
+        nu = ca.vertcat(ca.reshape(lam[NX * T: 10 * T], 2, T), ca.reshape(lam[10 * T:], 2, T))
         # g = x_{t+1} - Phi, so the defects contribute Hess((-lam)' Phi).
         hdyn = phi_hess.map(T)(X[:, :T], A, -lam_dyn, Pk, J0, qT, cT)
         hpath = path_hess.map(T)(X[:, 1:], Pl, Pr, J0, qT, cT, aT, nu)
         hsrc = ca.vertcat(ca.vec(hdyn), hpath.nz[:], lam_f * ca.DM(Hf_u.nonzeros()))
         hess_l = ca.MX(hess_sp, ca.mtimes(gather, hsrc))
+        if self.scaled:     # chain rule for x = D x~ + o and g~ = S g (diagonal D, S)
+            Dm, Sm = ca.diag(ca.DM(self.var_scale)), ca.diag(ca.DM(self.con_scale))
+            g = ca.DM(self.con_scale) * g
+            grad_f = ca.DM(self.var_scale) * grad_f
+            jac_g = ca.mtimes(ca.mtimes(Sm, jac_g), Dm)
+            hess_l = ca.mtimes(ca.mtimes(Dm, hess_l), Dm)
 
         funcs = {
-            "nlp": ca.Function("to_ocp_nlp", [w, P], [f, g], ["x", "p"], ["f", "g"]),
-            "grad_f": ca.Function("to_ocp_grad_f", [w, P], [f, grad_f], ["x", "p"], ["f", "grad_f_x"]),
-            "jac_g": ca.Function("to_ocp_jac_g", [w, P], [g, jac_g], ["x", "p"], ["g", "jac_g_x"]),
-            "hess_lag": ca.Function("to_ocp_hess_lag", [w, P, lam_f, lam_g], [hess_l],
+            "nlp": ca.Function("to_ocp_nlp", [wt, P], [f, g], ["x", "p"], ["f", "g"]),
+            "grad_f": ca.Function("to_ocp_grad_f", [wt, P], [f, grad_f], ["x", "p"], ["f", "grad_f_x"]),
+            "jac_g": ca.Function("to_ocp_jac_g", [wt, P], [g, jac_g], ["x", "p"], ["g", "jac_g_x"]),
+            "hess_lag": ca.Function("to_ocp_hess_lag", [wt, P, lam_f, lam_g], [hess_l],
                                     ["x", "p", "lam_f", "lam_g"], ["hess_gamma_x_x"]),
         }
         self.compiled = False
@@ -487,9 +516,16 @@ class WindowSolver:
         return self._warm_solver
 
     def parameters(self, track: Track, centres: np.ndarray, ctx: np.ndarray, p: VehicleParams) -> np.ndarray:
+        """Track windows (centred on ``centres``, one per step), track scalars and car."""
         (Ck, Cl, Cr), j0 = coefficient_windows(track, centres, self.spec)
         return np.concatenate([Ck.T.reshape(-1), Cl.T.reshape(-1), Cr.T.reshape(-1), j0,
                                track_scalars(track), ctx, [p.alpha_max]])
+
+    def offset(self, sigma: np.ndarray) -> np.ndarray:
+        """o in x = D x~ + o: each node's s relative to its centre sigma [T+1] (scaled solvers)."""
+        o = np.zeros(self.nw)
+        o[: NX * (self.T + 1): NX] = sigma
+        return o
 
     def solve(self, track: Track, x0: np.ndarray, init: tuple[np.ndarray, np.ndarray],
               ctx: np.ndarray | None = None, p: VehicleParams = F1_2025,
@@ -511,17 +547,21 @@ class WindowSolver:
             # that steps back, e.g. at a junction of two guesses, is centred monotonically.)
             sigma = np.maximum.accumulate(xs[:, 0])
             P = self.parameters(track, sigma[:-1], ctx, p)
+            o, d = np.zeros(self.nw), self.var_scale
+            if self.scaled:
+                o = self.offset(sigma)
+                P = np.concatenate([P, o])
             lo = np.maximum(sigma[1:], sigma[:-1]) - R
             hi = np.minimum(sigma[1:], sigma[:-1] + MAX_TRAVEL - 0.5) + R
             lbX = np.tile(np.array([-np.inf, -np.inf, -0.5 * np.pi, 2.0, -25.0, -5.0, -p.delta_max, -1.0])[:, None], (1, T + 1))
             ubX = np.tile(np.array([np.inf, np.inf, 0.5 * np.pi, 120.0, 25.0, 5.0, p.delta_max, 1.0])[:, None], (1, T + 1))
             lbX[0, 1:], ubX[0, 1:] = lo, hi
             lbX[:, 0] = ubX[:, 0] = x0
-            lbx = np.concatenate([lbX.T.reshape(-1), -np.ones(NA * T)])
-            ubx = np.concatenate([ubX.T.reshape(-1), np.ones(NA * T)])
+            lbx = (np.concatenate([lbX.T.reshape(-1), -np.ones(NA * T)]) - o) / d
+            ubx = (np.concatenate([ubX.T.reshape(-1), np.ones(NA * T)]) - o) / d
             lbg = np.concatenate([np.zeros(NX * T), np.full(2 * T, -np.inf), -np.ones(2 * T)])
             ubg = np.concatenate([np.zeros(NX * T), np.zeros(2 * T), np.ones(2 * T)])
-            w0 = np.clip(np.concatenate([xs.reshape(-1), acts.reshape(-1)]), lbx, ubx)
+            w0 = np.clip((np.concatenate([xs.reshape(-1), acts.reshape(-1)]) - o) / d, lbx, ubx)
             kw = dict(x0=w0, p=P, lbx=lbx, ubx=ubx, lbg=lbg, ubg=ubg)
             solver = self.solver
             if lam_g is not None:
@@ -535,7 +575,7 @@ class WindowSolver:
             iters += int(st["iter_count"])
             log.append({"round": rnd, "iterations": int(st["iter_count"]), "status": st["return_status"],
                         **{k: v for k, v in st.items() if k.startswith("t_proc_nlp")}})
-            wv = np.asarray(sol["x"]).ravel()
+            wv = np.asarray(sol["x"]).ravel() * d + o
             xs = wv[: NX * (T + 1)].reshape(T + 1, NX)
             acts = wv[NX * (T + 1):].reshape(T, NA)
             lam_g, lam_x = np.asarray(sol["lam_g"]).ravel(), np.asarray(sol["lam_x"]).ravel()

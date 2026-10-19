@@ -124,8 +124,12 @@ def test_step_matches_the_simulator_on_hockenheim():
         assert np.max(np.abs(xc - np.asarray(xj))) < 1e-10
 
 
+SCALE = (10.0, 1.0, 0.1, 10.0, 1.0, 0.3, 0.1, 1.0)
+
+
 def _point(solver: WindowSolver, tr: Track, seed: int = 0):
-    """A perturbed straight-line guess, the solver's parameters and random multipliers."""
+    """A perturbed straight-line guess (in the solver's variables), its parameters and
+    random multipliers."""
     rng = np.random.default_rng(seed)
     T = solver.T
     xs = np.zeros((T + 1, 8))
@@ -135,12 +139,17 @@ def _point(solver: WindowSolver, tr: Track, seed: int = 0):
     acts = 0.3 * rng.standard_normal((T, 2))
     w = np.concatenate([xs.reshape(-1), acts.reshape(-1)])
     p = solver.parameters(tr, xs[:-1, 0], ctx_of(), P)
+    if solver.scaled:
+        sigma = xs[:, 0] - 0.3          # window centres a little off the nodes
+        p = np.concatenate([p, solver.offset(sigma)])
+        w = (w - solver.offset(sigma)) / solver.var_scale
     return w, p, rng.standard_normal(solver.ng), 0.7
 
 
-def test_structured_derivatives_equal_casadi_ad():
+@pytest.mark.parametrize("scale", [None, SCALE])
+def test_structured_derivatives_equal_casadi_ad(scale):
     tr = synthetic(True)
-    solver = WindowSolver(WindowSpec(steps=4, radius=20.0), compile=False)
+    solver = WindowSolver(WindowSpec(steps=4, radius=20.0), compile=False, scale=scale)
     w, p, lam_g, lam_f = _point(solver, tr)
     ws, ps = ca.MX.sym("w", solver.nw), ca.MX.sym("p", solver.n_param)
     f, g = solver.funcs["nlp"](ws, ps)
@@ -154,10 +163,11 @@ def test_structured_derivatives_equal_casadi_ad():
     assert np.max(np.abs(h_s - h_ad)) < 1e-11 * max(1.0, np.max(np.abs(h_ad)))
     g_s = np.asarray(solver.funcs["grad_f"](w, p)[1]).ravel()
     assert np.max(np.abs(g_s - np.asarray(grad(w, p)).ravel())) < 1e-14
-    # The objective is the env's discounted return.
+    # The objective is the env's discounted return (in physical variables).
     T = solver.T
-    xs = w[: 8 * (T + 1)].reshape(T + 1, 8)
-    acts = w[8 * (T + 1):].reshape(T, 2)
+    wp = w * solver.var_scale + (p[-solver.nw:] if solver.scaled else 0.0)
+    xs = wp[: 8 * (T + 1)].reshape(T + 1, 8)
+    acts = wp[8 * (T + 1):].reshape(T, 2)
     assert abs(-float(solver.funcs["nlp"](w, p)[0]) - window_return(xs, acts, solver.spec)) < 1e-12
 
 
@@ -181,10 +191,11 @@ def test_compiled_functions_equal_the_vm(tmp_path):
     assert len(list(tmp_path.glob("*.so"))) == 1
 
 
-def test_short_window_solve_replays_exactly():
+@pytest.mark.parametrize("scale", [None, SCALE])
+def test_short_window_solve_replays_exactly(scale):
     tr = synthetic(True)
     spec = WindowSpec(steps=24, radius=30.0)
-    solver = WindowSolver(spec, compile=False)
+    solver = WindowSolver(spec, compile=False, scale=scale)
     x0 = np.array([20.0, 0.0, 0.0, 30.0, 0.0, 0.0, 0.0, 0.0])
     # Guess: a simple lane-keeping controller at part throttle, simulated (so the guess is
     # dynamically consistent and on track).
