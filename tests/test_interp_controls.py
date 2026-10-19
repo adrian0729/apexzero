@@ -382,6 +382,32 @@ def test_tune_cv_and_fit_tau_c_logic(car):
         C.fit_tau_c(bank, [None], car, 1e4, CV, d_b_fn=lambda t: 80.0 * t)
 
 
+def test_R14_tune_cv_gates_tier_d_by_p4_competence(car):
+    """R14: c_v needs every tier A run complete and, on tier D (a), at least 90% of corners
+    completing in >= 3 of their 4 phases; a corner Q cannot start (all phases fail) is
+    tolerated, three are not."""
+    bank = SimpleNamespace(stimuli=[], kappa=None)
+    a_cells = [SimpleNamespace(n_phases=4)] * 2
+    d_cells = [SimpleNamespace(n_phases=4)] * 20
+
+    def fn(bad_corners_at):
+        def completion_fn(c_v):
+            d = np.ones((20, 4), bool)
+            d[: bad_corners_at[c_v]] = False
+            return np.r_[np.ones(8, bool), d.ravel()]
+        return completion_fn
+
+    c_v, rates = C.tune_cv(bank, a_cells, car, fn({0.95: 3, 0.90: 1, 0.85: 0, 0.80: 0}),
+                           gate_cells=d_cells)
+    assert c_v == 0.90 and rates[0.95] == pytest.approx(0.85) and rates[0.90] == 0.95
+    d = np.ones((20, 4), bool)
+    d[0, :2] = False                                          # 2 of 4 phases: corner fails
+    d[1, :1] = False                                          # 3 of 4: corner passes
+    assert C.gate_completion(d.ravel(), [4] * 20) == pytest.approx(0.95)
+    tier_a_fail = lambda c_v: np.r_[np.zeros(1, bool), np.ones(87, bool)]
+    assert C.tune_cv(bank, a_cells, car, tier_a_fail, gate_cells=d_cells)[0] is None
+
+
 def test_tuning_through_the_harness_on_the_pilot_minigrid(car):
     """tune_cv, completion and fit_tau_c on the real harness (rollout, measures) with the
     pilot mini-grid bank (scripted control only)."""

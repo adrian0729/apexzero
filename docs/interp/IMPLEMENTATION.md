@@ -694,3 +694,10 @@ How the harness implements each pre-tag ruling of protocol section 12. Tests nam
 | m5 | Rule 2 credited 6 nominal keys without the mirror shortcut (12 cut); `anchored_G` added design-counted R12 cells to the protocol's fixed 96 | `_rule2_cut_counts`; `_anchored_g_count` (196 on the current design) (R7, R12 rows) |
 | m6 | A lap written but not logged before a crash was never logged; `R1_CONVENTION` cited eval/laps.py's step budget | Logged once on resume; convention text (R1 row) |
 | m7 | I9 still said "pending ruling Q1"; section 7's note IDs R1-R13 clashed with the rulings; the ruling's approximate R_seg | I9 text; notes renamed RO1-RO13; computed R_seg noted (R2 row, section 6) |
+
+## Ruling R14 and the Q braking clip (orchestrator, 2026-10-19)
+
+- `controls.pedal_command`: the brake clip is a_dec(v) × min(front room, rear room). It was the front room only, and braking from S1's mid-corner real-lap states (yaw rate −0.7 rad/s, sideslip 2.9 m/s at 197 km/h) spun Q on 5 of 20 tier D condition-(a) corners. With the fix, 19 of 20 complete at every c_v.
+- `controls.tune_cv(..., gate_cells=)` and `gate_completion`: R14's rule is 100% on tier A plus P4's C ≥ 0.9 on tier D (a). The script passes tier D (a) as `gate_cells`. Test: `test_R14_tune_cv_gates_tier_d_by_p4_competence`.
+- Q's remaining failure is Hockenheim corner 6 (D/6). It starts at 295 km/h, 85 m before a kink whose centreline radius is 19 m; Q's own envelope there is 285 km/h. It is reported as a limit of centreline driving.
+

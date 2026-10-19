@@ -392,14 +392,17 @@ def pedal_command(state: racing.EnvState, v_t, a_t, params: QParams):
     the car's speed predicted to that point with its measured acceleration, v + lead ax,
     which absorbs the zero-order hold and the pedal lag. The feed-forward is the steady
     straight-line pedal for a_t. The clip keeps the pedal between the pedal that saturates
-    the brakes at a_dec(v) times the front axle's room, and the pedal that gives the
-    full-throttle acceleration a_acc(v) times the rear axle's room (``axle_room``)."""
+    the brakes at a_dec(v) times the room of the tighter axle, and the pedal that gives the
+    full-throttle acceleration a_acc(v) times the rear axle's room (``axle_room``). Braking
+    loads both axles, so a rear axle busy cornering (yaw and sideslip, e.g. a start taken
+    mid-corner from a real lap) must limit it too, or braking spins the car; min(front,
+    rear) is conservative because a_dec is front-limited."""
     car = params.car
     x = state.x
     v = jnp.maximum(x[3], 0.0)
     room_f, room_r = axle_room(x, car)
     p_hi = _pedal_for(v, _uinterp(v, car.v, car.a_acc) * room_r, car)
-    p_lo = _pedal_for(v, -_uinterp(v, car.v, car.a_dec) * room_f, car)
+    p_lo = _pedal_for(v, -_uinterp(v, car.v, car.a_dec) * jnp.minimum(room_f, room_r), car)
     v_pred = v + params.lead_time * state.accel[0]
     ff = _pedal_for(v, a_t, car)
     return jnp.clip(params.k_v * (v_t - v_pred) + ff, p_lo, p_hi)
@@ -940,28 +943,63 @@ def completion(arrays: dict[str, np.ndarray], bank: StimulusBank) -> np.ndarray:
     return out
 
 
+TUNE_GATE = 0.9          # R14: Q's tier D (a) competence gate (protocol 2.4 P4's C(a) >= 0.9)
+
+
 def tune_cv(bank: StimulusBank, cells: list[Cell], tables: ModelTables | CarTables,
-            completion_fn: Callable[[float], np.ndarray] | None = None
+            completion_fn: Callable[[float], np.ndarray] | None = None,
+            gate_cells: list[Cell] | None = None
             ) -> tuple[float | None, dict[float, float]]:
-    """The largest c_v in CV_CHOICES giving 100% deterministic completion on ``cells`` (tier A
-    and tier D condition (a), every phase; step 4). ``completion_fn(c_v)`` returns the
-    per-run completion; by default Q runs through the harness. Returns (c_v or None if no
-    choice completes everything, {c_v: completion rate} of the choices tried)."""
+    """The largest c_v in CV_CHOICES for which Q completes every deterministic run of
+    ``cells`` (tier A, every phase; step 4) and, by ruling R14, passes the competence gate
+    of protocol 2.4 P4 on ``gate_cells`` (tier D condition (a)): the fraction of corners
+    whose phase runs complete in at least 3 of 4 (``gate_completion``) is >= P4's 0.9. A
+    centreline driver can meet a real start that is outside its own envelope (Hockenheim
+    corner 6 from S1's state: 295 km/h, 85 m before a kink whose centreline radius is 19 m),
+    so 100% there would test the start, not the driver. ``completion_fn(c_v)`` returns the
+    per-run completion over ``cells + gate_cells`` in that order (by default Q through the
+    harness). Returns (c_v or None, {c_v: rate}), the rate being tier A's completion, or the
+    gate's when tier A is complete."""
+    gate_cells = list(gate_cells or [])
+    allc = list(cells) + gate_cells
     if completion_fn is None:
         car = tables if isinstance(tables, CarTables) else car_tables(tables)
         policy = make_q_policy("Q")
 
         def completion_fn(c_v: float) -> np.ndarray:
-            prm, aux = q_params(bank, cells, car, c_v)
-            return completion(run_control(policy, prm, aux, bank, cells), bank)
+            prm, aux = q_params(bank, allc, car, c_v)
+            arr = run_control(policy, prm, aux, bank, allc)
+            done = completion(arr, bank)
+            order = {c.cell_id: i for i, c in enumerate(allc)}
+            return done[np.argsort([order[int(c)] for c in arr["cell"]], kind="stable")]
 
+    n_gate = sum(c.n_phases for c in gate_cells)
     rates: dict[float, float] = {}
     for c_v in CV_CHOICES:
         done = np.asarray(completion_fn(c_v), bool)
-        rates[c_v] = float(done.mean()) if done.size else float("nan")
-        if done.size and done.all():
+        n_a = len(done) - n_gate              # tier A runs come first
+        if not done.size:
+            rates[c_v] = float("nan")
+            continue
+        ok_a = bool(done[:n_a].all()) if n_a else True
+        rates[c_v] = float(done[:n_a].mean()) if n_a else 1.0
+        if ok_a and gate_cells:
+            g = gate_completion(done[n_a:], [c.n_phases for c in gate_cells])
+            rates[c_v] = g
+            ok_a = g >= TUNE_GATE
+        if ok_a:
             return c_v, rates
     return None, rates
+
+
+def gate_completion(done: np.ndarray, n_phases: list[int]) -> float:
+    """Ruling R14 / protocol 2.4 P4's C: the fraction of cells (corners) whose phase runs
+    complete in at least 3 of 4 (``ceil(3 n / 4)`` of n), ``done`` in cell-major order."""
+    ok, i = [], 0
+    for n in n_phases:
+        ok.append(int(np.sum(done[i:i + n])) >= int(np.ceil(0.75 * n)))
+        i += n
+    return float(np.mean(ok)) if ok else float("nan")
 
 
 def _tau_cell(bank: StimulusBank, cells: list[Cell]) -> Cell:

@@ -1727,10 +1727,11 @@ def stage_controls(args: argparse.Namespace) -> None:
         tier_d = _cond_a_cells(bank, cells)
         if "c_v" not in tun or (tier_d and not tun.get("tier_d_cells")):
             # (Re)tuned once tier D condition (a) exists: protocol 7 tunes on A and D (a).
-            tc = [c for c in cells if "A" in c.tiers] + tier_d
-            c_v, rates = controls.tune_cv(bank, tc, car)
-            tun.update(c_v=c_v, rates={str(k): v for k, v in rates.items()}, n_cells=len(tc),
-                       tier_d_cells=len(tier_d),
+            tc = [c for c in cells if "A" in c.tiers]
+            c_v, rates = controls.tune_cv(bank, tc, car, gate_cells=tier_d)    # ruling R14
+            tun.update(c_v=c_v, rates={str(k): v for k, v in rates.items()},
+                       n_cells=len(tc) + len(tier_d), tier_d_cells=len(tier_d),
+                       rule="R14: 100% on tier A, P4 gate C >= 0.9 on tier D (a)",
                        note="" if tier_d else "tier D condition (a) absent (no real states yet)")
             io.write_json(p, tun)
         log.step(note=f"c_v = {tun['c_v']} ({tun['rates']})")
