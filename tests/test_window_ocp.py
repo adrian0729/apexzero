@@ -20,6 +20,7 @@ from apexzero.ocp.window import (
     block_select,
     coefficient_windows,
     min_time_guess,
+    prefix_multipliers,
     solve_continuation,
     step_function,
     track_scalars,
@@ -243,7 +244,7 @@ def test_continuation_keeps_the_prefix_and_extends_it():
         def __init__(self, T):
             self.T = T
 
-        def solve(self, track, x0, init, ctx=None, p=None):
+        def solve(self, track, x0, init, ctx=None, p=None, lam0=None):
             xs, acts = init
             calls.append((self.T, xs.copy(), acts.copy()))
             assert xs.shape == (self.T + 1, 8) and acts.shape == (self.T, 2)
@@ -255,11 +256,31 @@ def test_continuation_keeps_the_prefix_and_extends_it():
         return np.repeat(np.asarray(state)[None], n + 1, axis=0), np.full((n, 2), -7.0)
 
     first = (np.zeros((51, 8)), np.zeros((50, 2)))
-    res = solve_continuation(Stub, None, np.zeros(8), [10, 30, 50], first, extend, overlap=4)
-    assert [c[0] for c in calls] == [10, 30, 50]
+    res = solve_continuation(Stub, None, np.zeros(8), [10, 30, 50, 20], first, extend, overlap=4)
+    assert [c[0] for c in calls] == [10, 30, 50, 20]
     # Stage 2: stage 1's optimum up to step 6 (= 10 - overlap), then the extension from x_6.
     _, xs2, a2 = calls[1]
     np.testing.assert_array_equal(xs2[:7], res[0].x[:7])
     np.testing.assert_array_equal(a2[:6], res[0].a[:6])
     np.testing.assert_array_equal(a2[6:], -7.0)
     np.testing.assert_array_equal(xs2[7:], np.repeat(res[0].x[6][None], 24, axis=0))
+    # A shorter stage re-solves from the longer optimum, cut overlap steps before its own end.
+    _, xs4, a4 = calls[3]
+    np.testing.assert_array_equal(xs4[:17], res[2].x[:17])
+    np.testing.assert_array_equal(a4[:16], res[2].a[:16])
+    np.testing.assert_array_equal(a4[16:], -7.0)
+
+
+def test_prefix_multipliers_follow_the_constraint_layout():
+    Tp, N, T = 5, 3, 7
+    # Label each multiplier by (block, step, component) so misplacements are visible.
+    g = np.concatenate([100 + np.arange(8 * Tp), 200 + np.arange(2 * Tp), 300 + np.arange(2 * Tp)])
+    x = np.concatenate([400 + np.arange(8 * (Tp + 1)), 500 + np.arange(2 * Tp)])
+    g2, x2 = prefix_multipliers((g, x), Tp, N, T)
+    assert g2.shape == (12 * T,) and x2.shape == (8 * (T + 1) + 2 * T,)
+    np.testing.assert_array_equal(g2[: 8 * N], 100 + np.arange(8 * N))           # defects
+    np.testing.assert_array_equal(g2[8 * T: 8 * T + 2 * N], 200 + np.arange(2 * N))   # corridor
+    np.testing.assert_array_equal(g2[10 * T: 10 * T + 2 * N], 300 + np.arange(2 * N))  # slip
+    np.testing.assert_array_equal(x2[: 8 * (N + 1)], 400 + np.arange(8 * (N + 1)))
+    np.testing.assert_array_equal(x2[8 * (T + 1): 8 * (T + 1) + 2 * N], 500 + np.arange(2 * N))
+    assert np.count_nonzero(g2) == 12 * N and np.count_nonzero(x2) == 8 * (N + 1) + 2 * N

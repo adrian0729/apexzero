@@ -583,28 +583,50 @@ def min_time_guess(ocp, track: Track, x_start: np.ndarray, steps: int, dt: float
     return xs, acts
 
 
+def prefix_multipliers(lam: tuple[np.ndarray, np.ndarray], T_prev: int, N: int, T: int):
+    """Multipliers of a T_prev-step solution kept for its first N steps, zero elsewhere,
+    laid out for a T-step window (warm start of the next continuation stage)."""
+    lam_g, lam_x = lam
+    g = np.zeros(12 * T)
+    g[: NX * N] = lam_g[: NX * N]
+    g[NX * T: NX * T + 2 * N] = lam_g[NX * T_prev: NX * T_prev + 2 * N]
+    g[10 * T: 10 * T + 2 * N] = lam_g[10 * T_prev: 10 * T_prev + 2 * N]
+    x = np.zeros(NX * (T + 1) + NA * T)
+    x[: NX * (N + 1)] = lam_x[: NX * (N + 1)]
+    x[NX * (T + 1): NX * (T + 1) + NA * N] = lam_x[NX * (T_prev + 1): NX * (T_prev + 1) + NA * N]
+    return g, x
+
+
 def solve_continuation(solver_for, track: Track, x0: np.ndarray, horizons, first_guess,
                        extend, overlap: int = 20, ctx: np.ndarray | None = None,
-                       p: VehicleParams = F1_2025) -> list[WindowResult]:
-    """Horizon continuation: solve the shortest window, then each longer one from the
-    previous optimum.
+                       p: VehicleParams = F1_2025, warm_multipliers: bool = False) -> list[WindowResult]:
+    """Horizon continuation: solve a short window, then each next one from the previous
+    optimum.
 
     Optima of nested windows agree except near the shorter window's end (with no terminal
     value, it does not brake for what lies beyond), so stage k is warm-started with stage
-    k-1's optimum minus its last ``overlap`` steps, continued by ``extend(state, n)`` ->
-    (xs [n+1, 8] starting at state, acts [n, 2]). ``solver_for(steps)`` returns the
-    WindowSolver for a window length; ``horizons`` are in control steps, ascending.
+    k-1's optimum, cut ``overlap`` steps before the end of the shorter of the two windows,
+    and continued by ``extend(state, n)`` -> (xs [n+1, 8] starting at state, acts [n, 2]).
+    ``horizons`` (control steps) usually ascend; a stage may also be *shorter* than its
+    predecessor, which re-solves that window from a longer optimum (a "lookahead polish":
+    a different start that can reach a better local optimum). ``solver_for(steps)``
+    returns the WindowSolver for a window length. With ``warm_multipliers`` the kept
+    prefix's multipliers are passed on too (the solver's ``warm_ipopt`` options decide how
+    IPOPT uses them).
     """
     results: list[WindowResult] = []
     for k, T in enumerate(horizons):
+        lam0 = None
         if k == 0:
             xs, acts = (np.asarray(v, float) for v in first_guess)
             xs, acts = xs[: T + 1], acts[:T]
         else:
             prev = results[-1]
-            N = max(len(prev.a) - overlap, 1)
+            N = max(min(len(prev.a), T) - overlap, 1)
             xe, ae = extend(prev.x[N], T - N)
             xs = np.vstack([prev.x[: N + 1], np.asarray(xe)[1:]])
             acts = np.vstack([prev.a[:N], ae])
-        results.append(solver_for(T).solve(track, x0, init=(xs, acts), ctx=ctx, p=p))
+            if warm_multipliers and "lam" in prev.meta:
+                lam0 = prefix_multipliers(prev.meta["lam"], len(prev.a), N, T)
+        results.append(solver_for(T).solve(track, x0, init=(xs, acts), ctx=ctx, p=p, lam0=lam0))
     return results
