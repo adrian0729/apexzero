@@ -189,7 +189,7 @@ def track_map(doc: dict, ghost: str | None = None, zoom_margin: float = 50.0) ->
         az.axis("off")
         az.set_title(f"Costliest sector {sec['name']}: {loss[worst]:+.3f} s", loc="left")
         az.legend(loc="upper left", bbox_to_anchor=(0.0, -0.01), ncols=1)
-        fig.suptitle(f"{doc['title']}: racing lines coloured by speed", x=0.01, ha="left",
+        fig.suptitle(f"{doc['track']['name']}: racing lines coloured by speed", x=0.01, ha="left",
                      fontsize=12, fontweight="bold", color=INK)
     return fig
 
@@ -228,7 +228,7 @@ def speed_and_delta(doc: dict, ghost: str | None = None) -> Figure:
                 label=f"{_label(doc, gid)}  {_lap(doc, gid):.3f} s")
         a1.set_ylabel("speed (km/h)")
         a1.legend(loc="lower right", ncols=2, bbox_to_anchor=(1.0, 1.06))
-        a1.set_title(f"{doc['title']}: speed and time delta along the lap", pad=22)
+        a1.set_title(f"{doc['track']['name']}: speed and time delta along the lap", pad=22)
 
         s = np.asarray(comp["s"])
         d = np.asarray(comp["delta_t"])
@@ -268,7 +268,7 @@ def sector_losses(doc: dict, ghost: str | None = None, labelled: int = 3) -> Fig
         ax.set_ylim(lo - 0.12 * span * (lo < 0), hi + 0.12 * span)
         ax.set_xticks(x, names, fontsize=7.5)
         ax.set_ylabel(f"time vs {comp['reference']} (s)\n> 0: lost")
-        ax.set_title(f"{doc['title']}: where {_label(doc, comp['ghost'])} loses time  "
+        ax.set_title(f"{doc['track']['name']}: where {_label(doc, comp['ghost'])} loses time  "
                      f"(sectors sum to {vals.sum():+.3f} s; lap delta "
                      f"{comp['lap_delta_s']:+.3f} s)")
         ax.text(0.0, -0.2, "Sector = corner complex plus half of each neighbouring straight; "
