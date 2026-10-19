@@ -337,7 +337,8 @@ def policy_ghost(ro: PolicyRollout, track: Track, lap: int | None = None, id: st
     end = int(dead[0]) if len(dead) else len(ro.t)
     ch = state_channels(track, ro.x[:end], ro.params, cmd=ro.action[:end])
     if ch["s"].max() < lap * L:
-        raise ValueError(f"lap {lap} not completed (crashed at s = {ch['s'].max():.0f} m)")
+        why = "terminated" if len(dead) else "ran out of steps"
+        raise ValueError(f"lap {lap} not completed ({why} at s = {ch['s'].max():.0f} m)")
     t, ch = lap_window(ro.t[:end], ch, (lap - 1) * L, lap * L)
     ch["t"] = t
     info = {"source": "policy rollout", "protocol": "rolling start at s = 0, n = 0; "
