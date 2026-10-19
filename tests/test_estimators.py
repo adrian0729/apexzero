@@ -6,7 +6,13 @@ import pytest
 from jaxued.utils import positive_value_loss as ref_pvl
 
 import apexzero.compat  # noqa: F401  (must precede jaxued)
-from apexzero.audit.estimators import level_scores, mna_terms, scoring_gae, window_stats
+from apexzero.audit.estimators import (
+    level_scores,
+    mna_terms,
+    mna_terms_batch,
+    scoring_gae,
+    window_stats,
+)
 from apexzero.audit.rollouts import WindowRollouts
 
 F = np.zeros
@@ -186,3 +192,38 @@ def test_window_stats_and_level_scores_end_to_end():
     assert np.allclose(sc["pvl"], 0.5 * sc["l1"] + 0.5 * sc["mean_a"])     # E2 identity, aggregated
     assert np.all(sc["learnability_s1"] <= 0.25) and np.all(sc["learnability_s2"] <= 0.25)
     assert np.all(np.isfinite(sc["mna"]))
+
+
+def test_scoring_gae_batches_over_leading_axes():
+    rng = np.random.default_rng(5)
+    N, T = 6, 40
+    r, v, vf = rng.normal(size=(N, T)), rng.normal(size=(N, T)), rng.normal(size=(N, T))
+    term, trunc, cut = rng.random((N, T)) < 0.05, rng.random((N, T)) < 0.05, rng.random((N, T)) < 0.05
+    trunc &= ~term
+    for mode in ("F", "B"):
+        batched = scoring_gae(r, v, term, trunc, vf, cut, 0.99, 0.9, mode)
+        for i in range(N):
+            one = scoring_gae(r[i], v[i], term[i], trunc[i], vf[i], cut[i], 0.99, 0.9, mode)
+            assert np.array_equal(batched[i], one)
+
+
+@pytest.mark.parametrize("lam", [0.9, 0.95, 1.0])
+def test_mna_terms_batch_equals_the_per_trajectory_closed_form(lam):
+    # Several episodes and cuts per row, both modes; also the E-10/E-11/E-14 hand vectors.
+    rng = np.random.default_rng(int(lam * 100) + 1)
+    N, T = 7, 60
+    r, v, vf = rng.normal(size=(N, T)), rng.normal(size=(N, T)), rng.normal(size=(N, T))
+    term, trunc, cut = rng.random((N, T)) < 0.06, rng.random((N, T)) < 0.04, rng.random((N, T)) < 0.04
+    trunc &= ~term
+    for mode in ("F", "B"):
+        batched = mna_terms_batch(r, v, term, trunc, vf, cut, 0.99, lam, mode, block=3)
+        for i in range(N):
+            one = mna_terms(r[i], v[i], term[i], trunc[i], vf[i], cut[i], 0.99, lam, mode)
+            assert np.allclose(batched[i], one, rtol=0, atol=1e-12)
+    r1, v1, t1 = B([[0.0, 2, -1]]), B([[1.0, 0, 0]]), B([[0, 0, 1]], bool)
+    assert np.allclose(mna_terms_batch(r1, v1, t1, F((1, 3), bool), 0.0, F((1, 3), bool), 1.0, 0.5),
+                       [[0.75, 0.5, 1.0]])
+    assert np.allclose(mna_terms_batch(r1, v1, t1, F((1, 3), bool), 0.0, B([[0, 1, 0]], bool), 1.0, 0.5),
+                       [[0.5, 0.0, 1.0]])
+    assert np.allclose(mna_terms_batch(r1, v1, t1, F((1, 3), bool), 0.0, F((1, 3), bool), 1.0, 1.0),
+                       [[1.0, 1.0, 1.0]])

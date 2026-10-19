@@ -11,6 +11,7 @@ cross-fitted on disjoint windows.
 
 from __future__ import annotations
 
+import functools
 from typing import NamedTuple
 
 import jax
@@ -56,17 +57,18 @@ def snapshot_from_pickle(d: dict) -> Snapshot:
     return Snapshot(d["actor"], d["critic"], rms(d["obs_rms"]), rms(d["ret_rms"]))
 
 
-def rollout_windows(snap: Snapshot, cfg: PPOConfig, tracks: TrackArrays, x0: jax.Array,
-                    ctx: jax.Array, hidden_mu: jax.Array, windows: int, key: jax.Array,
-                    steps: int = 1200, obs_noise: float = 0.01, level_chunk: int = 64,
-                    params: racing.EnvParams = racing.EnvParams()) -> WindowRollouts:
-    """``tracks``, ``x0`` [L, 8], ``ctx`` [L, 6], ``hidden_mu`` [L] describe L levels."""
+def make_window_fn(cfg: PPOConfig, steps: int = 1200, obs_noise: float = 0.01,
+                   params: racing.EnvParams = racing.EnvParams()):
+    """``one_window(snap, track, x0, ctx, hidden_mu, key)``: one stochastic window from a
+    level's start, with the snapshot as an argument (so a jitted caller compiles once for
+    every checkpoint). Returns (reward, value, heads, alive, crashed, final_value, distance,
+    logp), values in raw units."""
     actor = Actor(cfg, racing.ACTION_DIM, False)
     critic = Critic(cfg)
     E = cfg.ensemble_heads
     params = params._replace(window_steps=steps)
 
-    def one_window(tr, x0_l, ctx_l, mu_l, k):
+    def one_window(snap, tr, x0_l, ctx_l, mu_l, k):
         st = racing.EnvState(x=x0_l, prev_action=jnp.zeros(2), accel=jnp.zeros(2), ctx=ctx_l,
                              hidden_mu=mu_l, t=jnp.zeros((), jnp.int32), slow=jnp.zeros(()),
                              s0=x0_l[0])
@@ -100,17 +102,40 @@ def rollout_windows(snap: Snapshot, cfg: PPOConfig, tracks: TrackArrays, x0: jax
         return (r, v, hs, al.astype(jnp.float32), crashed, jnp.where(crashed, 0.0, vT),
                 stT.x[0] - x0_l[0], lp)
 
-    per_level = jax.vmap(one_window, in_axes=(None, None, None, None, 0))
-    batched = jax.jit(jax.vmap(per_level, in_axes=(0, 0, 0, 0, 0)))
+    return one_window
 
+
+def batch_windows(one_window):
+    """vmap of a ``make_window_fn`` window over (levels [n], windows [n, W] keys)."""
+    per_level = jax.vmap(one_window, in_axes=(None, None, None, None, None, 0))
+    return jax.vmap(per_level, in_axes=(None, 0, 0, 0, 0, 0))
+
+
+@functools.lru_cache(maxsize=16)
+def _batched_windows(cfg: PPOConfig, steps: int, obs_noise: float, params: racing.EnvParams):
+    return jax.jit(batch_windows(make_window_fn(cfg, steps, obs_noise, params)))
+
+
+def window_keys(key: jax.Array, start: int, n: int, windows: int) -> jax.Array:
+    """[n, windows] keys of levels start..start+n-1 (the same for every caller)."""
+    return jax.random.split(jax.random.fold_in(key, start), n * windows).reshape(n, windows, -1)
+
+
+def rollout_windows(snap: Snapshot, cfg: PPOConfig, tracks: TrackArrays, x0: jax.Array,
+                    ctx: jax.Array, hidden_mu: jax.Array, windows: int, key: jax.Array,
+                    steps: int = 1200, obs_noise: float = 0.01, level_chunk: int = 64,
+                    params: racing.EnvParams = racing.EnvParams()) -> WindowRollouts:
+    """``tracks``, ``x0`` [L, 8], ``ctx`` [L, 6], ``hidden_mu`` [L] describe L levels.
+    Compiled once per (config, window, noise, env params, level-chunk shape), not per call."""
+    E = cfg.ensemble_heads
+    batched = _batched_windows(cfg, steps, obs_noise, params)
     L = x0.shape[0]
     outs = []
     for start in range(0, L, level_chunk):
         sl = slice(start, min(start + level_chunk, L))
         n = sl.stop - sl.start
-        keys = jax.random.split(jax.random.fold_in(key, start), n * windows).reshape(n, windows, -1)
         tr = jax.tree.map(lambda a, sl=sl: a[sl], tracks)
-        out = batched(tr, x0[sl], ctx[sl], hidden_mu[sl], keys)
+        out = batched(snap, tr, x0[sl], ctx[sl], hidden_mu[sl], window_keys(key, start, n, windows))
         outs.append(jax.tree.map(np.asarray, out))
     cat = [np.concatenate([o[i] for o in outs]) for i in range(8)]
     r, v, hs, al, crashed, vT, dist, lp = cat

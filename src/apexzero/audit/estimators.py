@@ -37,24 +37,25 @@ LAMBDAS = (0.9, 0.95, 0.98, 1.0)
 
 def _next_values(v, term, trunc, vf, mode: str):
     """V used for s_{t+1}: 0 on termination; 0 (mode F) or V^f (mode B) on truncation."""
-    nxt = np.r_[v[1:], 0.0]
+    nxt = np.concatenate([v[..., 1:], np.zeros_like(v[..., :1])], axis=-1)
     nxt = np.where(trunc, vf if mode == "B" else 0.0, nxt)
     return np.where(term, 0.0, nxt)
 
 
 def scoring_gae(r, v, term, trunc, vf, cut, gamma, lam, mode: str = "F"):
-    """GAE for one trajectory. ``cut[t]`` = 1 where a chunk ends after step t (and the
-    episode does not): the lambda-sum restarts and V_{t+1} bootstraps it."""
+    """GAE for one trajectory, or a batch of them (time is the last axis; ``vf`` is a
+    scalar or broadcasts against ``r``). ``cut[..., t]`` = 1 where a chunk ends after step t
+    (and the episode does not): the lambda-sum restarts and V_{t+1} bootstraps it. The
+    in-training racing-PLR scorer calls this on all slots of a chunk at once."""
     r, v = np.asarray(r, float), np.asarray(v, float)
     term, trunc, cut = (np.asarray(a, bool) for a in (term, trunc, cut))
-    done = term | trunc
+    stop = term | trunc | cut
     delta = r + gamma * _next_values(v, term, trunc, vf, mode) - v
     adv = np.zeros_like(r)
-    acc = 0.0
-    for t in range(len(r) - 1, -1, -1):
-        cont = 0.0 if (done[t] or cut[t]) else 1.0
-        acc = delta[t] + gamma * lam * cont * acc
-        adv[t] = acc
+    acc = np.zeros(r.shape[:-1])
+    for t in range(r.shape[-1] - 1, -1, -1):
+        acc = delta[..., t] + gamma * lam * np.where(stop[..., t], 0.0, 1.0) * acc
+        adv[..., t] = acc
     return adv
 
 
@@ -91,6 +92,34 @@ def mna_terms(r, v, term, trunc, vf, cut, gamma, lam, mode: str = "F"):
                      np.where(n == Ns[:, None], lam ** (Ns[:, None] - 1), 0.0))
         out[start:stop] = np.sum(np.where(valid, w * G, 0.0), axis=1)
         start = stop
+    return out
+
+
+def mna_terms_batch(r, v, term, trunc, vf, cut, gamma, lam, mode: str = "F", block: int = 64):
+    """``mna_terms`` for a batch of trajectories [B, T] at once (the in-training scorer
+    calls it on every slot of a chunk). Same closed form, with each start's horizon N_s
+    taken to the next episode end, cut or the trajectory end; O(T^2) per row, ``block``
+    rows at a time to bound memory."""
+    r, v = np.atleast_2d(np.asarray(r, float)), np.atleast_2d(np.asarray(v, float))
+    term, trunc, cut = (np.atleast_2d(np.asarray(a, bool)) for a in (term, trunc, cut))
+    delta = r + gamma * _next_values(v, term, trunc, vf, mode) - v
+    B, T = delta.shape
+    stop = term | trunc | cut
+    stop[:, -1] = True                                         # the trajectory end closes a segment
+    t = np.arange(T)
+    nxt = np.minimum.accumulate(np.where(stop, t, T)[:, ::-1], axis=1)[:, ::-1]
+    Ns = nxt - t + 1                                            # [B, T] horizon of each start
+    n = t + 1                                                   # horizon n = 1..T (offset i = n - 1)
+    gidx = np.minimum(t[:, None] + t[None, :], T - 1)          # [T, T] step s + i
+    disc = gamma ** t
+    out = np.empty((B, T))
+    for b0 in range(0, B, block):
+        d, ns = delta[b0:b0 + block], Ns[b0:b0 + block, :, None]
+        terms = np.where(t < ns, disc * d[:, gidx], 0.0)        # [b, T, T]
+        A = np.cumsum(terms, axis=2)
+        G = np.maximum.accumulate(np.maximum(A, 0.0), axis=2) - A
+        w = np.where(n < ns, (1 - lam) * lam ** (n - 1), np.where(n == ns, lam ** (ns - 1), 0.0))
+        out[b0:b0 + block] = np.sum(w * G, axis=2)
     return out
 
 
