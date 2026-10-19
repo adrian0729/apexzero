@@ -242,8 +242,10 @@ def carry_over_split(s: np.ndarray, delta_t: np.ndarray, flat: np.ndarray,
             continue                            # flat out all lap: nothing to move
         if a > 0:
             owner[a:b + 1] = home[a - 1]
-        elif wraps:                             # the last run starts after the first
-            owner[a:b + 1] = home[runs[-1][0] - 1]
+        elif closed:
+            # Cyclically the interval before the line is the lap's last one; if that is
+            # flat too, this run continues the last run, which starts after this one.
+            owner[a:b + 1] = home[runs[-1][0] - 1 if wraps else m - 1]
     n = len(sectors)
     own = np.zeros(n)
     carried_in = np.zeros(n)

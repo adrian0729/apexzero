@@ -318,6 +318,12 @@ def test_carry_over_split_charges_flat_out_stretches_upstream(random_grid):
     np.testing.assert_allclose(co.charged, [0.5, 0.5], atol=tol)
     np.testing.assert_allclose(co.carried_in, [0.2, 0.3], atol=tol)
     assert co.charged.sum() == pytest.approx(d[-1] - d[0], abs=1e-12)
+    # The lap ends off throttle: the flat stretch from the line belongs to the corner at
+    # the end of the lap, even though no flat stretch wraps round.
+    flat2 = ~(((s >= 300) & (s <= 350)) | (s >= 990))
+    co = carry_over_split(s, d, flat2, secs, L)
+    np.testing.assert_allclose(co.charged, [0.69, 0.31], atol=tol)
+    assert carry_over_split(s, d, flat2, secs, L, closed=False).charged[0] > 0.85
     # Never flat: nothing moves. Always flat: nothing moves either.
     for f in (np.zeros_like(flat), np.ones_like(flat)):
         co = carry_over_split(s, d, f, secs, L)
