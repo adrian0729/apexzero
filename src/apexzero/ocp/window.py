@@ -44,7 +44,9 @@ every level reuses it).
 
 The track, the car context and x0 are all *parameters*, so one solver serves every level
 with the same window length. The optimum J*_20 is a best-known value (IPOPT finds local
-optima), verified by replaying its controls in the float64 simulator.
+optima), verified by replaying its controls in the float64 simulator
+(``replay.verify_window``). Optima near the car's limit can be open-loop unstable, so a
+converged solve is refined to ~1e-12 defects before it is replayed (``REFINE_IPOPT``).
 """
 
 from __future__ import annotations
