@@ -47,9 +47,10 @@ optimum of the agent's own objective can be computed (\cref{sec:env,sec:answer})
 is an open, procedurally generated race-track strip, a car, a hidden grip value and a
 start state. One vehicle model, a dynamic single-track car in curvilinear coordinates,
 is written once and compiled twice: to JAX for the reinforcement-learning simulator and to
-CasADi for optimal control. The two agree to within
-% src: tests/test_dynamics.py::test_jax_casadi_parity (threshold); docs/STATUS.md (K1 row)
-$10^{-5}$ in relative terms on $10^{4}$ random states. On each level a
+CasADi for optimal control. On $10^{4}$ random states the two agree to
+% src: tests/test_dynamics.py::test_jax_casadi_parity (threshold 1e-5);
+%      paper/tools/gate_values.py (measured 1.65e-14)
+$2\times10^{-14}$ (\cref{tab:gates}). On each level a
 \emph{training-objective OCP} (TO-OCP) maximises the agent's discounted reward over the
 agent's 60\,s window. It uses the environment's RK2 integrator with ten 5\,ms substeps per
 50\,ms control step, a zero-order hold at 20\,Hz, the environment's termination set as

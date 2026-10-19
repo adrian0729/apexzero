@@ -47,9 +47,10 @@ $\sigma_t$, and an outer loop re-centres the windows and re-solves if a solution
 the bound. Track coefficients, car context and $x_0$ are solver parameters, so one
 compiled solver serves every level with the same window length.
 % src: src/apexzero/ocp/window.py (module docstring; WindowSpec.radius = 15.0; solve loop)
-The CasADi step map and windowed lookup agree with the JAX simulator to $10^{-10}$ in the
-state and $10^{-12}$ in the lookup.
-% src: tests/test_window_ocp.py
+The CasADi step map and windowed lookup agree with the JAX simulator to
+$5\times10^{-17}$ in the state and $2\times10^{-17}$ in the lookup on a development
+circuit (the test asserts $10^{-10}$ and $10^{-12}$).
+% src: tests/test_window_ocp.py; paper/tools/gate_values.py (Hockenheim)
 The NLP is a multiple-shooting problem with every state and action as a decision
 variable ($8(T+1) + 2T$ of them) and one defect constraint per control step, solved by
 IPOPT with the MUMPS linear solver~\citep{wachter2006ipopt,andersson2019casadi}.

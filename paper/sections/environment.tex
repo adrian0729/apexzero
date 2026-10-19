@@ -231,18 +231,24 @@ optimiser solves, and both are only useful if the car behaves like a racing car.
 \begin{table}[t]
 \centering
 \small
-\caption{Physics and consistency gates. ``Criterion'' is the assertion in the named test;
-``Measured'' is the value recorded in the project status log where one exists.}
+\caption{Physics and consistency gates. ``Criterion'' is the assertion in the named test.
+``Measured'' is the measured value: from \code{paper/tools/gate\_values.py}, which repeats
+the test's computation and prints the quantity it asserts on, from the project status
+log, or from the recomputation described for the last row; ``pass'' marks tests whose
+measured value we have not extracted.}
 \label{tab:gates}
 \begin{tabularx}{\linewidth}{@{}>{\raggedright\arraybackslash}p{2.6cm}>{\raggedright\arraybackslash}X>{\raggedright\arraybackslash}p{2.6cm}@{}}
 \toprule
 Gate & Criterion (test) & Measured \\
 \midrule
-% src: tests/test_dynamics.py::test_jax_casadi_parity; docs/STATUS.md (K1)
-JAX--CasADi parity & max relative difference of $\dot x$ over $10^4$ random states, including
-the kinematic blend, $< 10^{-5}$ & $< 10^{-5}$ \\
-% src: tests/test_tracks.py::test_spline_lookup_is_identical_in_jax_numpy_and_casadi; docs/STATUS.md (K1)
-Track lookup & spline values identical in JAX, NumPy and CasADi & $10^{-12}$ \\
+% src: tests/test_dynamics.py::test_jax_casadi_parity (threshold and normalisation);
+%      measured: paper/tools/gate_values.py (1.65e-14 normalised, 2.84e-14 absolute)
+JAX--CasADi parity & largest difference of $\dot x$ over $10^4$ random states, including
+the kinematic blend, divided by $\max(|\dot x|, 1)$ (relative above 1, absolute below),
+$< 10^{-5}$ & $2\times10^{-14}$ \\
+% src: tests/test_tracks.py::test_spline_lookup_is_identical_in_jax_numpy_and_casadi;
+%      measured: paper/tools/gate_values.py (4.44e-16)
+Track lookup & spline values of JAX and NumPy within $10^{-12}$ of CasADi's & $4\times10^{-16}$ \\
 % src: tests/test_dynamics.py::test_terminal_speed; docs/STATUS.md (K1)
 Terminal speed & analytic value 85--92\,m/s; simulated speed after 90\,s at full throttle
 within 0.5\% of it & 315\,km/h \\
@@ -251,9 +257,10 @@ Coast-down & speed over 20\,s from 80\,m/s within 0.05\,m/s of the 1-D drag and 
 ODE & pass \\
 % src: tests/test_dynamics.py::test_low_speed_is_kinematic
 Low-speed kinematics & yaw rate within 2\% of $v_x\tan\delta/L$ at 1.5\,m/s & pass \\
-% src: tests/test_dynamics.py::test_braking_deceleration_is_f1_like; docs/STATUS.md (K1)
+% src: tests/test_dynamics.py::test_braking_deceleration_is_f1_like;
+%      measured: paper/tools/gate_values.py (6.38 g, 2.50 g)
 Braking & full-pedal deceleration 4--7\,g at 83\,m/s and 1.8--3.5\,g at 30\,m/s &
-4--7\,g \\
+6.4\,g and 2.5\,g \\
 % src: tests/test_dynamics.py::test_braking_to_a_stop_never_reverses
 Standstill & braking to a stop never reverses the car & pass \\
 % src: tests/test_dynamics.py::test_dt_convergence_open_loop; docs/STATUS.md (K1)
@@ -264,12 +271,20 @@ Integrator & RK2 at 5\,ms against RK4 at 1\,ms over 20\,s of open-loop inputs ab
 Skidpad & steady-state limit on $R = 30, 50, 80$\,m within 80--102\% of the point-mass
 envelope, grip-limited; on $R = 400$\,m power-limited near top speed & 91--93\% of the
 envelope; power-limited above $\approx$290\,km/h \\
-% src: tests/test_window_ocp.py
+% src: tests/test_window_ocp.py (on Hockenheim, a development circuit);
+%      measured: paper/tools/gate_values.py (state 4.86e-17, lookup 2.12e-17)
 TO-OCP step & CasADi step map and windowed spline equal the simulator's to $10^{-10}$
-(state) and $10^{-12}$ (lookup) & pass \\
-% src: tests/test_ocp.py::test_ocp_is_consistent_with_the_simulator; docs/STATUS.md (K2a)
-Minimum-time OCP replay & lap-time error $< 10^{-3}$ on a test oval; replay of the
-$s$-domain optimum in the simulator & $< 0.016\%$ on 24 circuits \\
+(state) and $10^{-12}$ (lookup) & $5\times10^{-17}$ (state), $2\times10^{-17}$ (lookup) \\
+% src: tests/test_ocp.py::test_ocp_is_consistent_with_the_simulator (oval);
+%      development circuits: recomputed on corners.R_DEV only, with the code of main at
+%      355d331, by `uv run python scripts/solve_all_ocp.py --workers 3 --out
+%      outputs/paper-draft/ocp-rdev --tracks <the 12 R_DEV names>`; outputs/paper-draft/
+%      ocp-rdev/summary.csv: 12/12 Solve_Succeeded, |shooting_rel_err| max 1.64e-4
+%      (YasMarina), median 7.0e-5. No lockbox circuit was solved for this row.
+Minimum-time OCP replay & replayed lap time within $10^{-3}$ relative and position within
+0.2\,m of the $s$-domain optimum on a test oval; the same replay on the 12 development
+circuits & oval: pass; development circuits: 12/12 converge, lap time within
+$1.6\times10^{-4}$ (median $7\times10^{-5}$) \\
 \bottomrule
 \end{tabularx}
 \end{table}
@@ -279,7 +294,7 @@ and brake at neutral pedal (found by the coast-down gate), brakes kept pushing a
 stop and reversed the car, and the quasi-steady-state speed cap was a placeholder that
 started open strips above top speed. Each fix has a test.
 % src: docs/STATUS.md ("Things found along the way")
-\TODO{the 24-circuit replay figure in \cref{tab:gates} (docs/STATUS.md, K2a) was computed
-on all TUMFTM circuits, including the twelve lockbox circuits. The paper must not report
-anything computed on them: recompute this gate on the development circuits only and
-replace the number}
+The last gate of \cref{tab:gates} was recomputed on the twelve development circuits
+alone; no lockbox circuit was solved for it (\cref{sec:threats}).
+\TODO{record the R-dev replay-gate run (command and summary in the src comment of
+\cref{tab:gates}) in docs/STATUS.md, in place of the all-circuit K2a figure}
