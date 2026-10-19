@@ -1,6 +1,8 @@
 """Drivers-lite pilot on 2025 qualifying -> outputs/drivers-lite/, docs/findings/drivers-pilot.md
 
     nice -n 15 uv run python scripts/drivers_pilot.py registration   # every mapped 2025 session
+    nice -n 15 uv run python scripts/drivers_pilot.py registration --year 2024   # gate check
+    nice -n 15 uv run python scripts/drivers_pilot.py registration --year 2023
     nice -n 15 uv run python scripts/drivers_pilot.py pilot          # pipeline on pilot circuits
     nice -n 15 uv run python scripts/drivers_pilot.py tune           # smoother, R-dev synthetics
     nice -n 15 uv run python scripts/drivers_pilot.py pilot          # again, tuned smoother
@@ -10,9 +12,11 @@
 The first ``pilot`` pass (default smoother) only supplies the feed's sampling intervals
 and position noise to ``tune``. Stages cache their results under outputs/drivers-lite/,
 so the report can be rebuilt without recomputing. Single process; run it niced. Pilot
-circuits are the 2025 sessions that pass the registration gate (at most four).
+circuits are the 2025 sessions that pass the registration gate (at most four). The 2023
+and 2024 registrations are only used to check the proposed corridor-excursion gate on
+seasons it was not chosen on.
 Measured on the busy M3 Pro: registration ~2 s CPU per session, pilot ~80 s CPU for four
-sessions, tune ~45 s, injection ~2.5 min, report ~5 s.
+sessions, tune ~2 min, injection ~4 min, report ~10 s.
 
 Lockbox: the pilot circuits are real F1 circuits, several of them R-test. Only telemetry
 is registered and timed there. No agent, OCP or QSS lap is computed on them: the
@@ -47,6 +51,7 @@ TRACKS = Path("data/tracks/tumftm")
 OUT = Path("outputs/drivers-lite")
 YEAR = 2025
 MAX_PILOT = 4
+SYS_OFFSET_M = 1.0      # per-car along-track position offset in the persistent-error scenario
 TUNE_CIRCUITS = ["Catalunya", "Hockenheim"]      # R-dev geometry only
 QSS_CHECK_CIRCUITS = ["Sepang", "Nuerburgring"]  # R-dev, not used for tuning
 
@@ -74,9 +79,9 @@ def load_pickle(name):
 # ----------------------------------------------------------------------------- stages
 
 
-def stage_registration():
+def stage_registration(year=YEAR):
     rows = []
-    for meta, d in sessions():
+    for meta, d in sessions(year):
         c = CIRCUITS.get(meta["circuit"])
         if c is None or c.tumftm is None:
             rows.append({"circuit": meta["circuit"], "key": meta["key"], "tumftm": None,
@@ -108,7 +113,8 @@ def stage_registration():
               f"{r['reason']}  "
               f"[{r['cpu_s']:.0f} s cpu]", flush=True)
     OUT.mkdir(parents=True, exist_ok=True)
-    (OUT / "registration.json").write_text(json.dumps(rows, indent=1))
+    name = "registration.json" if year == YEAR else f"registration_{year}.json"
+    (OUT / name).write_text(json.dumps(rows, indent=1))
 
 
 def pilot_sessions():
@@ -142,8 +148,10 @@ def _feed_properties():
     return dl, dc, sigma
 
 
-TUNE_GRID = [dict(jerk_psd=q, sigma_speed=sv) for q in (100.0, 400.0, 3e3, 2e4)
-             for sv in (0.35, 0.7, 1.2)]
+# The first grid (jerk 100-2e4, speed sigma 0.35-1.2) put the optimum at its corner on
+# both axes, so it now extends below and above it.
+TUNE_GRID = [dict(jerk_psd=q, sigma_speed=sv) for q in (25.0, 50.0, 100.0, 400.0, 3e3, 2e4)
+             for sv in (0.35, 0.7, 1.2, 2.0, 3.5, 6.0)]
 
 
 def stage_tune():
@@ -227,6 +235,23 @@ def stage_injection(pairs=10, reps=2, laps_per_driver=3):
         out["qss"][name] = rec
         print(f"{name} (QSS profile): [{time.process_time() - c0:.0f} s cpu]", flush=True)
     out["qss_config"] = qss_cfg
+    # Persistent per-car errors (a scenario, not a measurement): the same runs with a
+    # line pattern shared by all of a driver's laps, as large as one lap's calibrated
+    # wobble, and a per-car along-track position offset of sd SYS_OFFSET_M. Only these
+    # terms differ (separate random stream), so the difference is what they add.
+    out["systematic"], out["systematic_config"] = {}, {}
+    for r in pilot_sessions():
+        res = load_pickle(f"pilot_{r['tumftm']}.pkl")
+        c0 = time.process_time()
+        cal = out["calibration"][r["tumftm"]]
+        scfg = replace(cal.config(SynthConfig(pos_sigma=res.pos_sigma)),
+                       driver_wobble_sd=cal.wobble_sd, car_offset_sd=SYS_OFFSET_M)
+        out["systematic"][r["tumftm"]] = recovery.run(
+            res.model(), recovery.DEFAULT_EFFECTS, pairs=pairs, laps_per_driver=laps_per_driver,
+            reps=reps, cfg=cfg, synth_cfg=scfg, seed=100, held_out=True, natural=cal.natural)
+        out["systematic_config"][r["tumftm"]] = scfg
+        print(f"{r['tumftm']} (persistent per-car errors): "
+              f"[{time.process_time() - c0:.0f} s cpu]", flush=True)
     save(out, "injection.pkl")
 
 
@@ -242,5 +267,9 @@ STAGES = {"registration": stage_registration, "pilot": stage_pilot, "tune": stag
 if __name__ == "__main__":
     ap = argparse.ArgumentParser()
     ap.add_argument("stage", choices=list(STAGES))
+    ap.add_argument("--year", type=int, default=YEAR, help="registration stage only")
     args = ap.parse_args()
-    STAGES[args.stage]()
+    if args.stage == "registration":
+        stage_registration(args.year)
+    else:
+        STAGES[args.stage]()
