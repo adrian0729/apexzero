@@ -599,7 +599,8 @@ def prefix_multipliers(lam: tuple[np.ndarray, np.ndarray], T_prev: int, N: int, 
 
 def solve_continuation(solver_for, track: Track, x0: np.ndarray, horizons, first_guess,
                        extend, overlap: int = 20, ctx: np.ndarray | None = None,
-                       p: VehicleParams = F1_2025, warm_multipliers: bool = False) -> list[WindowResult]:
+                       p: VehicleParams = F1_2025, warm_multipliers: bool = False,
+                       previous: WindowResult | None = None) -> list[WindowResult]:
     """Horizon continuation: solve a short window, then each next one from the previous
     optimum.
 
@@ -609,19 +610,20 @@ def solve_continuation(solver_for, track: Track, x0: np.ndarray, horizons, first
     and continued by ``extend(state, n)`` -> (xs [n+1, 8] starting at state, acts [n, 2]).
     ``horizons`` (control steps) usually ascend; a stage may also be *shorter* than its
     predecessor, which re-solves that window from a longer optimum (a "lookahead polish":
-    a different start that can reach a better local optimum). ``solver_for(steps)``
-    returns the WindowSolver for a window length. With ``warm_multipliers`` the kept
-    prefix's multipliers are passed on too (the solver's ``warm_ipopt`` options decide how
-    IPOPT uses them).
+    a different start that can reach a better local optimum). The first stage starts from
+    ``first_guess``, or continues from ``previous`` if given. ``solver_for(steps)`` returns
+    the WindowSolver for a window length. With ``warm_multipliers`` the kept prefix's
+    multipliers are passed on too (the solver's ``warm_ipopt`` options decide how IPOPT
+    uses them).
     """
     results: list[WindowResult] = []
-    for k, T in enumerate(horizons):
+    for T in horizons:
         lam0 = None
-        if k == 0:
+        prev = results[-1] if results else previous
+        if prev is None:
             xs, acts = (np.asarray(v, float) for v in first_guess)
             xs, acts = xs[: T + 1], acts[:T]
         else:
-            prev = results[-1]
             N = max(min(len(prev.a), T) - overlap, 1)
             xe, ae = extend(prev.x[N], T - N)
             xs = np.vstack([prev.x[: N + 1], np.asarray(xe)[1:]])

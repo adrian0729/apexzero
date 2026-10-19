@@ -269,6 +269,11 @@ def test_continuation_keeps_the_prefix_and_extends_it():
     np.testing.assert_array_equal(xs4[:17], res[2].x[:17])
     np.testing.assert_array_equal(a4[:16], res[2].a[:16])
     np.testing.assert_array_equal(a4[16:], -7.0)
+    # Continuing from an earlier result instead of a first guess.
+    solve_continuation(Stub, None, np.zeros(8), [12], None, extend, overlap=4, previous=res[0])
+    _, xs5, a5 = calls[4]
+    np.testing.assert_array_equal(a5[:6], res[0].a[:6])
+    np.testing.assert_array_equal(a5[6:], -7.0)
 
 
 def test_prefix_multipliers_follow_the_constraint_layout():
