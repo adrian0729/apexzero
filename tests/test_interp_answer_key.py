@@ -269,6 +269,46 @@ def test_backoff_key_is_slower_and_off_the_slip_limit(solved):
     print(f"\nbacked-off R40/90 W200 (warm): {solved.cpu[1]:.1f} CPU-s")
 
 
+def test_actuation_key_verifies_under_its_own_reward(solved):
+    """The min-time-in-actuation key (gamma = 1, action cost 1e-4) is replayed with its own
+    reward weights. ``replay.verify_window`` replays with the env's 0.02 and rejected every
+    such key in validation (V3: all 'unsolved' though IPOPT converged)."""
+    from apexzero.ocp.replay import verify_window
+    from apexzero.ocp.window import WindowResult, window_return
+
+    nom, bank, left = solved.nom, solved.bank, solved.cells[0]
+    t0 = time.process_time()
+    act = ak.actuation_key(bank, left, solved.cache, nominal=nom)
+    cpu = time.process_time() - t0
+    assert act.status == "verified", [(s.name, s.status, s.verified) for s in act.starts]
+    assert act.spec["gamma"] == 1.0 and act.spec["action_cost"] == 1e-4 and act.W == 200
+    assert act.replay["survives"] and abs(act.replay["rel"]) <= 1e-9
+    spec = WindowSpec(**act.spec)
+    assert window_return(act.x, act.a, spec) == pytest.approx(act.J, rel=1e-9)
+    # The cause: under the env's default action cost the same controls miss J* by far more
+    # than the 1e-6 tolerance.
+    track = bank.track(left.stim_id)
+    res = WindowResult(act.x, act.a, act.J, True, "Solve_Succeeded", 0, 0.0, 0,
+                       meta={"spec": dict(act.spec)})
+    assert not verify_window(res, track, act.x0, ctx=ak.key_ctx())
+    assert abs(res.meta["replay"]["rel"]) > 1e-5 and res.meta["replay"]["survives"]
+    assert ak.verify_key(res, track, act.x0, ctx=ak.key_ctx())
+    # The default spec's replay is the repo's, bit for bit.
+    rn = WindowResult(nom.x, nom.a, nom.J, True, "Solve_Succeeded", 0, 0.0, 0,
+                      meta={"spec": dict(nom.spec)})
+    rk = dataclasses.replace(rn, meta={"spec": dict(nom.spec)})
+    assert verify_window(rn, track, nom.x0, ctx=ak.key_ctx()) and ak.verify_key(rk, track, nom.x0,
+                                                                                ctx=ak.key_ctx())
+    assert rn.meta["replay"] == rk.meta["replay"]
+    # Still the min-time-in-actuation optimum: the nominal key is feasible for the same
+    # problem and scores no higher on its objective; both starts reach the same J*.
+    assert act.J >= window_return(nom.x, nom.a, spec) - 1e-9 * abs(act.J)
+    assert all(s.verified for s in act.starts)
+    assert max(s.J for s in act.starts) - min(s.J for s in act.starts) <= 1e-6 * abs(act.J)
+    print(f"\nactuation R40/90 W200: {cpu:.1f} CPU-s; "
+          f"starts {[(s.name, round(s.cpu_seconds, 1), s.iterations) for s in act.starts]}")
+
+
 def test_cached_keys_are_found_and_mirrored(solved):
     cache, bank, (left, right) = solved.cache, solved.bank, solved.cells
     again = ak.key_for(left, "nominal", cache=cache, bank=bank)
@@ -884,3 +924,88 @@ def test_a_beaten_mirrored_key_is_re_solved_as_the_cells_own(fake_solves, tmp_pa
     want = ak.expected_key_id(bank, right, "nominal")
     assert dev["replaced"] and new.key_id == want != mk.key_id
     assert ak.key_for(right, "nominal", cache=cache, bank=bank).key_id == want
+
+
+# ------------------------------------------------------------------------- V3 review fixes
+
+
+def _q_from_socp(bank_, c, x0, steps):
+    """A stand-in for start (3): the s-OCP guess (fake_socp) from x0."""
+    lm = bank_.stimuli[c.stim_id].landmarks
+    soc = fake_socp(SimpleNamespace(x0=x0, landmarks=lm, cell=c, phase=0), None)
+    return ak.socp_guess(soc, bank_.track(c.stim_id), x0, steps)
+
+
+def test_actuation_key_re_solves_records_from_before_its_own_replay(fake_solves, tmp_path):
+    """V3 review: the 12 actuation records solved before K15 (replayed with the env's action
+    cost, all 'unsolved') keep their ids, so a cached record without the K15 flag is
+    re-solved; a flagged one is a cache hit. Start (3), Q, is added as 6.2 does on the
+    validation set."""
+    f = fake_solves
+    bank, cache = FakeBank(), ak.KeyCache(tmp_path)
+    cell = TCell(cell_id=0, stim_id=0, pair_id=3, tiers=("V",), approach="A2", v0=40.0, D=200.0, W=400)
+    nb = ak.full_recipe(bank, cell, add_q_start=False)
+    act = ak.actuation_key(bank, cell, cache, nominal=nb, q_guess=_q_from_socp)
+    assert [s.name for s in act.starts] == ["socp", f"nominal:{nb.key_id}", "Q"]
+    assert act.status == "verified" and ak.ACTUATION_REPLAY_FLAG in act.flags
+    n = len(f.calls)
+    assert ak.actuation_key(bank, cell, cache, nominal=nb).key_id == act.key_id
+    assert len(f.calls) == n                                         # a hit: nothing solved
+    # A record from before K15: same id, no flag, 'unsolved' -> re-solved under the same id.
+    cache.put(dataclasses.replace(act, status="unsolved", flags=[], starts=act.starts[:2]))
+    again = ak.actuation_key(bank, cell, cache, nominal=nb, q_guess=_q_from_socp)
+    assert len(f.calls) == n + 3 and again.key_id == act.key_id and again.status == "verified"
+    assert ak.ACTUATION_REPLAY_FLAG in cache.get("actuation", act.key_id).flags
+    # force re-solves a current record too; with neither q_guess nor tables Q is skipped
+    act2 = ak.actuation_key(bank, cell, cache, nominal=nb, force=True)
+    assert len(f.calls) == n + 5 and "Q start skipped: no model tables" in act2.flags
+
+
+def test_fresh_cache_hides_records_cached_before_it(tmp_path):
+    """validate --force: every key of a job is re-solved once (records cached before the
+    view read as absent, the job's own writes are seen); s-OCPs and flags read through."""
+    cache = ak.KeyCache(tmp_path)
+    old = record(cell_id=1, kind="actuation")
+    cache.put(old)
+    view = ak.FreshCache(cache)
+    assert cache.get("actuation", old.key_id) is not None
+    assert view.get("actuation", old.key_id) is None and view.records("actuation") == []
+    view.put(dataclasses.replace(old, J=51.0))
+    assert view.get("actuation", old.key_id).J == 51.0 == cache.get("actuation", old.key_id).J
+    assert [r.key_id for r in view.records("actuation")] == [old.key_id]
+    view.set_flag("mirror_ok", False)
+    assert cache.get_flag("mirror_ok") is False and view.get_flag("mirror_ok") is False
+    assert view.alias("actuation", f"cell1_ph0_{ak._alias_tag(old)}") == old.key_id
+    stub = ak.FreshCache(SimpleNamespace(get=lambda kind, kid: (kind, kid)))
+    assert stub.get("socp", "s1") == ("socp", "s1") and stub.get("nominal", "k") is None
+    assert view.root == cache.root
+
+
+def test_v3_is_not_passed_by_cells_it_could_not_judge(fake_solves, monkeypatch):
+    """V3 review: a cell whose actuation key is not verified was recorded and skipped, and
+    V3 passed with nothing evaluated. It is now unevaluated and V3 fails; multi-basin keys
+    are listed with the effect of every near-equal start; the band can be V8's b."""
+    bank = FakeBank()
+    cell = TCell(cell_id=0, stim_id=0, pair_id=3, tiers=("V",), approach="A2", v0=40.0, D=200.0, W=400)
+    real = ak.actuation_key
+    monkeypatch.setattr(ak, "actuation_key", lambda *a, **k: dataclasses.replace(
+        real(*a, **k), status="unsolved"))
+    v3 = ak.v3_objective(bank, [cell])
+    assert not v3.passed and v3.details["unevaluated"] == [0] and v3.details["blocking"] == []
+    assert v3.details["cells"][0]["status"] == ("verified", "unsolved")
+    monkeypatch.setattr(ak, "actuation_key", lambda *a, **k: dataclasses.replace(
+        real(*a, **k), multi_basin=True))
+    v3 = ak.v3_objective(bank, [cell])
+    assert v3.passed and v3.details["multi_basin"] == [0]
+    assert set(v3.details["cells"][0]["objective_e_ve_near_equal"]) == {"socp", "nominal:" + (
+        ak.full_recipe(bank, cell).key_id)}
+    # The verdict on JSON-shaped details (str keys, None for nan) at a given band.
+    cells = {"1": {"objective_e_ve": -0.045, "multi_basin": {"nominal": False, "actuation": True}},
+             "2": {"objective_e_ve": 0.01}, "3": {"status": ["verified", "unsolved"]},
+             "4": {"objective_e_ve": None}}
+    v = ak.v3_verdict(cells, 0.075)
+    assert v["blocking"] == ["1"] and v["unevaluated"] == ["3", "4"] and v["multi_basin"] == ["1"]
+    assert not v["passed"]
+    v = ak.v3_verdict({k: cells[k] for k in ("1", "2")}, 0.10)
+    assert v["passed"] and v["blocking"] == [] and v["band"] == 0.10
+    assert not ak.v3_verdict({}, 0.10)["passed"]                    # nothing judged

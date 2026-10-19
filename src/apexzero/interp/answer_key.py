@@ -24,12 +24,13 @@ Recipe for agent-free keys (6.2): pinned s-OCP to s_c1 + 600 m -> ``min_time_gue
 with a straight full-throttle (lane-keeping) tail -> continuation over the stages {200, 400,
 800} up to W (a stage ending before s_c1 + 300 m on the s-OCP's time line is skipped) from up
 to three starts (the s-OCP guess, the neighbouring larger-R key re-timed in s, the agent-free
-Q controller's rollout) -> highest J among the starts that pass ``verify_window`` (the
-``best_verified`` rule). IPOPT max_iter 800 per stage and 400 CPU-s per start (each IPOPT call
-gets the start's remaining budget, rounded up to 50 s, and a start that runs over counts as
-capped); a capped start counts as failed; if every start fails, one retry at max_iter 3000,
-else "unsolved" (or "infeasible (bound)" when the point-mass certificate says so). No agent
-rollout is ever a start of an agent-free key.
+Q controller's rollout) -> highest J among the starts that pass ``verify_key`` (the
+``best_verified`` rule; ``verify_window`` replayed under the key's own reward weights). IPOPT
+max_iter 800 per stage and 400 CPU-s per start (each IPOPT call gets the start's remaining
+budget, rounded up to 50 s, and a start that runs over counts as capped); a capped start
+counts as failed; if every start fails, one retry at max_iter 3000, else "unsolved" (or
+"infeasible (bound)" when the point-mass certificate says so). No agent rollout is ever a
+start of an agent-free key.
 
 The backed-off key needs no recompile: ``WindowSolver.parameters`` passes ``p.alpha_max`` as the
 last solver parameter (the path constraint is alpha / alpha_max, its bound 1 - slip_safety /
@@ -169,7 +170,7 @@ class StartRecord:
                               # | 'retry' | 'agent:<agent>' (6.3 re-solve) | 'nominal:<key_id>'
     J: float                  # nan if the start failed
     success: bool             # last stage's WindowResult.success (and not capped)
-    verified: bool            # replay.verify_window
+    verified: bool            # verify_key (replay.verify_window, the key's own reward)
     capped: bool              # hit max_iter or the CPU cap: counts as failed
     status: str
     iterations: int
@@ -1101,11 +1102,61 @@ def _max_slip(x: np.ndarray, p: VehicleParams) -> float:
     return float(max(np.max(np.abs(fo.alpha_f)), np.max(np.abs(fo.alpha_r))))
 
 
+def replay_key(track: Track, x0: np.ndarray, acts: np.ndarray, spec: dict,
+               ctx: np.ndarray | None = None, hidden_mu: float = 1.0
+               ) -> tuple[float, bool, np.ndarray]:
+    """``ocp.replay.replay_window`` with the reward the key was solved for: the env's
+    ``action_cost`` and ``progress_scale`` are the spec's (as are gamma and substeps, as
+    there). The repo copy builds ``EnvParams`` with the env's default weights, so a key solved
+    with another action cost (the min-time-in-actuation key, 1e-4 against 0.02) replays to a
+    return ~3e-4 off its J* and never verifies (V3). With the default spec the env is the
+    repo's, step for step."""
+    import jax
+    import jax.numpy as jnp
+
+    from apexzero.env import racing
+    from apexzero.vehicle.sim import track_arrays
+
+    _x64()
+    spec = {**dataclasses.asdict(WindowSpec()), **(spec or {})}
+    params = racing.EnvParams(window_steps=10**9, substeps=int(spec["substeps"]),
+                              action_cost=float(spec["action_cost"]),
+                              progress_scale=float(spec["progress_scale"]))
+    tr = track_arrays(track, dtype=jnp.float64)
+    c = racing.default_context() if ctx is None else jnp.asarray(ctx)
+    st = racing.EnvState(x=jnp.asarray(x0, jnp.float64), prev_action=jnp.zeros(2), accel=jnp.zeros(2),
+                         ctx=c.astype(jnp.float64), hidden_mu=jnp.asarray(hidden_mu, jnp.float64),
+                         t=jnp.array(0), slow=jnp.array(0.0), s0=jnp.asarray(x0[0], jnp.float64))
+
+    def body(carry, a):
+        st, alive = carry
+        _, st2, r, term, _, _ = racing.step_no_reset(st, a, tr, params)
+        return (st2, alive & ~term), (st2.x, r, alive & ~term)
+
+    _, (xs, rs, alive) = jax.lax.scan(body, (st, jnp.array(True)), jnp.asarray(acts, jnp.float64))
+    rs = np.asarray(rs)
+    ret = float(np.sum(float(spec["gamma"]) ** np.arange(len(rs)) * rs))
+    return ret, bool(np.asarray(alive).all()), np.vstack([np.asarray(x0)[None], np.asarray(xs)])
+
+
+def verify_key(res: WindowResult, track: Track, x0: np.ndarray, ctx: np.ndarray | None = None,
+               hidden_mu: float = 1.0, rtol: float = REPLAY_RTOL) -> bool:
+    """``ocp.replay.verify_window`` on ``replay_key``: the solve succeeded, the replay under the
+    key's own reward survives every step and reproduces J* within ``rtol``. Recorded in
+    ``res.meta['replay']`` as there."""
+    ret, alive, xr = replay_key(track, x0, res.a, res.meta.get("spec", {}), ctx, hidden_mu)
+    rel = (ret - res.value) / abs(res.value)
+    ok = bool(res.success and alive and abs(rel) <= rtol)
+    res.meta["replay"] = {"return": ret, "rel": rel, "survives": alive, "verified": ok,
+                          "max_state_dev": float(np.max(np.abs(xr - res.x)))}
+    return ok
+
+
 def _run_start(prob: _Problem, name: str, first_guess: tuple[np.ndarray, np.ndarray],
                extend: Callable, stages: tuple[int, ...], max_iter: int
                ) -> tuple[StartRecord, WindowResult | None]:
     """One start through the continuation stages (``window.solve_continuation`` one stage at a
-    time, so the start's CPU budget is checked between stages), then ``verify_window``."""
+    time, so the start's CPU budget is checked between stages), then ``verify_key``."""
     used, iters, chain, rounds = 0.0, 0, [], []
     prev_good: WindowResult | None = None
     last: WindowResult | None = None
@@ -1139,7 +1190,7 @@ def _run_start(prob: _Problem, name: str, first_guess: tuple[np.ndarray, np.ndar
     verified, replay_cpu, measures = False, 0.0, {}
     if success:
         c0 = time.process_time()
-        verified = verify_window(final, prob.track, prob.x0, ctx=prob.ctx)
+        verified = verify_key(final, prob.track, prob.x0, ctx=prob.ctx)
         replay_cpu = time.process_time() - c0
         slip = _max_slip(final.x, prob.p)
         final.meta["replay"]["max_slip"] = slip
@@ -1642,13 +1693,25 @@ def no_return(viability: list[KeyRecord], run: Trajectory, key: Trajectory) -> N
     return NoReturn(s=None, certified=False, dv=np.nan, s_last_viable=last_ok)
 
 
+# Marks an actuation key whose starts were verified with ``verify_key`` (its own reward,
+# K15). Records solved before K15 were replayed with the env's action cost, came back
+# 'unsolved', and keep their ids (the id hashes the problem, not the code), so a cached
+# actuation record without this flag is re-solved (K16).
+ACTUATION_REPLAY_FLAG = "replay under the key's own reward (verify_key, K15)"
+
+
 def actuation_key(bank: StimulusBank, cell: Cell, cache: KeyCache | None = None, *,
                   tables: ModelTables | None = None, p: VehicleParams = F1_2025,
-                  nominal: KeyRecord | None = None, force: bool = False) -> KeyRecord:
+                  nominal: KeyRecord | None = None, force: bool = False,
+                  q_guess: Callable | None = None, q_cv: float = Q_CV_DEFAULT) -> KeyRecord:
     """Min-time in the agent's actuation: TO-OCP with WindowSpec(gamma=1.0, action_cost=1e-4)
-    (one compile per window length), validation cells only (V3). Starts: the s-OCP guess and
-    the nominal key re-timed (when given or cached), one stage at W (a continuation would
-    compile every stage length), and the one retry."""
+    (one compile per window length), validation cells only (V3). Starts (6.2 on the
+    validation set, one stage at W: a continuation would compile every stage length, K10):
+    (1) the s-OCP guess, (2) the nominal key re-timed (when given or cached), (3) the
+    agent-free Q controller's rollout (``q_guess(bank, cell, x0, steps)``, else
+    ``q_rollout_guess`` with ``tables`` and ``q_cv``; skipped, and flagged, without either:
+    6.2 adds it on the validation set), and the one retry. A cached record without
+    ``ACTUATION_REPLAY_FLAG`` predates K15's replay and is re-solved (K16)."""
     prob = _problem(bank, cell, "actuation", 0, p, spec=ACTUATION_SPEC, tables=tables)
     c0 = time.process_time()
     soc = _socp_for(prob, cache)
@@ -1658,7 +1721,7 @@ def actuation_key(bank: StimulusBank, cell: Cell, cache: KeyCache | None = None,
     kid = key_id("actuation", prob.row_hash, prob.x0, prob.W, prob.p, spec_w, {})
     if cache is not None and not force:
         hit = cache.get("actuation", kid)
-        if hit is not None:
+        if hit is not None and ACTUATION_REPLAY_FLAG in hit.flags:
             return hit
     if nominal is None and cache is not None:
         nominal = key_for(cell, "nominal", 0, cache=cache, bank=bank)
@@ -1667,14 +1730,25 @@ def actuation_key(bank: StimulusBank, cell: Cell, cache: KeyCache | None = None,
     def extend(state, n):
         return socp_guess(soc, prob.track, state, n, prob.p)
 
+    flags = [ACTUATION_REPLAY_FLAG]
     pairs = [_run_start(prob, "socp", first, extend, (prob.W,), IPOPT_STAGE_MAX_ITER)]
     if nominal is not None and nominal.status == "verified" and nominal.x is not None:
         g2 = retime(nominal, prob.x0, prob.W, track=prob.track, p=prob.p)
         pairs.append(_run_start(prob, f"nominal:{nominal.key_id}", g2, extend, (prob.W,),
                                 IPOPT_STAGE_MAX_ITER))
+    if q_guess is not None:
+        gq = q_guess(bank, cell, prob.x0, prob.W)
+    elif tables is not None:
+        gq = q_rollout_guess(bank, cell, prob.x0, prob.W, tables, q_cv)
+        flags.append(f"Q start c_v {q_cv:g}")          # recipe input, not part of the key id
+    else:
+        gq = None
+        flags.append("Q start skipped: no model tables")
+    if gq is not None:
+        pairs.append(_run_start(prob, "Q", gq, extend, (prob.W,), IPOPT_STAGE_MAX_ITER))
     if not any(sr.verified for sr, _ in pairs):
         pairs.append(_run_start(prob, "retry", first, extend, (prob.W,), RETRY_MAX_ITER))
-    rec = _record(prob, pairs, key_id_=kid, socp_id=soc.key_id, extra_cpu=socp_cpu)
+    rec = _record(prob, pairs, key_id_=kid, socp_id=soc.key_id, extra_cpu=socp_cpu, flags=flags)
     return _store(rec, cache)
 
 
@@ -2162,6 +2236,47 @@ class KeyCache:
         return h.hexdigest()
 
 
+class FreshCache:
+    """A ``KeyCache`` view for a forced re-solve that spans several calls (the validate
+    stage's ``--force``): a key record cached before the view was made reads as absent, so
+    each key is solved once and later reads in the same job get the new record. Writes go
+    to the cache. s-OCPs, aliases and flags read through: ``--force`` re-solves keys, as
+    ``full_recipe(force=True)`` does, not the s-OCPs they start from."""
+
+    def __init__(self, cache: KeyCache):
+        self.cache = cache
+        self.fresh: set[tuple[str, str]] = set()
+
+    @property
+    def root(self) -> Path:
+        return self.cache.root
+
+    def get(self, kind: str, key_id: str) -> KeyRecord | SocpKey | None:
+        if kind != "socp" and (kind, key_id) not in self.fresh:
+            return None
+        return self.cache.get(kind, key_id)
+
+    def put(self, rec: KeyRecord | SocpKey, aliases: tuple[str, ...] | None = None) -> Path:
+        self.fresh.add(("socp" if isinstance(rec, SocpKey) else rec.kind, rec.key_id))
+        return self.cache.put(rec, aliases)
+
+    def records(self, kind: str) -> list[KeyRecord | SocpKey]:
+        return [r for r in self.cache.records(kind)
+                if kind == "socp" or (kind, r.key_id) in self.fresh]
+
+    def set_alias(self, kind: str, tag: str, key_id: str) -> None:
+        self.cache.set_alias(kind, tag, key_id)
+
+    def alias(self, kind: str, tag: str) -> str | None:
+        return self.cache.alias(kind, tag)
+
+    def get_flag(self, name: str, default=None):
+        return self.cache.get_flag(name, default)
+
+    def set_flag(self, name: str, value) -> None:
+        self.cache.set_flag(name, value)
+
+
 def _key_to(rec: KeyRecord) -> tuple[dict, dict[str, np.ndarray]]:
     d = {f.name: getattr(rec, f.name) for f in dataclasses.fields(rec) if f.name not in _KEY_ARRAYS}
     d["starts"] = [dataclasses.asdict(s) for s in rec.starts]
@@ -2417,14 +2532,18 @@ def _t_at(rec_or_socp, s: float) -> float:
 
 def v3_objective(bank: StimulusBank, cells: list[Cell], cache: KeyCache | None = None, *,
                  tables: ModelTables | None = None, band: float = BAND_EXPECTED,
-                 log=None) -> ValidationResult:
+                 q_cv: float = Q_CV_DEFAULT, log=None) -> ValidationResult:
     """Objective effect (TO-OCP vs min-time in actuation) and discretisation effect (that vs
     s-OCP) on d_b, v_e, v_min and dt (time to s_c1 + 300 m); blocks only if the objective
-    effect on v_e (relative) exceeds b / 2, in which case P1 reports both keys."""
-    det, block = {}, []
+    effect on v_e (relative) exceeds b / 2, in which case P1 reports both keys
+    (``v3_verdict``; the validate stage re-judges every cell at V8's b). A cell whose
+    nominal or actuation key is not verified is not judged: it is listed as unevaluated and
+    V3 does not pass. Multi-basin keys (6.3) are listed, with the objective effect of every
+    start in the actuation key's near-equal set."""
+    det = {}
     for c in cells:
-        nom = full_recipe(bank, c, cache=cache, tables=tables)
-        act = actuation_key(bank, c, cache, tables=tables, nominal=nom)
+        nom = full_recipe(bank, c, cache=cache, tables=tables, q_cv=q_cv)
+        act = actuation_key(bank, c, cache, tables=tables, nominal=nom, q_cv=q_cv)
         soc = _socp_for(_problem(bank, c, "nominal", 0, tables=tables), cache)
         if nom.status != "verified" or act.status != "verified":
             det[c.cell_id] = {"status": (nom.status, act.status)}
@@ -2438,14 +2557,39 @@ def v3_objective(bank: StimulusBank, cells: list[Cell], cache: KeyCache | None =
         obj = {k: vals["actuation"][k] - vals["nominal"][k] for k in vals["nominal"]}
         disc = {k: vals["socp"][k] - vals["actuation"][k] for k in vals["nominal"]}
         e_obj = vals["actuation"]["v_e"] / vals["nominal"]["v_e"] - 1.0
+        e_n = {s.name: s.measures.get("v_e", np.nan) / vals["nominal"]["v_e"] - 1.0
+               for s in act.starts if s.name in act.near_equal}
         det[c.cell_id] = {"values": vals, "objective": obj, "discretisation": disc,
-                          "objective_e_ve": e_obj}
-        if abs(e_obj) > band / 2.0:
-            block.append(c.cell_id)
+                          "objective_e_ve": e_obj, "objective_e_ve_near_equal": e_n,
+                          "multi_basin": {"nominal": bool(nom.multi_basin),
+                                          "actuation": bool(act.multi_basin)}}
         if log is not None:
             log.step(note=f"V3 cell {c.cell_id}")
-    return ValidationResult("V3", not block, {"cells": det, "blocking": block, "band": band},
-                            "P1 reports both keys (objective effect on v_e > b / 2)")
+    v = v3_verdict(det, band)
+    return ValidationResult("V3", v["passed"], {"cells": det, **{k: v[k] for k in (
+        "blocking", "unevaluated", "multi_basin", "band")}},
+        "P1 reports both keys (objective effect on v_e > b / 2); unevaluated cells: re-solve")
+
+
+def v3_verdict(cells: dict, band: float) -> dict:
+    """V3's verdict at the band ``band`` over per-cell details (``v3_objective``'s, also
+    after a JSON round trip: str keys, None for nan). blocking: cells whose objective effect
+    on v_e exceeds band / 2; unevaluated: cells without a finite effect (a key not verified);
+    multi_basin: cells either of whose keys is multi-basin (6.3: listed). Passes only when
+    some cell was judged, none is unevaluated and none blocks."""
+    block, uneval, mb = [], [], []
+    for cid, d in cells.items():
+        e = (d or {}).get("objective_e_ve")
+        e = np.nan if e is None else float(e)
+        if not np.isfinite(e):
+            uneval.append(cid)
+            continue
+        if abs(e) > band / 2.0:
+            block.append(cid)
+        if any(bool(x) for x in ((d or {}).get("multi_basin") or {}).values()):
+            mb.append(cid)
+    return {"passed": bool(cells) and not uneval and not block, "blocking": block,
+            "unevaluated": uneval, "multi_basin": mb, "band": float(band)}
 
 
 def v4_spread(records: list[KeyRecord]) -> ValidationResult:
@@ -2782,6 +2926,9 @@ BUDGET_ITEMS = {
     "E1_twins": ("nominal", "P1"), "E2": ("nominal", "P1"), "E3": ("nominal", "P1"),
     "tierD_socp": ("socp", "P1"), "anchored_S": ("anchored", "P1"), "anchored_B": ("anchored", "P1"),
     "tierC": ("nominal", "P2"), "recovery": ("nominal", "P2"), "anchored_ckpt": ("anchored", "P2"),
+    # V7's remedy (6.5, V7 failed on speeds): phase-matched keys for the braking cells of the
+    # P1 and P2 nominal-key items too, each at the priority of its nominal key.
+    "phase_P1": ("warm", "P1"), "phase_P2": ("warm", "P2"),
 }
 # Budget rule 2's cuts: tier A 180 deg cells with R >= 35.8 (3 radii <= 55.9 x A1, A2, each a
 # nominal and a backed-off key; ruling R7 corrects the protocol's "5 geometries" and keeps the

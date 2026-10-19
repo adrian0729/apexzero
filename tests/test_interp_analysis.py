@@ -207,6 +207,7 @@ def _pair_runs(v_e, crashed=None, ctype=None, s_crash=None, has_brake=None, forc
                          s_crash=(s_crash or [np.nan] * n)[i], v_e=ve, e_ve=ve / 30.0 - 1,
                          e_ve_bo=ve / 28.0 - 1,
                          e_ve_ra=(e_ve_ra or [ve / 30.0 - 1] * n)[i],
+                         ra_key=e_ve_ra is not None,     # e_ve_ra given: a re-anchored key
                          v_e_star_ra=(v_ra or [30.0] * n)[i], v_min=ve - 5.0,
                          e_vmin=(ve - 5.0) / 25.0 - 1,
                          has_brake=(has_brake or [True] * n)[i],
@@ -298,6 +299,24 @@ def test_pair_values_reanchored_band_and_exclusions():
     keys = _pair_keys()
     keys["multi_basin"][:] = True
     assert A.pair_values(runs, keys, {"G1": REG}, B)["excluded"][0] == "multi_basin"
+
+
+def test_a1_runs_without_a_reanchored_key_fall_back_to_their_own_e_ve_bo():
+    """Review of the V7 remedy: an A1 run with no re-anchored key falls back to e_ve for
+    e_ve_ra and to its own e_ve_bo for e_ve_bo_ra (AD5, AD23). Scaling the fallback by
+    v_e*/v_e*bo moved the backed-off edge by the phase key's ratio once e_ve was judged
+    against a phase-matched key (v_e*_k 33 here against the u = 0 key's 30)."""
+    v = [33.0] * 8
+    runs = _pair_runs(v)                       # no re-anchored key: ra_key False
+    runs["e_ve"][:] = runs["e_ve_ra"][:] = 0.0  # against the phase key, v_e*_k = 33
+    keys = _pair_keys("A1", 600.0)
+    p = A.pair_values(runs, keys, {"G1": REG}, B)
+    assert p["uses_ra"][0] and p["ra_fallback"][0] == 8
+    assert p["e_ve_bo_ra"][0] == pytest.approx(33 / 28 - 1) == p["e_ve_bo"][0]
+    # with a re-anchored key the backed-off error stays scaled to it
+    runs["ra_key"][:] = True
+    p = A.pair_values(runs, keys, {"G1": REG}, B)
+    assert p["ra_fallback"][0] == 0 and p["e_ve_bo_ra"][0] == pytest.approx(30 / 28 - 1)
     # regimes: none without a regime table
     assert A.pair_values(runs, _pair_keys(), {}, B)["regime"][0] == ""
     for R, reg in ((6.0, "clip"), (9.0, "below"), (14.0, "tail"), (30.0, "bulk")):

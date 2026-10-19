@@ -923,10 +923,11 @@ def _key_job(job: dict) -> dict:
             out["keys"] = [_rec_summary(ak.key_for(c, "socp", cache=cache, bank=bank, solve=True,
                                                    tables=tables)) for c in cells]
         elif what == "validate_pair":
-            out["validation"] = _validate_pair(bank, cells, tables, cache, rk["q_cv"])
+            out["validation"] = _validate_pair(bank, cells, tables, cache, rk["q_cv"],
+                                               force=rk["force"])
         elif what == "v7":
             out["validation"], out["P"] = _validate_v7_cell(bank, cells[0], tables, cache,
-                                                            rk["q_cv"])
+                                                            rk["q_cv"], force=rk["force"])
         elif what == "v8":
             res, b = ak.v8_band(bank, cells, cache, tables=tables)
             out["validation"] = {"V8": _jsonable(res), "b": b}
@@ -1075,8 +1076,47 @@ def _version(bank, c) -> str:
     return bank.stimuli[c.stim_id].name.rsplit("/", 1)[-1]
 
 
-def _key_sets(bank, cells: list, both: bool) -> dict[str, list]:
-    """The cells of every budget item (protocol 3.5's key column, one direction)."""
+PHASE_ITEMS = ("phase", "phase_P1", "phase_P2")     # phase-matched keys at P0, P1, P2
+PHASE_R_MAX = 18.3      # 6.1: phase-matched keys on the A1 cells with R <= 18.3 (P2b, P7's null)
+
+
+def _core_phase_cell(bank, c) -> bool:
+    """Protocol 6.1's phase-matched cells: tier A at A1 with R <= 18.3 (20 geometries). They
+    back Δd_b, P2b and P7's key phase SD, and keep their keys whatever V7 says."""
+    sp = _spec(bank, c)
+    return bool("A" in c.tiers and c.approach == "A1" and sp is not None and sp.R <= PHASE_R_MAX)
+
+
+def _v7_failed(m) -> bool:
+    """Protocol 6.5: the manifest's validation V7 failed (on speeds, its only criterion).
+    Its remedy: phase-matched keys for every braking cell, and speed errors judged against
+    them (AD23)."""
+    from apexzero.interp import analysis as A
+
+    return A.v7_speeds_failed(getattr(m, "validation", None))
+
+
+def _run_table(agent: str, ts: int, rollouts, cells: list, bank, keys, tables, m=None):
+    """``analysis.run_table`` with AD23's speed-error keys set by the manifest's V7 verdict
+    (``m``, read when not given): the key at each run's phase when V7 failed on speeds."""
+    from apexzero.interp import analysis as A
+
+    return A.run_table(agent, ts, rollouts, cells, bank, keys, tables,
+                       speed_at_phase=_v7_failed(_manifest() if m is None else m))
+
+
+def _key_sets(bank, cells: list, both: bool, v7_failed: bool = False) -> dict[str, list]:
+    """The cells of every budget item (protocol 3.5's key column, one direction).
+
+    Phase-matched keys (``PHASE_ITEMS``): while V7 holds, protocol 6.1's set (A1, R <=
+    18.3, ``_core_phase_cell``) under 'phase'. When V7 failed on speeds (``v7_failed``,
+    protocol 6.5's remedy), every cell with an agent-free nominal key is a candidate: 'phase'
+    (P0) holds tier A (A1 and A2, the tier B cells shared with A1 included), E1's real and
+    isolated rungs and the validation cells (tier V: rolled out at the finals, read by P5;
+    their nominal keys come from the validate stage), 'phase_P1' E1's twins, E2 and E3,
+    'phase_P2' tier C and the recovery cells (tier B); tier G (flat nulls) and tier D (s-OCP
+    keys only) have none. Only braking candidates get keys (``_phase_targets``: known once
+    the nominal key is solved); the core cells keep theirs regardless."""
     cs = _one_direction(bank, cells, both)
     sets = {
         "nominal_A": [c for c in cs if "A" in c.tiers and c.approach in ("A1", "A2")],
@@ -1091,9 +1131,83 @@ def _key_sets(bank, cells: list, both: bool) -> dict[str, list]:
         "tierC": [c for c in cs if "C" in c.tiers],
         "recovery": [c for c in cs if c.approach == "REC"],
     }
-    sets["phase"] = [c for c in sets["nominal_A"] if c.approach == "A1"
-                     and _spec(bank, c) is not None and _spec(bank, c).R <= 18.3]
+    sets["phase"] = [c for c in sets["nominal_A"] if _core_phase_cell(bank, c)]
+    sets["phase_P1"], sets["phase_P2"] = [], []
+    if v7_failed:
+        seen: set[int] = set()
+
+        def fresh(xs: list) -> list:
+            out = [c for c in xs if c.cell_id not in seen]
+            seen.update(c.cell_id for c in out)
+            return out
+
+        sets["phase"] = fresh(sets["nominal_A"] + sets["nominal_E1"]
+                              + [c for c in cs if "V" in c.tiers])
+        sets["phase_P1"] = fresh(sets["E1_twins"] + sets["E2"] + sets["E3"])
+        sets["phase_P2"] = fresh(sets["tierC"] + sets["recovery"])
     return sets
+
+
+def _nominal_braking(bank, c, cache) -> bool | None:
+    """2.3's braking class of the cell's cached nominal u = 0 key (``_braking``); None while
+    no nominal key is cached."""
+    from apexzero.interp import answer_key as ak
+
+    rec = ak.key_for(c, "nominal", 0, cache=cache, bank=bank)
+    return None if rec is None else _braking(rec, c)
+
+
+def _phase_split(bank, cs: list, cache, v7_failed: bool) -> tuple[list, list]:
+    """(cells that get phase-matched keys, candidates whose braking class is not known yet).
+    While V7 holds: all of them (protocol 6.1's set), none unknown. When V7 failed on speeds
+    (6.5: "phase-matched keys for every braking cell"): the core cells
+    (``_core_phase_cell``) and every candidate whose cached nominal key brakes (2.3: a
+    sustained brake and v_min* < v0 - tau); flat cells, and cells whose nominal key is
+    unsolved, get none. A candidate without a cached nominal key is unknown (every one with
+    no ``cache``)."""
+    if not v7_failed:
+        return list(cs), []
+    keep, unknown = [], []
+    for c in cs:
+        if _core_phase_cell(bank, c):
+            keep.append(c)
+            continue
+        b = _nominal_braking(bank, c, cache) if cache is not None else None
+        if b:
+            keep.append(c)
+        elif b is None:
+            unknown.append(c)
+    return keep, unknown
+
+
+def _phase_targets(bank, cs: list, cache, v7_failed: bool, unknown: bool = False) -> list:
+    """The cells of a phase item that get phase-matched keys (``_phase_split``), in the
+    item's order. ``unknown`` also keeps the candidates whose nominal key is not solved yet:
+    the budget's upper bound before the nominal keys exist. Jobs are planned without it,
+    after the nominal keys are solved."""
+    keep, unk = _phase_split(bank, cs, cache, v7_failed)
+    ids = {c.cell_id for c in keep + (unk if unknown else [])}
+    return [c for c in cs if c.cell_id in ids]
+
+
+def _phase_jobs(bank, cs: list, cache, proj: dict, item: str, v7_failed: bool,
+                log=None) -> list[dict]:
+    """Phase-matched key jobs (u_1..u_3, ``_phase_indices``) for one phase item, planned
+    once its cells' nominal keys are solved: ``_phase_split`` (braking cells when V7
+    failed), then budget rule 2 (``_cut``). The log counts the flat or unsolved cells apart
+    from those with no cached nominal key (an errored job)."""
+    tg, unk = _phase_split(bank, cs, cache, v7_failed)      # tg in the item's order
+    keep = _cut(bank, tg, proj, item)
+    if v7_failed and log is not None:
+        # Cells without a cached nominal key (its job errored, or was not run) are counted
+        # apart from the flat and unsolved ones: a resumed run solves their keys.
+        _say(log, f"V7 remedy, {item}: {len(tg)} of {len(cs)} candidate cells get keys "
+                  f"(braking or core); {len(cs) - len(tg) - len(unk)} flat or unsolved "
+                  f"skipped; {len(unk)} without a nominal key skipped (errored or not "
+                  f"solved: a resumed keys run picks them up); {len(keep)} after budget "
+                  f"rule 2: {3 * len(keep)} phase-matched keys")
+    return [dict(what="phase", label=f"phase cell {c.cell_id}", cells=[c],
+                 phases=_phase_indices(c)) for c in keep]
 
 
 def _phase_indices(c) -> list[int]:
@@ -1149,41 +1263,73 @@ def _anchored_g_count(bank, cells: list) -> dict:
                 protocol=ANCHORED_G_PROTOCOL)
 
 
-def _rule2_cut_counts(bank, sets: dict) -> dict[str, int]:
+def _rule2_keeps_phase(bank, c) -> bool:
+    """Budget rule 2 keeps phase-matched keys for 180 deg cells only (a cell with no
+    CornerSpec, a real road, is no 180 deg cell), and never for a cell whose nominal key the
+    rule cuts (``budget_cut``: no nominal key to warm-start from)."""
+    sp = _spec(bank, c)
+    return bool(sp is not None and sp.theta_deg == 180.0 and not budget_cut(bank, c))
+
+
+def _rule2_cut_counts(bank, sets: dict, phase: dict | None = None) -> dict[str, int]:
     """Budget rule 2's credit per item, counted on the item sets the projection counts (one
     direction with the mirror shortcut, both without it): the nominal keys of the cut cells
-    (``budget_cut``: 6 with the shortcut, 12 without) and 3 phase-matched keys per non-180
-    deg phase cell. The backed-off item is the protocol's fixed one-direction estimate (66),
-    so its credit stays ``answer_key.DEFAULT_CUTS['backoff']`` (one per cut geometry and
-    approach)."""
+    (``budget_cut``: 6 with the shortcut, 12 without) and 3 phase-matched keys per phase
+    cell that ``_cut`` drops (``_rule2_keeps_phase``: non-180 deg cells; with V7's remedy
+    also real roads and the cut cells), per phase item. ``phase`` maps each phase item to
+    the cells its count was taken on (default: ``sets``' own phase items). The backed-off
+    item is the protocol's fixed one-direction estimate (66), so its credit stays
+    ``answer_key.DEFAULT_CUTS['backoff']`` (one per cut geometry and approach)."""
     from apexzero.interp import answer_key as ak
 
-    return {"nominal_A": sum(1 for c in sets["nominal_A"] if budget_cut(bank, c)),
-            "backoff": ak.DEFAULT_CUTS["backoff"],
-            "phase": 3 * sum(1 for c in sets["phase"] if _spec(bank, c).theta_deg != 180.0)}
+    phase = {k: sets.get(k, []) for k in PHASE_ITEMS} if phase is None else phase
+    out = {"nominal_A": sum(1 for c in sets["nominal_A"] if budget_cut(bank, c)),
+           "backoff": ak.DEFAULT_CUTS["backoff"]}
+    out.update({k: 3 * sum(1 for c in cs if not _rule2_keeps_phase(bank, c))
+                for k, cs in phase.items()})
+    return out
 
 
-def _budget(bank, cells: list, both: bool, m, workers: int) -> dict:
+def _budget(bank, cells: list, both: bool, m, workers: int, cache=None) -> dict:
+    """Protocol 10's projection under the budget rule. Phase-matched keys follow V7 (6.5):
+    the core A1 set while it holds; when it failed on speeds, the braking cells of every
+    nominal-key item at their nominal key's priority ('phase' P0, 'phase_P1', 'phase_P2'),
+    braking read from ``cache``'s nominal keys where solved and counted as braking where not
+    (an upper bound; ``proj['phase_keys']``)."""
     from apexzero.interp import answer_key as ak
 
     timings = dict(DEFAULT_TIMINGS)
     timings.update(m.budget.get("timings", {}))
     if "rollout_sps" in m.budget:
         timings["rollout_sps"] = min(m.budget["rollout_sps"].values())
-    sets = _key_sets(bank, cells, both)
+    v7_failed = _v7_failed(m)
+    sets = _key_sets(bank, cells, both, v7_failed)
+    split = {k: _phase_split(bank, sets[k], cache, v7_failed) for k in PHASE_ITEMS}
+    ph = {}
+    for k, (keep, unk) in split.items():        # counted: braking or not yet known
+        ids = {c.cell_id for c in keep + unk}
+        ph[k] = [c for c in sets[k] if c.cell_id in ids]
     n_a2 = sum(1 for c in cells if c.approach == "A2")
     anchored_g = _anchored_g_count(bank, cells)
     counts = {"layout_socp": n_a2, "v8_socp": 36, "validation": 30,
               "nominal_A": len(sets["nominal_A"]), "nominal_E1": len(sets["nominal_E1"]) or 30,
-              "null": len(sets["null"]), "backoff": 66, "phase": 3 * len(sets["phase"]),
+              "null": len(sets["null"]), "backoff": 66, "phase": 3 * len(ph["phase"]),
               "anchored_G": anchored_g["n"],
               "viability": 200, "E1_twins": len(sets["E1_twins"]) or 15,
               "E2": len(sets["E2"]) or 39, "E3": len(sets["E3"]), "tierD_socp": 140,
               "anchored_S": 50, "anchored_B": 108, "tierC": len(sets["tierC"]),
               "recovery": len(sets["recovery"]), "anchored_ckpt": 216}
-    proj = ak.project_budget(timings, counts, cut_counts=_rule2_cut_counts(bank, sets),
+    if v7_failed:
+        counts.update(phase_P1=3 * len(ph["phase_P1"]), phase_P2=3 * len(ph["phase_P2"]))
+    proj = ak.project_budget(timings, counts, cut_counts=_rule2_cut_counts(bank, sets, ph),
                              workers=workers)
     proj["anchored_G"] = anchored_g
+    proj["phase_keys"] = dict(
+        v7_failed=v7_failed, rule="every braking cell with a nominal key (V7 failed on speeds)"
+        if v7_failed else "A1, R <= 18.3 (protocol 6.1)",
+        candidates={k: len(sets[k]) for k in PHASE_ITEMS},
+        counted={k: len(ph[k]) for k in PHASE_ITEMS},
+        braking_unknown={k: len(split[k][1]) for k in PHASE_ITEMS})
     proj["timings_used"] = timings
     proj["timings_source"] = "validation" if m.budget.get("timings") else "protocol defaults"
     return proj
@@ -1207,9 +1353,21 @@ def _cut(bank, cells: list, proj: dict, item: str) -> list:
         return cells
     if item in ("nominal_A", "backoff"):
         return [c for c in cells if not budget_cut(bank, c)]
-    if item == "phase":
-        return [c for c in cells if _spec(bank, c).theta_deg == 180.0]
+    if item in PHASE_ITEMS:
+        return [c for c in cells if _rule2_keeps_phase(bank, c)]
     return cells
+
+
+def _refresh_phase_cycles(bank, cells: list, cache, log, why: str) -> list:
+    """D26's phase cycles from the nominal keys solved so far (``refresh_phase_cycles``),
+    saved into the design only when some P changed."""
+    from apexzero.interp import answer_key as ak
+
+    ak._x64()
+    new = ak.refresh_phase_cycles(bank, cells, cache)
+    if any(a.P != b.P for a, b in zip(cells, new, strict=True)):
+        _, new = _save_cells(bank, new, log, why)
+    return new
 
 
 def _series_jobs(bank, cells: list, label: str) -> list[dict]:
@@ -1269,7 +1427,16 @@ def stage_keys(args: argparse.Namespace) -> None:
         _say(log, f"start (3): Q with c_v = {q_cv if q_cv is not None else ak_default_cv()} "
                   f"({'tuned' if q_cv is not None else 'default: controls not tuned yet'})")
         both = not cache.get_flag("mirror_ok", False)
-        proj = _budget(bank, cells, both, m, args.workers)
+        v7_failed = _v7_failed(m)
+        if v7_failed:
+            _say(log, "V7 failed on speeds (validation): phase-matched keys for every braking "
+                      "cell with a nominal key, each item after its nominal keys (protocol 6.5); "
+                      "speed errors are judged against them (AD23)")
+        elif not ((getattr(m, "validation", None) or {}).get("V7") or {}).get("passed", True):
+            _say(log, "V7 did not pass but listed no failed cell (not judged: no phase-matched "
+                      "validation keys); protocol 6.1's phase set only until validation "
+                      "judges it")
+        proj = _budget(bank, cells, both, m, args.workers, cache=cache)
         agents.update_manifest(lambda mm: mm.budget.update(projection=proj, cuts=proj["cuts"],
                                                            priority=args.priority))
         cells = _flag_budget_cuts(bank, cells, proj, log)
@@ -1285,7 +1452,7 @@ def stage_keys(args: argparse.Namespace) -> None:
         def _pool_kw(jobs):
             return _pool([dict(j, **kw) for j in jobs], args.workers, log)
 
-        sets = _key_sets(bank, cells, both)
+        sets = _key_sets(bank, cells, both, v7_failed)
         results: list[dict] = []
         # P0: nominal keys of tier A (series), E1 real / isolated, and the nulls.
         jobs = _series_jobs(bank, _cut(bank, sets["nominal_A"], proj, "nominal_A"), "tier A")
@@ -1299,15 +1466,24 @@ def stage_keys(args: argparse.Namespace) -> None:
         ak._x64()
         cells = ak.refresh_phase_cycles(bank, cells, cache)
         _, cells = _save_cells(bank, cells, log, "phase cycles from the nominal keys")
-        sets = _key_sets(bank, cells, both)
+        sets = _key_sets(bank, cells, both, v7_failed)
         bo = [c for c in _cut(bank, sets["nominal_A"], proj, "backoff")
               if _braking(ak.key_for(c, "nominal", 0, cache=cache, bank=bank), c)]
-        ph = _cut(bank, sets["phase"], proj, "phase")
         jobs = [dict(what="backoff", label=f"backoff cell {c.cell_id}", cells=[c]) for c in bo]
-        jobs += [dict(what="phase", label=f"phase cell {c.cell_id}", cells=[c],
-                      phases=_phase_indices(c)) for c in ph]
+        jobs += _phase_jobs(bank, sets["phase"], cache, proj, "phase", v7_failed, log)
         log.set_total(log.done + len(jobs))
         results += _pool_kw(jobs)
+
+        def _phase_after(item: str, why: str):
+            # V7's remedy for a P1 / P2 item, once its nominal keys exist: their phase
+            # cycles (D26) first, so the phases are solved where the runs will start.
+            nonlocal cells, sets
+            cells = _refresh_phase_cycles(bank, cells, cache, log, why)
+            sets = _key_sets(bank, cells, both, v7_failed)
+            pj = _phase_jobs(bank, sets[item], cache, proj, item, v7_failed, log)
+            log.set_total(log.done + len(pj))
+            return _pool_kw(pj)
+
         if "P1" in prios:
             jobs = [dict(what="nominal", label=f"P1 {bank.stimuli[c.stim_id].name}", cells=[c])
                     for c in sets["E1_twins"] + sets["E2"]]
@@ -1319,12 +1495,16 @@ def stage_keys(args: argparse.Namespace) -> None:
             log.set_total(log.done + len(jobs))
             results += _pool_kw(jobs)
             results += _tier_d_doses(bank, cells, dsets, cond_a, cache, args.workers, log)
+            if v7_failed:
+                results += _phase_after("phase_P1", "phase cycles from the P1 nominal keys")
         if "P2" in prios:
             jobs = _series_jobs(bank, sets["tierC"], "tier C")
             jobs += [dict(what="nominal", label=f"recovery cell {c.cell_id}", cells=[c])
                      for c in sets["recovery"]]
             log.set_total(log.done + len(jobs))
             results += _pool_kw(jobs)
+            if v7_failed:
+                results += _phase_after("phase_P2", "phase cycles from the P2 nominal keys")
         # Cached measures computed by older measures code are recomputed from the stored
         # solutions; keys whose multi-basin measures moved are listed for a re-solve.
         ak._x64()
@@ -1467,17 +1647,21 @@ V7_RT = ((9.4, 90.0), (13.1, 90.0), (18.3, 90.0), (28.6, 90.0), (55.9, 90.0),
          (9.4, 180.0), (13.1, 180.0), (18.3, 180.0), (28.6, 180.0), (55.9, 180.0))
 
 
-def _validate_pair(bank, pair: list, tables, cache, q_cv: float | None = None) -> dict:
+def _validate_pair(bank, pair: list, tables, cache, q_cv: float | None = None,
+                   force: bool = False) -> dict:
     """One validation pair (left, right) in one worker, so no key is solved twice: V2's two
     horizons (the left member), V3's actuation key (A1 and A2 only), V5 (left and right) and
-    the backed-off key (V9)."""
+    the backed-off key (V9). ``force`` (--force) re-solves every key of the pair once,
+    through ``answer_key.FreshCache`` (records cached before the job read as absent)."""
     from apexzero.interp import answer_key as ak
 
+    cache = ak.FreshCache(cache) if force and cache is not None else cache
+    q_cv = q_cv or ak_default_cv()
     left = next(c for c in pair if _direction(bank, c) == 1)
     out = {"V2": _jsonable(ak.v2_horizon(bank, [left], cache, tables=tables))}
-    nom = ak.full_recipe(bank, left, cache=cache, tables=tables, q_cv=q_cv or ak_default_cv())
+    nom = ak.full_recipe(bank, left, cache=cache, tables=tables, q_cv=q_cv)
     if left.approach in ("A1", "A2"):
-        out["V3"] = _jsonable(ak.v3_objective(bank, [left], cache, tables=tables))
+        out["V3"] = _jsonable(ak.v3_objective(bank, [left], cache, tables=tables, q_cv=q_cv))
     out["V5"] = _jsonable(ak.v5_mirror(bank, pair, cache, tables=tables))
     if _braking(nom, left):
         bo = ak.warm_key(nom, bank, left, "backoff", cache=cache, tables=tables)
@@ -1487,10 +1671,13 @@ def _validate_pair(bank, pair: list, tables, cache, q_cv: float | None = None) -
     return out
 
 
-def _validate_v7_cell(bank, cell, tables, cache, q_cv: float | None = None) -> tuple[dict, float]:
-    """V7 on one tier A cell: the nominal key, its phase cycle P, and phases u_1..u_3."""
+def _validate_v7_cell(bank, cell, tables, cache, q_cv: float | None = None,
+                      force: bool = False) -> tuple[dict, float]:
+    """V7 on one tier A cell: the nominal key, its phase cycle P, and phases u_1..u_3
+    (``force``: every one re-solved once, as in ``_validate_pair``)."""
     from apexzero.interp import answer_key as ak
 
+    cache = ak.FreshCache(cache) if force and cache is not None else cache
     nom = ak.full_recipe(bank, cell, cache=cache, tables=tables, q_cv=q_cv or ak_default_cv())
     P = ak.phase_cycle(bank, cell, nominal=nom)
     c = dataclasses.replace(cell, P=P)
@@ -1503,13 +1690,38 @@ def _validate_v7_cell(bank, cell, tables, cache, q_cv: float | None = None) -> t
     return {"keys": keys, "cpu_nominal": float(nom.cpu_seconds), "cpu_warm": cpu}, P
 
 
+def _v3_merge(pr: list[dict], by_id: dict, b: float) -> dict:
+    """V3 over the validation pair jobs (``pr``): every A1 / A2 pair's cells judged at V8's
+    band b (protocol 6.5: blocks if the objective effect on v_e exceeds b / 2; the expected
+    0.075 when V8 gave no b), by ``answer_key.v3_verdict``. A cell whose keys are not
+    verified, and an A1 / A2 pair job that returned no V3 (an error), leave V3 unevaluated
+    there, so it does not pass."""
+    from apexzero.interp import answer_key as ak
+
+    band = float(b) if np.isfinite(b) else ak.BAND_EXPECTED
+    cells, missing = {}, []
+    for r in pr:
+        if not any(by_id[i].approach in ("A1", "A2") for i in r.get("cells", []) if i in by_id):
+            continue
+        d = r.get("validation", {}).get("V3")
+        if d is None:
+            missing.append(r["label"])
+            continue
+        cells.update(d.get("details", {}).get("cells", {}))
+    v = ak.v3_verdict(cells, band)
+    return dict(v, passed=bool(v["passed"] and not missing), missing_pairs=missing,
+                cells={r["label"]: r.get("validation", {}).get("V3") for r in pr})
+
+
 def _validate_keys(args) -> None:
     """Step 4's V1-V11 on the validation stimuli (protocol 6.5) in a pool of --workers: V10
     and V8 one job each; one job per validation pair (V2, V3, V5, backed-off key); one per
-    V7 cell. Then V1, V4, V6, V9, V11 on the records, V5's verdict as the cache's mirror_ok
-    flag, b from V8, V2's W = 800 classes applied to the cells, and the measured CPU per key
-    item projected under the budget rule. Resumes from the key cache (--force re-solves).
-    Refused after the tag."""
+    V7 cell. Then V1, V4, V6, V9, V11 on the records, V3 merged and judged at V8's b
+    (``_v3_merge``), V5's verdict as the cache's mirror_ok flag, b from V8, V2's W = 800
+    classes applied to the cells, and the measured CPU per key item projected under the
+    budget rule. Resumes from the key cache (--force re-solves every key of the pair and V7
+    jobs once, ``answer_key.FreshCache``; actuation keys from before K15 are re-solved
+    without it, K16). Refused after the tag."""
     from apexzero.interp import agents, io
     from apexzero.interp import answer_key as ak
 
@@ -1549,14 +1761,11 @@ def _validate_keys(args) -> None:
         v2_fail = sorted({x for r in pr for x in r.get("validation", {}).get("V2", {}).get(
             "details", {}).get("use_W800_for", [])})
         v2_ok = all(r.get("validation", {}).get("V2", {}).get("passed", False) for r in pr)
-        v3_block = [x for r in pr for x in r.get("validation", {}).get("V3", {}).get(
-            "details", {}).get("blocking", [])]
         v5_ok = bool(pr) and all(r.get("validation", {}).get("V5", {}).get("passed", False) for r in pr)
         cache.set_flag("mirror_ok", v5_ok)
         val["V2"] = dict(passed=v2_ok, use_W800_for=v2_fail,
                          cells={r["label"]: r.get("validation", {}).get("V2") for r in pr})
-        val["V3"] = dict(passed=not v3_block, blocking=v3_block,
-                         cells={r["label"]: r.get("validation", {}).get("V3") for r in pr})
+        val["V3"] = _v3_merge(pr, {c.cell_id: c for c in vcells}, b)
         val["V5"] = dict(passed=v5_ok, pairs={r["label"]: r.get("validation", {}).get("V5") for r in pr})
         recs = {r.key_id: r for r in _all_records(cache)}
         vrecs = [recs[k] for r in pr for k in (r.get("validation", {}).get("nominal"),) if k in recs]
@@ -1595,7 +1804,7 @@ def _validate_keys(args) -> None:
             m.lists["validation_errors"] = _errors(res)
 
         m = agents.update_manifest(upd)
-        proj = _budget(bank, cells, not v5_ok, m, args.workers)
+        proj = _budget(bank, cells, not v5_ok, m, args.workers, cache=cache)
         agents.update_manifest(lambda mm: mm.budget.__setitem__("projection", proj))
         io.write_json(io.OUT / "harness" / "validation.json", val)
         for k in sorted(val, key=lambda s: int(s[1:])):
@@ -1786,7 +1995,7 @@ def _knn_fallback(arrays, meta, spec, bank, cells, car, c_v, cache, tables, log)
     cs = _control_cells("K", spec, bank, cells)
     keys = A.CachedKeys(bank, cells, cache, tables=tables)
     kt = A.key_table(cs, bank, keys)
-    rt = A.run_table(CONTROL_AGENT.format("K"), 0, {"det": arrays}, cells, bank, keys, tables)
+    rt = _run_table(CONTROL_AGENT.format("K"), 0, {"det": arrays}, cells, bank, keys, tables)
     C, _, _ = A.completion_by_condition(A.cond_table(rt, kt))
     c_a = C.get(A.COND_A, float("nan"))
     meta["k"], meta["C_a_k1"] = 1, c_a
@@ -1871,7 +2080,8 @@ def _control_verdicts(bank, cells, kt, keys, tables, b: float, sup, log) -> dict
 
     s1_buf = io.CONTROLS_DIR / "knn_S1.npz"
     buf = controls.KnnBuffer.load(s1_buf) if s1_buf.exists() else None
-    s1 = _finals(_manifest()).get("S1")
+    m = _manifest()
+    s1 = _finals(m).get("S1")
     s1_rms = _load(s1).obs_rms if (s1 is not None and buf is not None) else None
     out = {}
     for name, spec in controls.CONTROLS.items():
@@ -1881,7 +2091,7 @@ def _control_verdicts(bank, cells, kt, keys, tables, b: float, sup, log) -> dict
             out[name] = dict(status="missing rollouts", required=spec.required)
             continue
         groups, cmeta = rollout.load_rollouts(path)
-        rt = A.run_table(agent, 0, groups, cells, bank, keys, tables)
+        rt = _run_table(agent, 0, groups, cells, bank, keys, tables, m)
         base = sup.regimes["G1"]
         q1, q10 = (12.0, 20.0) if name == "c2" else (base.q1, base.q10)
         reg = {agent: RegimeTable(agent=agent, grammar="", q1=q1, q10=q10, r_clip=(),
@@ -2401,8 +2611,8 @@ def stage_anchored_keys(args: argparse.Namespace) -> None:
         if args.priority == "P2":
             keys = A.CachedKeys(bank, cells, cache, tables=tables)
             kt = A.key_table(cells, bank, keys)
-            fin_pairs = [A.pair_values(A.run_table(a, finals[a].timesteps, rollout.load_rollouts(
-                io.rollout_path(a, finals[a].timesteps)), cells, bank, keys, tables), kt,
+            fin_pairs = [A.pair_values(_run_table(a, finals[a].timesteps, rollout.load_rollouts(
+                io.rollout_path(a, finals[a].timesteps)), cells, bank, keys, tables, m), kt,
                 sup.regimes) for a in gen if io.rollout_path(a, finals[a].timesteps).exists()]
             imm = A.reanchor_immaterial(fin_pairs)
             cut = any(str(c).startswith("rule 1") for c in m.budget.get("cuts", []))
@@ -2417,8 +2627,8 @@ def stage_anchored_keys(args: argparse.Namespace) -> None:
                     for x in snaps:
                         f = io.rollout_path(a, x.timesteps)
                         if f.exists():
-                            t = A.run_table(a, x.timesteps, rollout.load_rollouts(f), cells, bank,
-                                            keys, tables)
+                            t = _run_table(a, x.timesteps, rollout.load_rollouts(f), cells, bank,
+                                           keys, tables, m)
                             gate[x.timesteps] = A.checkpoint_gate(
                                 A.pair_values(t, kt, sup.regimes))["passed"]
                     chosen = select_p6_checkpoints([x.timesteps for x in snaps], gate)
@@ -2437,8 +2647,8 @@ def stage_anchored_keys(args: argparse.Namespace) -> None:
             f = io.rollout_path(agent, finals[agent].timesteps)
             if f.exists():
                 groups, _ = rollout.load_rollouts(f)
-                final_rt[agent] = A.run_table(agent, finals[agent].timesteps, groups, cells,
-                                              bank, keys, tables)
+                final_rt[agent] = _run_table(agent, finals[agent].timesteps, groups, cells,
+                                             bank, keys, tables, m)
         jobs = []
         for agent, e, prio in targets:
             f = io.rollout_path(agent, e.timesteps)
@@ -2507,7 +2717,7 @@ def _probe_agent(agent: str, entry, bank, cells, sup, kt, log) -> dict:
     tables = measures.model_tables()
     # d_b^agent(v): the agent's median deterministic onset distance on tier A / B cells of
     # the same geometry at the approach speed nearest v (module docstring of probe.py).
-    rt = A.run_table(agent, ag.timesteps, groups, cells, bank, A.CachedKeys(bank, cells), tables)
+    rt = _run_table(agent, ag.timesteps, groups, cells, bank, A.CachedKeys(bank, cells), tables)
     kj = A._join_keys(rt, kt, ("R_nom", "theta_deg", "v0"))
     scans = []
     for spec, v in stimuli.tier_o_specs(sup):
@@ -2622,10 +2832,11 @@ def _control_alias(bank, cells, log) -> list[dict]:
 
 
 def _run_table_cached(agent: str, ts: int, bank, cells, keys, tables, force: bool,
-                      inputs_hash: str = ""):
+                      inputs_hash: str = "", speed_at_phase: bool = False):
     """An analysis run table, cached under analysis/runs/ with the hash of what it was built
     from (the rollout file, the key cache, the design and the code: ``inputs_hash`` plus the
-    file's own hash); rebuilt whenever any of them changed, or with ``force``."""
+    file's own hash, and AD23's speed-error keys, ``speed_at_phase`` from the V7 verdict);
+    rebuilt whenever any of them changed, or with ``force``."""
     from apexzero.interp import analysis as A
     from apexzero.interp import io, rollout
 
@@ -2634,12 +2845,14 @@ def _run_table_cached(agent: str, ts: int, bank, cells, keys, tables, force: boo
     if not f.exists():
         return None
     st = f.stat()
-    stamp = io.sha256_json(dict(inputs=inputs_hash, rollout=[str(f), st.st_size, st.st_mtime_ns]))
+    stamp = io.sha256_json(dict(inputs=inputs_hash, rollout=[str(f), st.st_size, st.st_mtime_ns],
+                                speed_at_phase=bool(speed_at_phase)))
     side = p.with_suffix(".json")
     if p.exists() and side.exists() and not force and io.read_json(side).get("stamp") == stamp:
         return io.load_table(p)
     groups, _ = rollout.load_rollouts(f)
-    rt = A.run_table(agent, ts, groups, cells, bank, keys, tables)
+    rt = A.run_table(agent, ts, groups, cells, bank, keys, tables,
+                     speed_at_phase=bool(speed_at_phase))
     io.save_table(p, rt)
     io.write_json(side, dict(stamp=stamp, rollout=str(f.relative_to(ROOT)),
                              built=time.strftime("%Y-%m-%dT%H:%M:%S")))
@@ -2819,8 +3032,14 @@ def stage_analyse(args: argparse.Namespace) -> None:
         io.save_table(io.ANALYSIS_DIR / "key_table.npz", kt)
         log.step(note="key table")
 
+        speed_at_phase = _v7_failed(m)
+        if speed_at_phase:
+            _say(log, "V7 failed on speeds: e_ve, e_vmin and e_vmin^line are judged against "
+                      "the key at each run's phase where one exists (AD23)")
+
         def rt_of(agent, ts):
-            return _run_table_cached(agent, ts, bank, cells, keys, tables, force, inputs_hash)
+            return _run_table_cached(agent, ts, bank, cells, keys, tables, force, inputs_hash,
+                                     speed_at_phase)
 
         runs, history, ckpts, gates, log_std, vtop, conds = {}, {}, {}, {}, {}, {}, {}
         for a in sel:
@@ -2945,14 +3164,16 @@ def _d_ood_from_det(det: dict, label: str, bank, cells, obs_rms, buffer) -> dict
 
 
 def _key_phase_sd(kt, cells, cache, bank) -> dict[str, float]:
-    """geometry -> the key's d_b SD across its phase-matched solutions (P7 null, R <= 18.3)."""
+    """geometry -> the key's d_b SD across its phase-matched solutions (P7 null, R <= 18.3
+    only: V7's remedy also solves phase-matched keys on P7's larger-R cells, which P7's
+    null does not read)."""
     from apexzero.interp import analysis as A
     from apexzero.interp import answer_key as ak
 
     out: dict[str, list] = {}
     geo = {int(c): str(g) for c, g in zip(kt["cell"], kt["geometry"], strict=True)}
     for c in cells:
-        if "p7" not in c.flags:
+        if "p7" not in c.flags or not _core_phase_cell(bank, c):
             continue
         ds = []
         for k in [0, *_phase_indices(c)]:
