@@ -25,9 +25,12 @@ Records are columnar (dict of 1-D NumPy arrays, one row per completed episode):
     pvl, l1, mean_a           headline (lambda_PPO, mode F) per-episode time means
     pvl_{lam}_{mode}, ...     every variant
     dis                       mean_t std_k(V^k_t) over the ensemble heads (nan without heads)
+    mna_sum                   sum_t G_hat_t, MNA's clipped-GAE term (lambda_PPO, mode F,
+                              ``estimators.mna_terms_batch``; nan when disabled). The level
+                              score is C_hat * sum_e mna_sum / sum_e T (spec 1.6, DEV-11)
 
-MNA's clipped-GAE term is not accumulated in training (it is O(T^2) per slot and chunk);
-the offline audit computes it.
+MNA costs O(T^2) per slot and chunk (about 0.4 s of CPU for 2,048 slots of 128 steps), so
+it can be switched off (``ChunkScorer(mna=False)``).
 """
 
 from __future__ import annotations
@@ -37,7 +40,7 @@ from typing import NamedTuple
 
 import numpy as np
 
-from apexzero.audit.estimators import LAMBDAS, scoring_gae
+from apexzero.audit.estimators import LAMBDAS, mna_terms_batch, scoring_gae
 
 
 class ChunkData(NamedTuple):
@@ -70,13 +73,14 @@ class Accumulator:
     sum_rdisc: np.ndarray = field(init=False)
     disc: np.ndarray = field(init=False)       # gamma^tau for the next step
     sum_dis: np.ndarray = field(init=False)
+    sum_mna: np.ndarray = field(init=False)    # sum G_hat (MNA)
     distance: np.ndarray = field(init=False)
     sum_pos: np.ndarray = field(init=False)    # [N, V] sum max(A, 0) per variant
     sum_abs: np.ndarray = field(init=False)    # [N, V] sum |A|
     sum_a: np.ndarray = field(init=False)      # [N, V] sum A
 
     def __post_init__(self):
-        for name in ("n", "sum_v", "v_first", "sum_r", "sum_rdisc", "sum_dis", "distance"):
+        for name in ("n", "sum_v", "v_first", "sum_r", "sum_rdisc", "sum_dis", "sum_mna", "distance"):
             setattr(self, name, np.zeros(self.n_slots))
         for name in ("sum_pos", "sum_abs", "sum_a"):
             setattr(self, name, np.zeros((self.n_slots, self.n_variants)))
@@ -84,7 +88,7 @@ class Accumulator:
 
     def reset(self, rows: np.ndarray) -> None:
         for a in (self.n, self.sum_v, self.v_first, self.sum_r, self.sum_rdisc, self.sum_dis,
-                  self.distance, self.sum_pos, self.sum_abs, self.sum_a):
+                  self.sum_mna, self.distance, self.sum_pos, self.sum_abs, self.sum_a):
             a[rows] = 0.0
         self.disc[rows] = 1.0
 
@@ -93,21 +97,22 @@ class ChunkScorer:
     """Scores consecutive chunks of the same N slots (``score`` keeps the carry)."""
 
     def __init__(self, n_slots: int, gamma: float = 0.995, lambdas=LAMBDAS, headline_lambda: float = 0.95,
-                 modes=("F", "B")):
+                 modes=("F", "B"), mna: bool = True):
         if headline_lambda not in lambdas or "F" not in modes:
             raise ValueError("the headline (lambda_PPO, mode F) must be among the variants")
         self.gamma = gamma
         self.variants = [(lam, mode) for lam in lambdas for mode in modes]
         self.headline = self.variants.index((headline_lambda, "F"))
+        self.mna = mna
         self.acc = Accumulator(n_slots, len(self.variants))
 
-    def advantages(self, d: ChunkData, sigma: float) -> np.ndarray:
-        """[V, N, T] scoring advantages of every variant, in raw units."""
+    @staticmethod
+    def _padded(d: ChunkData, sigma: float):
+        """Slot-major raw-unit inputs with one extra step holding the bootstrap b = V(s_T);
+        the cut after the last real step (unless it ended the episode) makes delta_{T-1}
+        use b and stops the lambda-sum, exactly as at a chunk boundary in the offline audit."""
         T, N = d.reward.shape
         done = d.terminated | d.truncated
-        # Slot-major with one extra step holding the bootstrap b = V(s_T); the cut after
-        # the last real step (unless it ended the episode) makes delta_{T-1} use b and stops
-        # the lambda-sum, exactly as at a chunk boundary in the offline audit.
         pad = lambda a, fill: np.concatenate([a.T, np.full((N, 1), fill, a.dtype)], axis=1)
         r = pad(d.reward.astype(float), 0.0)
         v = sigma * np.concatenate([d.value.T, d.last_value[:, None]], axis=1).astype(float)
@@ -115,13 +120,26 @@ class ChunkScorer:
         term, trunc = pad(d.terminated, False), pad(d.truncated, False)
         cut = np.zeros((N, T + 1), bool)
         cut[:, T - 1] = ~done[T - 1]
+        return r, v, term, trunc, vf, cut
+
+    def advantages(self, d: ChunkData, sigma: float) -> np.ndarray:
+        """[V, N, T] scoring advantages of every variant, in raw units."""
+        T = d.reward.shape[0]
+        r, v, term, trunc, vf, cut = self._padded(d, sigma)
         return np.stack([scoring_gae(r, v, term, trunc, vf, cut, self.gamma, lam, mode)[:, :T]
                          for lam, mode in self.variants])
+
+    def mna_terms(self, d: ChunkData, sigma: float) -> np.ndarray:
+        """[N, T] MNA's G_hat_t at the headline (lambda_PPO, mode F), cut at the chunk end."""
+        T = d.reward.shape[0]
+        lam = self.variants[self.headline][0]
+        return mna_terms_batch(*self._padded(d, sigma), self.gamma, lam, "F")[:, :T]
 
     def score(self, d: ChunkData, sigma: float, chunk: int) -> tuple[dict, np.ndarray]:
         """Add one chunk; return (records of the episodes that ended in it, headline A [T, N])."""
         T, N = d.reward.shape
         adv = self.advantages(d, sigma)
+        g_hat = self.mna_terms(d, sigma) if self.mna else np.zeros((N, T))
         v = sigma * d.value.astype(float)
         has_heads = d.heads.shape[-1] > 0
         spread = sigma * d.heads.astype(float).std(-1) if has_heads else np.zeros((T, N))
@@ -137,6 +155,7 @@ class ChunkScorer:
             acc.disc *= self.gamma
             acc.distance += d.progress[t]
             acc.sum_dis += spread[t]
+            acc.sum_mna += g_hat[:, t]
             a_t = adv[:, :, t].T                      # [N, V]
             acc.sum_pos += np.maximum(a_t, 0.0)
             acc.sum_abs += np.abs(a_t)
@@ -162,6 +181,7 @@ class ChunkScorer:
             "G_disc": acc.sum_rdisc[rows].copy(), "V_first": acc.v_first[rows].copy(),
             "V_bar": acc.sum_v[rows] / n,
             "dis": acc.sum_dis[rows] / n if has_heads else np.full(rows.size, np.nan),
+            "mna_sum": acc.sum_mna[rows].copy() if self.mna else np.full(rows.size, np.nan),
         }
         for k, (lam, mode) in enumerate(self.variants):
             rec[variant_key("pvl", lam, mode)] = acc.sum_pos[rows, k] / n

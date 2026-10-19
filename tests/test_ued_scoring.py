@@ -106,6 +106,21 @@ def test_E17_per_episode_scores_equal_jaxued_on_concatenated_chunk_advantages():
                 assert np.isclose(ours.max(), float(mx[j]), atol=1e-5)
     assert rec["slot"].size > 10
 
+    # Per episode: JaxUED on each episode's own concatenated advantages (one column per
+    # episode, done at its last step, zero padding after it, which JaxUED ignores).
+    end = rec["chunk"] * CH + rec["t"]
+    start = end - rec["T"] + 1
+    E, Tm = rec["slot"].size, int(rec["T"].max())
+    cols, done_cols = np.zeros((Tm, E)), np.zeros((Tm, E), bool)
+    for e in range(E):
+        cols[: rec["T"][e], e] = adv[start[e]:end[e] + 1, rec["slot"][e]]
+        done_cols[rec["T"][e] - 1, e] = True
+    assert np.all((term | trunc)[rec["slot"], end]) and np.all(start >= 0)
+    for stat, f in (("pvl", lambda a: np.maximum(a, 0)), ("l1", np.abs), ("mean_a", lambda a: a)):
+        mean, _, count = accumulate_rollout_stats(jnp.asarray(done_cols), jnp.asarray(f(cols)), time_average=True)
+        assert np.all(np.asarray(count) == 1)
+        assert np.allclose(rec[stat], np.asarray(mean), atol=1e-5)
+
 
 def test_E18_online_accumulator_equals_offline_window_audit():
     rng = np.random.default_rng(1)
@@ -139,6 +154,8 @@ def test_E18_online_accumulator_equals_offline_window_audit():
         for k, lam in enumerate(LAMBDAS):
             for stat, arr in (("pvl", st.pvl), ("l1", st.l1), ("mean_a", st.mean_a)):
                 assert np.allclose(rec[variant_key(stat, lam, mode)], arr[k, 0], atol=1e-9), (stat, lam, mode)
+        if mode == "F":                                     # MNA: lambda_PPO, mode F only
+            assert np.allclose(rec["mna_sum"], st.mna_sum[0], rtol=0, atol=1e-9)
     assert np.allclose(rec["G"], st.G[0]) and np.allclose(rec["G_disc"], st.G_disc[0])
     assert np.allclose(rec["V_first"], st.V_first[0]) and np.allclose(rec["V_bar"], st.V_bar[0])
     assert np.allclose(rec["dis"], st.dis[0]) and np.array_equal(rec["T"], st.T[0])
@@ -154,3 +171,21 @@ def test_record_levels_distance_and_no_heads():
     assert rec["level"].tolist() == [7] and rec["distance"].tolist() == [30.0]
     assert np.isnan(rec["dis"][0]) and rec["chunk"].tolist() == [4]
     assert sc.acc.n.tolist() == [1, 3] and sc.acc.distance.tolist() == [30.0, 3.0]
+
+
+def test_E10_E11_E12_mna_through_the_scorer():
+    sc = lambda: ChunkScorer(1, gamma=1.0, lambdas=(0.5,), headline_lambda=0.5, modes=("F",))
+    # E-10: one chunk, the episode ends at t = 2: G_hat = [0.75, 0.5, 1], ours 2.25 / 3.
+    rec, _ = sc().score(chunk([0.0, 2, -1], [1.0, 0, 0], [0, 0, 1]), sigma=1.0, chunk=0)
+    assert rec["mna_sum"][0] == pytest.approx(2.25) and rec["T"][0] == 3
+    # E-11: a chunk ends after t = 1 with b = 0: G_hat = [0.5, 0, 1].
+    s = sc()
+    s.score(chunk([0.0, 2], [1.0, 0], [0, 0], b=0.0), sigma=1.0, chunk=0)
+    rec, _ = s.score(chunk([-1.0], [0.0], [1]), sigma=1.0, chunk=1)
+    assert rec["mna_sum"][0] == pytest.approx(1.5)
+    # E-12: only the completed step-0 episode is emitted (G_hat_0 = 1); the tail carries on.
+    s = sc()
+    rec, _ = s.score(chunk([0.0, 0, 0], [1.0, 1, 1], [1, 0, 0], b=0.0), sigma=1.0, chunk=0)
+    assert rec["mna_sum"].tolist() == [1.0] and rec["T"].tolist() == [1] and s.acc.n[0] == 2
+    off = ChunkScorer(1, gamma=1.0, lambdas=(0.5,), headline_lambda=0.5, modes=("F",), mna=False)
+    assert np.isnan(off.score(chunk([0.0, 2, -1], [1.0, 0, 0], [0, 0, 1]), 1.0, 0)[0]["mna_sum"][0])

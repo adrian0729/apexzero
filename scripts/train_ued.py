@@ -81,6 +81,7 @@ def parse_args(argv=None):
     ap.add_argument("--checkpoints", type=int, default=8)
     ap.add_argument("--checkpoint-first", type=float, default=10e6)
     ap.add_argument("--records-every", type=int, default=50, help="chunks per records shard")
+    ap.add_argument("--no-mna", action="store_true", help="skip MNA's O(T^2) term in the records")
     args = ap.parse_args(argv)
     if args.arm == "plr-oracle" and (args.pool_file is None or args.labels is None):
         ap.error("plr-oracle needs --pool-file (the frozen labelled pool) and --labels (its J*_20)")
@@ -112,7 +113,7 @@ def main(argv=None):
                                   staleness_coeff=args.staleness, temperature=args.temperature,
                                   minimum_fill_ratio=args.min_fill),
                     sfl=SFLConfig(refresh_every=args.sfl_every, windows=args.sfl_windows,
-                                  buffer_size=args.sfl_k, rho=args.sfl_rho))
+                                  buffer_size=args.sfl_k, rho=args.sfl_rho), mna=not args.no_mna)
     (out / "config.json").write_text(json.dumps(
         {"ppo": asdict(cfg), "ued": asdict(ued), "args": {k: str(v) for k, v in vars(args).items()},
          "env": params._asdict(), "pool_levels": int(lv.ctx.shape[0])}, indent=1))

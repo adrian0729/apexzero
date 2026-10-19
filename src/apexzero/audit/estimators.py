@@ -95,6 +95,34 @@ def mna_terms(r, v, term, trunc, vf, cut, gamma, lam, mode: str = "F"):
     return out
 
 
+def mna_terms_batch(r, v, term, trunc, vf, cut, gamma, lam, mode: str = "F", block: int = 64):
+    """``mna_terms`` for a batch of trajectories [B, T] at once (the in-training scorer
+    calls it on every slot of a chunk). Same closed form, with each start's horizon N_s
+    taken to the next episode end, cut or the trajectory end; O(T^2) per row, ``block``
+    rows at a time to bound memory."""
+    r, v = np.atleast_2d(np.asarray(r, float)), np.atleast_2d(np.asarray(v, float))
+    term, trunc, cut = (np.atleast_2d(np.asarray(a, bool)) for a in (term, trunc, cut))
+    delta = r + gamma * _next_values(v, term, trunc, vf, mode) - v
+    B, T = delta.shape
+    stop = term | trunc | cut
+    stop[:, -1] = True                                         # the trajectory end closes a segment
+    t = np.arange(T)
+    nxt = np.minimum.accumulate(np.where(stop, t, T)[:, ::-1], axis=1)[:, ::-1]
+    Ns = nxt - t + 1                                            # [B, T] horizon of each start
+    n = t + 1                                                   # horizon n = 1..T (offset i = n - 1)
+    gidx = np.minimum(t[:, None] + t[None, :], T - 1)          # [T, T] step s + i
+    disc = gamma ** t
+    out = np.empty((B, T))
+    for b0 in range(0, B, block):
+        d, ns = delta[b0:b0 + block], Ns[b0:b0 + block, :, None]
+        terms = np.where(t < ns, disc * d[:, gidx], 0.0)        # [b, T, T]
+        A = np.cumsum(terms, axis=2)
+        G = np.maximum.accumulate(np.maximum(A, 0.0), axis=2) - A
+        w = np.where(n < ns, (1 - lam) * lam ** (n - 1), np.where(n == ns, lam ** (ns - 1), 0.0))
+        out[b0:b0 + block] = np.sum(w * G, axis=2)
+    return out
+
+
 # --------------------------------------------------------------------------- per-window records
 
 

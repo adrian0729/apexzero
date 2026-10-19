@@ -86,6 +86,7 @@ class UEDConfig:
     sfl: sfl.SFLConfig = field(default_factory=sfl.SFLConfig)
     lambdas: tuple[float, ...] = LAMBDAS     # scorer variants (lambda_PPO is the headline)
     modes: tuple[str, ...] = ("F", "B")
+    mna: bool = True                         # accumulate MNA's G_hat in the records (O(T^2))
 
     def __post_init__(self):
         if self.arm not in ARMS:
@@ -152,7 +153,7 @@ class UEDTrainer:
         self._learn = jax.jit(make_learner(cfg, self.env, self.actor, self.critic, self.num_updates))
         self._obs_update = jax.jit(_obs_update)
         self._diag = jax.jit(_diagnostics)
-        self.scorer = ChunkScorer(cfg.num_envs, cfg.gamma, ued.lambdas, cfg.gae_lambda, ued.modes)
+        self.scorer = ChunkScorer(cfg.num_envs, cfg.gamma, ued.lambdas, cfg.gae_lambda, ued.modes, ued.mna)
         self.plr = RacingPLR(ued.plr_config(), levels, oracle_j) if ued.is_plr else None
         self.sources = (sfl.slot_sources(cfg.num_envs, ued.sfl.rho) if ued.arm == "sfl"
                         else np.zeros(cfg.num_envs, np.int32))

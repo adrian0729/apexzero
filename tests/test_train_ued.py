@@ -117,6 +117,7 @@ def test_launcher_writes_checkpoints_snapshots_records_and_the_admission_log(tmp
     rec = {k: np.concatenate([d[k] for d in data]) for k in data[0] if not k.startswith("ev_")}
     ev = {k: np.concatenate([d[k] for d in data]) for k in data[0] if k.startswith("ev_")}
     assert rec["slot"].size > 0 and ev["ev_row"].size > 0
+    assert np.all(np.isfinite(rec["mna_sum"])) and np.all(np.isfinite(rec["pvl"]))
     assert set(ev) >= {"ev_chunk", "ev_row", "ev_op", "ev_level_id", "ev_outcome", "ev_index", "ev_score",
                        "ev_max_return", "ev_steps"}
     key = {(c, r): i for i, (c, r) in enumerate(zip(ev["ev_chunk"], ev["ev_row"], strict=True))}
