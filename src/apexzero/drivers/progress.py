@@ -102,7 +102,12 @@ class LapInput:
 
 def lap_inputs(sess: SessionData, tf: Similarity, line: Centreline, laps: list[LapRecord],
                pad: float = 2.5, max_gap: float = 2.0) -> tuple[list[LapInput], dict]:
-    """Project every requested timed lap; return the inputs and {key: reason} for drops."""
+    """Project every requested timed lap; return the inputs and {key: reason} for drops.
+
+    A lap is dropped if two consecutive position samples are more than ``max_gap`` apart,
+    or if the window's first or last sample is more than ``max_gap`` inside the lap (the
+    ``pad`` beyond each end of the lap may be empty).
+    """
     out, dropped = [], {}
     for lap in laps:
         if not lap.timed:
@@ -120,9 +125,10 @@ def lap_inputs(sess: SessionData, tf: Similarity, line: Centreline, laps: list[L
             dropped[(lap.driver, lap.number)] = "too few samples"
             continue
         t = t_all[m]
-        gaps = np.diff(np.r_[lo, t, hi])
-        if gaps.max() > max_gap + pad:
-            dropped[(lap.driver, lap.number)] = f"position gap {gaps.max():.1f} s"
+        interior = float(np.diff(t).max())
+        ends = max(t[0] - lo, hi - t[-1]) - pad
+        if interior > max_gap or ends > max_gap:
+            dropped[(lap.driver, lap.number)] = f"position gap {max(interior, ends):.1f} s"
             continue
         s, d = track_samples(line, t, tf.apply(xy_all[m]))
         out.append(LapInput(lap.driver, lap.number, lap.date_start, float(lap.duration),

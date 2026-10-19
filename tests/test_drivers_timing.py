@@ -5,7 +5,13 @@ import pytest
 
 from apexzero.drivers import session as sx
 from apexzero.drivers.geometry import Centreline, wrap
-from apexzero.drivers.progress import LapInput, fit_session, held_out_sector, track_samples
+from apexzero.drivers.progress import (
+    LapInput,
+    fit_session,
+    held_out_sector,
+    lap_inputs,
+    track_samples,
+)
 from apexzero.drivers.registration import (
     Similarity,
     corridor_excursion,
@@ -337,3 +343,28 @@ def test_held_out_sector_error_is_small_on_clean_data(rect_line):
     timing = fit_session(inputs, rect_line)
     err = held_out_sector(inputs, rect_line, timing)
     assert np.max(np.abs(err)) < 0.03
+
+
+def test_lap_inputs_drop_interior_gaps_but_allow_an_empty_pad(rect_line):
+    v, t0 = 50.0, 100.0
+    dur = rect_line.length / v
+    t = np.arange(t0 - 2.5, t0 + dur + 2.5, 0.27)
+    xy = rect_line.point(37.0 + v * (t - t0))
+    lap = sx.LapRecord(1, 2, t0, round(dur, 3), (10.0, 10.0, round(dur - 20.0, 3)), False)
+    tel = sx.Telemetry(t, np.full(len(t), 3.6 * v), *np.zeros((4, len(t))))
+
+    def run(keep):
+        sess = _sess([], [lap])
+        sess.location[1] = (t[keep], xy[keep])
+        sess.car[1] = tel
+        return lap_inputs(sess, Similarity(1.0, np.eye(2), np.zeros(2)), rect_line, [lap])
+
+    inputs, dropped = run(np.ones(len(t), bool))
+    assert len(inputs) == 1 and not dropped
+    # 3.2 s without a position in mid-lap (160 m): dropped, although it is under the
+    # 2 s + 2.5 s pad allowance that applies at the ends.
+    inputs, dropped = run((t < t0 + 10.0) | (t > t0 + 13.2))
+    assert not inputs and dropped[(1, 2)].startswith("position gap")
+    # The same 3.2 s at the start of the window, mostly inside the pad: kept.
+    inputs, dropped = run(t > t0 + 0.7)
+    assert len(inputs) == 1 and not dropped
