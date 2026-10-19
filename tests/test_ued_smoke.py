@@ -40,6 +40,15 @@ CFG = PPOConfig(num_envs=N_ENVS, num_steps=CHUNK, total_timesteps=N_ENVS * CHUNK
                 update_epochs=2)
 
 
+@pytest.fixture(scope="module", autouse=True)
+def float32_like_training():
+    """Several test modules switch JAX to float64 when imported; training runs in float32."""
+    old = jax.config.jax_enable_x64
+    jax.config.update("jax_enable_x64", False)
+    yield
+    jax.config.update("jax_enable_x64", old)
+
+
 @pytest.fixture(scope="module")
 def pool_setup():
     g = fit_grammar([load_tumftm(TUMFTM / f"{n}.csv") for n in R_DEV])

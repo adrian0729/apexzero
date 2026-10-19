@@ -115,9 +115,11 @@ def placeholder_extra() -> dict:
 
 def init_buffer(sampler: LevelSampler) -> dict:
     """``LevelSampler.initialize`` with strongly typed counters, so the buffer can be the
-    carry of a jitted scan."""
+    carry of a jitted scan. They take JAX's default integer width (int64 under x64), as the
+    Python ints JaxUED starts from do; ``staleness_weights`` only type-checks that way."""
     buf = sampler.initialize(placeholder_level(), placeholder_extra())
-    return {**buf, "size": jnp.int32(0), "episode_count": jnp.int32(0)}
+    int_ = jax.dtypes.canonicalize_dtype(jnp.int64)
+    return {**buf, "size": jnp.zeros((), int_), "episode_count": jnp.zeros((), int_)}
 
 
 class RacingPLR:
@@ -243,7 +245,8 @@ class RacingPLR:
             def first_use(buf):
                 c = buf["episode_count"] + 1
                 here = buf["levels"]["level_id"][ev.buf_idx] == ev.level_id
-                ts = buf["timestamps"].at[ev.buf_idx].set(jnp.where(here, c, buf["timestamps"][ev.buf_idx]))
+                ts = buf["timestamps"]
+                ts = ts.at[ev.buf_idx].set(jnp.where(here, c, ts[ev.buf_idx]).astype(ts.dtype))
                 out = jnp.where(here, OUT_TIMESTAMP, OUT_STALE_DRAW).astype(jnp.int32)
                 return {**buf, "timestamps": ts, "episode_count": c}, (out, ev.buf_idx, nan)
 

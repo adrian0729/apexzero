@@ -55,7 +55,7 @@ def _buf(sampler, level_ids, scores, timestamps, c, extras=None):
     return {**buf, "levels": levels, "levels_extra": ex,
             "scores": buf["scores"].at[:n].set(jnp.asarray(scores, jnp.float32)),
             "timestamps": buf["timestamps"].at[:n].set(jnp.asarray(timestamps, jnp.int32)),
-            "size": jnp.int32(n), "episode_count": jnp.int32(c)}
+            "size": jnp.asarray(n, buf["size"].dtype), "episode_count": jnp.asarray(c, buf["size"].dtype)}
 
 
 def _events(rows, n_slots=4):
@@ -182,7 +182,7 @@ def test_P8_replay_write_after_eviction_is_dropped():
 def test_P9_rank_mass_of_the_top_level(beta, mass):
     s = make_sampler(PLRConfig(capacity=1000, temperature=beta))
     buf = init_buffer(s)
-    buf = {**buf, "scores": jnp.linspace(1.0, 0.0, 1000), "size": jnp.int32(1000)}
+    buf = {**buf, "scores": jnp.linspace(1.0, 0.0, 1000), "size": jnp.asarray(1000, buf["size"].dtype)}
     assert float(s.score_weights(buf).max()) == pytest.approx(mass, abs=1e-4)
 
 

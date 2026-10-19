@@ -110,7 +110,7 @@ class ChunkScorer:
         # the lambda-sum, exactly as at a chunk boundary in the offline audit.
         pad = lambda a, fill: np.concatenate([a.T, np.full((N, 1), fill, a.dtype)], axis=1)
         r = pad(d.reward.astype(float), 0.0)
-        v = np.concatenate([sigma * d.value.T, sigma * d.last_value[:, None]], axis=1).astype(float)
+        v = sigma * np.concatenate([d.value.T, d.last_value[:, None]], axis=1).astype(float)
         vf = pad(sigma * d.final_value.astype(float), 0.0)
         term, trunc = pad(d.terminated, False), pad(d.truncated, False)
         cut = np.zeros((N, T + 1), bool)
