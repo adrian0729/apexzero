@@ -16,6 +16,7 @@ One chunk (``PPOConfig.num_steps`` = 128 steps of every slot) is one PPO update:
     C. score the chunk (``ued.scoring``, the audit's estimator code) and run the PPO update;
        PLR-perp masks exploratory windows out of every loss and both normalisers (DEV-16)
     D. PLR: commit the chunk's buffer events in (t, slot) order (``RacingPLR.apply_events``)
+       and log each with its outcome (``plr.event_rows``; records point to their write)
 
 Why a dedicated trainer rather than more hooks inside ``make_train`` (one jitted scan over
 all updates): step D must run between the rollout and the next chunk's pre-draw, in event
