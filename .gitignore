@@ -1,6 +1,9 @@
 # Data: OpenF1 is CC BY-NC-SA and TUMFTM is LGPL; fetched by script, never committed.
 /data/
 !data/README.md
+# Demo exports embed TUMFTM-derived track geometry: regenerate with scripts/export_demo.py.
+/docs/demo/*.json
+/docs/demo/*.html
 *.parquet
 *.json.gz
 
