@@ -185,6 +185,8 @@ details ul { padding-left: 18px; margin: 6px 0; }
 .empty.drag .box { border-color: var(--focus); }
 .err { color: var(--loss); }
 .badge { font-size: 10.5px; letter-spacing: 0.04em; border: 1px solid var(--axis); border-radius: 4px; padding: 0 4px; color: var(--ink-2); }
+.badge.caveat { border-style: dashed; letter-spacing: 0; }
+.note { color: var(--muted); font-size: 11.5px; margin: 6px 0 0; line-height: 1.4; }
 @media (max-width: 900px) {
   main { grid-template-columns: minmax(0, 1fr); grid-template-rows: 58vh auto; }
   .side { border-left: 0; border-top: 1px solid var(--border); overflow: hidden visible; padding: 12px 16px; }
@@ -245,6 +247,7 @@ details ul { padding-left: 18px; margin: 6px 0; }
       <div class="card">
         <h2>Sectors</h2>
         <table id="sectors"><thead></thead><tbody></tbody></table>
+        <p class="note" id="sector-note"></p>
       </div>
       <div class="card">
         <details id="about"><summary>About this export</summary><div id="about-body"></div></details>
@@ -317,6 +320,8 @@ class Ghost {
   constructor(g, slot, origin) {
     this.id = g.id; this.label = g.label; this.kind = g.kind; this.lap = g.lap_time_s;
     this.badge = g.badge; this.meta = g.meta || {}; this.slot = slot;
+    // An optimum is only the answer key once it carries the CERTIFIED badge.
+    this.uncertified = g.kind === 'ocp' && g.badge !== 'CERTIFIED';
     this.ch = {};
     for (const [k, v] of Object.entries(g.channels)) this.ch[k] = Float64Array.from(v);
     this.ch.wx = this.ch.x.map((v) => v - origin[0]);
@@ -693,6 +698,11 @@ function buildPanels() {
     const t = document.createElement('span'); t.textContent = `${g.label} ${g.lap.toFixed(3)} s`;
     k.append(sw, t);
     if (g.badge) { const b = document.createElement('span'); b.className = 'badge'; b.textContent = g.badge; k.append(b); }
+    if (g.uncertified) {
+      const b = document.createElement('span'); b.className = 'badge caveat'; b.textContent = 'not certified';
+      b.title = 'An optimum without the CERTIFIED badge: not the replay-verified 20 Hz answer key. See "About this export".';
+      k.append(b);
+    }
     legend.appendChild(k);
   }
 
@@ -723,21 +733,43 @@ function buildPanels() {
   const head = $('sectors').tHead;
   head.replaceChildren();
   const hr = document.createElement('tr');
-  for (const [txt, cls] of [['Sector', ''], ['r min', 'num'], ...state.comps.map((c) => [`Δt ${c.ghost.id}`, 'num']), ['', '']]) {
-    const th = document.createElement('th'); th.textContent = txt; th.className = cls; hr.appendChild(th);
+  const lead = state.comps[0];
+  const vminHead = lead && lead.speed ? ['v min', 'num', `Minimum speed of ${state.ref.label} in the sector (km/h)`]
+    : ['r min', 'num', 'Minimum radius of the reference line (a car may straighten it)'];
+  const cols = [['Sector', ''], vminHead];
+  for (const c of state.comps) {
+    cols.push([`Δt ${c.ghost.id}`, 'num', 'Time measured inside the sector']);
+    if (c.charged) cols.push(['charged', 'num', 'What the corner costs: time lost while both cars are flat out is charged to the corner where that stretch began']);
+  }
+  cols.push(['', '']);
+  for (const [txt, cls, tip] of cols) {
+    const th = document.createElement('th'); th.textContent = txt; th.className = cls; if (tip) th.title = tip; hr.appendChild(th);
   }
   head.appendChild(hr);
   const body = $('sectors').tBodies[0];
   body.replaceChildren();
-  const maxAbs = Math.max(1e-9, ...state.comps.flatMap((c) => c.sector.map(Math.abs)));
+  const barVals = (c) => c.charged || c.sector;
+  const maxAbs = Math.max(1e-9, ...state.comps.flatMap((c) => barVals(c).map(Math.abs)));
   state.secRows = secs.map((sec, i) => {
     const tr = document.createElement('tr'); tr.className = 'sec'; tr.tabIndex = 0;
     const td = (txt, cls = '') => { const c = document.createElement('td'); c.textContent = txt; c.className = cls; return c; };
-    tr.append(td(sec.name), td(sec.r_min == null ? '–' : `${Math.round(sec.r_min)} m`, 'num'));
-    for (const c of state.comps) tr.append(td(`${fmt(c.sector[i], 3)} s`, 'num'));
+    const vmin = lead && lead.speed ? `${Math.round(lead.speed.ref_vmin_mps[i] * KPH)}`
+      : (sec.r_min == null ? '–' : `${Math.round(sec.r_min)} m`);
+    tr.append(td(sec.name), td(vmin, 'num'));
+    const tips = [sec.r_min == null ? null : `reference-line radius ${Math.round(sec.r_min)} m`];
+    if (lead && lead.speed) {
+      const sp = lead.speed;
+      tips.push(`${lead.ghost.id} minus ${state.ref.id}: entry ${fmt(sp.entry_dv_mps[i] * KPH, 1)} km/h, exit ${fmt(sp.exit_dv_mps[i] * KPH, 1)} km/h`,
+        `minimum ${Math.round(sp.vmin_mps[i] * KPH)} vs ${Math.round(sp.ref_vmin_mps[i] * KPH)} km/h`);
+    }
+    tr.title = tips.filter(Boolean).join(' · ');
+    for (const c of state.comps) {
+      tr.append(td(`${fmt(c.sector[i], 3)} s`, 'num'));
+      if (c.charged) tr.append(td(`${fmt(c.charged[i], 3)} s`, 'num'));
+    }
     const barTd = document.createElement('td');
     if (state.comps.length) {
-      const v = state.comps[0].sector[i];
+      const v = barVals(state.comps[0])[i];
       const bar = document.createElement('span'); bar.className = 'bar';
       const fill = document.createElement('i');
       const w = 45 * Math.abs(v) / maxAbs;
@@ -754,10 +786,25 @@ function buildPanels() {
   });
   if (state.comps.length) {
     const tot = document.createElement('tr');
-    const cells = [['Lap', ''], ['', 'num'], ...state.comps.map((c) => [`${fmt(c.lapDelta, 3)} s`, 'num']), ['', '']];
+    const cells = [['Lap', ''], ['', 'num']];
+    for (const c of state.comps) {
+      cells.push([`${fmt(c.lapDelta, 3)} s`, 'num']);
+      if (c.charged) cells.push([`${fmt(c.charged.reduce((a, b) => a + b, 0), 3)} s`, 'num']);
+    }
+    cells.push(['', '']);
     for (const [txt, cls] of cells) { const c = document.createElement('td'); c.textContent = txt; c.className = cls; c.style.fontWeight = '600'; tot.appendChild(c); }
     body.appendChild(tot);
   }
+  const note = [];
+  if (lead && lead.charged) {
+    note.push('Δt is the time measured inside each sector; it includes a slow exit carried in from the corner before. ' +
+      'Charged moves time lost while both cars are flat out back to the corner where that stretch began; ' +
+      'the bars show it. Both columns sum to the lap delta.');
+  }
+  note.push(lead && lead.speed ? `v min: ${state.ref.label}'s minimum speed in the sector (km/h); hover a row for entry and exit speed deltas.`
+    : 'r min: minimum radius of the reference line, which a car may straighten.');
+  note.push('Sector names are this segmentation\'s, not official turn numbers.');
+  $('sector-note').textContent = note.join(' ');
   $('delta-title').textContent = state.ref ? `Time delta against ${state.ref.label} (> 0: behind)` : 'Time delta';
 
   // About: notes, provenance, per-ghost caveats.
@@ -872,7 +919,8 @@ function updateHud(t) {
   if (lead) {
     const d = liveDelta(lead.ghost, t);
     const big = document.createElement('div'); big.className = 'big'; big.textContent = `${fmt(d, 3)} s`;
-    const lab = document.createElement('div'); lab.className = 'muted'; lab.textContent = `${lead.ghost.label} vs ${state.ref.label}`;
+    const lab = document.createElement('div'); lab.className = 'muted';
+    lab.textContent = `${lead.ghost.label} vs ${state.ref.label}${state.ref.uncertified ? ' (not certified)' : ''}`;
     const g = lead.ghost, s = g.at('s', Math.min(t, g.lap));
     const sec = (state.doc.track.sectors || []).findIndex((q) => (s >= q.s_start && s < q.s_end) || (q.s_end > state.L && s < q.s_end - state.L));
     const where = document.createElement('div'); where.className = 'muted';
@@ -922,6 +970,8 @@ function load(doc) {
   state.comps = (doc.comparisons || []).map((c) => ({
     ghost: state.ghosts.find((g) => g.id === c.ghost), s: Float64Array.from(c.s), d: Float64Array.from(c.delta_t),
     sector: c.sector_delta_s, lapDelta: c.lap_delta_s,
+    // Optional since schema 1.1.
+    charged: c.sector_split ? c.sector_split.charged_s : null, speed: c.sector_speed || null,
   })).filter((c) => c.ghost);
   state.tEnd = Math.max(...state.ghosts.map((g) => g.lap)) + 1.0;
   state.follow = '';

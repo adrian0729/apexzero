@@ -5,11 +5,14 @@ for a release can be redrawn from the committed JSON, and re-running them on a f
 agent's export needs no code change.
 
 - :func:`track_map` - the agent's and the optimum's lines coloured by speed (one shared
-  scale), plus a zoom on the sector where the agent loses the most time.
+  scale), plus a zoom on the corner that costs the agent the most time.
 - :func:`speed_and_delta` - speed against distance for both ghosts, and the cumulative
   time delta Δt(s) beneath it (two panels, one shared distance axis, never two y-scales).
-- :func:`sector_losses` - time lost or gained per corner sector; the bars add up to the
-  lap delta.
+- :func:`sector_losses` - time lost or gained per corner, charged with the carry-over of
+  a slow exit when the export has it, against what each sector measured; the bars add
+  up to the lap delta.
+
+An optimum without the CERTIFIED badge is labelled "not certified" wherever it is named.
 
 Colours follow the data-viz reference palette: categorical slots for ghost identity, one
 blue ramp for speed (magnitude), and the blue/red diverging pair for gain/loss (polarity).
@@ -76,7 +79,22 @@ def _comparison(doc: dict, ghost: str | None):
 
 
 def _label(doc: dict, gid: str) -> str:
-    return next(g["label"] for g in doc["ghosts"] if g["id"] == gid)
+    """A ghost's label, tagged "not certified" for an optimum without the CERTIFIED badge
+    (a continuous-control or best-known lap, not the replay-verified 20 Hz answer key)."""
+    g = next(g for g in doc["ghosts"] if g["id"] == gid)
+    if g["kind"] == "ocp" and g.get("badge") != "CERTIFIED":
+        return f"{g['label']} · not certified"
+    return g["label"] if not g.get("badge") else f"{g['label']} · {g['badge']}"
+
+
+def _sector_costs(comp: dict) -> tuple[np.ndarray, np.ndarray, bool]:
+    """(charged, measured, split available): what each corner costs, carry-over-aware when
+    the export has a ``sector_split``, and what the clock measured inside each sector."""
+    measured = np.asarray(comp["sector_delta_s"], float)
+    split = comp.get("sector_split")
+    if split is None:
+        return measured, measured, False
+    return np.asarray(split["charged_s"], float), measured, True
 
 
 def _lap(doc: dict, gid: str) -> float:
@@ -144,7 +162,7 @@ def track_map(doc: dict, ghost: str | None = None, zoom_margin: float = 50.0) ->
     vmin = min(g["speed"].min(), r["speed"].min()) * KPH
     vmax = max(g["speed"].max(), r["speed"].max()) * KPH
     norm = Normalize(vmin, vmax)
-    loss = np.asarray(comp["sector_delta_s"])
+    loss, _, split = _sector_costs(comp)
     worst = int(np.argmax(loss))
     sec = tr["sectors"][worst]
 
@@ -187,7 +205,8 @@ def track_map(doc: dict, ghost: str | None = None, zoom_margin: float = 50.0) ->
         az.set_ylim(lo[1] - pad, hi[1] + pad)
         az.set_aspect("equal")
         az.axis("off")
-        az.set_title(f"Costliest sector {sec['name']}: {loss[worst]:+.3f} s", loc="left")
+        az.set_title(f"Costliest corner {sec['name']}: {loss[worst]:+.3f} s"
+                     + (" charged" if split else ""), loc="left")
         az.legend(loc="upper left", bbox_to_anchor=(0.0, -0.01), ncols=1)
         fig.suptitle(f"{doc['track']['name']}: racing lines coloured by speed", x=0.01, ha="left",
                      fontsize=12, fontweight="bold", color=INK)
@@ -243,37 +262,66 @@ def speed_and_delta(doc: dict, ghost: str | None = None) -> Figure:
 
 
 def sector_losses(doc: dict, ghost: str | None = None, labelled: int = 3) -> Figure:
-    """Time lost (> 0) or gained (< 0) per corner sector; bars sum to the lap delta."""
+    """Time lost (> 0) or gained (< 0) per corner; bars sum to the lap delta.
+
+    With a carry-over split in the export, the filled bar is what the corner is
+    *charged* (time lost on flat-out stretches after it moved back to it) and the
+    outline is what the clock *measured* inside the sector, so a flat-out bend that
+    only inherits a slow exit shows an empty outline with no bar. Tick labels give the
+    reference ghost's minimum speed in the sector (the reference-line radius would
+    call a straightened kink a hairpin)."""
     comp = _comparison(doc, ghost)
     secs = doc["track"]["sectors"]
-    vals = np.asarray(comp["sector_delta_s"])
-    names = [s["name"] if s.get("r_min") is None else f"{s['name']}\n{s['r_min']:.0f} m"
-             for s in secs]
+    vals, measured, split = _sector_costs(comp)
+    speed = comp.get("sector_speed")
+    if speed is not None:
+        names = [f"{s['name']}\n{v * KPH:.0f} km/h"
+                 for s, v in zip(secs, speed["ref_vmin_mps"], strict=True)]
+    else:
+        names = [s["name"] if s.get("r_min") is None else f"{s['name']}\n{s['r_min']:.0f} m"
+                 for s in secs]
     x = np.arange(len(vals))
     with rc_context(_style()):
-        fig = Figure(figsize=(max(6.0, 0.62 * len(vals) + 2.0), 4.2), layout="constrained")
+        fig = Figure(figsize=(max(6.0, 0.62 * len(vals) + 2.0), 4.4), layout="constrained")
         ax = fig.subplots()
         ax.grid(axis="y")
         ax.set_axisbelow(True)
-        ax.bar(x, vals, width=0.42, color=np.where(vals >= 0, LOSS, GAIN), lw=0)
+        ax.bar(x, vals, width=0.42, color=np.where(vals >= 0, LOSS, GAIN), lw=0,
+               label="charged to the corner" if split else None)
+        if split:
+            ax.bar(x, measured, width=0.66, facecolor="none", edgecolor=INK_2, lw=0.8,
+                   label="measured inside the sector")
+            ax.legend(loc="upper left", ncols=2)
         ax.axhline(0.0, color=AXIS, lw=0.8)
         # Label selectively: the largest losses and every gain.
-        top = set(np.argsort(-vals)[:labelled].tolist()) | set(np.nonzero(vals < 0)[0].tolist())
-        span = max(np.abs(vals).max(), 1e-6)
+        top = set(np.argsort(-vals)[:labelled].tolist()) | set(np.nonzero(vals < -5e-4)[0].tolist())
+        both = np.r_[vals, measured]
+        span = max(np.abs(both).max(), 1e-6)
         for i in sorted(top):
             v = vals[i]
-            ax.text(i, v + np.sign(v or 1.0) * 0.03 * span, f"{v:+.3f}", ha="center",
+            y = max(v, measured[i]) if v >= 0 else min(v, measured[i])
+            ax.text(i, y + np.sign(v or 1.0) * 0.03 * span, f"{v:+.3f}", ha="center",
                     va="bottom" if v >= 0 else "top", fontsize=8, color=INK)
-        lo, hi = min(vals.min(), 0.0), max(vals.max(), 0.0)
-        ax.set_ylim(lo - 0.12 * span * (lo < 0), hi + 0.12 * span)
+        lo, hi = min(both.min(), 0.0), max(both.max(), 0.0)
+        ax.set_ylim(lo - 0.12 * span * (lo < 0), hi + (0.22 if split else 0.12) * span)
         ax.set_xticks(x, names, fontsize=7.5)
         ax.set_ylabel(f"time vs {comp['reference']} (s)\n> 0: lost")
-        ax.set_title(f"{doc['track']['name']}: where {_label(doc, comp['ghost'])} loses time  "
-                     f"(sectors sum to {vals.sum():+.3f} s; lap delta "
-                     f"{comp['lap_delta_s']:+.3f} s)")
-        ax.text(0.0, -0.2, "Sector = corner complex plus half of each neighbouring straight; "
-                "label = minimum radius. Names are this segmentation's, not official turn numbers.",
-                transform=ax.transAxes, fontsize=7, color=MUTED)
+        what = "charged per corner" if split else "per sector"
+        ax.set_title(f"{doc['track']['name']}: where {_label(doc, comp['ghost'])} loses time",
+                     pad=24)
+        ax.text(0.0, 1.02, f"against {_label(doc, comp['reference'])};  {what}, sums to "
+                f"{vals.sum():+.3f} s (lap delta {comp['lap_delta_s']:+.3f} s)",
+                transform=ax.transAxes, fontsize=8.5, color=INK_2, va="bottom")
+        lines = [("Sector = corner complex plus half of each neighbouring straight. Names are "
+                  "this segmentation's, not official turn numbers.")]
+        if split:
+            lines.append("Charged: time gained or lost while both cars are flat out is moved "
+                         "back to the corner where that stretch began (a slow exit costs time "
+                         "on the straight after it).")
+        lines.append("Label: the reference's minimum speed in the sector." if speed is not None
+                     else "Label: minimum radius of the reference line.")
+        ax.text(0.0, -0.2, "\n".join(lines), transform=ax.transAxes, fontsize=7, color=MUTED,
+                va="top")
     return fig
 
 
