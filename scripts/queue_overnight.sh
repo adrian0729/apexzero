@@ -24,7 +24,7 @@ run hockenheim-specialist-mlp-200M-s3 scripts/train.py --tracks Hockenheim --ste
 # DR v3: half the strips from a stronger hairpin tilt (weights (1/r_min)^2).
 run dr-pilot-v3-tilt50a2 scripts/train_dr.py --steps 200e6 --name dr-pilot-v3-tilt50a2 \
     --tilt-fraction 0.5 --tilt-alpha 2
-# First racing curriculum pilot: PLR-perp scored by MaxMC on a 1,000-level pool.
+# First racing curriculum pilot: PLR-perp scored by MaxMC on a 1,000-level pool (buffer 250).
 run ued-plr-maxmc-pilot scripts/train_ued.py --arm plr-maxmc --steps 200e6 \
-    --name ued-plr-maxmc-pilot --pool-size 1000 --num-steps 64
+    --name ued-plr-maxmc-pilot --pool-size 1000 --capacity 250 --num-steps 64
 echo "[$(date '+%F %T')] queue finished"
