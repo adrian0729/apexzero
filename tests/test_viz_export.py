@@ -214,10 +214,24 @@ def test_policy_ghost_reproduces_the_harness_lap():
     g = export.policy_ghost(ro, tr)
     assert g.lap_time == pytest.approx(float(harness.lap_time[0]), abs=1e-3)
     assert set(export.CHANNELS) <= set(g.channels)
+    for k in ("cmd_steer", "cmd_pedal"):
+        assert np.all(np.abs(g.channels[k]) <= 1.0)
     assert g.channels["ellipse_use"].max() <= 1.0 + 1e-6
     assert g.s[0] == 0.0 and g.s[-1] == pytest.approx(tr.length)
     with pytest.raises(ValueError, match="not completed"):
         export.policy_ghost(ro, tr, lap=50)
+
+
+def test_rollout_records_the_applied_command():
+    """A policy that asks for more than full throttle: the channel holds what the car got."""
+    import jax.numpy as jnp
+
+    def greedy(obs):
+        return jnp.tile(jnp.array([[0.0, 1.7]]), (obs.shape[0], 1))
+
+    ro = export.rollout_policy(greedy, circle(), 30.0, laps=1, max_steps=40)
+    assert ro.action[:, 1].max() == pytest.approx(1.0)
+    assert ro.action[:, 0].max() == 0.0
 
 
 # --------------------------------------------------------------------------- sectors

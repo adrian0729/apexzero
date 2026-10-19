@@ -74,8 +74,10 @@ CHANNELS: dict[str, Channel] = {
     "steering": Channel("rad", "road-wheel steering angle (actuator state, after lag)", 4),
     "throttle": Channel("1", "throttle, 0..1 (pedal actuator state, after lag)", 3),
     "brake": Channel("1", "brake, 0..1 (pedal actuator state, after lag)", 3),
-    "cmd_steer": Channel("1", "steering command in [-1, 1] active from this sample on", 3),
-    "cmd_pedal": Channel("1", "pedal command in [-1, 1] (>0 throttle) active from this sample on", 3),
+    "cmd_steer": Channel("1", "steering command in [-1, 1] as applied (policy output "
+                              "clipped) from this sample on", 3),
+    "cmd_pedal": Channel("1", "pedal command in [-1, 1] (>0 throttle) as applied (policy "
+                              "output clipped) from this sample on", 3),
     "util_front": Channel("1", "front-axle force demand / friction ellipse, before the tyre "
                                "saturates (> 1: demand clipped back onto the ellipse)", 3),
     "util_rear": Channel("1", "rear-axle force demand / friction ellipse, before saturation", 3),
@@ -327,7 +329,9 @@ def _rollout_policy_f32(policy_fn, track, v_start, laps, params, ctx, n0, max_st
             ob2, st2, _, term, _, _ = racing.step_no_reset(st, a, tr, eval_params)
             st2 = jax.tree.map(lambda new, old: jnp.where(alive, new, old), st2, st)
             alive2 = alive & ~term
-            return (st2, ob2, alive2), (st2.x, a, alive2)
+            # Record what the simulator applied (step_no_reset clips to [-1, 1]), not the
+            # raw policy mean, which can lie outside the box.
+            return (st2, ob2, alive2), (st2.x, jnp.clip(a, -1.0, 1.0), alive2)
 
         return jax.lax.scan(body, (st, obs, jnp.array(True)), None, max_steps)[1]
 
