@@ -43,10 +43,17 @@ from apexzero.tracks.track import Track
 from apexzero.vehicle.dynamics import tyre_forces
 from apexzero.vehicle.ops import Ops
 from apexzero.vehicle.params import F1_2025, VehicleParams
-from apexzero.viz.sectors import Sector, corner_sectors, sector_deltas
+from apexzero.viz.sectors import (
+    FLAT_THROTTLE,
+    Sector,
+    carry_over_split,
+    corner_sectors,
+    sector_deltas,
+    sector_speeds,
+)
 
 SCHEMA = "apexzero.trajectory"
-SCHEMA_VERSION = "1.0.0"
+SCHEMA_VERSION = "1.1.0"   # 1.1: optional comparison keys sector_speed and sector_split
 KINDS = ("policy", "ocp", "telemetry")
 BADGES = ("CERTIFIED", "MODEL-DEPENDENT", "POST HOC")
 VIEWER_PATH = Path(__file__).parent / "viewer" / "index.html"
@@ -594,7 +601,11 @@ def build_document(track: Track, ghosts: Iterable[Ghost], reference: str | None 
                    notes: Iterable[str] = (), provenance: dict | None = None,
                    delta_ds: float | None = None, unsealed: bool = False) -> dict[str, Any]:
     """Assemble a schema document. With a ``reference`` ghost, every other ghost gets a
-    comparison: Δt(s) on the track's grid and the time lost per corner sector.
+    comparison: Δt(s) on the track's grid, the time measured in each corner sector
+    (``sector_delta_s``), each sector's entry/exit speed deltas and minimum speeds
+    (``sector_speed``) and, when both ghosts have a throttle channel, the carry-over-aware
+    split (``sector_split``; see :func:`apexzero.viz.sectors.carry_over_split`), whose
+    ``charged_s`` is what each corner costs.
 
     Refuses lockbox circuits (by the track's name) unless ``unsealed``."""
     lockbox_guard(track.name, unsealed)
@@ -643,11 +654,29 @@ def build_document(track: Track, ghosts: Iterable[Ghost], reference: str | None 
             if g.id == reference:
                 continue
             d = delta_time(g, ref, grid)
-            doc["comparisons"].append({
+            comp = {
                 "ghost": g.id, "reference": reference, "s": _arr(grid, 3),
                 "delta_t": _arr(d, 4), "lap_delta_s": float(g.lap_time - ref.lap_time),
                 "sector_delta_s": _arr(sector_deltas(grid, d, sectors, L), 4),
-            })
+            }
+            sv_g = sector_speeds(g.s, g.channels["speed"], sectors, L, track.closed)
+            sv_r = sector_speeds(ref.s, ref.channels["speed"], sectors, L, track.closed)
+            comp["sector_speed"] = {
+                "entry_dv_mps": _arr(sv_g["entry"] - sv_r["entry"], 3),
+                "exit_dv_mps": _arr(sv_g["exit"] - sv_r["exit"], 3),
+                "vmin_mps": _arr(sv_g["min"], 3), "ref_vmin_mps": _arr(sv_r["min"], 3),
+            }
+            if "throttle" in g.channels and "throttle" in ref.channels:
+                flat = ((np.interp(grid, g.s, g.channels["throttle"]) >= FLAT_THROTTLE)
+                        & (np.interp(grid, ref.s, ref.channels["throttle"]) >= FLAT_THROTTLE))
+                co = carry_over_split(grid, d, flat, sectors, L, track.closed)
+                comp["sector_split"] = {
+                    "flat_throttle": FLAT_THROTTLE,
+                    "own_s": _arr(co.own, 4), "carried_in_s": _arr(co.carried_in, 4),
+                    "carried_out_s": _arr(co.carried_out, 4),
+                    "charged_s": _arr(co.charged, 4),
+                }
+            doc["comparisons"].append(comp)
     validate_document(doc)
     return doc
 
@@ -738,8 +767,27 @@ def validate_document(doc: dict) -> None:
                "comparison names an unknown ghost")
         _check(len(_numeric(c["s"], "comparison.s")) == len(
             _numeric(c["delta_t"], "comparison.delta_t")), "comparison: length mismatch")
-        _check(len(_numeric(c["sector_delta_s"], "comparison.sector_delta_s"))
-               == len(tr["sectors"]), "comparison: one sector delta per sector")
+        measured = _numeric(c["sector_delta_s"], "comparison.sector_delta_s")
+        n_sec = len(tr["sectors"])
+        _check(len(measured) == n_sec, "comparison: one sector delta per sector")
+        # Optional since 1.1: per-sector speeds and the carry-over split.
+        for key, fields in (("sector_speed", ("entry_dv_mps", "exit_dv_mps", "vmin_mps",
+                                              "ref_vmin_mps")),
+                            ("sector_split", ("own_s", "carried_in_s", "carried_out_s",
+                                              "charged_s"))):
+            if key not in c:
+                continue
+            _check(isinstance(c[key], dict), f"comparison.{key} must be an object")
+            arrs = {f: _numeric(c[key].get(f), f"comparison.{key}.{f}") for f in fields}
+            _check(all(len(a) == n_sec for a in arrs.values()),
+                   f"comparison.{key}: one value per sector")
+            if key == "sector_split":
+                tol = 1e-3 + 1e-4 * n_sec          # values are rounded to 0.1 ms
+                _check(bool(np.allclose(arrs["own_s"] + arrs["carried_in_s"], measured,
+                                        rtol=0, atol=tol)),
+                       "comparison.sector_split: own + carried in must be the measured delta")
+                _check(abs(arrs["charged_s"].sum() - measured.sum()) < tol,
+                       "comparison.sector_split: charged times must sum to the measured total")
 
 
 def write_document(doc: dict, path: str | Path) -> Path:

@@ -11,7 +11,7 @@ from _viz_fixtures import circle, make_doc, rounded_square, synthetic_ocp
 
 from apexzero.vehicle.params import F1_2025 as P
 from apexzero.viz import export
-from apexzero.viz.sectors import corner_sectors, sector_deltas
+from apexzero.viz.sectors import Sector, carry_over_split, corner_sectors, sector_deltas
 
 HOCKENHEIM_OCP = Path("outputs/ocp/Hockenheim.pkl")
 TUMFTM = Path("data/tracks/tumftm")
@@ -292,6 +292,95 @@ def test_close_corners_merge_into_one_complex():
     assert merged[0].angle == pytest.approx(2 * np.pi, abs=0.1)
 
 
+def _sec(name, a, b):
+    return Sector(name, float(a), float(b), float(a), 50.0, 1.0, [0])
+
+
+@pytest.mark.parametrize("random_grid", [False, True])
+def test_carry_over_split_charges_flat_out_stretches_upstream(random_grid):
+    """Δt grows 1 ms per metre everywhere; both cars are flat out except on [300, 350]
+    (in S1) and [800, 850] (in S2), and S2 wraps past the line. Each flat stretch goes
+    to the sector of the last non-flat interval before it, the one that starts at the
+    line continuing the one that ends the lap."""
+    L = 1000.0
+    s = np.arange(0.0, L + 1.0, 1.0)
+    if random_grid:     # sector boundaries off the grid
+        s = np.r_[0.0, np.sort(np.random.default_rng(3).uniform(0, L, 900)), L]
+    d = 1e-3 * s
+    flat = ~(((s >= 300) & (s <= 350)) | ((s >= 800) & (s <= 850)))
+    secs = [_sec("S1", 100, 500), _sec("S2", 500, 1100)]
+    co = carry_over_split(s, d, flat, secs, L)
+    np.testing.assert_allclose(co.measured, sector_deltas(s, d, secs, L), atol=1e-12)
+    np.testing.assert_allclose(co.measured, [0.4, 0.6], atol=1e-12)
+    # S1 owns [~300, 500) and is charged S2's [500, ~800); S2 owns the rest of its own
+    # stretch plus S1's [100, ~300), which the flat run from the line carries over.
+    tol = 1e-2 if random_grid else 3e-3     # a flat stretch ends one grid interval early
+    np.testing.assert_allclose(co.charged, [0.5, 0.5], atol=tol)
+    np.testing.assert_allclose(co.carried_in, [0.2, 0.3], atol=tol)
+    assert co.charged.sum() == pytest.approx(d[-1] - d[0], abs=1e-12)
+    # Never flat: nothing moves. Always flat: nothing moves either.
+    for f in (np.zeros_like(flat), np.ones_like(flat)):
+        co = carry_over_split(s, d, f, secs, L)
+        np.testing.assert_allclose(co.charged, co.measured, atol=1e-12)
+
+
+def _ghost_from_profile(track, gid, s, v, throttle, kind="policy"):
+    t = np.r_[0.0, np.cumsum(np.diff(s) * 0.5 * (1 / v[1:] + 1 / v[:-1]))]
+    x, y, h = export.frenet_to_world(track, s, 0 * s)
+    ch = {"t": t, "s": s, "n": 0 * s, "x": x, "y": y, "heading": np.unwrap(h), "speed": v,
+          "throttle": throttle, "brake": 1.0 - throttle}
+    return export.Ghost(gid, gid, kind, float(t[-1]), ch)
+
+
+def test_a_slow_exit_is_charged_to_its_corner_not_the_flat_out_bend_after_it():
+    """Corner A: the agent over-brakes (25 instead of 30 m/s) and exits slower. B is a
+    bend both cars take flat out; the agent is still slower there, so the clock in B
+    shows a loss, but B costs nothing: A's exit does. Then both brake for C."""
+    tr = circle()
+    L = tr.length
+    s = np.linspace(0.0, L, 4001)
+    K = 200.0                                       # power-limited: dv/ds = K / v^2
+
+    def profile(v_apex):
+        v = np.full_like(s, 60.0)
+        thr = np.ones_like(s)
+        brk = (s >= 150) & (s < 200)
+        v[brk] = 60.0 + (s[brk] - 150) / 50 * (v_apex - 60.0)
+        thr[brk] = 0.0
+        apex = (s >= 200) & (s < 260)
+        v[apex], thr[apex] = v_apex, 0.5
+        acc = (s >= 260) & (s < 720)
+        v[acc] = np.cbrt(v_apex**3 + 3 * K * (s[acc] - 260))
+        v_brk = v[acc][-1]
+        brk2 = (s >= 720) & (s < 800)
+        v[brk2] = v_brk + (s[brk2] - 720) / 80 * (40.0 - v_brk)
+        thr[brk2] = 0.0
+        rest = s >= 800
+        v[rest] = np.cbrt(40.0**3 + 3 * K * (s[rest] - 800))
+        return v, thr
+
+    v_ref, thr_ref = profile(30.0)
+    v_ag, thr_ag = profile(25.0)
+    ref = _ghost_from_profile(tr, "ocp", s, v_ref, thr_ref, kind="ocp")
+    agent = _ghost_from_profile(tr, "agent", s, v_ag, thr_ag)
+    secs = [_sec("A", 0, 400), _sec("B", 400, 700), _sec("C", 700, L)]
+    doc = export.build_document(tr, [agent, ref], reference="ocp", sectors=secs)
+    comp = doc["comparisons"][0]
+    measured = np.asarray(comp["sector_delta_s"])
+    charged = np.asarray(comp["sector_split"]["charged_s"])
+    assert measured[1] > 0.02                       # the clock in B shows a real loss ...
+    assert abs(charged[1]) < 1e-3                   # ... that B is not charged for
+    # A pays for its exit up to where both brake for C (C's first 20 m are flat out too).
+    D = np.interp([700.0, 720.0], comp["s"], comp["delta_t"])
+    assert charged[0] == pytest.approx(measured[0] + measured[1] + D[1] - D[0], abs=1e-3)
+    assert charged[2] == pytest.approx(measured[2] - (D[1] - D[0]), abs=1e-3)
+    assert charged.sum() == pytest.approx(comp["lap_delta_s"], abs=1e-3)
+    sp = comp["sector_speed"]
+    assert sp["entry_dv_mps"][1] < -0.3            # B entered slower
+    assert sp["vmin_mps"][0] == pytest.approx(25.0, abs=1e-3)
+    assert sp["ref_vmin_mps"][0] == pytest.approx(30.0, abs=1e-3)
+
+
 # --------------------------------------------------------------------------- document
 
 
@@ -305,6 +394,9 @@ def test_document_round_trip(tmp_path):
     assert comp["lap_delta_s"] > 0 and comp["delta_t"][0] == 0.0
     assert comp["delta_t"][-1] == pytest.approx(comp["lap_delta_s"], abs=1e-4)
     assert sum(comp["sector_delta_s"]) == pytest.approx(comp["lap_delta_s"], abs=1e-3)
+    assert sum(comp["sector_split"]["charged_s"]) == pytest.approx(comp["lap_delta_s"],
+                                                                   abs=1e-3)
+    assert len(comp["sector_speed"]["ref_vmin_mps"]) == len(back["track"]["sectors"])
     g = export.ghost_arrays(back, "ocp")
     assert g["t"][-1] == pytest.approx(back["ghosts"][1]["lap_time_s"], abs=1e-4)
     assert "NaN" not in p.read_text()
@@ -328,6 +420,11 @@ def _broken(mutate):
     (lambda d: d.update(reference="nobody"), "reference"),
     (lambda d: d["ghosts"][0]["channels"]["x"].__setitem__(3, None), "numeric|non-finite"),
     (lambda d: d["comparisons"][0]["sector_delta_s"].pop(), "sector"),
+    (lambda d: d["comparisons"][0]["sector_split"]["charged_s"].pop(), "one value per sector"),
+    (lambda d: d["comparisons"][0]["sector_split"]["own_s"].__setitem__(0, 9.0), "measured"),
+    (lambda d: d["comparisons"][0]["sector_split"]["charged_s"].__setitem__(0, 9.0),
+     "sum to the measured"),
+    (lambda d: d["comparisons"][0]["sector_speed"].pop("vmin_mps"), "vmin"),
 ])
 def test_validation_rejects_broken_documents(mutate, match):
     with pytest.raises(export.SchemaError, match=match):
