@@ -170,12 +170,17 @@ def _ring_policy(obs):
 
 
 def test_policy_ghost_reproduces_the_harness_lap():
+    import jax
+
     from apexzero.eval.laps import timed_laps
 
     tr = circle()
-    harness = timed_laps(_ring_policy, tr, 30.0, runs=1)
+    # The harness is float32-only, and earlier tests (the OCP checks) switch x64 on globally.
+    with jax.enable_x64(False):
+        harness = timed_laps(_ring_policy, tr, 30.0, runs=1)
     assert harness.completed[0]
-    ro = export.rollout_policy(_ring_policy, tr, 30.0)
+    with jax.enable_x64(True):          # the export forces float32 itself
+        ro = export.rollout_policy(_ring_policy, tr, 30.0)
     g = export.policy_ghost(ro, tr)
     assert g.lap_time == pytest.approx(float(harness.lap_time[0]), abs=1e-3)
     assert set(export.CHANNELS) <= set(g.channels)

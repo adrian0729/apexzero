@@ -278,8 +278,20 @@ def rollout_policy(policy_fn: Callable, track: Track, v_start: float, laps: int 
     as ``timed_laps`` does for its first (unjittered) run, but record every state.
 
     Float32 track arrays and the same step function as the harness, so the lap matches the
-    harness's run 0 up to batch-size rounding in the network.
+    harness's run 0 up to batch-size rounding in the network. The harness only runs in
+    float32 (its scan carry mixes float32 state with default-dtype context), so the rollout
+    forces float32 even if the caller has enabled ``jax_enable_x64`` (the OCP checks do).
     """
+    import contextlib
+
+    import jax
+
+    float32 = getattr(jax, "enable_x64", None)
+    with float32(False) if float32 is not None else contextlib.nullcontext():
+        return _rollout_policy_f32(policy_fn, track, v_start, laps, params, ctx, n0, max_steps)
+
+
+def _rollout_policy_f32(policy_fn, track, v_start, laps, params, ctx, n0, max_steps):
     import jax
     import jax.numpy as jnp
 
@@ -288,7 +300,7 @@ def rollout_policy(policy_fn: Callable, track: Track, v_start: float, laps: int 
 
     params = racing.EnvParams() if params is None else params
     tr = track_arrays(track)
-    ctx = racing.default_context() if ctx is None else jnp.asarray(ctx)
+    ctx = racing.default_context() if ctx is None else jnp.asarray(ctx, jnp.float32)
     L = float(track.length)
     if max_steps is None:
         max_steps = int(laps * 3.0 * L / max(v_start, 20.0) / params.dt) + 200
