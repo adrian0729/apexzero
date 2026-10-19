@@ -72,11 +72,23 @@ def test_proxy_is_a_lower_bound_on_any_window_return_max():
 def test_real_optimum_replaces_the_proxy():
     j_star = np.array([60.0, 45.0, 2.0])
     t = F.regret_targets(_returns(), [0, 2], j_opt=j_star)
-    assert not t.proxy and not t.attained.any()
+    assert not t.proxy and not t.attained.any() and not t.negative.any()
     assert np.allclose(t.reg, j_star - t.j_pi)
     assert np.allclose(t.reg_norm, t.reg / j_star)
     with pytest.raises(ValueError):
         F.regret_targets(_returns(), [0, 2], j_opt=np.ones(4))
+
+
+def test_negative_regret_is_flagged_and_can_be_floored_by_j_best():
+    j_star = np.array([30.0, 45.0, 2.0])                   # level 0: checkpoint 1 has J^pi = 40
+    with pytest.warns(UserWarning, match="negative regret on 1 of 3 levels"):
+        t = F.regret_targets(_returns(), [0, 2], j_opt=j_star)
+    assert np.array_equal(t.negative, [[False, False, False], [True, False, False]])
+    assert t.reg[1, 0] == pytest.approx(-10.0)
+    f = F.regret_targets(_returns(), [0, 2], j_opt=j_star, floor_with_best=True)
+    assert np.allclose(f.j_opt, [40.0, 45.0, 2.0]) and not f.negative.any() and not f.proxy
+    assert np.array_equal(f.attained[:, 0], [False, True])         # J_best won on level 0
+    assert np.all(f.reg >= 0)
 
 
 # --------------------------------------------------------------------------- rank metrics
@@ -194,6 +206,37 @@ def test_fidelity_table_drops_undefined_targets_and_skips_nan_scores():
     assert np.isclose(tab.rows["noisy"]["rho_abs"].value, direct)
 
 
+def test_fidelity_table_two_loadings_on_exact_cases():
+    rng = np.random.default_rng(14)
+    j_opt, j_pi = rng.normal(60, 5, 300), rng.normal(50, 5, 300)
+    reg = j_opt - j_pi
+    tab = F.fidelity_table({"opt": j_opt, "agent": -j_pi}, j_opt, j_pi, reg, reg / j_opt,
+                           n_boot=200)
+    assert tab.rows["opt"]["a_opt"].value == pytest.approx(1.0)
+    assert tab.rows["opt"]["b_pi"].value == pytest.approx(0.0, abs=1e-12)
+    assert tab.rows["agent"]["a_opt"].value == pytest.approx(0.0, abs=1e-12)
+    assert tab.rows["agent"]["b_pi"].value == pytest.approx(-1.0)
+    assert tab.rows["opt"]["a_opt"].lo == pytest.approx(1.0)       # exact in every resample
+
+
+def test_fidelity_table_paired_delta_against_the_best_baseline():
+    reg, j_opt, j_pi, reg_norm, noisy = _synthetic_targets(300, 0.5, seed=15)
+    rng = np.random.default_rng(16)
+    weak = 0.2 * reg + rng.normal(size=300) * reg.std()
+    tab = F.fidelity_table({"noisy": noisy, "weak": weak, "oracle": reg}, j_opt, j_pi, reg,
+                           reg_norm, n_boot=300, best_of=["noisy", "weak"], keep_samples=True)
+    rows = tab.rows
+    best = max(rows["noisy"]["rho_abs"].value, rows["weak"]["rho_abs"].value)
+    assert rows["oracle"]["delta_best_rho_abs"].value == pytest.approx(1.0 - best)
+    assert rows["oracle"]["delta_best_rho_abs"].lo > 0
+    # A baseline never beats the per-resample best of a set that contains it.
+    s = tab.samples
+    assert np.all(s["noisy"]["rho_abs"] - np.maximum(s["noisy"]["rho_abs"], s["weak"]["rho_abs"]) <= 0)
+    assert rows["noisy"]["delta_best_rho_abs"].hi <= 1e-12
+    assert tab.keep.sum() == tab.n_levels == 300
+    assert F.fidelity_table({"x": noisy}, j_opt, j_pi, reg, reg_norm, n_boot=20).samples is None
+
+
 def test_fidelity_table_is_deterministic_given_the_seed():
     args = _synthetic_targets(80, 0.4, seed=6)
     t1 = F.fidelity_table({"s": args[4]}, *args[1:3], args[0], args[3], n_boot=100, seed=9)
@@ -263,6 +306,54 @@ def test_reliability_curve_matches_theory():
         F.reliability_curve(lambda w: {"m": x[:, w].mean(-1)}, range(16), [9])
 
 
+def test_empirical_windows_and_bracketed_budget():
+    sizes = [1, 2, 4, 8, 16]
+    assert F.empirical_windows([0.5, 0.7, 0.85, 0.92, 0.96], sizes) == 8.0
+    assert np.isinf(F.empirical_windows([0.5, 0.6, 0.7, 0.8, 0.85], sizes))
+    assert F.empirical_windows([np.nan, 0.95, 0.97, 0.98, 0.99], sizes) == 2.0
+    # The prophecy says 1 window, but the curve misses 0.9 at 1 and reaches it at 2.
+    b, ext = F.window_budget(0.999, 16, [0.88, 0.93, 0.96, 0.98, 0.99], sizes)
+    assert F.windows_for_reliability(0.999, 16) == 1.0 and b == 2.0 and not ext
+    # The prophecy says 216 windows, above the first size that reached the goal: capped at 8.
+    b, ext = F.window_budget(0.4, 16, [0.2, 0.4, 0.7, 0.92, 0.9], sizes)
+    assert b == 8.0 and not ext
+    # Never reached on the curve: at least one more than the largest size, flagged.
+    b, ext = F.window_budget(0.8, 16, [0.3, 0.45, 0.6, 0.7, 0.8], sizes)
+    assert b == pytest.approx(36.0) and ext
+    b, ext = F.window_budget(0.95, 16, [0.3, 0.45, 0.6, 0.7, 0.8], sizes)
+    assert b == 17.0 and ext                                       # prophecy 7.6 contradicted
+
+
+def test_split_halves_and_curves_match_the_single_method_versions():
+    x = _window_values(300, 16, 2.0, seed=17)
+    fn = lambda w: {"mean": x[:, w].mean(-1)}
+    both = F.split_halves(fn, range(16))
+    assert both["spearman"]["mean"] == F.split_half(fn, range(16))["mean"]
+    assert both["pearson"]["mean"] == F.split_half(fn, range(16), method="pearson")["mean"]
+    curves = F.reliability_curves(fn, range(16), [1, 4], n_splits=3, seed=2)
+    one = F.reliability_curve(fn, range(16), [1, 4], n_splits=3, seed=2, method="pearson")
+    assert np.allclose(curves["pearson"]["mean"], one["mean"])
+
+
+def test_spearman_brown_holds_for_pearson_but_not_for_ranks_under_crash_tails():
+    """The pilot's finding in miniature: i.i.d. windows with a heavy crash tail. The Pearson
+    reliability of the window mean follows Spearman-Brown; the rank reliability starts well
+    above the prophecy anchored on its own split half."""
+    rng = np.random.default_rng(18)
+    L, W = 3000, 16
+    mu = rng.normal(size=(L, 1))
+    crash = rng.uniform(size=(L, W)) < 0.2
+    x = mu + 0.3 * rng.normal(size=(L, W)) - 12.0 * crash * rng.uniform(0.5, 1.5, (L, W))
+    fn = lambda w: {"m": x[:, w].mean(-1)}
+    sizes = [1, 2, 4, 8]
+    curves = F.reliability_curves(fn, range(W), sizes, n_splits=4, seed=3)
+    half = F.split_halves(fn, range(W))
+    pear = F.spearman_brown(half["pearson"]["m"], np.array(sizes) / 8)
+    spear = F.spearman_brown(half["spearman"]["m"], np.array(sizes) / 8)
+    assert np.allclose(curves["pearson"]["m"], pear, atol=0.03)
+    assert curves["spearman"]["m"][0] - spear[0] > 0.1
+
+
 def test_spearman_mde_formula_and_type_one_error():
     assert np.isclose(F.spearman_mde(1000), math.tanh(2.80158 * math.sqrt(1.06 / 997)), atol=1e-4)
     assert F.spearman_mde(150) > F.spearman_mde(1000)
@@ -321,9 +412,18 @@ def test_split_half_runs_on_level_scores_end_to_end():
     assert {"pvl", "maxmc", "learnability_s1", "mna", "disagreement", "agent_only"} <= rel.keys()
     assert rel["agent_only"] > 0.5                                 # the planted level effect
     plan = F.window_plan(W)
-    g = np.stack([st.G_disc, st.G_disc + 1.0])                     # two "checkpoints"
+    # Planted signal: a second "checkpoint" returns the same constant on every level, above
+    # anything the first reaches, so checkpoint 0's regret is K - J^pi_0: largest where
+    # its planted skill is lowest. -J^pi on the score windows must then rank regret well.
+    k = st.G_disc.max() + 10.0
+    g = np.stack([st.G_disc, np.full_like(st.G_disc, k)])
     t = F.regret_targets(g, plan.hb_target)
-    tab = F.fidelity_table(level_scores(st, plan.hb_score), t.j_opt, t.j_pi[0], t.reg[0],
-                           t.reg_norm[0], n_boot=50, reference="agent_only")
-    assert np.allclose(t.reg[0], 1.0) and np.allclose(t.reg[1], 0.0)
+    assert np.allclose(t.j_opt, k) and np.allclose(t.reg[1], 0.0) and t.reg[0].std() > 0
+    sc = level_scores(st, plan.hb_score)
+    sc["skill"] = skill[:, 0, 0]                                   # wrong sign on purpose
+    tab = F.fidelity_table(sc, t.j_opt, t.j_pi[0], t.reg[0], t.reg_norm[0], n_boot=200,
+                           reference="agent_only")
+    assert tab.rows["agent_only"]["rho_abs"].value > 0.6
+    assert tab.rows["skill"]["rho_abs"].value < -0.6
+    assert tab.rows["skill"]["delta_rho_abs"].hi < 0
     assert "pvl" in tab.rows and "delta_rho_abs" in tab.rows["pvl"]
