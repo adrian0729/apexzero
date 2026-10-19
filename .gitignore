@@ -22,6 +22,9 @@ outputs/
 *.ckpt
 *.msgpack
 
+# Agent worktrees (separate checkouts of this repo, never part of it)
+.claude/worktrees/
+
 # OS / editors
 .DS_Store
 .idea/
