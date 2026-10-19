@@ -19,6 +19,10 @@ Protocol per checkpoint (a fresh-score audit, the maze analogue of the racing E1
 - J* from BFS (``apexzero.maze.oracle``); J^pi = mean discounted return of the target
   episodes; regret = J* - J^pi, which is >= 0 for every episode, not just on average,
   because the env is deterministic and J* is the maximum over action sequences (asserted).
+  Normalised regret (J* - J^pi) / J* (plan 2.2, the second primary target) is defined on
+  the levels with a reachable goal (J* > 0) and NaN elsewhere;
+- the generator, gamma and the time limit come from the run's own config and env
+  (``level_config``), so J* uses the discount and the levels the checkpoint trained with.
 
 Scores, all on the same operational episodes:
 - PVL and MaxMC exactly as JaxUED computes them: its ``compute_gae`` (from maze_plr.py) on
@@ -29,6 +33,13 @@ Scores, all on the same operational episodes:
   and the lambda variants, from our per-episode primitives (``scoring_gae``, ``mna_terms``)
   and the spec's aggregation (``estimators.level_scores``). The JaxUED and ours columns
   must agree (tests/test_maze_audit.py);
+- PVL and MaxMC *native*: what PLR at JaxUED's defaults actually stores for a new level
+  (maze_plr.py ``on_new_levels``): one ``num_steps`` = 256-step rollout from a reset with a
+  fresh carry, scored on whatever episodes complete in it, bootstrapped from V(o_256). It is
+  collected as a second, independent stream, so it shares no sampling noise with the target.
+  A level with no completed episode would score -inf (jaxued.utils' ``incomplete_value``);
+  with the 250-step time limit every 256-step rollout completes one, so this cannot happen
+  at the maze defaults, but the fidelity code ranks -inf last rather than failing;
 - baselines: agent-only -J^pi, policy-agnostic J* and BFS path length, the oracle-operational
   reference J* - J^pi(operational episodes), and random.
 """
@@ -96,6 +107,15 @@ def generate_levels(n: int, key: jax.Array, n_walls: int = 25) -> Level:
     """n levels from the DR generator the training run samples from (batched Level)."""
     gen = make_level_generator(MAZE_SIZE, MAZE_SIZE, n_walls)
     return jax.vmap(gen)(jax.random.split(key, n))
+
+
+def level_config(config: dict) -> dict:
+    """What a run's audit levels and J* must share with its training: the generator's wall
+    count, the discount, the env's time limit and the view size (``config`` = config.json)."""
+    _, env_params = make_env(int(config["agent_view_size"]))
+    return dict(n_walls=int(config["n_walls"]), gamma=float(config["gamma"]),
+                max_steps=int(env_params.max_steps_in_episode),
+                agent_view_size=int(config["agent_view_size"]))
 
 
 def bfs_optimum(levels: Level, gamma: float = 0.995, max_steps: int = 250):
@@ -216,9 +236,10 @@ def _chunk_runner(act, env, env_params, n: int, chunk: int):
 
 @float32
 def collect(policy: Policy, levels: Level, episodes: int, key: jax.Array,
-            agent_view_size: int = 5, chunk: int = 250) -> MazeRollouts:
-    """Run every level's stream until it has completed ``episodes`` episodes. Step keys are
-    fold_in(key, t), so the result does not depend on ``chunk`` (only the trimmed length does)."""
+            agent_view_size: int = 5, chunk: int = 250, min_steps: int = 0) -> MazeRollouts:
+    """Run every level's stream until it has completed ``episodes`` episodes and is at least
+    ``min_steps`` long. Step keys are fold_in(key, t), so the result does not depend on
+    ``chunk`` (only the trimmed length does)."""
     env, env_params = make_env(agent_view_size)
     n = int(levels.wall_map.shape[0])
     k_reset, k_run = jax.random.split(key)
@@ -227,17 +248,18 @@ def collect(policy: Policy, levels: Level, episodes: int, key: jax.Array,
     run = _chunk_runner(policy.act, env, env_params, n, chunk)
     carry = (policy.init(n), obs, state, jnp.zeros(n, bool))
     outs, count = [], np.zeros(n, int)
-    t_max = episodes * env_params.max_steps_in_episode      # every episode ends by the time limit
+    # Every episode ends by the time limit, so t_max steps always suffice.
+    t_max = max(episodes * env_params.max_steps_in_episode, min_steps)
     for t0 in range(0, t_max, chunk):
         carry, out = run(policy.params, carry, t0, k_run)
         outs.append(jax.tree.map(np.asarray, out))
         count += outs[-1][2].sum(0)
-        if (count >= episodes).all():
+        if (count >= episodes).all() and t0 + chunk >= min_steps:
             break
     pc, obs, _, last_done = carry
     _, _, last_value = policy.act(policy.params, k_run, pc, obs, last_done)
     reward, value, done = (np.concatenate([o[i] for o in outs]) for i in range(3))
-    assert (done.sum(0) >= episodes).all()
+    assert (done.sum(0) >= episodes).all() and len(done) >= min_steps
     return MazeRollouts(reward, value, done.astype(bool), np.asarray(last_value))
 
 
@@ -260,69 +282,113 @@ def episode_bounds(done: np.ndarray, episodes: int) -> np.ndarray:
 # --------------------------------------------------------------------------- scores
 
 
+def _jaxued(value, reward, done, last_value, counted, gamma: float, lam: float) -> dict:
+    # maze_plr.py on_new_levels (L545-547): compute_gae over the rollout, then jaxued.utils'
+    # accumulators over the episodes whose end is in ``counted``.
+    value, reward = jnp.asarray(value), jnp.asarray(reward)
+    adv, _ = maze_plr().compute_gae(gamma, lam, jnp.asarray(last_value), value, reward,
+                                    jnp.asarray(done))
+    counted = jnp.asarray(counted)
+    max_returns = compute_max_returns(counted, reward)
+    return {"pvl": np.asarray(positive_value_loss(counted, adv)),
+            "maxmc": np.asarray(max_mc(counted, value, max_returns)),
+            "max_return": np.asarray(max_returns),
+            "advantages": np.asarray(adv),
+            "episodes": np.asarray(counted).sum(0)}
+
+
 @float32
 def jaxued_scores(ro: MazeRollouts, k: int, gamma: float, lam: float) -> dict[str, np.ndarray]:
-    """PVL and MaxMC exactly as maze_plr.py's new-level branch computes them (L545-547) on a
-    rollout holding the first k episodes of each stream."""
-    adv, _ = maze_plr().compute_gae(gamma, lam, jnp.asarray(ro.last_value), jnp.asarray(ro.value),
-                                    jnp.asarray(ro.reward), jnp.asarray(ro.done))
-    dones = jnp.asarray(first_dones(ro.done, k))
-    values, rewards = jnp.asarray(ro.value), jnp.asarray(ro.reward)
-    max_returns = compute_max_returns(dones, rewards)
-    return {"pvl": np.asarray(positive_value_loss(dones, adv)),
-            "maxmc": np.asarray(max_mc(dones, values, max_returns)),
-            "max_return": np.asarray(max_returns),
-            "advantages": np.asarray(adv)}
+    """PVL and MaxMC exactly as maze_plr.py's new-level branch computes them on a rollout
+    holding the first k episodes of each stream (the DEV-5 operational score)."""
+    return _jaxued(ro.value, ro.reward, ro.done, ro.last_value, first_dones(ro.done, k), gamma, lam)
+
+
+@float32
+def jaxued_native_scores(ro: MazeRollouts, num_steps: int, gamma: float,
+                         lam: float) -> dict[str, np.ndarray]:
+    """PVL and MaxMC as PLR stores them at JaxUED's defaults: the first ``num_steps`` steps of
+    a stream (a reset and a fresh carry, as in ``sample_trajectories_rnn``), every episode
+    that completes in them, the GAE bootstrapped from V(o_num_steps) = ``ro.value[num_steps]``.
+    -inf where no episode completes (``episodes`` = 0)."""
+    if ro.done.shape[0] <= num_steps:
+        raise ValueError(f"stream has {ro.done.shape[0]} steps; need num_steps + 1 = {num_steps + 1}")
+    done = ro.done[:num_steps]
+    return _jaxued(ro.value[:num_steps], ro.reward[:num_steps], done, ro.value[num_steps], done,
+                   gamma, lam)
 
 
 def episode_stats(ro: MazeRollouts, episodes: int, gamma: float, lambdas=LAMBDAS,
-                  headline: int = 2) -> WindowStats:
+                  headline: int = 2, scored: Sequence[int] | None = None) -> WindowStats:
     """Per (level, episode) records from our primitives, in the racing audit's WindowStats
     layout so ``estimators.level_scores`` aggregates them unchanged. Maze specifics:
     every episode end is terminal (mode F = mode B, no chunk cuts inside counted episodes),
-    and the success slot (``completed``, S1 in racing) holds 'goal reached' (G_e > 0)."""
+    and the success slot (``completed``, S1 in racing) holds 'goal reached' (G_e > 0).
+
+    Returns, lengths and first / mean values are computed for all ``episodes``, vectorised:
+    the target needs only these. The per-step statistics (GAE for every lambda and MNA, a
+    Python loop with an O(T^2) MNA term per episode) are computed only for the ``scored``
+    episodes (default: all) and are NaN for the rest."""
     bounds = episode_bounds(ro.done, episodes)
     N, W = bounds.shape[:2]
+    a0, a1 = bounds[..., 0], bounds[..., 1]
+    lv = np.arange(N)[:, None]
+    r, v = ro.reward.astype(float), ro.value.astype(float)
+    # gamma^(t - start of t's episode): segment sums of r * disc_t are discounted returns, and
+    # the weights never underflow however long the stream is.
+    t = np.arange(len(r))[:, None]
+    starts = np.r_[np.ones((1, N), bool), ro.done[:-1]]
+    disc_t = gamma ** (t - np.maximum.accumulate(np.where(starts, t, 0), axis=0))
+
+    def seg_sum(x):
+        c = np.concatenate([np.zeros((1, N)), np.cumsum(x, axis=0)])
+        return c[a1, lv] - c[a0, lv]
+
+    T = (a1 - a0).astype(float)
+    G, G_disc = seg_sum(r), seg_sum(r * disc_t)
+    V_first, V_bar = v[a0, lv], seg_sum(v) / T
+
     shape = (N, W)
-    T, G, G_disc, V_first, V_bar, mna_sum = (np.zeros(shape) for _ in range(6))
-    pvl, l1, mean_a = (np.zeros((len(lambdas), *shape)) for _ in range(3))
-    pvl_disc, l1_disc = np.zeros(shape), np.zeros(shape)
+    pvl, l1, mean_a = (np.full((len(lambdas), *shape), np.nan) for _ in range(3))
+    pvl_disc, l1_disc, mna_sum = (np.full(shape, np.nan) for _ in range(3))
     for i in range(N):
-        for w in range(W):
-            a0, a1 = bounds[i, w]
-            r = ro.reward[a0:a1, i].astype(float)
-            v = ro.value[a0:a1, i].astype(float)
-            n = len(r)
+        for w in (range(W) if scored is None else scored):
+            e0, e1 = bounds[i, w]
+            ri, vi = r[e0:e1, i], v[e0:e1, i]
+            n = len(ri)
             term, none = np.r_[np.zeros(n - 1, bool), True], np.zeros(n, bool)
             disc = gamma ** np.arange(n)
             for k, lam in enumerate(lambdas):
-                a = scoring_gae(r, v, term, none, 0.0, none, gamma, lam)
+                a = scoring_gae(ri, vi, term, none, 0.0, none, gamma, lam)
                 pvl[k, i, w], l1[k, i, w], mean_a[k, i, w] = (
                     np.maximum(a, 0).mean(), np.abs(a).mean(), a.mean())
                 if k == headline:
                     pvl_disc[i, w] = np.sum(disc * np.maximum(a, 0)) / disc.sum()
                     l1_disc[i, w] = np.sum(disc * np.abs(a)) / disc.sum()
-            mna_sum[i, w] = mna_terms(r, v, term, none, 0.0, none, gamma, lambdas[headline]).sum()
-            T[i, w], G[i, w], G_disc[i, w] = n, r.sum(), np.sum(disc * r)
-            V_first[i, w], V_bar[i, w] = v[0], v.mean()
+            mna_sum[i, w] = mna_terms(ri, vi, term, none, 0.0, none, gamma, lambdas[headline]).sum()
     return WindowStats(T, G, G_disc, V_first, V_bar, pvl, l1, mean_a, pvl_disc, l1_disc, mna_sum,
                        np.full(shape, np.nan), G > 0, np.zeros(shape))
 
 
 def audit_rollouts(ro: MazeRollouts, j_star: np.ndarray, k_star: np.ndarray, episodes: int = 8,
                    score_episodes: int = 4, gamma: float = 0.995, lam: float = 0.98,
-                   seed: int = 0) -> dict[str, np.ndarray]:
-    """Everything the fidelity analysis needs, per level. Score keys are prefixed ``s_``."""
+                   seed: int = 0, native: MazeRollouts | None = None,
+                   num_steps: int = 256) -> dict[str, np.ndarray]:
+    """Everything the fidelity analysis needs, per level. Score keys are prefixed ``s_``.
+    Scores use episodes 1..score_episodes and the target the rest: an in-sample target would
+    share the scores' sampling noise and inflate rho, so it is refused. ``native`` (an
+    independent stream of at least num_steps + 1 steps) adds JaxUED's native PVL and MaxMC."""
+    if not 1 <= score_episodes < episodes:
+        raise ValueError(f"need 1 <= score_episodes < episodes (got {score_episodes}, {episodes}): "
+                         "the target must come from episodes the scores did not see")
     if lam not in LAMBDAS:
         raise ValueError(f"PPO lambda {lam} must be one of the stored variants {LAMBDAS}")
     headline = LAMBDAS.index(lam)
-    st = episode_stats(ro, episodes, gamma, headline=headline)
+    op, tgt = list(range(score_episodes)), list(range(score_episodes, episodes))
+    st = episode_stats(ro, episodes, gamma, headline=headline, scored=op)
     if np.any(st.G_disc > j_star[:, None] + 1e-5):
         raise AssertionError("an episode beat the BFS optimum: env/oracle mismatch")
-    op, tgt = range(score_episodes), range(score_episodes, episodes)
-    if not len(tgt):
-        tgt = op                                          # in-sample (used by tests only)
-    j_pi = st.G_disc[:, list(tgt)].mean(-1)
+    j_pi = st.G_disc[:, tgt].mean(-1)
     ours = level_scores(st, op, headline=headline)
     ref = jaxued_scores(ro, score_episodes, gamma, lam)
     rng = np.random.default_rng(seed)
@@ -337,24 +403,40 @@ def audit_rollouts(ro: MazeRollouts, j_star: np.ndarray, k_star: np.ndarray, epi
         "random": rng.random(len(j_star)),
     }
     scores.update({k: v for k, v in ours.items() if k.startswith(("pvl_lam", "l1_lam"))})
+    extra = {}
+    if native is not None:
+        nat = jaxued_native_scores(native, num_steps, gamma, lam)
+        scores.update(pvl_native=nat["pvl"], maxmc_native=nat["maxmc"])
+        extra = dict(native_episodes=nat["episodes"], native_steps=np.full(len(j_star), num_steps))
     out = {f"s_{k}": np.asarray(v, float) for k, v in scores.items()}
+    regret = j_star - j_pi
+    reachable = j_star > 0
     out.update(
-        j_star=j_star, k_star=k_star, j_pi=j_pi, regret=j_star - j_pi,
+        j_star=j_star, k_star=k_star, j_pi=j_pi, regret=regret,
+        regret_norm=np.where(reachable, regret / np.where(reachable, j_star, 1.0), np.nan),
         j_pi_all=st.G_disc.mean(-1), success_rate=st.completed.mean(-1),
-        success_rate_op=st.completed[:, list(op)].mean(-1),
-        mean_steps=st.T.mean(-1), stream_steps=np.full(len(j_star), ro.done.shape[0]),
+        success_rate_op=st.completed[:, op].mean(-1),
+        mean_steps=st.T.mean(-1), stream_steps=np.full(len(j_star), ro.done.shape[0]), **extra,
     )
     return out
 
 
 def audit_checkpoint(ck: MazeCheckpoint, levels: Level, key: jax.Array, episodes: int = 8,
                      score_episodes: int = 4, oracle: tuple | None = None) -> dict[str, np.ndarray]:
-    """Audit one checkpoint on ``levels`` (pass ``oracle`` = bfs_optimum(levels) to reuse it)."""
-    gamma, lam = float(ck.config["gamma"]), float(ck.config["gae_lambda"])
-    j_star, k_star = oracle if oracle is not None else bfs_optimum(levels, gamma)
-    ro = collect(network_policy(ck.params), levels, episodes, key,
-                 agent_view_size=int(ck.config["agent_view_size"]))
-    return audit_rollouts(ro, j_star, k_star, episodes, score_episodes, gamma, lam)
+    """Audit one checkpoint on ``levels``. Pass ``oracle`` = bfs_optimum(levels, gamma,
+    max_steps) from this run's ``level_config`` to reuse it across checkpoints; otherwise it
+    is computed from the run's config. The native-score stream uses an independent key."""
+    lc = level_config(ck.config)
+    gamma, lam = lc["gamma"], float(ck.config["gae_lambda"])
+    num_steps = int(ck.config["num_steps"])
+    j_star, k_star = oracle if oracle is not None else bfs_optimum(levels, gamma, lc["max_steps"])
+    policy = network_policy(ck.params)
+    # One chunk length (num_steps + 1) for both streams, so the scan compiles once.
+    kw = dict(agent_view_size=lc["agent_view_size"], chunk=num_steps + 1)
+    ro = collect(policy, levels, episodes, key, **kw)
+    native = collect(policy, levels, 0, jax.random.fold_in(key, 1), min_steps=num_steps + 1, **kw)
+    return audit_rollouts(ro, j_star, k_star, episodes, score_episodes, gamma, lam,
+                          native=native, num_steps=num_steps)
 
 
 def score_names(audit: dict[str, np.ndarray]) -> Sequence[str]:
