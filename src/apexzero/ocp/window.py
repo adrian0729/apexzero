@@ -303,13 +303,7 @@ def compile_functions(funcs: dict[str, ca.Function], cache_dir: Path | None = No
     for f in funcs.values():
         cg.add(f)
     with tempfile.TemporaryDirectory(prefix="to_ocp_") as tmp:
-        cwd = os.getcwd()
-        try:
-            os.chdir(tmp)           # CodeGenerator writes into the working directory
-            cg.generate()
-        finally:
-            os.chdir(cwd)
-        src = Path(tmp) / "to_ocp.c"
+        src = Path(cg.generate(tmp + os.sep))
         tag = hashlib.sha256(src.read_bytes() + " ".join(flags).encode()).hexdigest()[:20]
         lib = cache / f"to_ocp_{tag}.so"
         if not lib.exists():
