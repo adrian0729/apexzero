@@ -411,15 +411,21 @@ def stage_stimuli(args: argparse.Namespace) -> None:
             log.step(note=f"built: {len(bank)} rows, {len(cells)} cells")
         det = stimuli.check_design_details(bank, cells)
         log.step(note="design checks")
-        states, reach = _standin_states()
-        rb, rc = stimuli.build_real_design(bank, cells, states)
-        real_det = stimuli.check_design_details(rb, rc)
-        n_real = len(rb) - len(bank)
-        log.step(note=f"stand-in real geometry: {n_real} rows")
         checks = {k: dict(v) for k, v in det.items()}
-        for k in ("transplant_source", "twin_fit", "inside_cap", "track_arrays_roundtrip",
-                  "mirror_exact", "lengths", "theta_eff"):
-            checks[f"real_standin/{k}"] = real_det[k]
+        if any({"D", "E1", "E2"} & set(c.tiers) for c in cells):
+            # The real rows are in the design, so the checks above already cover them; a
+            # stand-in build on top would duplicate every real stimulus.
+            n_real, reach = 0, None
+            log.step(note="real geometry checked in the design itself")
+        else:
+            states, reach = _standin_states()
+            rb, rc = stimuli.build_real_design(bank, cells, states)
+            real_det = stimuli.check_design_details(rb, rc)
+            n_real = len(rb) - len(bank)
+            log.step(note=f"stand-in real geometry: {n_real} rows")
+            for k in ("transplant_source", "twin_fit", "inside_cap", "track_arrays_roundtrip",
+                      "mirror_exact", "lengths", "theta_eff"):
+                checks[f"real_standin/{k}"] = real_det[k]
         h = stimuli.save_design(out, bank, cells)
         io.write_json(out / "checks.json", dict(checks=checks, design_hash=h,
                                                  standin_real_rows=n_real,

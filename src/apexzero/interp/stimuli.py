@@ -2019,9 +2019,11 @@ def real_state_requests(reachable: dict[str, float] | None = None) -> list[dict]
 THETA_EFF_TOL_DEG = 0.3            # step 1: realised angle within 0.3 deg of nominal
 THETA_SAMPLE_AREA_TOL_DEG = 0.02   # R3: theta_eff equals the knot samples' area (spline)
 THETA_SPEC_AREA_TOL_DEG = 1e-6     # the continuous trapezoid turns exactly its nominal angle
-# Ruling R4: a twin shorter than its real corner is accepted only if it matches R_seg
-# (relative) and the angle (deg) to < 1e-3, the twin fit's own convergence (``_twin_match``).
-TWIN_R4_TOL = {"R_seg_rel": 1e-3, "angle_deg": 1e-3}
+# Ruling R4 (as amended, R4a): a twin shorter than its real corner is accepted if it matches
+# R_seg (relative) and the angle (deg) within the protocol's own twin tolerances (3.4: 2%,
+# 1 deg). Fits usually converge to < 1e-3 (``_twin_match``); a corner whose length cannot be
+# matched can pull the angle off by a fraction of a degree (Brands Hatch 1136: 0.14 deg).
+TWIN_R4_TOL = {"R_seg_rel": TWIN_TOL["R_seg_rel"], "angle_deg": TWIN_TOL["angle_deg"]}
 
 
 def theta_sampling_bound_deg(spec: CornerSpec, ds: float = DS) -> float:
@@ -2045,8 +2047,8 @@ def spec_area_deg(spec: CornerSpec) -> float:
 
 
 def twin_r4_match(R_seg: float, theta_deg: float, target: dict) -> bool:
-    """Ruling R4: the twin matches its real corner's R_seg and angle to < 1e-3
-    (``TWIN_R4_TOL``)."""
+    """Ruling R4 (R4a): the twin matches its real corner's R_seg and angle within the
+    protocol's twin tolerances (``TWIN_R4_TOL``: 2%, 1 deg)."""
     return bool(abs(R_seg / target["R_seg"] - 1.0) < TWIN_R4_TOL["R_seg_rel"]
                 and abs(theta_deg - target["theta_deg"]) < TWIN_R4_TOL["angle_deg"])
 

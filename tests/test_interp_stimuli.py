@@ -237,7 +237,8 @@ def test_transplant_matches_its_source():
     assert ph.kappa[k0] == h.kappa[(k0 - eh.i_c + eh.j_c) % h.n_points]
 
 
-def test_crash_corners_carry_no_radius_labels():
+def test_crash_corners_carry_no_radius_labels(monkeypatch, tmp_path):
+    monkeypatch.setattr(T.io, "STIMULI_DIR", tmp_path)    # the named pairs only (no G3 file)
     dc = T.distinct_crash_corners()
     assert len(dc) == 13
     assert sum(len(v[2]) for v in dc.values()) == 15
@@ -342,7 +343,10 @@ def test_swap_partner():
     assert T.swap_partner(9, v, {0, 1}) is None
 
 
-def test_matched_corners_are_distinct_and_far_from_crashes():
+def test_matched_corners_are_distinct_and_far_from_crashes(monkeypatch, tmp_path):
+    # The named G1/G2 pairs only: G3's crash corners join from the live outputs directory
+    # once ``rollouts --real-laps`` has run, which this test must not depend on.
+    monkeypatch.setattr(T.io, "STIMULI_DIR", tmp_path)
     crash = [(t, c) for (t, c, _) in T.distinct_crash_corners().values()]
     rdev = {n: T.real_track(n) for n in T.R_DEV}
     m = T.matched_corners(rdev, crash, {n: float("inf") for n in T.R_DEV})

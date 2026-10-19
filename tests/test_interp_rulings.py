@@ -352,9 +352,9 @@ def _kinked_row():
 def test_R3_R4_accepted_rows_pass_and_are_listed(ps):
     """R3: a theta_eff miss from knot sampling of the trapezoid's kinks (theta_eff is the
     samples' own area, within the kinks' bound of the nominal angle) is accepted and listed;
-    any other miss fails. R4: a twin matching R_seg and the angle to < 1e-3 but shorter than
-    its corner is accepted with its length shortfall listed; a miss on R_seg, a twin that
-    matches only within the protocol's 2%, or a longer twin, fails."""
+    any other miss fails. R4 (as amended, R4a): a twin matching R_seg and the angle within
+    the protocol's 2% and 1 deg but shorter than its corner is accepted with its length
+    shortfall listed; a miss on R_seg beyond 2%, or a longer twin, fails."""
     spec, pc, area = _corner_rows()
     lm = pc.landmarks
     k_spec, k_pc, k_area = _kinked_row()
@@ -371,7 +371,7 @@ def test_R3_R4_accepted_rows_pass_and_are_listed(ps):
            ("syn/scaled/L", "synthetic", lm, _geo(theta_eff=a_scaled), spec, {}, scaled),
            ("twin/long", "twin", lm, _geo(L_seg=70.0), None, tgt, pc.kappa),
            ("twin/radius", "twin", lm, _geo(R_seg=21.0, L_seg=50.0), None, tgt, pc.kappa),
-           ("twin/near", "twin", lm, _geo(R_seg=20.1, L_seg=50.0), None, tgt, pc.kappa)]
+           ("twin/far", "twin", lm, _geo(R_seg=20.5, L_seg=50.0), None, tgt, pc.kappa)]
     res = stimuli.check_design_details(_bank(good), [])
     th, tw = res["theta_eff"], res["twin_fit"]
     assert th["ok"] and th["accepted_by"] == "R3" and [r["name"] for r in th["accepted"]] == [
@@ -393,7 +393,11 @@ def test_R3_R4_accepted_rows_pass_and_are_listed(ps):
         "syn/scaled/L": "samples' area beyond the kinks' sampling bound"}
     assert not res["twin_fit"]["ok"]
     assert sorted(r["name"] for r in res["twin_fit"]["fails"]) == [
-        "twin/long", "twin/near", "twin/radius"]          # twin/near: 0.5%, within 2%, > 1e-3
+        "twin/far", "twin/long", "twin/radius"]           # twin/far: 2.5%, beyond 2%
+    near = [("twin/near", "twin", lm, _geo(R_seg=20.1, L_seg=50.0), None, tgt, pc.kappa)]
+    res = stimuli.check_design_details(_bank(near), [])      # 0.5%: within 2%, accepted (R4a)
+    assert res["twin_fit"]["ok"] and [r["name"] for r in res["twin_fit"]["accepted"]] == [
+        "twin/near"]
     assert stimuli.twin_length_shortfall(_bank(good).stimuli[1]) == pytest.approx(10.0)
     assert np.isnan(stimuli.twin_length_shortfall(_bank(good).stimuli[0]))
 

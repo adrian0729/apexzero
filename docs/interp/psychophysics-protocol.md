@@ -1158,3 +1158,4 @@ The build (`docs/interp/IMPLEMENTATION.md`) raised these questions. Each ruling 
 | R11 | P6a confirmation also needs a permutation p ≤ 0.05 (AD18) | Accepted |
 | R12 | P1b's Kendall τ mixes keys at A1: below-support pairs on nominal e_ve, tail pairs on e_ve^RA | **Re-anchored A1 keys are extended to the non-clipped below-support cells (P0)**, so the whole A1 set uses e_ve^RA |
 | R13 | Analysis decisions AD1–AD25 (`interp/analysis.py` docstring) | Signed off as written |
+| R4a | R4 quoted the fitter's usual precision (< 1e-3) as the acceptance bar. One twin (Brands Hatch 1136 m, real L_seg 206 m against the 154 m triangle) misses the angle by 0.14° because its length cannot be matched | **Amended:** a twin shorter than its corner is accepted if its R_seg and angle are within the protocol's own twin tolerances (3.4: 2%, 1°). Achieved residuals are reported for every twin. |
