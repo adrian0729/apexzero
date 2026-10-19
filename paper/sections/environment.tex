@@ -128,10 +128,16 @@ action zero, where $v_{\text{QSS}}$ is the speed profile of a quasi-steady-state
 point-mass oracle.
 % src: src/apexzero/tracks/levels.py (module docstring, START_SPEED_FRACTION, build)
 A straight start keeps the heavily weighted first seconds of the discounted return from
-depending on an arbitrary mid-corner state. Level sets come from disjoint, named seed
-streams, so no training draw can coincide with an audit or pool level
-(\cref{tab:levelsets}).
-% src: tests/test_levels.py::test_level_streams_are_disjoint_and_deterministic
+depending on an arbitrary mid-corner state. The audit and pool level sets come from
+disjoint, named seed streams (\cref{tab:levelsets}). DR training does not yet draw from
+the stream reserved for it: it seeds its strip bank directly from the run's seed. A
+training strip coinciding with an audit or pool level is therefore vanishingly unlikely
+rather than excluded by construction.
+% src: tests/test_levels.py::test_level_streams_are_disjoint_and_deterministic (checks a_dr,
+%      pool and a_tail keys only); src/apexzero/tracks/levels.py (STREAMS["train"],
+%      stream_key); scripts/train_dr.py (jax.random.PRNGKey(args.seed))
+\TODO{route E0 training keys through \code{stream\_key(root, "train")} and test that
+they are disjoint from the audit and pool streams}
 
 \begin{table}[t]
 \centering
@@ -166,9 +172,17 @@ distances $d_k = d_{\max}(k/40)^{1.5}$ with $d_{\max} = \mathrm{clip}(6\,\mathrm
 the curvature (200 numbers). Sixteen ego features (velocities, yaw rate, sideslip,
 position in the corridor, heading error, steering, pedal, accelerations, previous action,
 friction-ellipse use and slip angles per axle) and the six normalised context features
-complete it. Audit rollouts add 1\% Gaussian noise to the normalised observation.
+complete it. Audit rollouts add 1\% Gaussian noise to the normalised observation. The
+plan asks for the same noise in training, but the current DR training script uses none,
+so as things stand $\Jpi$ and the critic's values would be measured under a perturbation
+the agent never saw in training.
 % src: src/apexzero/env/racing.py (module docstring, observe, preview_offsets);
-%      src/apexzero/audit/rollouts.py (module docstring: "1% observation noise")
+%      src/apexzero/audit/rollouts.py (rollout_windows: obs_noise = 0.01);
+%      src/apexzero/agents/ppo.py (PPOConfig.obs_noise = 0.0); scripts/train_dr.py (does not
+%      set obs_noise); docs/plan/plan-v1.md section 4 ("1% Gaussian observation noise during
+%      training")
+\TODO{train E0 with \code{obs\_noise = 0.01}, or audit without noise; fix the choice in
+\code{sim-v1}}
 \TODO{the plan's asymmetric critic (actor inputs plus track geometry every 10\,m out to
 1.5\,km and the true grip; docs/plan/plan-v1.md section 4) is not implemented yet: the
 current critic sees the actor's observation. E0 needs it and E0-sym needs the current
