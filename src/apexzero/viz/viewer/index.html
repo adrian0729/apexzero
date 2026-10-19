@@ -1,0 +1,1106 @@
+<!doctype html>
+<!--
+ApexZero ghost viewer (viewer v0, plan section 3.2).
+
+A static page: no build step, no server-side code. It reads an apexzero.trajectory 1.x
+export (apexzero.viz.export) and animates its ghosts top-down with Three.js, with speed and
+time-delta plots synced to the playhead and a per-sector table.
+
+Data, in order of precedence:
+  1. JSON embedded in the #apexzero-data script tag (export.embed_in_viewer writes it, so a
+     copy opens straight from disk);
+  2. ?data=<url> (relative or absolute; needs an http server, browsers block file:// fetch);
+  3. a file dropped on the page or chosen with "Open".
+Three.js is pinned to one version on jsDelivr (see the import map).
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ApexZero Ghost Viewer</title>
+<style>
+:root {
+  color-scheme: light;
+  --surface: #fcfcfb;
+  --page: #f9f9f7;
+  --ink: #0b0b0b;
+  --ink-2: #52514e;
+  --muted: #898781;
+  --grid: #e1e0d9;
+  --axis: #c3c2b7;
+  --border: rgba(11, 11, 11, 0.10);
+  --band: #f3f2ee;
+  --asphalt: #dddcd5;
+  --edge: #a9a89f;
+  --start: #0b0b0b;
+  --series-1: #2a78d6;
+  --series-2: #eb6834;
+  --series-3: #1baf7a;
+  --series-4: #eda100;
+  --gain: #2a78d6;
+  --loss: #e34948;
+  --ramp-lo: #b7d3f6;
+  --ramp-mid: #3987e5;
+  --ramp-hi: #0d366b;
+  --focus: #2a78d6;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --surface: #1a1a19;
+    --page: #0d0d0d;
+    --ink: #f0efec;
+    --ink-2: #c3c2b7;
+    --muted: #898781;
+    --grid: #2c2c2a;
+    --axis: #383835;
+    --border: rgba(255, 255, 255, 0.10);
+    --band: #222220;
+    --asphalt: #33332f;
+    --edge: #5d5c56;
+    --start: #f0efec;
+    --series-1: #3987e5;
+    --series-2: #d95926;
+    --series-3: #199e70;
+    --series-4: #c98500;
+    --gain: #3987e5;
+    --loss: #e66767;
+    --ramp-lo: #184f95;
+    --ramp-mid: #3987e5;
+    --ramp-hi: #cde2fb;
+    --focus: #3987e5;
+  }
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --surface: #1a1a19;
+  --page: #0d0d0d;
+  --ink: #f0efec;
+  --ink-2: #c3c2b7;
+  --muted: #898781;
+  --grid: #2c2c2a;
+  --axis: #383835;
+  --border: rgba(255, 255, 255, 0.10);
+  --band: #222220;
+  --asphalt: #33332f;
+  --edge: #5d5c56;
+  --start: #f0efec;
+  --series-1: #3987e5;
+  --series-2: #d95926;
+  --series-3: #199e70;
+  --series-4: #c98500;
+  --gain: #3987e5;
+  --loss: #e66767;
+  --ramp-lo: #184f95;
+  --ramp-mid: #3987e5;
+  --ramp-hi: #cde2fb;
+  --focus: #3987e5;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; }
+body {
+  background: var(--page);
+  color: var(--ink);
+  font: 14px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+button, select, input { font: inherit; color: inherit; }
+button, select {
+  background: var(--surface); border: 1px solid var(--border); border-radius: 6px;
+  padding: 4px 10px; cursor: pointer; min-height: 30px;
+}
+button:focus-visible, select:focus-visible, input:focus-visible, [tabindex]:focus-visible {
+  outline: 2px solid var(--focus); outline-offset: 2px;
+}
+.app { display: grid; grid-template-rows: auto 1fr auto; height: 100%; }
+header {
+  display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 20px;
+  padding: 10px 16px; border-bottom: 1px solid var(--border); background: var(--surface);
+}
+header h1 { font-size: 16px; margin: 0; font-weight: 600; }
+header .sub { color: var(--ink-2); font-size: 13px; }
+header .spacer { flex: 1; }
+main {
+  display: grid; grid-template-columns: minmax(0, 1fr) minmax(340px, 440px);
+  min-height: 0;
+}
+.stage { position: relative; min-height: 320px; background: var(--surface); overflow: hidden; }
+.stage canvas { display: block; width: 100%; height: 100%; touch-action: none; }
+.labels { position: absolute; inset: 0; pointer-events: none; }
+.labels span {
+  position: absolute; transform: translate(-50%, -50%); font-size: 11px; color: var(--ink-2);
+  white-space: nowrap; text-shadow: 0 0 3px var(--surface), 0 0 3px var(--surface);
+}
+.hud {
+  position: absolute; left: 12px; top: 10px; display: grid; gap: 2px;
+  background: color-mix(in srgb, var(--surface) 86%, transparent); border: 1px solid var(--border);
+  border-radius: 8px; padding: 8px 10px; font-variant-numeric: tabular-nums;
+}
+.hud .big { font-size: 22px; font-weight: 600; }
+.hud .muted { color: var(--muted); font-size: 12px; }
+.side {
+  display: flex; flex-direction: column; gap: 12px; padding: 12px 16px; overflow-y: auto;
+  overflow-x: hidden; border-left: 1px solid var(--border); background: var(--page); min-width: 0;
+}
+.card { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; min-width: 0; }
+.card h2 { font-size: 13px; margin: 0 0 6px; font-weight: 600; }
+.plot { position: relative; height: 170px; }
+.plot canvas { width: 100%; height: 100%; display: block; cursor: crosshair; }
+.tip {
+  position: absolute; pointer-events: none; background: var(--surface); border: 1px solid var(--border);
+  border-radius: 6px; padding: 4px 8px; font-size: 12px; white-space: nowrap; display: none;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12); font-variant-numeric: tabular-nums; z-index: 2;
+}
+.legend { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 12px; color: var(--ink-2); }
+.key { display: inline-flex; align-items: center; gap: 6px; }
+.sw { width: 14px; height: 3px; border-radius: 2px; display: inline-block; }
+.dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; flex: none; }
+table { border-collapse: collapse; width: 100%; font-size: 12.5px; }
+th, td { text-align: left; padding: 4px 6px; border-bottom: 1px solid var(--grid); }
+th { color: var(--muted); font-weight: 500; }
+td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
+tr.sec { cursor: pointer; }
+tr.sec:hover td { background: var(--band); }
+tr.sec.now td { background: color-mix(in srgb, var(--focus) 12%, transparent); }
+.bar { position: relative; display: inline-block; vertical-align: middle; height: 10px; width: 90px; }
+.bar i { position: absolute; top: 0; height: 10px; border-radius: 2px; }
+.bar b { position: absolute; left: 50%; top: -2px; bottom: -2px; width: 1px; background: var(--axis); }
+.pedal { display: block; width: 44px; height: 6px; margin: 2px 0; background: var(--band); border-radius: 3px; position: relative; }
+.pedal i { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 3px; }
+footer {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; padding: 8px 16px;
+  border-top: 1px solid var(--border); background: var(--surface);
+}
+footer input[type=range] { flex: 1; min-width: 160px; accent-color: var(--focus); }
+footer .time { font-variant-numeric: tabular-nums; min-width: 88px; }
+label.chk { display: inline-flex; gap: 6px; align-items: center; color: var(--ink-2); font-size: 13px; }
+details { font-size: 12.5px; color: var(--ink-2); }
+details summary { cursor: pointer; color: var(--ink); font-weight: 600; font-size: 13px; }
+details ul { padding-left: 18px; margin: 6px 0; }
+.empty {
+  position: absolute; inset: 0; display: none; place-items: center; text-align: center; padding: 24px;
+  color: var(--ink-2); background: var(--surface); z-index: 3;
+}
+.empty.show { display: grid; }
+.empty .box { max-width: 460px; border: 2px dashed var(--axis); border-radius: 12px; padding: 28px; }
+.empty.drag .box { border-color: var(--focus); }
+.err { color: var(--loss); }
+.badge { font-size: 10.5px; letter-spacing: 0.04em; border: 1px solid var(--axis); border-radius: 4px; padding: 0 4px; color: var(--ink-2); }
+.badge.caveat { border-style: dashed; letter-spacing: 0; }
+.note { color: var(--muted); font-size: 11.5px; margin: 6px 0 0; line-height: 1.4; }
+@media (max-width: 900px) {
+  main { grid-template-columns: minmax(0, 1fr); grid-template-rows: 58vh auto; }
+  .side { border-left: 0; border-top: 1px solid var(--border); overflow: hidden visible; padding: 12px 16px; }
+  table { font-size: 12px; }
+  th, td { padding: 4px 3px; }
+  .app { height: auto; min-height: 100%; }
+  footer { position: sticky; bottom: 0; z-index: 4; }
+  footer input[type=range] { flex-basis: 100%; order: 5; }
+}
+</style>
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+  }
+}
+</script>
+</head>
+<body>
+<div class="app">
+  <header>
+    <h1 id="title">ApexZero ghost viewer</h1>
+    <span class="sub" id="subtitle">No file loaded</span>
+    <span class="spacer"></span>
+    <div class="legend" id="legend"></div>
+    <button id="open" type="button" aria-label="Open an export file">Open</button>
+    <input id="file" type="file" accept=".json,application/json" hidden>
+  </header>
+  <main>
+    <div class="stage" id="stage">
+      <canvas id="scene" aria-label="Top-down track view with animated ghosts"></canvas>
+      <div class="labels" id="labels"></div>
+      <div class="hud" id="hud" aria-live="off"></div>
+      <div class="empty" id="empty">
+        <div class="box">
+          <p><strong>Load an apexzero trajectory export</strong> (a .json written by
+          <code>apexzero.viz.export</code>).</p>
+          <p>Drop it here, use <em>Open</em>, or serve this page and add
+          <code>?data=path/to/export.json</code> to the URL.</p>
+          <p class="err" id="error"></p>
+        </div>
+      </div>
+    </div>
+    <aside class="side">
+      <div class="card">
+        <h2>Live</h2>
+        <table id="live"><thead><tr><th>Ghost</th><th class="num">km/h</th><th title="Throttle (upper bar) and brake (lower bar)">Pedals</th><th class="num">Steer</th><th class="num">Grip</th><th class="num">Δt</th></tr></thead><tbody></tbody></table>
+      </div>
+      <div class="card">
+        <h2>Speed along the lap</h2>
+        <div class="plot" id="plot-speed"><canvas></canvas><div class="tip"></div></div>
+      </div>
+      <div class="card">
+        <h2 id="delta-title">Time delta along the lap</h2>
+        <div class="plot" id="plot-delta"><canvas></canvas><div class="tip"></div></div>
+      </div>
+      <div class="card">
+        <h2>Sectors</h2>
+        <table id="sectors"><thead></thead><tbody></tbody></table>
+        <p class="note" id="sector-note"></p>
+      </div>
+      <div class="card">
+        <details id="about"><summary>About this export</summary><div id="about-body"></div></details>
+      </div>
+    </aside>
+  </main>
+  <footer>
+    <button id="play" type="button" aria-label="Play">Play</button>
+    <input id="scrub" type="range" min="0" max="1" step="0.01" value="0" aria-label="Playback time">
+    <span class="time" id="time">0.00 s</span>
+    <label class="chk">Rate
+      <select id="rate" aria-label="Playback rate">
+        <option value="0.25">0.25×</option><option value="0.5">0.5×</option>
+        <option value="1" selected>1×</option><option value="2">2×</option><option value="4">4×</option>
+      </select>
+    </label>
+    <label class="chk">Follow <select id="follow" aria-label="Camera follows"></select></label>
+    <label class="chk"><input type="checkbox" id="speedcol"> Lines by speed</label>
+    <label class="chk"><input type="checkbox" id="loop" checked> Loop</label>
+    <button id="fit" type="button">Fit</button>
+  </footer>
+</div>
+<script type="application/json" id="apexzero-data"></script>
+<script type="module">
+import * as THREE from 'three';
+import { Line2 } from 'three/addons/lines/Line2.js';
+import { LineMaterial } from 'three/addons/lines/LineMaterial.js';
+import { LineGeometry } from 'three/addons/lines/LineGeometry.js';
+
+const SCHEMA = 'apexzero.trajectory';
+const MAJOR = '1';
+const KPH = 3.6;
+const TRAIL_S = 3.0;
+const $ = (id) => document.getElementById(id);
+const css = (name) => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+const fmt = (v, d = 2) => (v >= 0 ? '+' : '−') + Math.abs(v).toFixed(d);
+
+// ---------------------------------------------------------------- data
+
+function validate(doc) {
+  if (!doc || doc.schema !== SCHEMA) throw new Error('Not an apexzero.trajectory export.');
+  if (String(doc.version).split('.')[0] !== MAJOR) {
+    throw new Error(`Unsupported schema version ${doc.version} (viewer reads ${MAJOR}.x).`);
+  }
+  if (!Array.isArray(doc.ghosts) || !doc.ghosts.length) throw new Error('The export has no ghosts.');
+  for (const g of doc.ghosts) {
+    for (const k of ['t', 's', 'x', 'y', 'heading', 'speed']) {
+      if (!g.channels || !Array.isArray(g.channels[k])) throw new Error(`Ghost ${g.id} lacks channel ${k}.`);
+    }
+  }
+}
+
+function search(arr, v) {
+  // Largest i with arr[i] <= v, clamped to [0, n - 2].
+  const n = arr.length;
+  if (v <= arr[0]) return 0;
+  if (v >= arr[n - 1]) return n - 2;
+  let lo = 0, hi = n - 1;
+  while (hi - lo > 1) { const m = (lo + hi) >> 1; if (arr[m] <= v) lo = m; else hi = m; }
+  return lo;
+}
+
+function interp(xs, ys, x) {
+  const i = search(xs, x);
+  const w = Math.min(1, Math.max(0, (x - xs[i]) / ((xs[i + 1] - xs[i]) || 1)));
+  return ys[i] + w * (ys[i + 1] - ys[i]);
+}
+
+class Ghost {
+  constructor(g, slot, origin) {
+    this.id = g.id; this.label = g.label; this.kind = g.kind; this.lap = g.lap_time_s;
+    this.badge = g.badge; this.meta = g.meta || {}; this.slot = slot;
+    // An optimum is only the answer key once it carries the CERTIFIED badge.
+    this.uncertified = g.kind === 'ocp' && g.badge !== 'CERTIFIED';
+    this.ch = {};
+    for (const [k, v] of Object.entries(g.channels)) this.ch[k] = Float64Array.from(v);
+    this.ch.wx = this.ch.x.map((v) => v - origin[0]);
+    this.ch.wy = this.ch.y.map((v) => v - origin[1]);
+  }
+  at(name, t) { const c = this.ch[name]; return c ? interp(this.ch.t, c, t) : null; }
+  timeAt(s) { return interp(this.ch.s, this.ch.t, s); }
+  done(t) { return t >= this.lap; }
+}
+
+// ---------------------------------------------------------------- state
+
+const state = {
+  doc: null, ghosts: [], ref: null, comps: [], t: 0, tEnd: 1, playing: false, rate: 1,
+  follow: '', last: 0, halfH: 500, fitHalfH: 500, centre: new THREE.Vector2(), origin: [0, 0],
+};
+
+const canvas = $('scene');
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+renderer.setPixelRatio(window.devicePixelRatio || 1);
+const scene = new THREE.Scene();
+const camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0.1, 1000);
+camera.position.set(0, 0, 100);
+let world = new THREE.Group();
+scene.add(world);
+const lineMats = [];
+const cars = [];
+const trails = [];
+let raceLines = [];
+
+function seriesColour(slot) { return css(`--series-${(slot % 4) + 1}`); }
+
+function ramp(u) {
+  const lo = new THREE.Color(css('--ramp-lo'));
+  const mid = new THREE.Color(css('--ramp-mid'));
+  const hi = new THREE.Color(css('--ramp-hi'));
+  u = Math.min(1, Math.max(0, u));
+  return u < 0.5 ? lo.lerp(mid, u * 2) : mid.lerp(hi, (u - 0.5) * 2);
+}
+
+function pxPerWorld() { return canvas.clientHeight / (2 * state.halfH); }
+
+function resize() {
+  const w = canvas.clientWidth, h = canvas.clientHeight;
+  if (!w || !h) return;
+  renderer.setSize(w, h, false);
+  for (const m of lineMats) m.resolution.set(w * renderer.getPixelRatio(), h * renderer.getPixelRatio());
+  updateCamera();
+  plots.forEach((p) => p.resize());
+}
+
+function updateCamera() {
+  const aspect = canvas.clientWidth / Math.max(1, canvas.clientHeight);
+  camera.left = -state.halfH * aspect; camera.right = state.halfH * aspect;
+  camera.top = state.halfH; camera.bottom = -state.halfH;
+  camera.position.x = state.centre.x; camera.position.y = state.centre.y;
+  camera.updateProjectionMatrix();
+}
+
+function fit(xs, ys, pad = 1.08) {
+  let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity;
+  for (let i = 0; i < xs.length; i++) {
+    x0 = Math.min(x0, xs[i]); x1 = Math.max(x1, xs[i]); y0 = Math.min(y0, ys[i]); y1 = Math.max(y1, ys[i]);
+  }
+  const aspect = canvas.clientWidth / Math.max(1, canvas.clientHeight);
+  state.centre.set((x0 + x1) / 2, (y0 + y1) / 2);
+  state.halfH = Math.max((y1 - y0) / 2, (x1 - x0) / 2 / aspect, 15) * pad;
+  updateCamera();
+}
+
+function makeLine(points, colours, width, opacity = 1) {
+  const geo = new LineGeometry();
+  geo.setPositions(points);
+  if (colours) geo.setColors(colours);
+  const mat = new LineMaterial({
+    color: colours ? 0xffffff : 0x000000, linewidth: width, vertexColors: !!colours,
+    transparent: opacity < 1, opacity, worldUnits: false,
+  });
+  mat.resolution.set(canvas.width || 1, canvas.height || 1);
+  lineMats.push(mat);
+  const line = new Line2(geo, mat);
+  line.computeLineDistances();
+  return line;
+}
+
+function carShape() {
+  const s = new THREE.Shape();
+  s.moveTo(1.0, 0); s.lineTo(-0.75, 0.62); s.lineTo(-0.4, 0); s.lineTo(-0.75, -0.62); s.closePath();
+  return new THREE.ShapeGeometry(s);
+}
+
+function buildScene() {
+  scene.remove(world);
+  world.traverse((o) => { if (o.geometry) o.geometry.dispose(); if (o.material) o.material.dispose(); });
+  world = new THREE.Group();
+  scene.add(world);
+  lineMats.length = 0; cars.length = 0; trails.length = 0; raceLines = [];
+  renderer.setClearColor(new THREE.Color(css('--surface')));
+
+  const tr = state.doc.track;
+  const [ox, oy] = state.origin;
+  const n = tr.left.x.length;
+  const pos = new Float32Array(n * 6);
+  for (let i = 0; i < n; i++) {
+    pos.set([tr.left.x[i] - ox, tr.left.y[i] - oy, 0, tr.right.x[i] - ox, tr.right.y[i] - oy, 0], i * 6);
+  }
+  const idx = [];
+  const segs = tr.closed ? n : n - 1;
+  for (let i = 0; i < segs; i++) {
+    const j = (i + 1) % n;
+    idx.push(2 * i, 2 * i + 1, 2 * j, 2 * i + 1, 2 * j + 1, 2 * j);
+  }
+  const ribbon = new THREE.BufferGeometry();
+  ribbon.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  ribbon.setIndex(idx);
+  world.add(new THREE.Mesh(ribbon, new THREE.MeshBasicMaterial({ color: css('--asphalt'), side: THREE.DoubleSide })));
+
+  const edgeMat = new THREE.LineBasicMaterial({ color: css('--edge') });
+  for (const side of [tr.left, tr.right]) {
+    const pts = [];
+    for (let i = 0; i < n; i++) pts.push(new THREE.Vector3(side.x[i] - ox, side.y[i] - oy, 0.05));
+    const g = new THREE.BufferGeometry().setFromPoints(pts);
+    world.add(tr.closed ? new THREE.LineLoop(g, edgeMat) : new THREE.Line(g, edgeMat));
+  }
+  // Start line across the corridor.
+  const sl = makeLine([tr.left.x[0] - ox, tr.left.y[0] - oy, 0.1, tr.right.x[0] - ox, tr.right.y[0] - oy, 0.1], null, 3);
+  sl.material.color = new THREE.Color(css('--start'));
+  world.add(sl);
+
+  // Racing lines (identity colour, or speed ramp) and the moving cars.
+  const vmin = Math.min(...state.ghosts.map((g) => Math.min(...g.ch.speed)));
+  const vmax = Math.max(...state.ghosts.map((g) => Math.max(...g.ch.speed)));
+  state.vRange = [vmin, vmax];
+  const geom = carShape();
+  state.ghosts.forEach((g, k) => {
+    const pts = [];
+    for (let i = 0; i < g.ch.t.length; i++) pts.push(g.ch.wx[i], g.ch.wy[i], 0.2 + 0.01 * k);
+    const col = new THREE.Color(seriesColour(g.slot));
+    const idCols = [];
+    const spCols = [];
+    for (let i = 0; i < g.ch.t.length; i++) {
+      idCols.push(col.r, col.g, col.b);
+      const c = ramp((g.ch.speed[i] - vmin) / Math.max(1e-6, vmax - vmin));
+      spCols.push(c.r, c.g, c.b);
+    }
+    const line = makeLine(pts, idCols, 1.6, 0.75);
+    line.userData = { pts, idCols, spCols, ghost: g };
+    raceLines.push(line);
+    world.add(line);
+
+    const trail = makeLine([0, 0, 0.3, 0, 0, 0.3], null, 4);
+    trail.material.color = col;
+    trails.push(trail);
+    world.add(trail);
+
+    const halo = new THREE.Mesh(geom, new THREE.MeshBasicMaterial({ color: css('--surface') }));
+    halo.scale.setScalar(1.45);
+    halo.position.z = -0.01;
+    const body = new THREE.Mesh(geom, new THREE.MeshBasicMaterial({ color: col }));
+    const car = new THREE.Group();
+    car.add(halo); car.add(body);
+    car.position.z = 0.5 + 0.01 * k;
+    cars.push(car);
+    world.add(car);
+  });
+  applyLineColours();
+  buildLabels();
+}
+
+function applyLineColours() {
+  const bySpeed = $('speedcol').checked;
+  // By speed, only the followed (or first) ghost's line is drawn: two ramps on top of each
+  // other would be unreadable.
+  const focus = state.follow || state.ghosts[0].id;
+  for (const line of raceLines) {
+    const { pts, idCols, spCols, ghost } = line.userData;
+    line.geometry.setColors(bySpeed ? spCols : idCols);
+    line.geometry.setPositions(pts);
+    line.visible = !bySpeed || ghost.id === focus;
+    line.material.opacity = bySpeed ? 1 : 0.75;
+    line.material.linewidth = bySpeed ? 3 : 1.6;
+  }
+}
+
+// ---------------------------------------------------------------- corner labels
+
+let labelEls = [];
+function buildLabels() {
+  const box = $('labels');
+  box.replaceChildren();
+  labelEls = [];
+  const tr = state.doc.track;
+  const s = tr.s;
+  for (const sec of tr.sectors || []) {
+    const i = search(s, sec.s_apex);
+    const th = tr.heading ? tr.heading[i] : 0;
+    const k = tr.kappa ? tr.kappa[i] : 0;
+    const side = k > 0 ? -1 : 1;  // outside of the turn
+    const off = 22 + Math.max(tr.w_left ? tr.w_left[i] : 6, tr.w_right ? tr.w_right[i] : 6);
+    const el = document.createElement('span');
+    el.textContent = sec.name;
+    box.appendChild(el);
+    labelEls.push({ el, x: tr.x[i] - state.origin[0] - side * off * Math.sin(th), y: tr.y[i] - state.origin[1] + side * off * Math.cos(th) });
+  }
+}
+
+function placeLabels() {
+  const w = canvas.clientWidth, h = canvas.clientHeight;
+  const v = new THREE.Vector3();
+  for (const L of labelEls) {
+    v.set(L.x, L.y, 0).project(camera);
+    L.el.style.left = `${(v.x + 1) / 2 * w}px`;
+    L.el.style.top = `${(1 - v.y) / 2 * h}px`;
+  }
+}
+
+// ---------------------------------------------------------------- plots
+
+class Plot {
+  constructor(id, cfg) {
+    this.wrap = $(id); this.canvas = this.wrap.querySelector('canvas'); this.tip = this.wrap.querySelector('.tip');
+    this.cfg = cfg; this.ctx = this.canvas.getContext('2d'); this.base = document.createElement('canvas');
+    this.m = { l: 46, r: 10, t: 8, b: 22 };
+    this.canvas.addEventListener('mousemove', (e) => this.hover(e));
+    this.canvas.addEventListener('mouseleave', () => { this.tip.style.display = 'none'; this.hoverS = null; });
+    this.canvas.addEventListener('click', (e) => seekToS(this.sAt(e)));
+  }
+  resize() {
+    const dpr = window.devicePixelRatio || 1;
+    const w = this.canvas.clientWidth, h = this.canvas.clientHeight;
+    if (!w || !h) return;
+    for (const c of [this.canvas, this.base]) { c.width = w * dpr; c.height = h * dpr; }
+    this.w = w; this.h = h; this.dpr = dpr;
+    this.drawBase();
+  }
+  X(s) { return this.m.l + (s / state.L) * (this.w - this.m.l - this.m.r); }
+  Y(v) { const [a, b] = this.yr; return this.m.t + (1 - (v - a) / (b - a)) * (this.h - this.m.t - this.m.b); }
+  sAt(e) {
+    const r = this.canvas.getBoundingClientRect();
+    return Math.min(state.L, Math.max(0, (e.clientX - r.left - this.m.l) / (this.w - this.m.l - this.m.r) * state.L));
+  }
+  drawBase() {
+    if (!state.doc || !this.w) return;
+    const g = this.base.getContext('2d');
+    g.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
+    g.clearRect(0, 0, this.w, this.h);
+    const series = this.cfg.series();
+    let lo = Infinity, hi = -Infinity;
+    for (const s of series) for (const v of s.y) { lo = Math.min(lo, v); hi = Math.max(hi, v); }
+    this.yr = this.cfg.range(lo, hi);
+    const [a, b] = this.yr;
+    // Sector bands.
+    g.fillStyle = css('--band');
+    (state.doc.track.sectors || []).forEach((sec, i) => {
+      if (i % 2) return;
+      const spans = [[sec.s_start, Math.min(sec.s_end, state.L)]];
+      if (sec.s_end > state.L) spans.push([0, sec.s_end - state.L]);
+      for (const [p, q] of spans) g.fillRect(this.X(p), this.m.t, this.X(q) - this.X(p), this.h - this.m.t - this.m.b);
+    });
+    // Grid and ticks.
+    g.font = '11px system-ui, -apple-system, "Segoe UI", sans-serif';
+    g.fillStyle = css('--muted'); g.strokeStyle = css('--grid'); g.lineWidth = 1;
+    for (const v of this.cfg.ticks(a, b)) {
+      const y = Math.round(this.Y(v)) + 0.5;
+      g.beginPath(); g.moveTo(this.m.l, y); g.lineTo(this.w - this.m.r, y); g.stroke();
+      g.textAlign = 'right'; g.textBaseline = 'middle'; g.fillText(this.cfg.tickLabel(v), this.m.l - 6, y);
+    }
+    const step = state.L > 6000 ? 2000 : state.L > 2500 ? 1000 : 500;
+    g.textAlign = 'center'; g.textBaseline = 'top';
+    for (let s = 0; s <= state.L; s += step) g.fillText(s === 0 ? '0 m' : `${s / 1000} km`, this.X(s), this.h - this.m.b + 5);
+    if (this.cfg.zero && a < 0 && b > 0) {
+      g.strokeStyle = css('--axis'); const y = Math.round(this.Y(0)) + 0.5;
+      g.beginPath(); g.moveTo(this.m.l, y); g.lineTo(this.w - this.m.r, y); g.stroke();
+    }
+    // Series.
+    g.lineWidth = 1.5; g.lineJoin = 'round'; g.lineCap = 'round';
+    for (const s of series) {
+      g.strokeStyle = s.colour; g.beginPath();
+      for (let i = 0; i < s.x.length; i++) {
+        const X = this.X(s.x[i]), Y = this.Y(s.y[i]);
+        if (i) g.lineTo(X, Y); else g.moveTo(X, Y);
+      }
+      g.stroke();
+    }
+    this.series = series;
+    this.draw();
+  }
+  draw() {
+    if (!this.w) return;
+    const g = this.ctx;
+    g.setTransform(1, 0, 0, 1, 0, 0);
+    g.clearRect(0, 0, this.canvas.width, this.canvas.height);
+    g.drawImage(this.base, 0, 0);
+    g.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
+    // Playhead: one marker per series at its ghost's current position.
+    for (const s of this.series || []) {
+      const sv = s.ghost.at('s', state.t);
+      const X = this.X(sv), Y = this.Y(interp(s.x, s.y, sv));
+      g.strokeStyle = s.colour; g.globalAlpha = 0.35; g.lineWidth = 1;
+      g.beginPath(); g.moveTo(X, this.m.t); g.lineTo(X, this.h - this.m.b); g.stroke();
+      g.globalAlpha = 1;
+      g.fillStyle = css('--surface'); g.beginPath(); g.arc(X, Y, 6, 0, 7); g.fill();
+      g.fillStyle = s.colour; g.beginPath(); g.arc(X, Y, 4, 0, 7); g.fill();
+    }
+    if (this.hoverS != null) {
+      g.strokeStyle = css('--ink-2'); g.lineWidth = 1; const X = Math.round(this.X(this.hoverS)) + 0.5;
+      g.beginPath(); g.moveTo(X, this.m.t); g.lineTo(X, this.h - this.m.b); g.stroke();
+    }
+  }
+  hover(e) {
+    const s = this.sAt(e);
+    this.hoverS = s;
+    this.tip.replaceChildren();
+    const head = document.createElement('div'); head.textContent = `${Math.round(s)} m`; this.tip.appendChild(head);
+    for (const ser of this.series) {
+      const row = document.createElement('div'); row.className = 'key';
+      const dot = document.createElement('span'); dot.className = 'dot'; dot.style.background = ser.colour;
+      const txt = document.createElement('span'); txt.textContent = `${ser.name}: ${this.cfg.tickLabel(interp(ser.x, ser.y, s), true)}`;
+      row.append(dot, txt); this.tip.appendChild(row);
+    }
+    this.tip.style.display = 'block';
+    const r = this.canvas.getBoundingClientRect();
+    const x = e.clientX - r.left, y = e.clientY - r.top;
+    const tw = this.tip.offsetWidth;
+    this.tip.style.left = `${x + 12 + tw > this.w ? x - tw - 12 : x + 12}px`;
+    this.tip.style.top = `${Math.max(0, y - 30)}px`;
+    this.draw();
+  }
+}
+
+function niceTicks(a, b, n = 4) {
+  const raw = (b - a) / n, p = Math.pow(10, Math.floor(Math.log10(raw)));
+  const step = [1, 2, 2.5, 5, 10].map((m) => m * p).find((m) => raw <= m);
+  const out = [];
+  for (let v = Math.ceil(a / step) * step; v <= b + 1e-9; v += step) out.push(+v.toFixed(10));
+  return out;
+}
+
+const plots = [
+  new Plot('plot-speed', {
+    series: () => state.ghosts.map((g) => ({
+      name: g.label, colour: seriesColour(g.slot), ghost: g, x: g.ch.s, y: g.ch.speed.map((v) => v * KPH),
+    })),
+    range: (lo, hi) => [Math.floor(lo / 50) * 50, Math.ceil(hi / 50) * 50],
+    ticks: (a, b) => niceTicks(a, b, 4),
+    tickLabel: (v, long) => (long ? `${v.toFixed(0)} km/h` : v.toFixed(0)),
+  }),
+  new Plot('plot-delta', {
+    series: () => state.comps.map((c) => ({
+      name: `${c.ghost.label} − ${state.ref.label}`, colour: seriesColour(c.ghost.slot), ghost: c.ghost,
+      x: c.s, y: c.d,
+    })),
+    range: (lo, hi) => { lo = Math.min(lo, 0); hi = Math.max(hi, 0); const p = 0.08 * (hi - lo || 1); return [lo - p, hi + p]; },
+    ticks: (a, b) => niceTicks(a, b, 4),
+    tickLabel: (v, long) => (long ? `${fmt(v, 3)} s` : `${fmt(v, 1)}`),
+    zero: true,
+  }),
+];
+
+// ---------------------------------------------------------------- side panels
+
+function buildPanels() {
+  const doc = state.doc;
+  $('title').textContent = doc.title || doc.track.name;
+  $('subtitle').textContent = `${doc.track.name} · ${(doc.track.length_m / 1000).toFixed(3)} km` +
+    (state.ref ? ` · Δt against ${state.ref.label}` : '');
+  document.title = `${doc.track.name} · ApexZero Ghost Viewer`;
+
+  const legend = $('legend');
+  legend.replaceChildren();
+  for (const g of state.ghosts) {
+    const k = document.createElement('span'); k.className = 'key';
+    const sw = document.createElement('span'); sw.className = 'sw'; sw.style.background = seriesColour(g.slot);
+    const t = document.createElement('span'); t.textContent = `${g.label} ${g.lap.toFixed(3)} s`;
+    k.append(sw, t);
+    if (g.badge) { const b = document.createElement('span'); b.className = 'badge'; b.textContent = g.badge; k.append(b); }
+    if (g.uncertified) {
+      const b = document.createElement('span'); b.className = 'badge caveat'; b.textContent = 'not certified';
+      b.title = 'An optimum without the CERTIFIED badge: not the replay-verified 20 Hz answer key. See "About this export".';
+      k.append(b);
+    }
+    legend.appendChild(k);
+  }
+
+  const live = $('live').tBodies[0];
+  live.replaceChildren();
+  state.liveRows = state.ghosts.map((g) => {
+    const tr = document.createElement('tr');
+    const name = document.createElement('td');
+    const key = document.createElement('span'); key.className = 'key';
+    const dot = document.createElement('span'); dot.className = 'dot'; dot.style.background = seriesColour(g.slot);
+    const lab = document.createElement('span'); lab.textContent = g.label;
+    key.append(dot, lab); name.appendChild(key);
+    const cells = ['num', '', 'num', 'num', 'num'].map((c) => { const td = document.createElement('td'); td.className = c; return td; });
+    const thr = document.createElement('span'); thr.className = 'pedal'; const ti = document.createElement('i'); ti.style.background = css('--series-3'); thr.appendChild(ti);
+    const brk = document.createElement('span'); brk.className = 'pedal'; const bi = document.createElement('i'); bi.style.background = css('--loss'); brk.appendChild(bi);
+    cells[1].append(thr, brk);
+    tr.append(name, ...cells);
+    live.appendChild(tr);
+    return { g, speed: cells[0], ti, bi, steer: cells[2], grip: cells[3], dt: cells[4] };
+  });
+
+  const fsel = $('follow');
+  fsel.replaceChildren(new Option('Off', ''));
+  for (const g of state.ghosts) fsel.appendChild(new Option(g.label, g.id));
+
+  // Sector receipt (doubles as the plots' table view).
+  const secs = state.doc.track.sectors || [];
+  const head = $('sectors').tHead;
+  head.replaceChildren();
+  const hr = document.createElement('tr');
+  const lead = state.comps[0];
+  const vminHead = lead && lead.speed ? ['v min', 'num', `Minimum speed of ${state.ref.label} in the sector (km/h)`]
+    : ['r min', 'num', 'Minimum radius of the reference line (a car may straighten it)'];
+  const cols = [['Sector', ''], vminHead];
+  for (const c of state.comps) {
+    cols.push([`Δt ${c.ghost.id}`, 'num', 'Time measured inside the sector']);
+    if (c.charged) cols.push(['charged', 'num', 'What the corner costs: time lost while both cars are flat out is charged to the corner where that stretch began']);
+  }
+  cols.push(['', '']);
+  for (const [txt, cls, tip] of cols) {
+    const th = document.createElement('th'); th.textContent = txt; th.className = cls; if (tip) th.title = tip; hr.appendChild(th);
+  }
+  head.appendChild(hr);
+  const body = $('sectors').tBodies[0];
+  body.replaceChildren();
+  const barVals = (c) => c.charged || c.sector;
+  const maxAbs = Math.max(1e-9, ...state.comps.flatMap((c) => barVals(c).map(Math.abs)));
+  state.secRows = secs.map((sec, i) => {
+    const tr = document.createElement('tr'); tr.className = 'sec'; tr.tabIndex = 0;
+    const td = (txt, cls = '') => { const c = document.createElement('td'); c.textContent = txt; c.className = cls; return c; };
+    const vmin = lead && lead.speed ? `${Math.round(lead.speed.ref_vmin_mps[i] * KPH)}`
+      : (sec.r_min == null ? '–' : `${Math.round(sec.r_min)} m`);
+    tr.append(td(sec.name), td(vmin, 'num'));
+    const tips = [sec.r_min == null ? null : `reference-line radius ${Math.round(sec.r_min)} m`];
+    if (lead && lead.speed) {
+      const sp = lead.speed;
+      tips.push(`${lead.ghost.id} minus ${state.ref.id}: entry ${fmt(sp.entry_dv_mps[i] * KPH, 1)} km/h, exit ${fmt(sp.exit_dv_mps[i] * KPH, 1)} km/h`,
+        `minimum ${Math.round(sp.vmin_mps[i] * KPH)} vs ${Math.round(sp.ref_vmin_mps[i] * KPH)} km/h`);
+    }
+    tr.title = tips.filter(Boolean).join(' · ');
+    for (const c of state.comps) {
+      tr.append(td(`${fmt(c.sector[i], 3)} s`, 'num'));
+      if (c.charged) tr.append(td(`${fmt(c.charged[i], 3)} s`, 'num'));
+    }
+    const barTd = document.createElement('td');
+    if (state.comps.length) {
+      const v = barVals(state.comps[0])[i];
+      const bar = document.createElement('span'); bar.className = 'bar';
+      const fill = document.createElement('i');
+      const w = 45 * Math.abs(v) / maxAbs;
+      fill.style.width = `${w}px`; fill.style.left = v >= 0 ? '45px' : `${45 - w}px`;
+      fill.style.background = v >= 0 ? css('--loss') : css('--gain');
+      bar.append(document.createElement('b'), fill); barTd.appendChild(bar);
+    }
+    tr.appendChild(barTd);
+    const go = () => { seekToS(sec.s_start); zoomToSector(sec); };
+    tr.addEventListener('click', go);
+    tr.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); go(); } });
+    body.appendChild(tr);
+    return tr;
+  });
+  if (state.comps.length) {
+    const tot = document.createElement('tr');
+    const cells = [['Lap', ''], ['', 'num']];
+    for (const c of state.comps) {
+      cells.push([`${fmt(c.lapDelta, 3)} s`, 'num']);
+      if (c.charged) cells.push([`${fmt(c.charged.reduce((a, b) => a + b, 0), 3)} s`, 'num']);
+    }
+    cells.push(['', '']);
+    for (const [txt, cls] of cells) { const c = document.createElement('td'); c.textContent = txt; c.className = cls; c.style.fontWeight = '600'; tot.appendChild(c); }
+    body.appendChild(tot);
+  }
+  const note = [];
+  if (lead && lead.charged) {
+    note.push('Δt is the time measured inside each sector; it includes a slow exit carried in from the corner before. ' +
+      'Charged moves time lost while both cars are flat out back to the corner where that stretch began; ' +
+      'the bars show it. Both columns sum to the lap delta.');
+  }
+  note.push(lead && lead.speed ? `v min: ${state.ref.label}'s minimum speed in the sector (km/h); hover a row for entry and exit speed deltas.`
+    : 'r min: minimum radius of the reference line, which a car may straighten.');
+  note.push('Sector names are this segmentation\'s, not official turn numbers.');
+  $('sector-note').textContent = note.join(' ');
+  $('delta-title').textContent = state.ref ? `Time delta against ${state.ref.label} (> 0: behind)` : 'Time delta';
+
+  // About: notes, provenance, per-ghost caveats.
+  const about = $('about-body');
+  about.replaceChildren();
+  const ul = document.createElement('ul');
+  for (const n of doc.notes || []) { const li = document.createElement('li'); li.textContent = n; ul.appendChild(li); }
+  for (const g of state.ghosts) {
+    const li = document.createElement('li');
+    const bits = [g.meta.source, g.meta.protocol, g.meta.control, g.meta.time_mapping, g.meta.caveats].filter(Boolean);
+    li.textContent = `${g.label}: ${bits.join('; ')}`;
+    ul.appendChild(li);
+  }
+  for (const [k, v] of Object.entries(doc.provenance || {})) {
+    const li = document.createElement('li'); li.textContent = `${k}: ${typeof v === 'object' ? JSON.stringify(v) : v}`; ul.appendChild(li);
+  }
+  const li = document.createElement('li');
+  li.textContent = `Schema ${doc.schema} ${doc.version}, created ${doc.created || '?'}`;
+  ul.appendChild(li);
+  about.appendChild(ul);
+}
+
+function zoomToSector(sec) {
+  const tr = state.doc.track;
+  const a = (sec.s_entry ?? sec.s_start) - 40, b = (sec.s_exit ?? sec.s_end) + 40;
+  const xs = [], ys = [];
+  for (let i = 0; i < tr.s.length; i++) {
+    const rel = tr.closed ? ((tr.s[i] - a) % state.L + state.L) % state.L : tr.s[i] - a;
+    if (rel >= 0 && rel <= b - a) {
+      xs.push(tr.left.x[i] - state.origin[0], tr.right.x[i] - state.origin[0]);
+      ys.push(tr.left.y[i] - state.origin[1], tr.right.y[i] - state.origin[1]);
+    }
+  }
+  if (xs.length) { $('follow').value = ''; state.follow = ''; fit(xs, ys, 1.25); }
+}
+
+// ---------------------------------------------------------------- playback
+
+function seek(t) {
+  state.t = Math.min(state.tEnd, Math.max(0, t));
+  $('scrub').value = state.t;
+  frame(false);
+}
+
+function seekToS(s) {
+  const g = state.ref || state.ghosts[0];
+  seek(g.timeAt(s));
+}
+
+function setPlaying(p) {
+  state.playing = p;
+  $('play').textContent = p ? 'Pause' : 'Play';
+  $('play').setAttribute('aria-label', p ? 'Pause' : 'Play');
+  state.last = performance.now();
+}
+
+function liveDelta(g, t) {
+  if (!state.ref || g === state.ref) return null;
+  if (g.done(t)) return g.lap - state.ref.lap;
+  return t - state.ref.timeAt(g.at('s', t));
+}
+
+function frame(advance = true) {
+  if (!state.doc) return;
+  const now = performance.now();
+  if (advance && state.playing) {
+    state.t += (now - state.last) / 1000 * state.rate;
+    if (state.t > state.tEnd) {
+      if ($('loop').checked) state.t = 0; else { state.t = state.tEnd; setPlaying(false); }
+    }
+    $('scrub').value = state.t;
+  }
+  state.last = now;
+  const t = state.t;
+  const k = 9 / pxPerWorld();
+
+  state.ghosts.forEach((g, i) => {
+    const tt = Math.min(t, g.lap);
+    const x = g.at('wx', tt), y = g.at('wy', tt);
+    cars[i].position.x = x; cars[i].position.y = y;
+    cars[i].rotation.z = g.at('heading', tt);
+    cars[i].scale.set(k, k, 1);
+    // Trail: the last TRAIL_S seconds.
+    const T = g.ch.t;
+    const j0 = search(T, Math.max(0, tt - TRAIL_S)), j1 = search(T, tt);
+    const pts = [g.at('wx', Math.max(0, tt - TRAIL_S)), g.at('wy', Math.max(0, tt - TRAIL_S)), 0.3];
+    for (let j = j0 + 1; j <= j1; j++) pts.push(g.ch.wx[j], g.ch.wy[j], 0.3);
+    pts.push(x, y, 0.3);
+    if (pts.length < 6) pts.push(x, y, 0.3);
+    trails[i].geometry.dispose();
+    trails[i].geometry = new LineGeometry();
+    trails[i].geometry.setPositions(pts);
+  });
+
+  if (state.follow) {
+    const g = state.ghosts.find((q) => q.id === state.follow);
+    const tt = Math.min(t, g.lap);
+    state.centre.set(g.at('wx', tt), g.at('wy', tt));
+    updateCamera();
+  }
+  renderer.render(scene, camera);
+  placeLabels();
+  plots.forEach((p) => p.draw());
+  updateHud(t);
+}
+
+function updateHud(t) {
+  $('time').textContent = `${t.toFixed(2)} s`;
+  const hud = $('hud');
+  hud.replaceChildren();
+  const lead = state.comps[0];
+  if (lead) {
+    const d = liveDelta(lead.ghost, t);
+    const big = document.createElement('div'); big.className = 'big'; big.textContent = `${fmt(d, 3)} s`;
+    const lab = document.createElement('div'); lab.className = 'muted';
+    lab.textContent = `${lead.ghost.label} vs ${state.ref.label}${state.ref.uncertified ? ' (not certified)' : ''}`;
+    const g = lead.ghost, s = g.at('s', Math.min(t, g.lap));
+    const sec = (state.doc.track.sectors || []).findIndex((q) => (s >= q.s_start && s < q.s_end) || (q.s_end > state.L && s < q.s_end - state.L));
+    const where = document.createElement('div'); where.className = 'muted';
+    where.textContent = `${Math.round(s)} m${sec >= 0 ? ` · ${state.doc.track.sectors[sec].name}` : ''}`;
+    hud.append(big, lab, where);
+    state.secRows.forEach((r, i) => r.classList.toggle('now', i === sec));
+  } else {
+    const big = document.createElement('div'); big.className = 'big'; big.textContent = `${t.toFixed(2)} s`;
+    hud.append(big);
+  }
+  for (const row of state.liveRows) {
+    const g = row.g, tt = Math.min(t, g.lap);
+    row.speed.textContent = (g.at('speed', tt) * KPH).toFixed(0);
+    const thr = g.at('throttle', tt), brk = g.at('brake', tt);
+    row.ti.style.width = thr == null ? '0' : `${Math.round(100 * thr)}%`;
+    row.bi.style.width = brk == null ? '0' : `${Math.round(100 * brk)}%`;
+    const st = g.at('steering', tt);
+    row.steer.textContent = st == null ? '–' : `${(st * 180 / Math.PI).toFixed(1)}°`;
+    const gr = g.at('ellipse_use', tt);
+    row.grip.textContent = gr == null ? '–' : `${Math.round(100 * gr)}%`;
+    const d = liveDelta(g, t);
+    row.dt.textContent = d == null ? (g.done(t) ? 'fin' : 'ref') : `${fmt(d, 2)}`;
+  }
+}
+
+function loop() {
+  if (state.playing) frame(true);
+  requestAnimationFrame(loop);
+}
+
+// ---------------------------------------------------------------- load
+
+function load(doc) {
+  validate(doc);
+  state.doc = doc;
+  const tr = doc.track;
+  let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity;
+  for (const side of [tr.left, tr.right]) {
+    for (let i = 0; i < side.x.length; i++) {
+      x0 = Math.min(x0, side.x[i]); x1 = Math.max(x1, side.x[i]); y0 = Math.min(y0, side.y[i]); y1 = Math.max(y1, side.y[i]);
+    }
+  }
+  state.origin = [(x0 + x1) / 2, (y0 + y1) / 2];
+  state.L = tr.length_m;
+  state.ghosts = doc.ghosts.map((g, i) => new Ghost(g, i, state.origin));
+  state.ref = state.ghosts.find((g) => g.id === doc.reference) || null;
+  state.comps = (doc.comparisons || []).map((c) => ({
+    ghost: state.ghosts.find((g) => g.id === c.ghost), s: Float64Array.from(c.s), d: Float64Array.from(c.delta_t),
+    sector: c.sector_delta_s, lapDelta: c.lap_delta_s,
+    // Optional since schema 1.1.
+    charged: c.sector_split ? c.sector_split.charged_s : null, speed: c.sector_speed || null,
+  })).filter((c) => c.ghost);
+  state.tEnd = Math.max(...state.ghosts.map((g) => g.lap)) + 1.0;
+  state.follow = '';
+  $('scrub').max = state.tEnd;
+  $('empty').classList.remove('show');
+  buildPanels();
+  resize();
+  buildScene();
+  const xs = [], ys = [];
+  for (const side of [tr.left, tr.right]) for (let i = 0; i < side.x.length; i++) { xs.push(side.x[i] - state.origin[0]); ys.push(side.y[i] - state.origin[1]); }
+  state.fitXs = xs; state.fitYs = ys;
+  fit(xs, ys);
+  state.fitHalfH = state.halfH;
+  plots.forEach((p) => p.drawBase());
+  seek(0);
+}
+
+function showError(err) {
+  $('error').textContent = err && err.message ? err.message : String(err);
+  $('empty').classList.add('show');
+}
+
+async function readFile(file) {
+  try { load(JSON.parse(await file.text())); } catch (e) { showError(e); }
+}
+
+// ---------------------------------------------------------------- events
+
+$('open').addEventListener('click', () => $('file').click());
+$('file').addEventListener('change', (e) => { if (e.target.files[0]) readFile(e.target.files[0]); });
+document.addEventListener('dragover', (e) => { e.preventDefault(); $('empty').classList.add('drag'); });
+document.addEventListener('dragleave', () => $('empty').classList.remove('drag'));
+document.addEventListener('drop', (e) => {
+  e.preventDefault(); $('empty').classList.remove('drag');
+  if (e.dataTransfer.files[0]) readFile(e.dataTransfer.files[0]);
+});
+$('play').addEventListener('click', () => setPlaying(!state.playing));
+$('scrub').addEventListener('input', (e) => seek(parseFloat(e.target.value)));
+$('rate').addEventListener('change', (e) => { state.rate = parseFloat(e.target.value); });
+$('follow').addEventListener('change', (e) => {
+  state.follow = e.target.value;
+  if (state.follow) { state.halfH = Math.min(state.halfH, 160); updateCamera(); }
+  applyLineColours(); frame(false);
+});
+$('speedcol').addEventListener('change', () => { applyLineColours(); frame(false); });
+$('fit').addEventListener('click', () => {
+  $('follow').value = ''; state.follow = ''; applyLineColours();
+  fit(state.fitXs, state.fitYs); frame(false);
+});
+window.addEventListener('keydown', (e) => {
+  if (!state.doc || e.target.closest('select, input, button, tr')) return;
+  if (e.key === ' ') { e.preventDefault(); setPlaying(!state.playing); }
+  else if (e.key === 'ArrowRight') seek(state.t + (e.shiftKey ? 0.05 : 0.5));
+  else if (e.key === 'ArrowLeft') seek(state.t - (e.shiftKey ? 0.05 : 0.5));
+  else if (e.key === 'Home') seek(0);
+});
+
+// Pan (drag) and zoom (wheel, about the cursor).
+let drag = null;
+canvas.addEventListener('pointerdown', (e) => { drag = { x: e.clientX, y: e.clientY }; canvas.setPointerCapture(e.pointerId); });
+canvas.addEventListener('pointermove', (e) => {
+  if (!drag) return;
+  const k = 1 / pxPerWorld();
+  state.centre.x -= (e.clientX - drag.x) * k; state.centre.y += (e.clientY - drag.y) * k;
+  drag = { x: e.clientX, y: e.clientY };
+  if (state.follow) { state.follow = ''; $('follow').value = ''; applyLineColours(); }
+  updateCamera(); frame(false);
+});
+canvas.addEventListener('pointerup', () => { drag = null; });
+canvas.addEventListener('wheel', (e) => {
+  e.preventDefault();
+  const r = canvas.getBoundingClientRect();
+  const mx = e.clientX - r.left - r.width / 2, my = e.clientY - r.top - r.height / 2;
+  const k0 = 1 / pxPerWorld();
+  const wx = state.centre.x + mx * k0, wy = state.centre.y - my * k0;
+  state.halfH = Math.min(state.fitHalfH * 3, Math.max(8, state.halfH * Math.exp(e.deltaY * 0.0015)));
+  const k1 = 1 / pxPerWorld();
+  if (!state.follow) { state.centre.x = wx - mx * k1; state.centre.y = wy + my * k1; }
+  updateCamera(); frame(false);
+}, { passive: false });
+canvas.addEventListener('dblclick', () => $('fit').click());
+
+new ResizeObserver(() => { resize(); frame(false); }).observe($('stage'));
+for (const p of plots) new ResizeObserver(() => { p.resize(); }).observe(p.wrap);
+window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
+  if (!state.doc) return;
+  buildPanels(); buildScene(); plots.forEach((p) => p.drawBase()); frame(false);
+});
+
+// Runtime errors are marked on <html data-error> (and logged) so a headless render can
+// detect them; only load errors replace the view.
+window.addEventListener('error', (e) => { document.documentElement.dataset.error = e.message; });
+
+// URL parameters: data=<url>, t=<seconds>, follow=<ghost id>, rate=<x>, play=1, speed=1,
+// theme=light|dark (otherwise the OS setting).
+(async () => {
+  const q = new URLSearchParams(location.search);
+  if (['light', 'dark'].includes(q.get('theme'))) document.documentElement.dataset.theme = q.get('theme');
+  try {
+    const slot = $('apexzero-data');
+    let doc = null;
+    if (slot && slot.textContent.trim()) doc = JSON.parse(slot.textContent);
+    else if (q.get('data')) {
+      const url = q.get('data');
+      let r;
+      try { r = await fetch(url); } catch (e) {
+        throw new Error(location.protocol === 'file:'
+          ? `Browsers do not fetch ${url} for a page opened from disk. Serve the folder (python3 -m http.server) or drop the file here.`
+          : `Could not fetch ${url}: ${e.message}`);
+      }
+      if (!r.ok) throw new Error(`Could not fetch ${url} (HTTP ${r.status}).`);
+      doc = await r.json();
+    }
+    if (doc) {
+      load(doc);
+      if (q.get('speed') === '1') $('speedcol').checked = true;
+      if (q.get('follow') && state.ghosts.some((g) => g.id === q.get('follow'))) {
+        $('follow').value = q.get('follow');
+        $('follow').dispatchEvent(new Event('change'));
+      }
+      applyLineColours();
+      if (q.get('rate')) { state.rate = parseFloat(q.get('rate')) || 1; $('rate').value = String(state.rate); }
+      if (q.get('t')) seek(parseFloat(q.get('t')) || 0);
+      if (q.get('play') === '1') setPlaying(true);
+      document.documentElement.dataset.ready = '1';
+    } else $('empty').classList.add('show');
+  } catch (e) { showError(e); }
+  requestAnimationFrame(loop);
+})();
+</script>
+</body>
+</html>

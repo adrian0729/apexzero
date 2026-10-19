@@ -23,6 +23,8 @@ rlref = ["gymnax>=0.0.8,<1.0", "rejax>=0.1", "jaxued>=0.0.1"]
 # JaxUED maze replication (E5): what examples/maze_plr.py imports.
 maze = ["distrax>=0.1.5", "orbax-checkpoint>=0.5", "wandb>=0.17", "chex>=0.1.86"]
 dev = ["pytest>=8", "ruff>=0.6"]
+# Optional (not a default group): writes .rrd recordings of demo exports; the wheel is ~150 MB.
+rerun = ["rerun-sdk>=0.24"]
 
 [tool.uv]
 default-groups = ["data", "ocp", "viz", "dev", "rlref", "maze"]
