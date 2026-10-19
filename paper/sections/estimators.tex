@@ -67,8 +67,8 @@ window.
 \label{sec:est-six}
 
 \Cref{tab:estimators} gives each score as we compute it per level from a set $\mathcal E$
-of $E$ completed windows. Scores are episode-weighted means, as in the reference
-accumulator. We store every score for $\lambda \in \{0.9, 0.95, 0.98, 1\}$, in mode B, and
+of $E$ completed windows. Apart from learnability (a pooled success rate) and MNA (a
+step-pooled mean), scores are episode-weighted means, as in the reference accumulator. We store every score for $\lambda \in \{0.9, 0.95, 0.98, 1\}$, in mode B, and
 in a discount-weighted form $\sum_\tau \gamma^\tau m_\tau / \sum_\tau \gamma^\tau$; the
 appendix variants are $1-p$, return variance and step-normalised absolute learning
 progress.
