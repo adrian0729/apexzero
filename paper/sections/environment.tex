@@ -1,0 +1,285 @@
+\section{Environment and vehicle model}
+\label{sec:env}
+% Everything in this section is read from the code at the branch point (commit e1ac0ba):
+% src/apexzero/vehicle/{params,dynamics,sim}.py, src/apexzero/env/{racing,adapters}.py,
+% src/apexzero/tracks/{generator,levels,corners}.py. Gate results are from tests/ and
+% docs/STATUS.md. The simulator is not yet frozen: the plan tags it as `sim-v1` before any
+% audit label is computed (docs/plan/two-track-plan.md section 4, K5).
+
+The domain is built so that the agent's problem and the optimiser's problem are the same
+problem. One vehicle ODE is written against a thin operations shim and compiled twice:
+to JAX for the vectorised simulator and to CasADi for optimal control. The track enters
+the dynamics only through the reference curvature $\kappa(s)$, and both compilations
+evaluate it, and the track widths, with the same $C^2$ cubic B-spline.
+% src: src/apexzero/vehicle/dynamics.py (module docstring); src/apexzero/vehicle/sim.py
+
+\subsection{Vehicle}
+\label{sec:env-vehicle}
+
+The car is a dynamic single-track (bicycle) model in curvilinear (Frenet) coordinates with
+state $x = [s, n, \xi, v_x, v_y, r, \delta, u_p]$: arc length along the reference line,
+lateral offset, heading relative to the reference, body-frame velocities, yaw rate,
+road-wheel steering angle and a combined pedal state ($u_p > 0$ throttle, $u_p < 0$
+brake). The policy commands $a = [a_\delta, a_p] \in [-1,1]^2$, which reach the car
+through first-order actuator lags and a smooth steering-rate limit.
+% src: src/apexzero/vehicle/dynamics.py (State, Input; body_derivatives)
+Lateral tyre forces follow a Pacejka curve with $E = 0$ and load-sensitive friction per
+tyre; each axle's longitudinal and lateral forces are scaled smoothly back onto a
+friction ellipse. Downforce (split front and rear) and drag grow with $v^2$; rolling
+resistance acts on the total normal load. The rear axle drives with force
+$P_{\max}/v$, brakes are split by a fixed bias and fade at standstill so they cannot
+reverse the car, and longitudinal load transfer uses an algebraic acceleration estimate.
+Below 2--4\,m/s the model blends into a kinematic bicycle, where slip angles are
+ill-conditioned.
+% src: src/apexzero/vehicle/dynamics.py (tyre_forces, body_derivatives; V_BLEND_LO/HI)
+Every saturation is smoothed, so the same expression is differentiable for the
+optimiser. \Cref{tab:params} lists the parameters. Geometry, aerodynamics, power and
+friction come from the TUMFTM lap-time simulation's F1 parameter set~\citep{tumftm_laptime},
+with the mass raised to the FIA 2025 minimum; the yaw inertia, tyre shape, steering
+limits, actuator lags, brake bias and brake force are our assumptions.
+% src: src/apexzero/vehicle/params.py (module docstring and field comments)
+\TODO{run the planned $\pm30\%$ sensitivity sweep on each assumed parameter (params.py
+docstring) and report it here}
+
+\begin{table}[t]
+\centering
+\small
+\caption{Vehicle parameters of the default car. ``T'' marks values from the TUMFTM F1
+parameter set, ``F'' the FIA 2025 minimum mass, ``A'' our assumptions. The policy
+observes six context features; during training they are drawn uniformly from the ranges
+in the last column, and a hidden grip multiplier $\mu_h \sim U(0.98, 1.02)$ is applied that
+the policy does not observe.}
+\label{tab:params}
+% src: src/apexzero/vehicle/params.py (VehicleParams, CONTEXT_RANGES);
+%      src/apexzero/env/adapters.py (procedural_env: mu_jitter = 0.02)
+\begin{tabular}{@{}llcl@{}}
+\toprule
+Parameter & Value & Src. & Context range \\
+\midrule
+Mass $m$ & 800\,kg & F & 750--850\,kg \\
+Yaw inertia $I_z$ & \num{1100}\,kg\,m$^2$ & A & -- \\
+CoG to front / rear axle & 1.968 / 1.632\,m & T & -- \\
+CoG height & 0.335\,m & T & -- \\
+Drag area $C_dA$ & 1.56\,m$^2$ & T & 1.0--1.9\,m$^2$ \\
+Downforce area $C_lA$ front / rear & 2.20 / 2.68\,m$^2$ & T & total 3.0--6.0\,m$^2$ \\
+Aero balance (front share of $C_lA$) & 0.451 & T & $\pm 0.05$ \\
+Air density & 1.18\,kg/m$^3$ & T & -- \\
+Peak power $P_{\max}$ & 695\,kW & T & 550--800\,kW \\
+Rolling resistance coefficient & 0.03 & T & -- \\
+Friction $\mu_x/\mu_y$, front & 1.65 / 1.85 at 3\,kN & T & global scale 0.85--1.10 \\
+Friction $\mu_x/\mu_y$, rear & 1.95 / 2.15 at 3\,kN & T & (same scale) \\
+Friction load sensitivity & $-5\times10^{-5}$\,N$^{-1}$ & T & -- \\
+Pacejka $B$, $C$ & 12, 1.6 & A & -- \\
+Steering lock, rate limit, lag & 0.45\,rad, 1.5\,rad/s, 0.05\,s & A & -- \\
+Pedal lag & 0.05\,s & A & -- \\
+Brake bias (front), max.\ brake force & 0.58, 60\,kN & A & -- \\
+Slip limit $\alpha_{\max}$ & 10$^\circ$ & A & -- \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\paragraph{Integration} The simulator integrates with the explicit midpoint rule (RK2)
+at 5\,ms, ten substeps per 50\,ms control step, holding the action constant over the
+control step (20\,Hz zero-order hold).
+% src: src/apexzero/vehicle/sim.py (rk2_step, control_step); src/apexzero/env/racing.py (EnvParams)
+The optimiser uses exactly this map (\cref{sec:answer}).
+
+\subsection{Tracks and levels}
+\label{sec:env-levels}
+
+\paragraph{Generator} A track is an open strip of 8\,km on a 2\,m grid (\num{4096}
+points), generated on the device in JAX.
+% src: src/apexzero/tracks/generator.py (N_POINTS = 4096, DS = 2.0)
+Each strip opens with a straight of 500--900\,m, followed by alternating corners and
+straights. Corners are drawn jointly (turning angle, minimum radius, length) from the
+corners of the twelve development circuits, with log-normal jitter ($\sigma = 0.15$); each
+is a trapezoidal curvature profile with clothoid ramps of at least 10\,m and a radius
+floor of 8\,m. The turning direction alternates with a probability that depends on the
+preceding gap, which reproduces chicanes and esses. Widths come from the development
+circuits' median widths with low-frequency variation, a left/right asymmetry and a cap
+$(w_{\text{in}} - 1)\,\kappa \le 0.6$ on the inside of each corner, which keeps the
+Frenet frame non-singular wherever the car can reach.
+% src: src/apexzero/tracks/generator.py (module docstring, fit_grammar defaults, generate)
+Because the simulator is local in Frenet coordinates, strips need no closure or
+self-intersection checks. The development circuits are twelve real layouts from the
+TUMFTM database~\citep{tumftm_tracks}; in this paper they only supply these statistics
+(they also served the development checks of \cref{sec:env-mdp,sec:answer-evidence}). A
+disjoint set of twelve lockbox circuits is never used, and no real circuit appears in
+any experiment.
+% src: src/apexzero/tracks/corners.py (R_DEV, R_TEST); tests/test_generator.py::test_dev_and_lockbox_are_disjoint
+Generated corners match the development circuits' corner statistics: the
+Wasserstein-1 distance for minimum radius, divided by the median radius, is 0.07.
+% src: docs/STATUS.md (K5 row: "radius W1/median 0.07"); gate < 0.3 for radius, angle and
+%      corner length in tests/test_generator.py::test_corner_statistics_match_development_circuits
+Two variants share the support of the training generator or deliberately leave it. The
+\emph{tilted} generator re-weights corners by $1/r_{\min}$ and shortens gaps by 20\%
+(hairpin-heavy, still inside the training support); the \emph{out-of-distribution}
+generator re-weights by $r_{\min}^{-1.5}$, lowers the radius floor to 6\,m, scales widths
+by 0.65 and lengthens gaps by 60\%.
+% src: src/apexzero/tracks/generator.py (tilted, out_of_distribution)
+
+\paragraph{Levels} A level is $\theta = (g, c, \mu_h, x_0)$: a strip $g$, a car context
+$c$ (the six features of \cref{tab:params}), a hidden grip draw $\mu_h$, and a start state
+$x_0$. Every component is fixed per level. Every audit level starts on the opening
+straight with $s = 0$, $n = 0$, $\xi = 0$, $v_x = 0.8\,v_{\text{QSS}}(0)$ and previous
+action zero, where $v_{\text{QSS}}$ is the speed profile of a quasi-steady-state
+point-mass oracle.
+% src: src/apexzero/tracks/levels.py (module docstring, START_SPEED_FRACTION, build)
+A straight start keeps the heavily weighted first seconds of the discounted return from
+depending on an arbitrary mid-corner state. Level sets come from disjoint, named seed
+streams, so no training draw can coincide with an audit or pool level
+(\cref{tab:levelsets}).
+% src: tests/test_levels.py::test_level_streams_are_disjoint_and_deterministic
+
+\begin{table}[t]
+\centering
+\small
+\caption{Level sets. All are drawn from disjoint seed streams of the same level
+constructor and frozen in \code{audit-v1}. A\textsubscript{DR}, A\textsubscript{tail} and
+A\textsubscript{OOD} are both the audit sets for E1 and the held-out evaluation sets for
+the curriculum comparison~C.}
+\label{tab:levelsets}
+% src: src/apexzero/tracks/levels.py (STREAMS, SIZES); docs/plan/two-track-plan.md section 2.4
+\begin{tabular}{@{}lrll@{}}
+\toprule
+Set & Levels & Generator & Role \\
+\midrule
+A\textsubscript{DR} & \num{1000} & training & i.i.d.\ audit set; phases defined on it \\
+A\textsubscript{tail} & 300 & tilted & hairpin-heavy, inside the training support \\
+A\textsubscript{OOD} & 100 & out-of-distribution & narrower, tighter, longer straights \\
+Pool & \num{4000} & training & the only levels curricula in C may train on \\
+\midrule
+Total & \num{5400} & & every level labelled with $\Jstar$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Observations, actions, reward and termination}
+\label{sec:env-mdp}
+
+\paragraph{Observation} The actor sees 222 numbers and nothing that identifies the track
+or the position along it. A preview of 40 points lies ahead along the reference at
+distances $d_k = d_{\max}(k/40)^{1.5}$ with $d_{\max} = \mathrm{clip}(6\,\mathrm{s}
+\cdot v, 150, 500)$\,m; each point gives the left and right edge in the body frame and
+the curvature (200 numbers). Sixteen ego features (velocities, yaw rate, sideslip,
+position in the corridor, heading error, steering, pedal, accelerations, previous action,
+friction-ellipse use and slip angles per axle) and the six normalised context features
+complete it. Audit rollouts add 1\% Gaussian noise to the normalised observation.
+% src: src/apexzero/env/racing.py (module docstring, observe, preview_offsets);
+%      src/apexzero/audit/rollouts.py (module docstring: "1% observation noise")
+\TODO{the plan's asymmetric critic (actor inputs plus track geometry every 10\,m out to
+1.5\,km and the true grip; docs/plan/plan-v1.md section 4) is not implemented yet: the
+current critic sees the actor's observation. E0 needs it and E0-sym needs the current
+symmetric critic}
+
+\paragraph{Action and reward} The action is $[a_\delta, a_p] \in [-1,1]^2$ at 20\,Hz.
+The per-step reward is
+\begin{equation}
+  r_t = \frac{s_{t+1} - s_t}{10\,\text{m}} - 0.02\,\lVert a_t - a_{t-1}\rVert^2,
+  \label{eq:reward}
+\end{equation}
+and a terminating step additionally pays $-(5 + 5\,(v/50\,\text{m/s})^2)$. Progress
+$s_{t+1} - s_t$ is measured along the reference line, so the reward contains no
+racing-line term; the speed-scaled crash penalty follows the observation of
+\citet{fuchs2021} that fixed penalties were either ignored or made the car stop.
+% src: src/apexzero/env/racing.py (step_no_reset); docs/plan/plan-v1.md section 4 (Reward)
+
+\paragraph{Termination and truncation} An episode terminates when the car's reference
+point comes within 1\,m of either track edge, when $|\xi| > 90^\circ$, when either axle's
+slip angle exceeds $\alpha_{\max} = 10^\circ$ (loss of control), when the car stays below
+2\,m/s for 2\,s, or on a non-finite state. It is truncated at the end of the 60\,s window
+(\num{1200} control steps) or 520\,m before the end of the strip.
+% src: src/apexzero/env/racing.py (EnvParams, step_no_reset)
+The slip limit closes an exploit we found in an early optimum, which drifted through a
+chicane at about $20^\circ$ of rear slip on the soft post-peak part of the tyre curve; the
+same $10^\circ$ limit is a termination in the environment and a constraint in every
+optimal control problem.
+% src: docs/STATUS.md ("Things found along the way", first item); params.py alpha_max
+
+\paragraph{Discount and agent} The agent optimises the discounted return with
+$\gamma = 0.995$ (a 10\,s effective horizon at 20\,Hz) using PPO with GAE
+$\lambda = 0.95$, written from scratch in JAX~\citep{schulman2017ppo,schulman2016gae}.
+% src: src/apexzero/agents/ppo.py (PPOConfig)
+Our implementation matches or beats rejax~\citep{rejax} with identical hyperparameters
+and seeds (CartPole-v1: $475.3 \pm 31.9$ against $327.8 \pm 103.7$; Pendulum-v1:
+$-158.5 \pm 5.9$ against $-159.5 \pm 8.3$, mean over seeds with 95\% intervals).
+% src: docs/findings/ppo-verification.md
+On one development circuit (Hockenheim), a single-track specialist trained for
+200\,M steps completes every evaluation lap and is 4.8\% slower than the minimum-time
+optimum, inside the 8\% gate the plan sets before any audit run; this is one seed of three.
+% src: docs/STATUS.md (K4 row); docs/plan/two-track-plan.md section 5.2 (K4 gate)
+For domain randomisation, a device-resident bank of \num{4096} strips is refreshed 256
+strips at a time before every PPO update; each reset draws a strip, a car context and a
+hidden grip value, and starts at a uniformly random position with a random lateral offset,
+a small heading error and 60--100\% of the reference speed.
+% src: src/apexzero/env/adapters.py (procedural_env defaults); src/apexzero/env/racing.py (reset)
+Five extra value heads read a stop-gradient copy of the critic trunk, each trained on its
+own GAE target, so the disagreement score cannot change the critic it is audited
+against.
+% src: docs/STATUS.md (K5 row: "critic ensemble heads with per-head targets");
+%      docs/paper/score-spec.md section 1.7; scripts/train_dr.py (--ensemble-heads 5)
+\TODO{freeze the E0 network and PPO hyperparameters (8,192 environments $\times$ 64
+steps per the plan) in \code{sim-v1} and list them in an appendix table}
+
+\subsection{Physics gates}
+\label{sec:env-gates}
+
+A regret label is only as good as the agreement between the simulator and the problem the
+optimiser solves, and both are only useful if the car behaves like a racing car.
+\Cref{tab:gates} lists the gates the model passes; each is a unit test in the repository.
+
+\begin{table}[t]
+\centering
+\small
+\caption{Physics and consistency gates. ``Criterion'' is the assertion in the named test;
+``Measured'' is the value recorded in the project status log where one exists.}
+\label{tab:gates}
+\begin{tabularx}{\linewidth}{@{}>{\raggedright\arraybackslash}p{2.6cm}>{\raggedright\arraybackslash}X>{\raggedright\arraybackslash}p{2.6cm}@{}}
+\toprule
+Gate & Criterion (test) & Measured \\
+\midrule
+% src: tests/test_dynamics.py::test_jax_casadi_parity; docs/STATUS.md (K1)
+JAX--CasADi parity & max relative difference of $\dot x$ over $10^4$ random states, including
+the kinematic blend, $< 10^{-5}$ & $< 10^{-5}$ \\
+% src: tests/test_tracks.py::test_spline_lookup_is_identical_in_jax_numpy_and_casadi; docs/STATUS.md (K1)
+Track lookup & spline values identical in JAX, NumPy and CasADi & $10^{-12}$ \\
+% src: tests/test_dynamics.py::test_terminal_speed; docs/STATUS.md (K1)
+Terminal speed & analytic value 85--92\,m/s; simulated speed after 90\,s at full throttle
+within 0.5\% of it & 315\,km/h \\
+% src: tests/test_dynamics.py::test_coast_down_matches_1d_ode
+Coast-down & speed over 20\,s from 80\,m/s within 0.05\,m/s of the 1-D drag and rolling
+ODE & pass \\
+% src: tests/test_dynamics.py::test_low_speed_is_kinematic
+Low-speed kinematics & yaw rate within 2\% of $v_x\tan\delta/L$ at 1.5\,m/s & pass \\
+% src: tests/test_dynamics.py::test_braking_deceleration_is_f1_like; docs/STATUS.md (K1)
+Braking & full-pedal deceleration 4--7\,g at 83\,m/s and 1.8--3.5\,g at 30\,m/s &
+4--7\,g \\
+% src: tests/test_dynamics.py::test_braking_to_a_stop_never_reverses
+Standstill & braking to a stop never reverses the car & pass \\
+% src: tests/test_dynamics.py::test_dt_convergence_open_loop; docs/STATUS.md (K1)
+Integrator & RK2 at 5\,ms against RK4 at 1\,ms over 20\,s of open-loop inputs above
+1\,g: distance within $5\times10^{-4}$ relative, $v_x$ within 0.02\,m/s, $n$ within
+0.05\,m & distance within $3\times10^{-6}$ \\
+% src: tests/test_skidpad.py; docs/STATUS.md (K1)
+Skidpad & steady-state limit on $R = 30, 50, 80$\,m within 80--102\% of the point-mass
+envelope, grip-limited; on $R = 400$\,m power-limited near top speed & 91--93\% of the
+envelope; power-limited above $\approx$290\,km/h \\
+% src: tests/test_window_ocp.py
+TO-OCP step & CasADi step map and windowed spline equal the simulator's to $10^{-10}$
+(state) and $10^{-12}$ (lookup) & pass \\
+% src: tests/test_ocp.py::test_ocp_is_consistent_with_the_simulator; docs/STATUS.md (K2a)
+Minimum-time OCP replay & lap-time error $< 10^{-3}$ on a test oval; replay of the
+$s$-domain optimum in the simulator & $< 0.016\%$ on 24 circuits \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+The gates caught real defects before any learning run: the smoothed ReLU leaked throttle
+and brake at neutral pedal (found by the coast-down gate), brakes kept pushing after a
+stop and reversed the car, and the quasi-steady-state speed cap was a placeholder that
+started open strips above top speed. Each fix has a test.
+% src: docs/STATUS.md ("Things found along the way")
+\TODO{the 24-circuit replay figure in \cref{tab:gates} (docs/STATUS.md, K2a) was computed
+on all TUMFTM circuits, including the twelve lockbox circuits. The paper must not report
+anything computed on them: recompute this gate on the development circuits only and
+replace the number}

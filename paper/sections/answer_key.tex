@@ -1,0 +1,174 @@
+\section{The answer key: a training-objective OCP}
+\label{sec:answer}
+% Code: src/apexzero/ocp/window.py (TO-OCP, window mode); src/apexzero/ocp/replay.py and
+% scripts/spike_to_ocp.py (replay check). Plan: docs/plan/two-track-plan.md sections 1, 2.2.
+% Evidence: docs/findings/to-ocp-spike.md, docs/STATUS.md (K2a row).
+
+\subsection{Problem}
+\label{sec:answer-problem}
+
+For a level $\theta$ with start state $x_0$ and window length $T = 1200$ control steps,
+the training-objective OCP is
+\begin{equation}
+\begin{aligned}
+  \Jstar(\theta) \;=\; \max_{a_0,\dots,a_{T-1}} \quad
+    & \sum_{t=0}^{T-1} \gamma^{t}\Big[\frac{s_{t+1}-s_t}{10\,\text{m}}
+      - 0.02\,\lVert a_t - a_{t-1}\rVert^2\Big] \\
+  \text{s.t.}\quad
+    & x_{t+1} = \Phi_\theta(x_t, a_t), \qquad a_t \in [-1,1]^2, \qquad a_{-1} = 0, \\
+    & -\big(w_r(s_{t+1}) - 1\,\text{m} - \epsilon\big) \le n_{t+1}
+      \le w_l(s_{t+1}) - 1\,\text{m} - \epsilon, \\
+    & |\alpha_f(x_{t+1})|,\ |\alpha_r(x_{t+1})| \le \alpha_{\max}, \qquad
+      |\xi_{t+1}| \le \pi/2, \qquad v_{x,t+1} \ge 2\,\text{m/s},
+\end{aligned}
+\label{eq:toocp}
+\end{equation}
+for $t = 0, \dots, T-1$, with $\gamma = 0.995$.
+% src: src/apexzero/ocp/window.py (module docstring; WindowSpec: steps 1200, gamma 0.995,
+%      edge_margin 1.0, safety 0.03; WindowSolver bounds)
+Here $\Phi_\theta$ is the simulator's own control-step map: RK2 with ten 5\,ms substeps
+and the action held for 50\,ms, the same vehicle ODE, and the level's car context and
+hidden grip as parameters. The constraints are the environment's non-termination set
+(\cref{sec:env-mdp}), applied at every post-step state and tightened by a safety margin
+$\epsilon = 3$\,cm so that a float64 replay of a solution that rides a constraint does not
+terminate. The objective is the environment's reward \eqref{eq:reward}; the crash penalty
+does not appear because terminating trajectories are infeasible. The solver also bounds
+$v_x \le 120$\,m/s, $|v_y| \le 25$\,m/s and $|r| \le 5$\,rad/s; like the safety margin,
+these can only lower the optimum.
+% src: src/apexzero/ocp/window.py (WindowSolver.solve: lbX/ubX)
+\TODO{log whether the auxiliary state bounds are ever active in the label runs}
+
+\paragraph{Exact track lookup} CasADi's B-spline node exists only for its MX graph type,
+which made exact Hessians about 50 times slower. Instead, each control step $t$ carries a
+window of $K$ spline coefficients around its warm-start position $\sigma_t$, and
+$\kappa(s)$ and $w(s)$ are evaluated as the exact B-spline sum over that window.
+Inside the window this equals the simulator's spline; $s_t$ is bounded to within 15\,m of
+$\sigma_t$, and an outer loop re-centres the windows and re-solves if a solution reaches
+the bound. Track coefficients, car context and $x_0$ are solver parameters, so one
+compiled solver serves every level with the same window length.
+% src: src/apexzero/ocp/window.py (module docstring; WindowSpec.radius = 15.0; solve loop)
+The CasADi step map and windowed lookup agree with the JAX simulator to $10^{-10}$ in the
+state and $10^{-12}$ in the lookup.
+% src: tests/test_window_ocp.py
+The NLP is a multiple-shooting problem with every state and action as a decision
+variable ($8(T+1) + 2T$ of them) and one defect constraint per control step, solved by
+IPOPT with the MUMPS linear solver~\citep{wachter2006ipopt,andersson2019casadi}.
+% src: src/apexzero/ocp/window.py (WindowSolver.__init__)
+
+\paragraph{Warm starts and labels} Every level gets the same three starts: the $s$-domain
+minimum-time optimum mapped to time, the quasi-steady-state line, and the best rollout of
+the final checkpoint. The label is the best value over the starts whose replay passes the
+check below. The budget is uniform because a second pass only on suspicious levels would
+bias where labelling effort goes.
+% src: docs/plan/two-track-plan.md sections 2.2 ("Every level gets the same 3-start
+%      budget") and 9 (scope critic: uniform agent-warm-start pass)
+
+\paragraph{Replay verification} The optimal controls are applied open-loop, one action per
+50\,ms, in the float64 JAX environment with its termination checks. A label is accepted
+only if the replay survives the whole window and its discounted return matches the
+solver's value to within 0.05\%.
+% src: docs/plan/two-track-plan.md section 2.2 ("Replay in float64 must match within
+%      0.05%, with a 2-5 cm margin inside the corridor"); docs/findings/to-ocp-spike.md
+This closes the loop between the two compilations: if the CasADi model and the simulator
+disagreed anywhere along the trajectory, the replay would drift or terminate.
+
+\subsection{Why this is the right answer key}
+\label{sec:answer-why}
+
+UED's minimax-regret objective refers to $\max_{\pi'} J^{\pi'}(\theta) - \Jpi(\theta)$
+with $J$ the agent's own expected discounted return. \Cref{eq:toocp} is that maximum for
+the agent's problem, with four properties that a generic reference (a lap-time optimum,
+a success indicator, a point-mass model) lacks.
+\begin{enumerate}
+  \item \textbf{Same objective.} Regret comes out in the agent's units. No conversion
+        between lap time and discounted progress is needed, and the discount weighting the
+        agent sees is the one the optimum sees. \Cref{app:braking} shows why this
+        matters: at short horizons the discounted optimum and the minimum-time optimum
+        brake at different points.
+  \item \textbf{Same discretisation and control rate.} The optimiser cannot exploit a finer
+        integrator or a faster controller than the agent has, so integration error and
+        the cost of acting at 20\,Hz do not appear as regret.
+  \item \textbf{Same constraints and actuators.} The steering and pedal lags, the rate
+        limit, the corridor and the slip limit are all inside $\Phi_\theta$ or the
+        constraints, so the optimum is reachable by a policy acting through the same
+        actuators.
+  \item \textbf{Determinism per level.} Given $\theta$, the dynamics are deterministic
+        (the hidden grip is fixed per level), so the best open-loop control sequence from
+        $x_0$ achieves the optimal value over all policies, closed-loop or not. Optimising
+        over open-loop sequences loses nothing.
+\end{enumerate}
+The fourth point also says what $\Jstar$ is \emph{not}: it is the optimum for an agent that
+knows $\theta$. Our agent sees a 150--500\,m preview, noisy observations and a car
+context, but not the hidden grip. The part of regret caused by what the policy cannot
+observe is irreducible for this policy class. That is regret in the sense UED uses it,
+but it is exactly the kind a regret-maximising sampler can fixate
+on~\citep{beukman2024remidi}; we return to it in \cref{sec:threats}.
+
+\subsection{A lower bound, not an estimate}
+\label{sec:answer-lb}
+
+Let $J^{\mathrm{opt}}(\theta)$ be the supremum of the window return over all control
+sequences, including those that terminate. Three things can make the label fall short of
+it: IPOPT returns a local optimum; the feasible set is tightened by the safety margin and
+the auxiliary state bounds; and terminating trajectories are excluded, although with
+$\gamma^{1200} \approx 0.0024$ a late crash can in principle cost less than the progress it
+buys.
+% src: gamma^1200 ~ 0.0024 as stated in docs/paper/sources-jaxued.md section 4 item 3
+Nothing can make it exceed $J^{\mathrm{opt}}$ if the label is the \emph{replayed} return,
+because a replay is a trajectory the simulator actually produced; the solver's own value
+agrees with it to within the 0.05\% acceptance tolerance.
+\TODO{fix in \code{audit-v1} that the stored label is the float64 replayed return, not the
+solver's objective value}
+Hence $\Jstar \le J^{\mathrm{opt}}$, and for every policy
+\begin{equation}
+  \Reg(\theta) \;:=\; \Jstar(\theta) - \Jpi(\theta) \;\le\;
+  J^{\mathrm{opt}}(\theta) - \Jpi(\theta).
+  \label{eq:lowerbound}
+\end{equation}
+We therefore call $\Jstar$ the \emph{best-known optimum} and $\Reg$ a \emph{lower bound}
+on regret throughout. Any return the agent itself realises is also a lower bound on
+$J^{\mathrm{opt}}$ (up to the rounding of the single-precision rollouts), because a
+realised action sequence is a feasible open-loop control; the best observed agent return
+is thus a free check on the label. We report how often it
+exceeds the label: \RESULT{fraction of levels, per phase, on which an observed agent
+return beats $\Jstar$, and by how much}. The bound holds for the expectation $\Jpi$; a
+Monte Carlo estimate $\Jhat$ can still put individual levels below zero.
+
+Two references bracket the label from other sides. A control-rate reference $\Jhund$
+solves the same window at a 100\,Hz zero-order hold, warm-started from the 20\,Hz
+solution, on 200 levels; $\Jhund - \Jstar$ is the price of acting at 20\,Hz, which no
+20\,Hz policy can recover. An undiscounted ($\gamma = 1$) maximum-distance variant on 600
+A\textsubscript{DR} levels gives distance lost in 60\,s without discount weighting.
+% src: docs/plan/two-track-plan.md section 2.2 ("Bounds and references", "Secondary targets")
+Label noise is measured directly: 200 pilot levels get at least three extra starts, which
+gives a per-level label standard deviation (\cref{sec:protocol-targets}).
+
+\paragraph{The window objective and the agent's training objective} PPO bootstraps the
+value at the window end, so the agent is trained for the infinite-horizon discounted
+return, while \cref{eq:toocp} stops at $T$. The omitted tail is $\gamma^{T}V(x_T)$, with
+$\gamma^{1200} \approx 0.0024$. The same finite horizon lets the OCP spend the last
+seconds of a window in ways a time-unaware policy cannot (for example by not slowing for a
+corner just beyond the window end); that gain is discounted by roughly the same factor.
+We expect both effects to be small and quantify them in \cref{sec:threats}.
+
+\subsection{Evidence so far}
+\label{sec:answer-evidence}
+
+The spike solved the TO-OCP on a 10\,s window of a development circuit (Hockenheim),
+warm-started from the $s$-domain minimum-time optimum mapped to time. IPOPT converged
+(\code{Solve\_Succeeded}) in 169 iterations over 3 re-centring rounds, in 44\,s of solve
+time and 0.7\,GB of peak memory in a single process on a 12-thread laptop CPU. The
+float64 replay reproduced the
+optimum exactly ($J^* = 48.089$ both ways) and survived the window.
+% src: docs/findings/to-ocp-spike.md (table)
+Two very different warm starts reached the same optimum.
+% src: docs/STATUS.md (K2a row)
+These are one window of one circuit, a sixth of the label window length. Whether the
+solver converges as reliably, and how long it takes, on 60\,s windows of procedural
+strips decides the size of the label budget.
+\RESULT{convergence rate, median and 95th-percentile CPU minutes per solve, and peak
+memory on 40\,s and 60\,s windows (the spike is running at the time of writing; docs/STATUS.md)}
+The plan budgets 1,200--3,000 CPU-hours for about \num{5400} levels with three starts
+each, unverified until the spike completes; above 12 CPU-minutes per solve the pool
+shrinks to \num{2000} levels and the curriculum buffer to 500.
+% src: docs/plan/two-track-plan.md sections 5.2 (Spike gate) and 8 (CPU item)
