@@ -80,7 +80,10 @@ owner before the tag (protocol 12, ruling R13):
 - AD20 P8 twin agreement: the twin reproduces the crash or overspeeds (e_ve > b or a
        deterministic overspeed crash).
 - AD21 Stability (protocol 8): a claim that does not recur at one of the two previous
-       snapshots is reported 'unstable', with the final verdict in details.
+       snapshots is reported 'unstable', with the final verdict in details. Ruling R19c:
+       recurrence compares decision classes (``decision_class``: 'cautious but lawful' is a
+       P1a refutation), exactly as R18's variant rule does; a stable claim keeps its own
+       verdict label.
 - AD22 Clip sensitivity (9.4): runs with any edge, ego or context clipping are removed and
        the pairs recomputed; if the verdict changes, that version is primary.
 - AD23 e_ve, e_vmin and e_vmin^line are against the nominal u = 0 key (2.2); Δd_b, Δd_resp,
@@ -99,7 +102,8 @@ owner before the tag (protocol 12, ruling R13):
 - AD24 Protocol 8's gate applies to every snapshot read for P1-P3, the finals and the two
        history snapshots included: a snapshot that fails it (or cannot be judged: no gentle
        or tier G runs, undefined oscillation index) gives 'not testable'. Gentle cells and
-       tier G straights must each reach 90%.
+       tier G straights must each reach 90%. Ruling R19a: the two history snapshots run
+       tier G too (protocol 4's last-3 rows), so the gate judges them from their own runs.
 - AD25 A key's measures are recomputed from its cached solution (``CachedKeys``), with the
        null key's run for the catch-trial onset d_resp*.
 
@@ -114,10 +118,14 @@ numbers. P1c orders the variants by each variant's median R_dep over its 3 seeds
 when the known seeds fix it (``_seed_median``). P4's memorisation index (the mean over G
 finals), P6 (checkpoint history) and P8 (crash units) stay on G1-G3.
 
-Open (R18 review, pre-existing, needs a ruling): protocol 4's last-3 rows run tiers A and B
-only, so protocol 8's gate cannot judge the two history snapshots (no tier G width-12 runs);
-AD24 makes them 'not testable' and AD21 then turns every claim at a final 'unstable'.
-``history_gate_problems`` names it and the confirmatory stage refuses on it.
+Ruling R19 (the R18 review's open items): (a) protocol 4's last-3 rows ran tiers A and B
+only, so protocol 8's gate could not judge the two history snapshots (no tier G width-12
+runs), AD24 made them 'not testable' and AD21 turned every claim at a final 'unstable'. The
+last-3 rollouts now run tier G as well (4 deterministic phases), so the gate judges them;
+``history_gate_problems`` still names any generalist whose history is missing or lacks those
+runs, and the confirmatory stage refuses on it. (b) 6.3 covers every final agent, the
+replicates included (logged by the keys stage; nothing here). (c) AD21 compares decision
+classes, as the variant rule does.
 """
 
 from __future__ import annotations
@@ -3333,9 +3341,10 @@ def history_gate_problems(inp: AnalysisInputs) -> list[str]:
     """Why the 2-of-last-3 stability rule (protocol 8, AD21) cannot be applied as intended
     on these inputs: a generalist final (seed 0 or R18 replicate) whose history snapshots
     are missing, or which protocol 8's gate cannot judge (``history_judgeable``; AD24 would
-    make their P1-P3 'not testable' and so every claim at the final 'unstable'). The
-    confirmatory run refuses on any (its one shot must not be spent on a stability rule that
-    cannot hold); exploratory runs log them."""
+    make their P1-P3 'not testable' and so every claim at the final 'unstable'). Since
+    ruling R19a the last-3 rollouts run the tier G straights, so complete inputs give none.
+    The confirmatory run refuses on any (its one shot must not be spent on a stability rule
+    that cannot hold); exploratory runs log them."""
     out = []
     for a in [x for x in generalists() if x in inp.runs]:
         n = len(inp.history.get(a, []))
@@ -3347,10 +3356,9 @@ def history_gate_problems(inp: AnalysisInputs) -> list[str]:
             ts = [int(_it(inp.history[a][i], "timesteps", 0)[0]) if _n(inp.history[a][i])
                   else -1 for i in bad]
             out.append(f"{a}: protocol 8's gate cannot judge the snapshots before the final at "
-                       f"{ts} (no gentle tier A or tier G width-12 runs: protocol 4's last-3 "
-                       "rows run tiers A and B only), so every claim at the final would be "
-                       "'unstable'; this needs a ruling (e.g. tier G on the last-3 rollouts, or "
-                       "a history gate on the gentle cells)")
+                       f"{ts} (no gentle tier A or tier G width-12 runs, or no oscillation "
+                       "index), so every claim at the final would be 'unstable'; ruling R19a: "
+                       "the last-3 rollouts run tiers A, B and G (rollouts --snapshots last3)")
     return out
 
 
@@ -3365,11 +3373,14 @@ def _gated(d: Decision, gate: dict) -> Decision:
 
 def _stabilise(d: Decision, history: list[str]) -> Decision:
     """Protocol 8: a generalist claim holds as a property of the network only if it recurs
-    at >= 1 of the two snapshots before the final; else 'unstable'."""
+    at >= 1 of the two snapshots before the final; else 'unstable' (AD21). Ruling R19c: the
+    final's decision recurs when a history snapshot reaches the same decision class
+    (``decision_class``: 'cautious but lawful' is a P1a refutation), as in R18's variant
+    rule; the final's own verdict label is the one reported."""
     if not history:
         d.details["stability"] = "n/a"
         return d
-    stable = d.verdict in history[:2]
+    stable = decision_class(d.verdict) in {decision_class(h) for h in history[:2]}
     d.stable = stable
     d.details["history_verdicts"] = history[:2]
     if not stable and d.verdict in CLAIMS:
@@ -3408,9 +3419,9 @@ def _generalist_decisions(inp: AnalysisInputs, agent: str,
         d = _stabilise(d, [p.verdict for p in past_d])
         if hist:
             # Whether protocol 8's gate can judge each history snapshot from its own runs
-            # (gentle tier A cells and tier G width-12 straights): protocol 4's last-3 rows run
-            # tiers A and B only, so it cannot, and AD24 + AD21 then turn every claim at the
-            # final 'unstable' (open, needs a ruling; ``history_gate_problems``).
+            # (gentle tier A cells and tier G width-12 straights; ruling R19a: the last-3
+            # rollouts run tier G). Where it cannot, AD24 + AD21 turn every claim at the
+            # final 'unstable' (``history_gate_problems``).
             d.details["history_gate_judgeable"] = judgeable
         if name == "P1b" and past_d:
             # R12 re-anchors the below-support A1 cells at P0 (the finals) only; a
@@ -3551,7 +3562,8 @@ def _verdicts_by(decs: list[Decision]) -> dict[tuple[str, str], Decision]:
 def decision_class(verdict: str) -> str:
     """The decision a verdict stands for: a labelled refutation is a refutation (protocol
     2.4: P1a's 'cautious but lawful' labels a refutation caused only by underspeed with a
-    lawful slope); every other verdict is its own decision."""
+    lawful slope); every other verdict is its own decision. R18's variant rule and, since
+    ruling R19c, AD21's stability rule (``_stabilise``) compare these classes."""
     return "refute" if verdict in REFUTE_LABELS else verdict
 
 

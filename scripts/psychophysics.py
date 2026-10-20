@@ -1449,20 +1449,39 @@ def _anchored_rep_count(bank, cells: list) -> dict[str, dict]:
     return out
 
 
+def _det_phases(c, kind: str) -> list[int]:
+    """Protocol 4's replication table: the deterministic phases one snapshot of ``kind``
+    runs on cell ``c`` (as ``_rollout_job`` plans them: none when the cell is in none of
+    the kind's det tiers). Ruling R19a: 'last3' runs tiers A, B and G."""
+    from apexzero.interp import rollout
+    from apexzero.interp.constants import REPLICATION
+
+    rep = REPLICATION[kind]
+    tiers = rep.get("det_tiers")
+    if tiers is not None and not set(c.tiers) & set(tiers):
+        return []
+    return rollout.det_phase_indices(int(c.n_phases), rep.get("det_phases"))
+
+
 def _rollout_runs(c, kind: str, mode: str) -> int:
     """Protocol 4's replication table: the runs one snapshot of ``kind`` makes on cell ``c``
     in ``mode`` (as ``_rollout_job`` plans them with ``rollout.plan_runs``)."""
     from apexzero.interp import rollout
     from apexzero.interp.constants import REPLICATION
 
-    rep = REPLICATION[kind]
     if mode == "det":
-        tiers = rep.get("det_tiers")
-        if tiers is not None and not set(c.tiers) & set(tiers):
-            return 0
-        return len(rollout.det_phase_indices(int(c.n_phases), rep.get("det_phases")))
-    samples = rep.get("native" if mode == "nat" else "matched")
+        return len(_det_phases(c, kind))
+    samples = REPLICATION[kind].get("native" if mode == "nat" else "matched")
     return rollout._samples_for(c, samples) if samples else 0
+
+
+R19_TIERS = ("G",)          # ruling R19a: the tiers the last-3 rows gained (null straights)
+
+
+def _r19_cell(c) -> bool:
+    """A cell whose 'last3' deterministic runs ruling R19a added: tier G and not in the
+    tiers protocol 4's last-3 rows ran before (A and B)."""
+    return bool(set(c.tiers) & set(R19_TIERS)) and not set(c.tiers) & {"A", "B"}
 
 
 def _rollout_projection(cells: list, sps: dict | None = None) -> dict:
@@ -1471,7 +1490,9 @@ def _rollout_projection(cells: list, sps: dict | None = None) -> dict:
     ``Cell.runners`` with R18's replicates running their seed-0 agent's), per agent, kind
     and mode, with process hours at the measured steps/s (``sps``: 'full' for det, 'stoch'
     for nat and mat; protocol 10: 3 processes). Budget rule 3 is on throughput, not on this
-    count. Agents whose run has no snapshot on disk count as one final (a plan)."""
+    count. Agents whose run has no snapshot on disk count as one final (a plan). Ruling
+    R19a: the 'last3' snapshots also run tier G (4 deterministic phases); those runs are
+    counted in each agent's ``r19`` and in ``out['r19']``."""
     from apexzero.interp import agents, registry
 
     by_agent: dict[str, dict] = {}
@@ -1480,6 +1501,7 @@ def _rollout_projection(cells: list, sps: dict | None = None) -> dict:
         mine = [c for c in cells if registry.runs_cell(tuple(c.runners or ()), a)]
         steps = {"det": 0, "nat": 0, "mat": 0}
         runs = {"det": 0, "nat": 0, "mat": 0}
+        r19 = {"runs": 0, "steps": 0}
         for kind, n_snap in kinds.items():
             for c in mine:
                 W = int(c.W or 800)
@@ -1487,8 +1509,11 @@ def _rollout_projection(cells: list, sps: dict | None = None) -> dict:
                     n = n_snap * _rollout_runs(c, kind, mode)
                     runs[mode] += n
                     steps[mode] += n * W
+                    if kind == "last3" and mode == "det" and _r19_cell(c):
+                        r19["runs"] += n
+                        r19["steps"] += n * W
         by_agent[a] = dict(snapshots=kinds, runs=runs, steps=steps,
-                           total_steps=sum(steps.values()))
+                           total_steps=sum(steps.values()), r19=r19)
     sps = sps or {}
     full, stoch = float(sps.get("full", np.nan)), float(sps.get("stoch", np.nan))
 
@@ -1505,6 +1530,14 @@ def _rollout_projection(cells: list, sps: dict | None = None) -> dict:
                process_h=hours(list(by_agent.values())), process_h_replicates=hours(reps),
                sps=dict(full=full, stoch=stoch), processes=3)
     out["wall_h"] = out["process_h"] / out["processes"]
+    r19_steps = sum(v["r19"]["steps"] for v in by_agent.values())
+    out["r19"] = dict(
+        rule="R19a: the two snapshots before each generalist final also run tier G (the null "
+             "straights, 4 deterministic phases), so protocol 8's gate can judge them",
+        cells=sum(1 for c in cells if _r19_cell(c)),
+        runs=sum(v["r19"]["runs"] for v in by_agent.values()), steps=r19_steps,
+        steps_without=out["steps_total"] - r19_steps,
+        process_h=r19_steps / full / 3600.0 if sps else float("nan"))
     return out
 
 
@@ -1558,7 +1591,8 @@ def _budget(bank, cells: list, both: bool, m, workers: int, cache=None) -> dict:
     and their own viability solves, 'viability_R' (P0: 9.1's cap of 200 applied to the
     replicates apart, so G1-G3's seeded subset is unchanged) (``_anchored_rep_count``,
     ``proj['replicates']``). Their agent rollouts (finals and the last three checkpoints)
-    are counted in ``proj['rollouts']`` (``_rollout_projection``)."""
+    are counted in ``proj['rollouts']`` (``_rollout_projection``). Ruling R19a: the last-3
+    rollouts run tier G too, counted apart in ``proj['rollouts']['r19']``."""
     from apexzero.interp import answer_key as ak
     from apexzero.interp.constants import N_PHASES, VIABILITY_CAP
 
@@ -2579,6 +2613,31 @@ def _groups_in(path: Path) -> set[str]:
         return {k.partition("_")[0] for k in d.files if k.partition("_")[0] in ("det", "nat", "mat")}
 
 
+def _group_runs(path: Path, mode: str) -> set[tuple[int, int, int]] | None:
+    """The (cell, phase, sample) runs that group ``mode`` of a rollout file holds, read from
+    its index arrays only; None when the file or the group is absent."""
+    if not path.exists():
+        return None
+    with np.load(path, allow_pickle=False) as d:
+        if f"{mode}_cell" not in d.files:
+            return None
+        return set(zip(d[f"{mode}_cell"].tolist(), d[f"{mode}_phase"].tolist(),
+                       d[f"{mode}_sample"].tolist(), strict=True))
+
+
+def _tier_g_missing(path: Path, cells: list, agent: str) -> int:
+    """Ruling R19a: how many of the tier G deterministic runs that protocol 4's 'last3' row
+    plans for ``agent`` (every tier G cell it runs, at the 4-phase grid) the det group of
+    the rollout file at ``path`` lacks; all of them when the file or its det group is
+    absent. Protocol 8's gate needs them to judge the two snapshots before a final."""
+    from apexzero.interp import registry
+
+    want = {(c.cell_id, k, -1) for c in cells if "G" in c.tiers
+            and registry.runs_cell(tuple(c.runners or ()), agent) for k in _det_phases(c, "last3")}
+    have = _group_runs(path, "det") or set()
+    return len(want - have)
+
+
 def rollout_cells(cells: list, tiers=None) -> list:
     """The cells a snapshot's rollout groups run (``tiers``: REPLICATION's det tiers, None for
     every tier). Budget rule 2's cut cells are among them: ruling R7 cuts their keys only,
@@ -2590,7 +2649,13 @@ def _rollout_job(job: dict) -> dict:
     """Every requested group of one snapshot (resumes groups already in its file unless
     ``force``). The snapshot is marked evaluated in the manifest before its first group is
     run, and each group is merged into the file as it is on disk under a per-file lock, so
-    two rollouts processes on one snapshot never drop each other's groups."""
+    two rollouts processes on one snapshot never drop each other's groups. A group on disk
+    is kept only when it holds every run the plan asks for, or more (``_group_runs``). This
+    holds for every snapshot kind and mode, finals and other checkpoints included, not only
+    the last-3 rows. A group that lacks some runs, such as a last-3 det group made before
+    ruling R19a added tier G, is run again whole (every planned run, not only the missing
+    ones) and replaces the one on disk (``out['rerun']``). This job writes whole groups, so
+    on an unchanged design only a group made under an older plan is ever run again."""
     import traceback
 
     from apexzero.interp import agents, io, rollout
@@ -2611,10 +2676,6 @@ def _rollout_job(job: dict) -> dict:
         pol = rollout.agent_policy(ag.cfg)
         marked = False
         for mode in job["modes"]:
-            with _file_lock(target):
-                have = _groups_in(target)
-            if mode in have and not job.get("force"):
-                continue
             if mode == "det":
                 runs = rollout.plan_runs(cs, bank, "det", 0, phases_det=rep.get("det_phases"),
                                          agent=job["agent"])
@@ -2631,6 +2692,12 @@ def _rollout_job(job: dict) -> dict:
                 rec = "stoch"
             if not runs:
                 continue
+            with _file_lock(target):
+                have = _group_runs(target, mode)
+            if have is not None and not job.get("force"):
+                if {(r.cell_id, r.phase, r.sample) for r in runs} <= have:
+                    continue
+                out.setdefault("rerun", []).append(mode)    # incomplete on disk: run again
             if not marked:
                 # Freeze-rule bookkeeping first: a snapshot is never rolled out unmarked.
                 agents.mark_evaluated_locked(job["path"], f"rollouts-{mode}")
@@ -2655,10 +2722,11 @@ def _rollout_job(job: dict) -> dict:
 
 def _snapshot_kinds(agent: str, which: str) -> list[tuple[str, str]]:
     """(repo-relative path, replication kind) of the snapshots to roll out (protocol 4's
-    replication table): finals; the two before the final ('last3', generalists); every
-    other checkpoint ('other_generalist' / 'other_specialist'). Ruling R18: a replicate runs
-    its final and the two before it only (protocol 8's stability rule); P6's checkpoint
-    history stays on seed 0, so 'all' gives a replicate what 'last3' gives."""
+    replication table): finals; the two before the final ('last3', generalists: tiers A and
+    B, and since ruling R19a tier G, so protocol 8's gate can judge them); every other
+    checkpoint ('other_generalist' / 'other_specialist'). Ruling R18: a replicate runs its
+    final and the two before it only (protocol 8's stability rule); P6's checkpoint history
+    stays on seed 0, so 'all' gives a replicate what 'last3' gives."""
     from apexzero.interp import agents
 
     spec = agents.AGENTS[agent]
@@ -2680,7 +2748,8 @@ def _stage_rollouts_post_tag(args) -> None:
     """Step 6: agent rollouts (protocol 4's replication table), one snapshot per job in a
     pool of --workers float32 processes (protocol: 3 x 2 XLA threads). Budget rule 3 (below
     15k steps/s) drops the checkpoint stochastic and the tier E matched-noise runs. Every
-    snapshot rolled out is marked evaluated in the manifest. Resumes per (snapshot, group)."""
+    snapshot rolled out is marked evaluated in the manifest. Resumes per (snapshot, group);
+    a group on disk that lacks planned runs is run again (``_rollout_job``)."""
     from apexzero.interp import agents, io, stimuli
     from apexzero.interp.constants import MIN_ROLLOUT_SPS
 
@@ -2709,6 +2778,10 @@ def _stage_rollouts_post_tag(args) -> None:
                 mm.budget["cuts"].append(cut)
 
         agents.update_manifest(upd)
+        for r in res:
+            if r.get("rerun"):
+                _say(log, f"{r['label']}: re-ran {r['rerun']}: the group on disk lacked "
+                          "planned runs (e.g. ruling R19a's tier G on a last-3 snapshot)")
         for e in _errors(res):
             _say(log, f"error: {e}")
 
@@ -3385,14 +3458,19 @@ def _history_entries(m, agent: str) -> list:
 
 
 def confirmatory_problems(m, finals: dict, have_groups: dict[str, set[str]],
-                          agent_arg, history_groups: dict[str, list[set[str]]]) -> list[str]:
+                          agent_arg, history_groups: dict[str, list[set[str]]],
+                          history_tier_g: dict[str, list[int]]) -> list[str]:
     """Why the one-shot confirmatory analysis may not run yet (protocol 8, 10 step 8): it
     is spent on complete inputs only, which since ruling R18 include the six replicates'
     finals (their replication family is written by the same one run). ``history_groups``:
     per generalist final, the rollout groups of each of the manifest's two snapshots before
     it (``_history_entries``); protocol 8's 2-of-last-3 stability rule reads them, so each
     needs its det group, and its nat group unless budget rule 3 dropped the checkpoint
-    stochastic runs. Without them every claim would stand unchecked."""
+    stochastic runs. Without them every claim would stand unchecked. ``history_tier_g``:
+    per generalist final, for the same snapshots, how many of their planned tier G
+    deterministic runs their det group lacks (``_tier_g_missing``). Ruling R19a: protocol
+    8's gate judges each history snapshot on its gentle cells and tier G width-12 straights,
+    so a det group without them would make every claim at the final 'unstable'."""
     from apexzero.interp import agents
 
     out = []
@@ -3412,11 +3490,18 @@ def confirmatory_problems(m, finals: dict, have_groups: dict[str, set[str]],
         if len(hist) < 2:
             out.append(f"{a}: {len(hist)} of the 2 snapshots before the final in the manifest "
                        "(protocol 8's stability rule needs both)")
+        tier_g = history_tier_g.get(a, [])
         for i, g in enumerate(hist):
             if not need <= g:
                 out.append(f"{a}: snapshot {i - len(hist)} before the final has rollout groups "
                            f"{sorted(g)}, need {', '.join(sorted(need))} (rollouts --snapshots "
                            "last3; protocol 8's stability rule)")
+            elif i >= len(tier_g) or tier_g[i]:
+                what = (f"lacks {tier_g[i]} of its tier G deterministic runs" if i < len(tier_g)
+                        else "was not checked for its tier G deterministic runs")
+                out.append(f"{a}: snapshot {i - len(hist)} before the final {what} (ruling "
+                           "R19a: protocol 8's gate needs the null straights; rollouts "
+                           "--snapshots last3 runs them)")
     if m.band is None:
         out.append("no band b from V8 in the manifest")
     for k in ("step2", "step3", "dry_run"):
@@ -3552,7 +3637,14 @@ def stage_analyse(args: argparse.Namespace) -> None:
         have = {a: _groups_in(io.rollout_path(a, e.timesteps)) for a, e in finals.items()}
         hist = {a: [_groups_in(io.rollout_path(a, h.timesteps)) for h in _history_entries(m, a)]
                 for a in finals if agents.is_generalist(a)}
-        probs = confirmatory_problems(m, finals, have, args.agent, hist)
+        # R19a: the history snapshots' det groups must hold their tier G runs (the design
+        # is read for the tier G cells only once a history snapshot has a det group).
+        hist_g: dict[str, list[int]] = {}
+        if any("det" in g for gs in hist.values() for g in gs):
+            _, d_cells = _design(laid_out=True)
+            hist_g = {a: [_tier_g_missing(io.rollout_path(a, h.timesteps), d_cells, a)
+                          for h in _history_entries(m, a)] for a in hist}
+        probs = confirmatory_problems(m, finals, have, args.agent, hist, hist_g)
         probs += [f"{p} (support stage)" for p in _replicate_regime_problems(sup, finals)]
         if probs:
             raise SystemExit("the confirmatory analysis runs once, on complete inputs: "

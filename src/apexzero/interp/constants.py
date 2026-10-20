@@ -175,8 +175,10 @@ UNSETTLED_N = 1.0                    # |n| > 1 m at first sight ...
 UNSETTLED_PEDAL = 0.9                # ... or pedal < 0.9 -> unsettled
 REPLICATION = {                      # runs per cell and direction
     "final": {"det_phases": None, "native": {"A": 32, "other": 16}, "matched": {"A": 16, "E": 16}},
-    # det_phases None: every phase of the cell (16 on P7 cells); 4: the 4-phase grid
-    "last3": {"det_phases": N_PHASES, "det_tiers": ("A", "B"), "native": {"A": 8}},
+    # det_phases None: every phase of the cell (16 on P7 cells); 4: the 4-phase grid.
+    # Ruling R19a: the two snapshots before each final also run tier G (the null straights,
+    # 4 deterministic phases, no stochastic runs), so protocol 8's gate can judge them.
+    "last3": {"det_phases": N_PHASES, "det_tiers": ("A", "B", "G"), "native": {"A": 8}},
     "other_generalist": {"det_phases": N_PHASES, "det_tiers": ("A", "G"), "native": {"A": 8}},
     "other_specialist": {"det_phases": N_PHASES, "det_tiers": ("D", "G")},
 }

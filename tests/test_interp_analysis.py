@@ -1300,12 +1300,13 @@ def test_R18_decision_table_writes_the_replication_family(sims, tmp_path):
 
 
 def test_R18_review_history_snapshots_without_tier_g_cannot_pass_the_gate(sims):
-    """R18 review finding 1 (pre-existing; open, needs a ruling). Protocol 4's last-3 rows run
-    tiers A and B only, and protocol 8's gate needs the tier G width-12 straights, so a
-    history snapshot judged from its own runs is 'not testable' (AD24) and a claim at the
-    final becomes 'unstable' (AD21): pinned here as the current behaviour. The decisions
-    record ``history_gate_judgeable``, and ``history_gate_problems`` names every generalist
-    whose stability rule cannot be applied (the confirmatory stage refuses on it)."""
+    """R18 review finding 1. Protocol 8's gate needs the tier G width-12 straights, so a
+    history snapshot without them (protocol 4's last-3 rows before ruling R19a ran tiers A
+    and B only; since R19a such inputs are incomplete) is 'not testable' (AD24) and a claim
+    at the final becomes 'unstable' (AD21). The decisions record ``history_gate_judgeable``,
+    and ``history_gate_problems`` names every generalist whose stability rule cannot be
+    applied (the confirmatory stage refuses on it). R19a's complete inputs:
+    ``test_R19a_history_snapshots_with_tier_g_are_judged_and_claims_stay_stable``."""
     inp = _inputs(sims)
     n = A._n(inp.runs["G1"])
     # history snapshots at their own timesteps, with no gate given: computed from the runs
@@ -1318,7 +1319,7 @@ def test_R18_review_history_snapshots_without_tier_g_cannot_pass_the_gate(sims):
     assert "history_gate_judgeable" not in ds[("P1a", "G3")].details    # no history: n/a
     probs = A.history_gate_problems(inp)
     assert [p.split(":")[0] for p in probs] == ["G1", "G2", "G3"]
-    assert "gate cannot judge" in probs[0] and "[5, 6]" in probs[0] and "ruling" in probs[0]
+    assert "gate cannot judge" in probs[0] and "[5, 6]" in probs[0] and "R19a" in probs[0]
     assert probs[2].startswith("G3: 0 of the 2 snapshots before the final")
     # a history snapshot with gentle and tier G width-12 runs can be judged
     pairs = dict(R_nom=np.array([87.3, 87.3, np.nan]), width=np.array([12.0] * 3),
@@ -1327,6 +1328,182 @@ def test_R18_review_history_snapshots_without_tier_g_cannot_pass_the_gate(sims):
                  det_complete=np.array([8] * 3), osc_index=np.array([0.01] * 3))
     assert A.checkpoint_gate(pairs)["evaluable"]
     assert not A.checkpoint_gate({k: v[:2] for k, v in pairs.items()})["evaluable"]
+
+
+def _tier_g_keys(keys: dict, n: int = 3) -> tuple[dict, list[dict]]:
+    """``keys`` plus ``n`` tier G null straights (width 12, approach 'G', no corner), each its
+    own unmirrored pair as in the real design, and their key rows."""
+    i0 = int(np.max(keys["cell"])) + 1
+    p0 = int(np.max(keys["pair"])) + 1
+    base = {c: np.asarray(v)[0].item() for c, v in keys.items()}
+    rows = [dict(base, cell=i0 + j, stim=i0 + j, pair=p0 + j, name="straight/W12",
+                 geometry="straight/W12", tiers="G", approach="G", v0=kph(140.0 + 40 * j),
+                 D=600.0, W=400, n_phases=4, direction=0, R_nom=np.nan, theta_deg=0.0,
+                 width=12.0, R_seg=np.inf, R_eff=np.inf, braking=False, has_brake_star=False)
+            for j in range(n)]
+    extra = A._to_table(rows, A.KEY_COLUMNS)
+    return {c: np.concatenate([np.asarray(keys[c]), extra[c]]) for c in A.KEY_COLUMNS}, rows
+
+
+def _with_tier_g(runs: dict, g_rows: list[dict], agent: str, ts: int,
+                 completed: bool = True) -> dict:
+    """A history snapshot's run table at ``ts``: ``runs`` plus the deterministic tier G runs
+    that ruling R19a adds to protocol 4's last-3 rows (every tier G cell, 4 phases)."""
+    cols = list(runs)
+    extra = [A._sim_run(agent, r, k, -1, "det", 1, not completed, 0.0, False, {})
+             for r in g_rows for k in range(4)]
+    g = A._to_table(extra, cols)
+    out = {c: np.concatenate([np.asarray(runs[c]), g[c]]) for c in cols}
+    out["agent"] = np.full(A._n(out), agent)
+    out["timesteps"] = np.full(A._n(out), ts)
+    return out
+
+
+def test_R19a_history_snapshots_with_tier_g_are_judged_and_claims_stay_stable(sims):
+    """Ruling R19a: the two snapshots before a final run tier G too, so protocol 8's gate
+    judges each history snapshot from its own runs (gentle tier A cells and the tier G
+    width-12 straights; no gate is given for them) and a claim that recurs is reported
+    stable, not 'unstable'. ``history_gate_problems`` is then empty for that agent. The tier
+    G runs change only the gate: every history verdict equals the one with the gate given."""
+    keys, g_rows = _tier_g_keys(KEYS)
+    inp = _inputs(sims)
+    inp.keys = keys
+    lawful = sims["lawful"][0]
+    inp.history["G1"] = [_with_tier_g(lawful, g_rows, "G1", t) for t in (5, 6)]
+    assert 5 not in inp.gates["G1"] and 6 not in inp.gates["G1"]
+    for h in inp.history["G1"]:
+        gate = A.checkpoint_gate(A.pair_values(h, keys, inp.regimes, B))
+        assert gate["evaluable"] and gate["passed"]
+        assert gate["completion_null"] == 1.0 and gate["completion_gentle"] == 1.0
+    assert A.history_judgeable(inp, "G1") == [True, True]
+    assert [p.split(":")[0] for p in A.history_gate_problems(inp)] == ["G2", "G3"]
+    # complete inputs (every generalist final with both history snapshots and their tier G
+    # runs): nothing for the confirmatory stage to refuse on
+    full = _inputs(sims)
+    full.keys = keys
+    for a in ("G1", "G2", "G3"):
+        full.history[a] = [_with_tier_g(lawful, g_rows, a, t) for t in (5, 6)]
+    assert A.history_gate_problems(full) == []
+    ds = {(d.prediction, d.agent): d for d in A.decisions(inp, True)}
+    p1a = ds[("P1a", "G1")]
+    assert (p1a.verdict, p1a.stable) == ("confirm", True)
+    assert p1a.details["history_verdicts"] == ["confirm", "confirm"]
+    assert p1a.details["history_gate_judgeable"] == [True, True]
+    assert "final_verdict" not in p1a.details
+    t = A._decision_rows(list(ds.values()))
+    i = [k for k in range(A._n(t)) if t["prediction"][k] == "P1a" and t["agent"][k] == "G1"]
+    assert (t["verdict"][i[0]], t["stable"][i[0]]) == ("confirm", "yes")
+    # the same history with its gate given (no tier G runs): identical verdicts
+    ref = _inputs(sims)
+    ref.history["G1"] = [{**lawful, "agent": np.full(A._n(lawful), "G1"),
+                          "timesteps": np.full(A._n(lawful), t)} for t in (5, 6)]
+    ref.gates["G1"].update({5: True, 6: True})
+    rd = {(d.prediction, d.agent): d for d in A.decisions(ref, True)}
+    for p in A.CONFIRMATORY_G:
+        assert ds[(p, "G1")].verdict == rd[(p, "G1")].verdict, p
+        assert ds[(p, "G1")].details.get("history_verdicts") == \
+            rd[(p, "G1")].details.get("history_verdicts"), p
+    # the gate still bites: tier G straights that do not complete fail it (AD24)
+    inp2 = _inputs(sims)
+    inp2.keys = keys
+    inp2.history["G1"] = [_with_tier_g(lawful, g_rows, "G1", t, completed=t == 6)
+                          for t in (5, 6)]
+    g5 = A.checkpoint_gate(A.pair_values(inp2.history["G1"][0], keys, inp2.regimes, B))
+    assert g5["evaluable"] and not g5["passed"] and g5["completion_null"] == 0.0
+    d2 = {(d.prediction, d.agent): d for d in A.decisions(inp2, True)}[("P1a", "G1")]
+    assert d2.details["history_verdicts"] == ["not testable", "confirm"]
+    assert (d2.verdict, d2.stable) == ("confirm", True)
+
+
+def test_R19_review_p2_claim_recurs_at_history_snapshots_judged_from_their_tier_g_runs(sims):
+    """R19 review finding 1 (gate side): P2 is a claim at G2's final (late onset), and the
+    two history snapshots, judged by protocol 8's gate from their own tier G runs (no gate
+    given), reach it too, so it is reported stable. The same history without its tier G
+    runs (the last-3 rows before R19a) is 'not testable' and P2 'unstable'; with the gate
+    given instead, every G2 verdict equals the one judged from the tier G runs. The
+    run-level side (the history snapshots' own null runs, so d_resp and Δd_resp are defined
+    there) is in test_interp_r19.py."""
+    keys, g_rows = _tier_g_keys(KEYS)
+    late = sims["late_onset"][0]
+    # The simulated late-onset driver also crashes the gentle A1 cells (R 87.3 from 310 km/h)
+    # and so fails the gate; this history completes them. P2 reads the A1 tail and
+    # below-support pairs only, so its verdict does not depend on them.
+    gentle = np.isin(late["pair"], keys["pair"][np.isclose(A._fl(keys, "R_nom"), A.GENTLE_R)])
+    assert gentle.any() and not late["completed"][gentle].all()
+    hist = _set(_set(_set(late, "crashed", gentle, False), "completed", gentle, True),
+                "crash_type", gentle, "")
+    inp = _inputs(sims)
+    inp.keys = keys
+    inp.history["G2"] = [_with_tier_g(hist, g_rows, "G2", t) for t in (5, 6)]
+    assert 5 not in inp.gates["G2"] and 6 not in inp.gates["G2"]
+    assert A.history_judgeable(inp, "G2") == [True, True]
+    ds = {(d.prediction, d.agent): d for d in A.decisions(inp, True)}
+    p2 = ds[("P2", "G2")]
+    assert (p2.verdict, p2.stable) == ("confirm", True)
+    assert p2.details["history_verdicts"] == ["confirm", "confirm"]
+    assert p2.details["history_gate_judgeable"] == [True, True]
+
+    def plain(t):
+        return {**hist, "agent": np.full(A._n(hist), "G2"), "timesteps": np.full(A._n(hist), t)}
+
+    # before R19a: the history has no tier G runs and the gate cannot judge it
+    pre = _inputs(sims)
+    pre.history["G2"] = [plain(t) for t in (5, 6)]
+    d0 = {(d.prediction, d.agent): d for d in A.decisions(pre, True)}[("P2", "G2")]
+    assert (d0.verdict, d0.details["final_verdict"]) == ("unstable", "confirm")
+    assert d0.details["history_verdicts"] == ["not testable", "not testable"]
+    # the gate given for the same history: the verdicts judged from the tier G runs
+    ref = _inputs(sims)
+    ref.history["G2"] = [plain(t) for t in (5, 6)]
+    ref.gates["G2"].update({5: True, 6: True})
+    rd = {(d.prediction, d.agent): d for d in A.decisions(ref, True)}
+    for p in A.CONFIRMATORY_G:
+        assert ds[(p, "G2")].verdict == rd[(p, "G2")].verdict, p
+        assert ds[(p, "G2")].details.get("history_verdicts") == \
+            rd[(p, "G2")].details.get("history_verdicts"), p
+
+
+def test_R19c_stability_compares_decision_classes(sims):
+    """Ruling R19c: AD21's 2-of-last-3 rule compares decision classes exactly as R18's
+    variant rule does ('cautious but lawful' is a P1a refutation), and the final's verdict
+    label is the one reported. Through ``_generalist_decisions`` with a history that the
+    gate judges from its own tier G runs (R19a)."""
+    keys, g_rows = _tier_g_keys(KEYS)
+    inp = _inputs(sims)
+    inp.keys = keys
+    lawful = sims["lawful"][0]
+    inp.history["G1"] = [_with_tier_g(lawful, g_rows, "G1", t) for t in (5, 6)]
+
+    def rule_of(by_ts):
+        def rule(pairs, runs):
+            return A._d("P1a", "G1", by_ts[int(A._it(runs, "timesteps", 0)[0])])
+        return {"P1a": rule}
+
+    # the final's 'cautious but lawful' recurs as the history's 'refute': stable, label kept
+    d = A._generalist_decisions(inp, "G1", rule_of(
+        {0: "cautious but lawful", 5: "refute", 6: "not testable"}))[0]
+    assert (d.verdict, d.stable) == ("cautious but lawful", True)
+    assert d.details["history_verdicts"] == ["refute", "not testable"]
+    assert "final_verdict" not in d.details
+    # and the other way round
+    d = A._generalist_decisions(inp, "G1", rule_of(
+        {0: "refute", 5: "inconclusive", 6: "cautious but lawful"}))[0]
+    assert (d.verdict, d.stable) == ("refute", True)
+    # a different decision class does not recur: 'unstable', the final verdict in details
+    d = A._generalist_decisions(inp, "G1", rule_of(
+        {0: "cautious but lawful", 5: "confirm", 6: "not testable"}))[0]
+    assert (d.verdict, d.stable) == ("unstable", False)
+    assert d.details["final_verdict"] == "cautious but lawful"
+    # the rule itself: classes on both sides, exact labels otherwise
+    for final, hist, stable in (("cautious but lawful", ["refute", "confirm"], True),
+                                ("refute", ["cautious but lawful", "not testable"], True),
+                                ("cautious but lawful", ["cautious but lawful"], True),
+                                ("confirm", ["cautious but lawful", "refute"], False),
+                                ("inconclusive", ["refute", "confirm"], False)):
+        s = A._stabilise(A._d("P1a", "G1", final), hist)
+        assert s.stable is stable, (final, hist)
+        assert s.verdict == (final if stable or final not in A.CLAIMS else "unstable")
+    assert A._stabilise(A._d("P1a", "G1", "refute"), []).details["stability"] == "n/a"
 
 
 def test_R18_review_decision_table_serialises_before_writing(sims, tmp_path, monkeypatch):

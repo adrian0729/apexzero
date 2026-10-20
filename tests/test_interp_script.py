@@ -81,45 +81,55 @@ def test_confirmatory_analysis_needs_complete_inputs(ps):
     replicates' finals (with det, nat and mat groups) are part of the complete inputs. R18
     review finding 1: so are the rollouts of the two snapshots before every generalist final
     (protocol 8's stability rule), det and nat (det alone once budget rule 3 cut the
-    checkpoint stochastic runs)."""
+    checkpoint stochastic runs). Ruling R19a: their det groups must hold their tier G runs."""
     every = tuple(agents.AGENTS)
     assert len(every) == 12
     finals = {a: SimpleNamespace(timesteps=1) for a in every}
     groups = {a: {"det", "nat", "mat"} for a in every}
     hist = {a: [{"det", "nat"}, {"det", "nat"}] for a in agents.generalists()}
+    tg = {a: [0, 0] for a in agents.generalists()}       # no tier G run missing (R19a)
     ok = agents.Manifest(band=0.075, validation={
         "step2": {"passed": True}, "step3": {"passed": True}, "dry_run": {"passed": True},
         "controls": {"T": {"status": "pass"}}, "anchored_keys": {"P1": {"errors": 0}}})
-    assert ps.confirmatory_problems(ok, finals, groups, None, hist) == []
-    assert ps.confirmatory_problems(ok, finals, groups, ["G1"], hist)               # --agent
-    assert ps.confirmatory_problems(ok, {a: v for a, v in finals.items() if a != "G3"}, groups,
-                                    None, hist)
-    assert ps.confirmatory_problems(ok, finals, {**groups, "S2": {"det"}}, None, hist)
+
+    def probs_of(m=ok, fin=finals, grp=groups, agent=None, h=hist, g=tg):
+        return ps.confirmatory_problems(m, fin, grp, agent, h, g)
+
+    assert probs_of() == []
+    assert probs_of(agent=["G1"])                                                # --agent
+    assert probs_of(fin={a: v for a, v in finals.items() if a != "G3"})
+    assert probs_of(grp={**groups, "S2": {"det"}})
     # the step-8 gate waits for the replicates' finals too
-    probs = ps.confirmatory_problems(ok, {a: v for a, v in finals.items() if a != "G2s1"},
-                                     groups, None, hist)
+    probs = probs_of(fin={a: v for a, v in finals.items() if a != "G2s1"})
     assert probs == ["finals missing from the manifest: ['G2s1']"]
-    assert ps.confirmatory_problems(ok, finals, {**groups, "G3s2": {"det", "nat"}}, None, hist)
+    assert probs_of(grp={**groups, "G3s2": {"det", "nat"}})
     no_band = agents.Manifest(validation=ok.validation)
-    assert any("band" in p for p in ps.confirmatory_problems(no_band, finals, groups, None, hist))
+    assert any("band" in p for p in probs_of(m=no_band))
     no_ak = agents.Manifest(band=0.075, validation={k: v for k, v in ok.validation.items()
                                                     if k != "anchored_keys"})
-    assert any("step 7" in p for p in ps.confirmatory_problems(no_ak, finals, groups, None, hist))
+    assert any("step 7" in p for p in probs_of(m=no_ak))
     # history rollouts: missing snapshots, a missing det group, a missing nat group; budget
     # rule 3 drops the checkpoint stochastic runs, so det alone is then enough
-    probs = ps.confirmatory_problems(ok, finals, groups, None, {**hist, "G3": [{"det", "nat"}]})
+    probs = probs_of(h={**hist, "G3": [{"det", "nat"}]}, g={**tg, "G3": [0]})
     assert probs == [("G3: 1 of the 2 snapshots before the final in the manifest (protocol 8's "
                      "stability rule needs both)")]
-    probs = ps.confirmatory_problems(ok, finals, groups, None,
-                                     {**hist, "G1s2": [set(), {"det", "nat"}]})
+    probs = probs_of(h={**hist, "G1s2": [set(), {"det", "nat"}]})
     assert len(probs) == 1 and probs[0].startswith("G1s2: snapshot -2 before the final")
     no_nat = {**hist, "G2": [{"det"}, {"det"}]}
-    assert len(ps.confirmatory_problems(ok, finals, groups, None, no_nat)) == 2
+    assert len(probs_of(h=no_nat)) == 2
     ok.budget["cuts"] = ["rule 3: checkpoint stochastic and tier E matched-noise runs dropped"]
-    assert ps.confirmatory_problems(ok, finals, groups, None, no_nat) == []
+    assert probs_of(h=no_nat) == []
     # specialists have no stability rule: no history needed
-    assert ps.confirmatory_problems(ok, finals, groups, None,
-                                    {a: v for a, v in hist.items() if a != "S1"}) == []
+    assert probs_of(h={a: v for a, v in hist.items() if a != "S1"}) == []
+    # R19a: a history det group without its tier G runs (made before the ruling), or one
+    # whose tier G runs were not checked, is not complete input
+    probs = probs_of(g={**tg, "G2s1": [4, 0]})
+    assert probs == [("G2s1: snapshot -2 before the final lacks 4 of its tier G deterministic "
+                      "runs (ruling R19a: protocol 8's gate needs the null straights; rollouts "
+                      "--snapshots last3 runs them)")]
+    probs = probs_of(g={a: v for a, v in tg.items() if a != "G1"})
+    assert len(probs) == 2 and all(p.startswith("G1: snapshot -") and "not checked" in p
+                                   for p in probs)
 
 
 def test_history_entries_are_the_two_snapshots_before_the_final(ps):
