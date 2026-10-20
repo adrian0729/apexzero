@@ -44,7 +44,7 @@ RECENT_S = 15 * 60
 RESET, BOLD, DIM = "\x1b[0m", "\x1b[1m", "\x1b[2m"
 RED, GREEN, YELLOW, BLUE, CYAN = "\x1b[31m", "\x1b[32m", "\x1b[33m", "\x1b[34m", "\x1b[36m"
 STATUS_COLOUR = {"running": GREEN, "compiling": GREEN, "evaluating": CYAN, "done": BLUE,
-                 "pending": YELLOW, "failed": RED, "stopped": RED}
+                 "pending": YELLOW, "failed": RED, "stopped": YELLOW}
 ANSI = re.compile(r"\x1b\[[0-9;?]*[A-Za-z]")
 
 
@@ -325,6 +325,71 @@ def fit(line: str, width: int) -> str:
     return "".join(out) + RESET
 
 
+PIPELINE = ("manifest", "support", "stimuli", "keys", "validate", "controls", "dryrun",
+            "rollouts", "anchored-keys", "probes", "analyse", "plots")
+PREREG_TAG = "psychophysics-prereg-v2"
+_STAGE = re.compile(r"^(\S+ \S+) (start|done|failed) (\S+): (\d+)/(\d+)(.*)$")
+_PROGRESS = re.compile(r"^(\S+ \S+) (\d+)/(\d+) (.*)$")
+
+
+@dataclass
+class StageState:
+    stage: str
+    status: str                    # running | done | failed | stopped
+    done: int = 0
+    total: int = 0
+    when: str = ""                 # time of the last line
+    summary: str = ""              # the last informative line
+
+
+def stage_state(log: Path, running: bool) -> StageState | None:
+    """The latest run of a psychophysics stage from runs/psychophysics-<stage>.log: its
+    start / progress / done / failed lines (``io.StageLog``) and the last other line."""
+    stage = log.stem.removeprefix("psychophysics-")
+    lines = _tail_text(log, 32768).splitlines()
+    st = None
+    for ln in lines:
+        m = _STAGE.match(ln)
+        if m and m.group(3) == stage:
+            if m.group(2) == "start":
+                st = StageState(stage, "running" if running else "stopped", int(m.group(4)),
+                                int(m.group(5)), m.group(1)[11:16])
+            elif st is not None or m.group(2) != "start":
+                st = st or StageState(stage, "")
+                st.status = "running" if running else m.group(2)
+                st.done, st.total, st.when = int(m.group(4)), int(m.group(5)), m.group(1)[11:16]
+                if m.group(2) == "failed":
+                    st.summary = m.group(6).strip()
+            continue
+        if st is None:
+            continue
+        m = _PROGRESS.match(ln)
+        if m:
+            st.done, st.total, st.when = int(m.group(2)), int(m.group(3)), m.group(1)[11:16]
+        elif len(ln) > 20 and st.status != "failed":
+            st.summary, st.when = ln[20:], ln[11:16]
+    return st
+
+
+_BREV: dict = {"t": 0.0, "rows": None}
+
+
+def gpu_instances(every: float = 60.0) -> list[str] | None:
+    """``brev ls`` rows (name, status, machine, GPU), refreshed at most once a minute;
+    None if the Brev CLI is absent."""
+    if shutil.which("brev") is None:
+        return None
+    if time.time() - _BREV["t"] > every or _BREV["rows"] is None:
+        out = _run(["brev", "ls"])
+        rows = []
+        for ln in out.splitlines():
+            f = ln.split()
+            if len(f) >= 6 and f[0] not in ("NAME", "You") and not ln.startswith(" NAME"):
+                rows.append(f)
+        _BREV.update(t=time.time(), rows=rows)
+    return _BREV["rows"]
+
+
 def render(width: int) -> list[str]:
     now = time.time()
     procs = processes()
@@ -357,9 +422,15 @@ def render(width: int) -> list[str]:
     else:
         head = f"{DIM}not running{RESET}"
     lines.append(f"{BOLD}TRAINING QUEUE{RESET} {DIM}(scripts/queue_overnight.sh){RESET}   {head}")
-    lines.append(f"{DIM}  #  {'job':<34} {'status':<10} {'progress':<17} {'eta':<20} {'steps':>11} "
-                 f"{'speed':>9} {'return':>7} {'crash':>7} {'ckpt':>4}{RESET}")
-    for i, st in enumerate(states, 1):
+    idle = queue_proc is None and all(st.status in ("done", "failed", "stopped") for st in states)
+    if idle and states:
+        n_done = sum(st.status == "done" for st in states)
+        lines.append(f"  {DIM}last queue: {n_done} of {len(states)} jobs done "
+                     f"({', '.join(st.job.name for st in states)}){RESET}")
+    else:
+        lines.append(f"{DIM}  #  {'job':<34} {'status':<10} {'progress':<17} {'eta':<20} {'steps':>11} "
+                     f"{'speed':>9} {'return':>7} {'crash':>7} {'ckpt':>4}{RESET}")
+    for i, st in enumerate(states if not (idle and states) else [], 1):
         col = STATUS_COLOUR.get(st.status, "")
         frac = st.steps / st.total if st.total else 0.0
         prog = f"{bar(frac, 12)} {frac * 100:3.0f}%" if st.steps else ""
@@ -381,6 +452,42 @@ def render(width: int) -> list[str]:
         lines.append(f"  {i}  {st.job.name:<34} {col}{st.status:<10}{RESET} {prog:<17} {eta:<20} {steps:>11} "
                      f"{speed:>9} {ret:>7} {crash:>7} {st.ckpts or '':>4}")
     lines.append("")
+
+    # --- psychophysics pipeline
+    tagged = _run(["git", "-C", str(ROOT), "tag", "-l", PREREG_TAG]).strip()
+    tag_txt = (f"{GREEN}tagged {PREREG_TAG}{RESET}" if tagged
+               else f"{YELLOW}not tagged yet{RESET} {DIM}(no agent is rolled out on stimuli before it){RESET}")
+    lines.append(f"{BOLD}PSYCHOPHYSICS PIPELINE{RESET} {DIM}(scripts/psychophysics.py){RESET}   {tag_txt}")
+    shown = 0
+    for stage in PIPELINE:
+        log = RUNS / f"psychophysics-{stage}.log"
+        if not log.exists():
+            continue
+        running = any(f"psychophysics.py {stage}" in p.cmd for p in procs)
+        st = stage_state(log, running)
+        if st is None:
+            continue
+        col = STATUS_COLOUR.get(st.status, "")
+        frac = st.done / st.total if st.total else 0.0
+        prog = f"{bar(frac, 12)} {st.done}/{st.total}" if st.total else ""
+        lines.append(f"  {stage:<14} {col}{st.status:<8}{RESET} {prog:<24} {st.when:>5}  {DIM}{st.summary}{RESET}")
+        shown += 1
+    if not shown:
+        lines.append(f"  {DIM}no stage has run{RESET}")
+    lines.append("")
+
+    # --- GPU instances
+    rows = gpu_instances()
+    if rows is not None:
+        lines.append(f"{BOLD}GPU (Brev){RESET} {DIM}(brev ls, refreshed each minute){RESET}")
+        if rows:
+            for f in rows:
+                col = GREEN if f[1] == "RUNNING" else YELLOW
+                lines.append(f"  {f[0]:<28} {col}{f[1]:<10}{RESET} {f[2]:<10} {f[3]:<10} "
+                             f"{' '.join(f[5:])}")
+        else:
+            lines.append(f"  {DIM}none{RESET}")
+        lines.append("")
 
     # --- other experiment processes
     queue_pids = {st.proc.pid for st in states if st.proc}

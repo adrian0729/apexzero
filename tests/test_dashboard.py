@@ -68,3 +68,27 @@ def test_fit_keeps_ansi_and_truncates_visible_width():
     s = dashboard.GREEN + "abcdef" + dashboard.RESET + "ghij"
     out = dashboard.fit(s, 4)
     assert dashboard.ANSI.sub("", out) == "abcd"
+
+
+def test_stage_state_reads_the_latest_stage_run(tmp_path):
+    log = tmp_path / "psychophysics-keys.log"
+    log.write_text(
+        "2026-10-19 10:13:40 start keys: 0/1 (P0, 9 workers)\n"
+        "2026-10-19 10:20:00 done keys: 1/1 in 6.0 min\n"
+        "2026-10-19 21:40:00 start keys: 0/831 (P2, 10 workers)\n"
+        "2026-10-19 21:41:08 384/831 phase cell 109: verified (225 CPU-s)\n"
+        "2026-10-19 22:09:26 acceptance: V1 PASS, 2141 keys\n")
+    st = dashboard.stage_state(log, running=True)
+    assert (st.stage, st.status, st.done, st.total) == ("keys", "running", 384, 831)
+    assert st.summary == "acceptance: V1 PASS, 2141 keys" and st.when == "22:09"
+    with open(log, "a") as fh:
+        fh.write("2026-10-19 22:09:26 done keys: 831/831 in 35.4 min\n")
+    st = dashboard.stage_state(log, running=False)
+    assert (st.status, st.done, st.total) == ("done", 831, 831)
+    with open(log, "a") as fh:
+        fh.write("2026-10-19 23:00:00 start keys: 0/9 (P0)\n"
+                 "2026-10-19 23:00:01 failed keys: 1/9 in 0.0 min (ValueError: boom)\n")
+    st = dashboard.stage_state(log, running=False)
+    assert st.status == "failed" and st.summary == "in 0.0 min (ValueError: boom)"
+    log.write_text("2026-10-19 23:00:00 start keys: 0/9 (P0)\n")
+    assert dashboard.stage_state(log, running=False).status == "stopped"
