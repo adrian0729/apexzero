@@ -526,7 +526,7 @@ def render(width: int) -> list[str]:
 
     # --- agent workflows
     wfs = workflows(now=now)[:4]
-    lines.append(f"{BOLD}AGENT WORKFLOWS{RESET} {DIM}(Claude's background work, last 12 h){RESET}")
+    lines.append(f"{BOLD}AGENT WORKFLOWS{RESET} {DIM}(agents done/started, last activity){RESET}")
     if wfs:
         for w in wfs:
             if w.running and w.last_s > STALL_S:
@@ -536,8 +536,8 @@ def render(width: int) -> list[str]:
             else:
                 st = f"{BLUE}done{RESET}    "
             now_doing = ", ".join(w.running) if w.running else ""
-            lines.append(f"  {w.name[:34]:<34} {st} {w.done}/{w.started} agents   "
-                         f"last activity {fmt_dur(w.last_s):>9} ago   {DIM}{now_doing}{RESET}")
+            lines.append(f"  {w.name.removeprefix('psychophysics-')[:24]:<24} {st} {w.done}/{w.started} "
+                         f"{fmt_dur(w.last_s):>9} ago  {DIM}{now_doing}{RESET}")
     else:
         lines.append(f"  {DIM}none{RESET}")
     lines.append("")
