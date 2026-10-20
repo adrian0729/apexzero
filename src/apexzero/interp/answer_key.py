@@ -1335,11 +1335,13 @@ def window_length(socp: SocpKey, landmarks: Landmarks) -> int:
 
 
 def q_rollout_guess(bank: StimulusBank, cell: Cell, x0: np.ndarray, steps: int,
-                    tables: ModelTables, c_v: float = Q_CV_DEFAULT
+                    tables: ModelTables, c_v: float = Q_CV_DEFAULT, phase: int = 0
                     ) -> tuple[np.ndarray, np.ndarray]:
     """Start (3): a float64 rollout of the agent-free Q controller (``controls.make_q_policy``
     with ``controls.q_params``) through ``racing.step_no_reset`` from x0 with the cell's
-    prev_action and accel. (xs [steps+1, 8], applied actions [steps, 2])."""
+    prev_action and accel at ``phase`` (``Cell.initial_aux``: on a real-lap cell, ruling
+    R21's held command and accel interpolated with the state, so they belong to x0's phase).
+    (xs [steps+1, 8], applied actions [steps, 2])."""
     import jax
     import jax.numpy as jnp
 
@@ -1351,9 +1353,10 @@ def q_rollout_guess(bank: StimulusBank, cell: Cell, x0: np.ndarray, steps: int,
     policy = controls.make_q_policy("Q")
     tr = _track_arrays64(bank.track(cell.stim_id))
     env = racing.EnvParams(window_steps=10**9)
+    pa0, ac0 = cell.initial_aux(int(phase))
     st = racing.EnvState(x=jnp.asarray(x0, jnp.float64),
-                         prev_action=jnp.asarray(cell.prev_action0, jnp.float64),
-                         accel=jnp.asarray(cell.accel0, jnp.float64),
+                         prev_action=jnp.asarray(pa0, jnp.float64),
+                         accel=jnp.asarray(ac0, jnp.float64),
                          ctx=jnp.asarray(key_ctx()), hidden_mu=jnp.asarray(1.0, jnp.float64),
                          t=jnp.zeros((), jnp.int32), slow=jnp.zeros((), jnp.float64),
                          s0=jnp.asarray(x0[0], jnp.float64))
@@ -1431,7 +1434,7 @@ def full_recipe(bank: StimulusBank, cell: Cell, kind: str = "nominal", phase: in
         if q_guess is not None:
             gq = q_guess(bank, cell, prob.x0, prob.W)
         elif tables is not None:
-            gq = q_rollout_guess(bank, cell, prob.x0, prob.W, tables, q_cv)
+            gq = q_rollout_guess(bank, cell, prob.x0, prob.W, tables, q_cv, phase=phase)
             flags.append(f"Q start c_v {q_cv:g}")      # recipe input, not part of the key id
         else:
             gq = None
@@ -2483,10 +2486,10 @@ def key_for(cell: Cell, kind: str = "nominal", phase: int = 0, agent: str = "",
         if int(stim.direction) == -1:
             rec = None
             if tag == "-" and getattr(stim, "mirror_id", -1) >= 0:
-                # The left-hand member's problem: the mirror row from the mirrored state.
-                mate = dataclasses.replace(
-                    cell, stim_id=int(stim.mirror_id),
-                    x0=None if cell.x0 is None else tuple(float(v) for v in mirror_state(cell.x0)))
+                # The left-hand member's problem: the mirror row from the mirrored start
+                # (ruling R21: x0 and, on a real-lap cell, the recorded step before it, so
+                # its phase-k start is the mirror of this cell's).
+                mate = dataclasses.replace(cell.mirrored_start(), stim_id=int(stim.mirror_id))
                 want_l = expected_key_id(bank, mate, kind, phase)
                 rec = cache.get(kind, want_l) if want_l is not None else None
             if rec is None:
@@ -3000,6 +3003,7 @@ BUDGET_ITEMS = {
     # at their phases (warm from the nominal key), so per-phase re-anchored keys (R17a) start
     # from and fall back to the key at their own phase.
     "nominal_B600": ("nominal", "P1"), "phase_B600": ("warm", "P1"),
+    "nominal_B250": ("nominal", "P1"), "phase_B250": ("warm", "P1"),
     # Ruling R18: the replicates' finals get G1-G3's re-anchored keys (P0: A1; P1: tier B
     # D = 600) and their own viability solves (9.1's cap applied to them apart), never P2's
     # checkpoint keys (P6 stays on seed 0).

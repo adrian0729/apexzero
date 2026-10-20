@@ -222,7 +222,8 @@ def test_v7_remedy_budget_counts_the_expanded_set_and_rule_2_credit(ps, monkeypa
     assert it["phase_P1"]["item"] == it["phase_P2"]["item"] == "warm"
     assert (it["phase_B600"]["n"], it["phase_B600"]["priority"]) == (3, "P1")     # R17c
     assert proj["phase_keys"]["braking_unknown"] == {"phase": 1, "phase_P1": 0,
-                                                     "phase_B600": 0, "phase_P2": 0}
+                                                     "phase_B600": 0, "phase_B250": 0,
+                                                     "phase_P2": 0}                # R25a
     # Without a cache nothing is known yet: every candidate counts.
     nocache = ps._budget(bank, cells, False, _manifest(V7_FAILED), 1)
     assert nocache["items"]["phase"]["n"] == 3 * 7

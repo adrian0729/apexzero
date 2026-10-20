@@ -760,12 +760,13 @@ def _b_design():
 def test_R17c_tier_b_d600_cells_are_a_p1_nominal_and_phase_item(ps):
     """Tier B D = 600 is the keys stage's P1 nominal item 'nominal_B600' (one direction
     with the mirror shortcut, both without it) whatever V7 says, and with V7 failed the phase
-    item 'phase_B600'; tier B at D = 250 and recovery cells are not in either. Its cells are
+    item 'phase_B600'; tier B at D = 250 (ruling R25a's own items) and recovery cells are
+    not in either. Its cells are
     exactly the tier B cells the anchored stage re-anchors."""
     bank, cells = _b_design()
     assert [ps._b600_cell(c) for c in cells] == [False, True, True, True, True, False, False,
                                                  True]
-    assert ps.PHASE_ITEMS == ("phase", "phase_P1", "phase_B600", "phase_P2")
+    assert ps.PHASE_ITEMS == ("phase", "phase_P1", "phase_B600", "phase_B250", "phase_P2")
     held = ps._key_sets(bank, cells, both=False)
     assert _ids(held["nominal_B600"]) == [1, 3, 7] and held["phase_B600"] == []
     both = ps._key_sets(bank, cells, both=True)
@@ -775,7 +776,7 @@ def test_R17c_tier_b_d600_cells_are_a_p1_nominal_and_phase_item(ps):
     assert _ids(failed["phase_P2"]) == [6]
     assert not {1, 2, 3, 4, 7} & {i for k in ("phase", "phase_P1", "phase_P2")
                                    for i in _ids(failed[k])}
-    assert not {5} & {i for k, v in failed.items() for i in _ids(v)}
+    assert {k for k, v in failed.items() if 5 in _ids(v)} == {"nominal_B250", "phase_B250"}
     # the anchored stage's tier B cells (both directions: anchored keys start from each
     # agent's own state) all have a keys-stage nominal key now
     for gen in (True, False):
@@ -867,7 +868,8 @@ def test_R17c_keys_stage_solves_b600_nominal_then_phase_keys_at_p1(ps, monkeypat
     """The keys stage solves tier B D = 600's nominal keys in P1's pool (both directions,
     as descending-R series, cold: no warm start), then, with V7 failed, the braking cells'
     phase-matched keys after them with the other P1 phase items (flat cell 7 gets none);
-    nothing of tier B D = 600 at P0 or P2."""
+    nothing of tier B D = 600 at P0 or P2. Ruling R25a adds tier B D = 250 (cell 5, braking)
+    to the same P1 series and phase pool."""
     bank, cells = _b_design()
     solved: set[int] = set()
     calls: list = []
@@ -877,12 +879,12 @@ def test_R17c_keys_stage_solves_b600_nominal_then_phase_keys_at_p1(ps, monkeypat
     # P0 nominal, P0 phase / backed-off, P1 nominal, P1 phase, P2 nominal, P2 phase
     assert len(calls) == 6
     series = [cs for w, cs in calls[2] if w == "series"]
-    assert sorted(c for cs in series for c in cs) == [1, 2, 3, 4, 7]
+    assert sorted(c for cs in series for c in cs) == [1, 2, 3, 4, 5, 7]
     # a series per (theta, direction, v0, D), in descending R: no cell is solved warm
     assert all(w in ("series", "nominal", "socp") for w, _ in calls[2])
     assert {w for w, _ in calls[3]} == {"phase"}
-    assert sorted(c for _, cs in calls[3] for c in cs) == [1, 2, 3, 4]
-    b600 = {1, 2, 3, 4, 7}
+    assert sorted(c for _, cs in calls[3] for c in cs) == [1, 2, 3, 4, 5]
+    b600 = {1, 2, 3, 4, 5, 7}                 # tier B at P1: D = 600 (R17c) and D = 250 (R25a)
     for i in (0, 1, 4, 5):
         assert not b600 & {c for _, cs in calls[i] for c in cs}
     # at P0 only, tier B D = 600 gets nothing
@@ -1157,3 +1159,26 @@ def test_R17c_review_p1_phase_cycles_follow_the_nominal_keys_whatever_v7_says(
         # P0's refresh (always saved), then P1's, after P1's pool, with the new P
         assert saved == [("phase cycles from the nominal keys", 1, []),
                          ("phase cycles from the P1 nominal keys", 3, [1, 2, 3, 4, 7])]
+
+
+def test_R25a_tier_b_d250_cells_get_nominal_and_phase_keys(ps, monkeypatch):
+    """Ruling R25a: tier B D = 250 cells are the keys stage's P1 nominal item 'nominal_B250'
+    whatever V7 says and, with V7 failed, the phase item 'phase_B250' (braking cells only),
+    so P3's b* is computed on the same cells as the agents' b. Nothing else moves."""
+    bank, cells = _b_design()
+    assert [ps._b250_cell(c) for c in cells] == [False] * 5 + [True, False, False]
+    held = ps._key_sets(bank, cells, both=True)
+    assert _ids(held["nominal_B250"]) == [5] and held["phase_B250"] == []
+    failed = ps._key_sets(bank, cells, True, v7_failed=True)
+    assert _ids(failed["phase_B250"]) == [5]
+    assert _ids(failed["nominal_B600"]) == [1, 2, 3, 4, 7]
+    monkeypatch.setattr(ps, "_nominal_braking", lambda b, c, cache: _B_BRAKING[c.cell_id])
+    monkeypatch.setattr(ps, "_anchored_g_count", lambda bank, cells: dict(
+        n=0, source="test", r12_below_support=0, protocol=96))
+    monkeypatch.setattr(ps, "_frozen_regimes", lambda: None)
+    it = ps._budget(bank, cells, True, _manifest_v(V7_FAILED), 1, cache=object())["items"]
+    assert (it["nominal_B250"]["n"], it["nominal_B250"]["priority"],
+            it["nominal_B250"]["item"]) == (1, "P1", "nominal")
+    assert (it["phase_B250"]["n"], it["phase_B250"]["priority"]) == (3, "P1")
+    held_it = ps._budget(bank, cells, True, _manifest_v(V7_PASSED), 1, cache=object())["items"]
+    assert held_it["nominal_B250"]["n"] == 1 and "phase_B250" not in held_it

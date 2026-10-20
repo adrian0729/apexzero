@@ -13,7 +13,9 @@ the env clips a to [-1, 1]. eps_t = normal(fold_in(run_key, t), (2,)) with run_k
 fold_in(fold_in(PRNGKey(20261019), pair_id), sample), so every snapshot sees the same noise
 (common random numbers), and eps_steer is negated on the mirrored member of a pair. After
 termination the state is frozen with ``jnp.where``. float64 must be off (``replay`` and
-``check`` switch it on globally): keys and rollouts run in separate processes.
+``check`` switch it on globally): keys and rollouts run in separate processes. The one
+exemption is ruling R20's T64 (``run_tape_rollouts_x64``): the tape control alone, in its
+own float64 process, through the same harness code with exact upcasts of the float32 inputs.
 
 Stochastic sample j of a cell starts at phase j mod n_phases, so crash rates average over
 the aliasing phases.
@@ -401,8 +403,10 @@ INDEX_DTYPES = {"cell": np.int32, "stim": np.int32, "pair": np.int32, "phase": n
 def make_batch(runs: list[RunSpec], cells: dict[int, Cell]) -> tuple[RolloutBatch, Table]:
     """Batch arrays and the run index table (columns cell, stim, pair, phase, sample,
     steer_sign, W, s0) for a list of runs (one compiled call runs them all for the largest
-    W). x0, prev_action and accel come from ``Cell.initial_state`` / the cell's real-state
-    fields; ctx is ``default_ctx()``, hidden_mu 1."""
+    W). x0, prev_action and accel come from ``Cell.initial_state`` and ``Cell.initial_aux``
+    at the run's phase (ruling R21: a real-lap cell's phase k starts on its recorded run, its
+    accel interpolated with its state and its prev_action the command held over that step;
+    a designed cell's are the same at every phase); ctx is ``default_ctx()``, hidden_mu 1."""
     B = len(runs)
     x0 = np.zeros((B, 8), np.float32)
     pa = np.zeros((B, 2), np.float32)
@@ -415,8 +419,7 @@ def make_batch(runs: list[RunSpec], cells: dict[int, Cell]) -> tuple[RolloutBatc
         if c.stim_id != r.stim_id or c.pair_id != r.pair_id:
             raise ValueError(f"run {i} does not match cell {c.cell_id}")
         x0[i] = np.asarray(c.initial_state(r.phase), np.float32)
-        pa[i] = c.prev_action0
-        ac[i] = c.accel0
+        pa[i], ac[i] = c.initial_aux(r.phase)
         if r.mode != "det":
             keys[i] = noise_key(r.pair_id, r.sample)
         if r.mode == "mat":
@@ -685,8 +688,10 @@ def _pad_batch(batch: RolloutBatch, size: int) -> RolloutBatch:
 STOCH_F16 = ("n", "pedal", "xi")        # descriptive traces; util and beta_f stay float32
 
 
-def trace_arrays(trace: Trace, n: int, record: str) -> dict[str, np.ndarray]:
-    """First n runs of a Trace as numpy arrays with the file dtypes (module docstring)."""
+def trace_arrays(trace: Trace, n: int, record: str, float_dtype=np.float32
+                 ) -> dict[str, np.ndarray]:
+    """First n runs of a Trace as numpy arrays with the file dtypes (module docstring);
+    ``float_dtype`` float64 only for T64 (ruling R20), which keeps its float64 states."""
     out = {}
     for f in Trace._fields:
         v = getattr(trace, f)
@@ -702,7 +707,7 @@ def trace_arrays(trace: Trace, n: int, record: str) -> dict[str, np.ndarray]:
         elif record == "stoch" and f in STOCH_F16:
             a = a.astype(np.float16)
         else:
-            a = a.astype(np.float32)
+            a = a.astype(float_dtype)
         out[f] = a
     return out
 
@@ -737,35 +742,110 @@ def run_rollouts(policy: Policy, policy_params: Any, obs_rms: RunningMeanStd | N
                  record: str, chunk: int = CHUNK, log=None) -> dict[str, np.ndarray]:
     """Chunked execution of ``runs`` (grouped by W, at most ``chunk`` per call), returning
     the flat arrays of one npz group (without the group prefix), rows in the order of
-    ``runs``. Asserts x64 off. ``log`` is an ``io.StageLog`` (or anything with ``step(n,
-    note=...)``) advanced per chunk."""
+    ``runs``. Asserts x64 off (every call of the compiled harness does). ``log`` is an
+    ``io.StageLog`` (or anything with ``step(n, note=...)``) advanced per chunk."""
     assert_x64_off()
+    return _run_chunks(policy, policy_params, obs_rms, bank_arrays(bank), cells, runs, record,
+                       chunk, log)
+
+
+def _run_chunks(policy: Policy, policy_params: Any, obs_rms: RunningMeanStd | None,
+                arrays: TrackArrays, cells: list[Cell], runs: list[RunSpec], record: str,
+                chunk: int = CHUNK, log=None, x64: bool = False) -> dict[str, np.ndarray]:
+    """The chunk loop shared by ``run_rollouts`` (float32, x64 asserted off per call) and
+    ``run_tape_rollouts_x64`` (``x64``: the bare compiled harness on float64 inputs, the
+    tape policy only)."""
+    if x64:
+        from apexzero.interp.controls import make_tape_policy
+
+        if policy is not make_tape_policy() or obs_rms is not None:
+            raise ValueError("the float64 path is T64's alone (ruling R20): the tape control "
+                             "on raw observations")
     if not runs:
         raise ValueError("no runs")
     if chunk > CHUNK:
         raise ValueError(f"chunks hold at most {CHUNK} episodes")
     cell_map = {c.cell_id: c for c in cells}
-    arrays = bank_arrays(bank)
     T = max(r.W for r in runs)
     by_w: dict[int, list[int]] = {}
     for i, r in enumerate(runs):
         by_w.setdefault(int(r.W), []).append(i)
     parts: list[tuple[np.ndarray, dict]] = []
+    out_dtype = np.float64 if x64 else np.float32
     for W in sorted(by_w):
-        fn = make_stimulus_rollout(policy, W, record)
+        fn = (_compiled(policy, int(W), record, _env_params()) if x64
+              else make_stimulus_rollout(policy, W, record))
         idx = by_w[W]
         for start in range(0, len(idx), chunk):
             sel = idx[start:start + chunk]
             batch, table = make_batch([runs[i] for i in sel], cell_map)
+            if x64:
+                batch = _upcast(batch)
             padded = _pad_batch(batch, _bucket(len(sel), chunk))
             trace = fn(policy_params, obs_rms, arrays, padded)
-            arrs = _pad_time(trace_arrays(trace, len(sel), record), T)
+            arrs = _pad_time(trace_arrays(trace, len(sel), record, out_dtype), T)
             parts.append((np.asarray(sel), {**table, **arrs}))
             if log is not None:
                 log.step(len(sel), note=f"W={W}")
     order = np.argsort(np.concatenate([p[0] for p in parts]), kind="stable")
     keys = parts[0][1].keys()
     return {k: np.concatenate([p[1][k] for p in parts])[order] for k in keys}
+
+
+# ------------------------------------------------------------------------- T64 (ruling R20)
+
+
+def _upcast(tree):
+    """Every floating leaf as float64 (exact: each float32 value is a float64 value); other
+    leaves (ints, bools, uint32 keys) unchanged. NumPy leaves."""
+    def up(a):
+        a = np.asarray(a)
+        return a.astype(np.float64) if np.issubdtype(a.dtype, np.floating) else a
+
+    return jax.tree.map(up, tree)
+
+
+def float32_bank_arrays(bank: StimulusBank | TrackArrays) -> TrackArrays:
+    """The float32 TrackArrays the agents' path gathers from (``bank_arrays``), as NumPy,
+    built with x64 off whatever the process runs: a StimulusBank's are recomputed as
+    ``StimulusBank.arrays`` computes them (its per-dtype cache could have been filled with
+    x64 on); a bank double's ``arrays()``; TrackArrays as given."""
+    if isinstance(bank, TrackArrays):
+        return jax.tree.map(np.asarray, bank)
+    with jax.enable_x64(False):
+        if all(hasattr(bank, a) for a in ("kappa", "w_left", "w_right", "ds")):
+            from apexzero.tracks.generator import strip_arrays
+
+            ds = float(bank.ds)
+            fn = jax.jit(jax.vmap(lambda k, wl, wr: strip_arrays(k, wl, wr, ds)))
+            arr = fn(*(jnp.asarray(getattr(bank, a), jnp.float32)
+                       for a in ("kappa", "w_left", "w_right")))
+        else:
+            arr = bank.arrays()
+        return jax.tree.map(np.asarray, arr)
+
+
+def run_tape_rollouts_x64(tapes: list[np.ndarray], bank: StimulusBank | TrackArrays,
+                          cells: list[Cell], runs: list[RunSpec], record: str = "full",
+                          chunk: int = CHUNK, log=None) -> dict[str, np.ndarray]:
+    """Ruling R20's T64, the blocking exactness check of the tape control: T's runs through
+    the same harness code (``make_batch``, the compiled ``_episode``, ``trace_arrays``) in
+    float64. The process must have switched x64 on at its start (its own process: keys and
+    agents never share it). The tape is the keys' float64 commands, uncast; x0, prev_action,
+    accel, ctx and the track arrays are exact upcasts of the float32 values the agents' path
+    uses (``float32_bank_arrays``), so T64 and T32 differ only in arithmetic precision.
+    Float arrays come back as float64. This is the only exemption from the harness's x64
+    assertion, and it takes no policy: the tape policy (``controls.make_tape_policy``) is
+    built in. ``runs`` give each run's aux = its tape row."""
+    if not jax.config.jax_enable_x64:
+        raise RuntimeError("T64 runs in its own float64 process: switch x64 on at its start "
+                           "(jax.config.update('jax_enable_x64', True))")
+    from apexzero.interp.controls import make_tape_policy, tape_params
+
+    params = tape_params([np.asarray(a, np.float64) for a in tapes], np.float64)
+    arrays = _upcast(float32_bank_arrays(bank))
+    return _run_chunks(make_tape_policy(), params, None, arrays, cells, runs, record, chunk,
+                       log, x64=True)
 
 
 def save_rollouts(path: Path, groups: dict[str, dict[str, np.ndarray]], meta: dict) -> Path:

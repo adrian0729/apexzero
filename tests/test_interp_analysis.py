@@ -79,6 +79,7 @@ def make_keys(r_values=R_BRAKING, tier_b: bool = True) -> dict:
         v_e = 1.08 * v_min
         d_b = TABLES.d_b_phys(v0, v_e)
         L_c = math.radians(th) * R + 20.0
+        t_b = max(D - d_b, 0.0) / v0              # cruise at v0 = v_b* up to the onset
         geo = f"syn/R{R:g}/T{th:g}/W12/typical"
         for direction in (1, -1):
             rows.append(dict(
@@ -89,6 +90,7 @@ def make_keys(r_values=R_BRAKING, tier_b: bool = True) -> dict:
                 no_cap=False, R_seg=R, R_eff=R, corner=-1, condition="", swap_j=-1,
                 key_status="verified", J_star=100.0, v_e_star=v_e, v_min_star=v_min,
                 d_b_star=d_b, v_b_star=v0, has_brake_star=True, tau_vmin=kph(0.5),
+                t_b_star=t_b, forced_star=bool(t_b <= 0.5),
                 multi_basin=False, lock_limited=False, slip_limited=False,
                 braking=bool(v_min < v0 - kph(0.5)), v_e_star_bo=0.97 * v_e,
                 v_min_star_bo=0.97 * v_min, v_e_socp=v_e, v_min_socp=v_min, d_b_socp=d_b,
@@ -634,19 +636,26 @@ def test_p3_lawful_and_time_to_corner(sims):
 
 
 def test_p3_rule_table():
+    """With b* = 1 ruling R25's bands are the original [0.9, 1.1] and [0.85, 1.15] (the
+    b*-referenced cases are in test_interp_dryrun_analysis.py)."""
     ok = A.P3Result(1.02, {"g1": 0.95, "g2": 1.1}, {"M_phys": 0.1, "M_idx": 0.2, "M_fd": 0.3},
-                    "M_phys", 100, agent="G3")
+                    "M_phys", 100, agent="G3", b_star=1.0)
     assert A.p3(ok, 0.9).verdict == "confirm"
     assert A.p3(ok, 0.3).verdict == "not applicable"
-    loo_bad = A.P3Result(1.02, {"g1": 0.8}, ok.rmse, "M_phys", 100, agent="G3")
+    loo_bad = A.P3Result(1.02, {"g1": 0.8}, ok.rmse, "M_phys", 100, agent="G3", b_star=1.0)
     assert A.p3(loo_bad, 0.9).verdict == "inconclusive"
-    fd = A.P3Result(0.3, {}, {"M_phys": 0.3, "M_idx": 0.29, "M_fd": 0.1}, "M_fd", 100)
+    fd = A.P3Result(0.3, {}, {"M_phys": 0.3, "M_idx": 0.29, "M_fd": 0.1}, "M_fd", 100,
+                    b_star=1.0)
     d = A.p3(fd, 0.9)
     assert d.verdict == "refute" and d.details["winner"] == "M_fd"
-    near = A.P3Result(0.5, {}, {"M_phys": 0.3, "M_idx": 0.28, "M_fd": 0.4}, "M_idx", 100)
+    near = A.P3Result(0.5, {}, {"M_phys": 0.3, "M_idx": 0.28, "M_fd": 0.4}, "M_idx", 100,
+                      b_star=1.0)
     assert A.p3(near, 0.9).verdict == "inconclusive"       # beats by < 10%
-    in_band = A.P3Result(0.9, {}, {"M_phys": 0.3, "M_idx": 0.1, "M_fd": 0.4}, "M_idx", 100)
+    in_band = A.P3Result(0.9, {}, {"M_phys": 0.3, "M_idx": 0.1, "M_fd": 0.4}, "M_idx", 100,
+                         b_star=1.0)
     assert A.p3(in_band, 0.9).verdict == "inconclusive"    # b inside [0.85, 1.15]
+    no_star = A.P3Result(1.02, ok.loo_b, ok.rmse, "M_phys", 100, agent="G3")
+    assert A.p3(no_star, 0.9).verdict == "not testable"    # R25: b* is required
 
 
 def test_p3_separation_and_beta():
@@ -1155,7 +1164,8 @@ def test_dry_run_returns_every_planted_verdict():
 def test_power_table():
     pt = A.power_table(KEYS, {"G1": A.Regime(11.4, 20.2), "G2": A.Regime(10.4, 16.4, 7.6)}, B,
                        TABLES, steps=A.POWER_STEPS[:6])
-    assert A._n(pt) == 10 and set(pt["test"]) == {"P1a", "P1-tail", "P1b", "P2", "P3"}
+    assert A._n(pt) == 14 and set(pt["test"]) == {"P1a", "P1-tail", "P1b", "P2", "P1b-sat",
+                                                  "P3", "P3-hybrid"}       # R24, R26 rows
     row = (pt["test"] == "P1a") & (pt["agent"] == "G1")
     assert pt["pairs_A2_bulk"][row][0] == 12 and pt["pairs_A2_clip"][row][0] == 0
     g2 = pt["agent"] == "G2"
@@ -1179,7 +1189,7 @@ def test_R18_power_table_keeps_the_other_agents_rows():
     more = A.power_table(KEYS, {**reg, "G1s1": A.Regime(11.4, 20.2, 9.0)}, B, None,
                          steps=A.POWER_STEPS[:1])
     n = A._n(plain)
-    assert A._n(more) == n + 5 and set(more["agent"][n:]) == {"G1s1"}
+    assert A._n(more) == n + 7 and set(more["agent"][n:]) == {"G1s1"}
     for c in A.POWER_COLUMNS:
         np.testing.assert_array_equal(more[c][:n], plain[c][:n], err_msg=c)
 

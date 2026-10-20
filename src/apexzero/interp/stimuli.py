@@ -33,6 +33,18 @@ the initial state (the lead-in) is always the real road with real width, so ever
 of a corner starts from the same consistent state; every substitution (straight road,
 constant width, scaled or swapped corner, perturbation) blends in over 20 m on the
 substituted side, and the inside-width cap is applied (and flagged) on modified knots only.
+
+Phases (protocol 4, ruling R21). A designed initial state (synthetic, imposed, recovery,
+pilot) starts phase k with s moved back by u_k = (k / n_phases) P. A state taken from a
+recorded real lap (``Cell.state_source``: tiers D, E1 and E2) starts phase k on the recorded
+run, (k / n_phases) DT earlier in time, interpolated between the recorded step and the one a
+control step before it (the full state and accel with the same weight; prev_action is the
+command held over that step, prev_action0, at every phase). The cell stores that earlier
+step (``Cell.x0_before``, attached from the run by ``load_real_states``), so the harness
+and the keys need no lap at run time. Phase 0 is the
+recorded state itself, unchanged. A state that is its run's own start (the evaluation's
+designed rolling start, flag 'run_start') has no recorded step before it and keeps the
+s-shift.
 """
 
 from __future__ import annotations
@@ -269,6 +281,24 @@ class RealState:
     x: tuple[float, ...]          # [8] state in circuit coordinates
     prev_action: tuple[float, float]
     accel: tuple[float, float]
+    # Ruling R21: the state's place on its recorded run (``attach_lap_step``). trace_index is
+    # its index in the run's trace: -1 unknown (stand-ins, or real_states.json read without
+    # its laps), 0 the run's own start. For trace_index > 0, the recorded step one control
+    # step (DT) earlier: x_before in the same circuit coordinates as x (x_before[0] = s_real
+    # minus the step's recorded distance), with that step's prev_action and accel.
+    trace_index: int = -1
+    x_before: tuple[float, ...] | None = None
+    prev_action_before: tuple[float, float] | None = None
+    accel_before: tuple[float, float] | None = None
+
+
+RUN_START_FLAG = "run_start"      # R21: the cell's real state is its run's own start
+
+
+class LapStepMissingError(RuntimeError):
+    """Ruling R21: phase k > 0 of a real-lap cell whose recorded step before x0 was never
+    attached (a design built before R21, or from states read without their laps). Not a
+    ValueError, so no caller mistakes it for 'no D / no P yet'."""
 
 
 @dataclass
@@ -294,26 +324,112 @@ class Cell:
     flags: tuple[str, ...] = ()   # 'recovery', 'imposed', 'braking', 'flat', 'no_key', ...
     mirrored: bool = False        # the pair member whose steering noise is negated
     runners: tuple[str, ...] = ()  # agents that run this cell; () = every agent (runs_cell)
+    # Ruling R21: a real-lap cell's recorded step one control step (DT) before x0 on the same
+    # run, in strip coordinates and mirrored with x0 on a mirror member, with that step's
+    # prev_action and accel. Phase k starts (k / n_phases) DT before x0, interpolated in time
+    # between the two steps (``initial_state``; ``initial_aux`` interpolates accel and keeps
+    # the held command prev_action0). None on designed cells and on a real cell whose state
+    # is its run's own start (flag 'run_start').
+    x0_before: tuple[float, ...] | None = None
+    prev_action_before: tuple[float, float] | None = None
+    accel_before: tuple[float, float] | None = None
 
     def phase_offsets(self) -> np.ndarray:
-        """u_k = (k / n_phases) P (m), k = 0..n_phases-1 (protocol 4)."""
+        """u_k = (k / n_phases) P (m), k = 0..n_phases-1 (protocol 4): the s-shift of a
+        designed state. A real-lap cell's phases are a time shift instead (R21), so its
+        start moves by (k / n_phases) of its recorded step's distance, not by u_k."""
         if self.P is None:
             raise ValueError(f"cell {self.cell_id} has no phase cycle P yet (key layout)")
         return np.arange(self.n_phases) * self.P / self.n_phases
 
+    def phase_rule(self) -> str:
+        """How phase k > 0 starts (protocol 4, ruling R21): 'lap' on a real-lap cell with its
+        recorded step before x0 (on the run, (k / n_phases) DT earlier); 's_shift' on a
+        designed state, or a real state that is its run's own start ('run_start'); 'missing'
+        on a real-lap cell without its recorded step (phases > 0 raise
+        ``LapStepMissingError``)."""
+        if self.x0_before is not None:
+            return "lap"
+        if self.x0 is None or not self.state_source or RUN_START_FLAG in self.flags:
+            return "s_shift"
+        return "missing"
+
+    def _lap_weight(self, k: int) -> float:
+        """Interpolation weight k / n_phases of the recorded step before x0 (R21)."""
+        if not 0 < k < self.n_phases:
+            raise ValueError(f"cell {self.cell_id}: phase {k} outside 0..{self.n_phases - 1}")
+        return k / self.n_phases
+
+    def _check_lap_step(self, k: int) -> str:
+        rule = self.phase_rule()
+        if k != 0 and rule == "missing":
+            raise LapStepMissingError(
+                f"cell {self.cell_id} ({self.state_source}): phase {k} of a real-lap state needs "
+                "its recorded step before x0 (ruling R21); rebuild the design from "
+                "load_real_states")
+        return rule
+
     def initial_state(self, k: int = 0) -> np.ndarray:
         """x0 [8] float32 at phase k: synthetic cells [S_C - D - u_k, 0, 0, v0, 0, 0, 0, 0]
-        (stimuli place every corner at S_C), real-state cells their state with s shifted by
-        -u_k. Built in float32; keys cast this to float64 so both start bit-identically.
-        Phase 0 (u = 0) needs no P, so the nominal key can be solved before the layout."""
-        u = 0.0 if k == 0 else float(self.phase_offsets()[k])
+        (stimuli place every corner at S_C); designed explicit states (pilot, a real state at
+        its run's start) their state with s shifted by -u_k; real-lap cells (R21) the
+        recorded run (k / n_phases) DT before x0, x0 + w (x0_before - x0) with w = k /
+        n_phases in float64. Built in float32; keys cast this to float64 so both start
+        bit-identically. Phase 0 is x0 itself (u = 0, w = 0) and needs no P, so the nominal
+        key can be solved before the layout."""
         if self.x0 is not None:
             x = np.asarray(self.x0, np.float64).copy()
-            x[0] -= u
+            if k == 0:
+                return x.astype(np.float32)
+            if self._check_lap_step(k) == "lap":
+                xb = np.asarray(self.x0_before, np.float64)
+                return (x + self._lap_weight(k) * (xb - x)).astype(np.float32)
+            x[0] -= float(self.phase_offsets()[k])
             return x.astype(np.float32)
+        u = 0.0 if k == 0 else float(self.phase_offsets()[k])
         if self.D is None:
             raise ValueError(f"cell {self.cell_id} has no approach distance D yet (A2 layout)")
         return np.array([S_C - self.D - u, 0.0, 0.0, self.v0, 0.0, 0.0, 0.0, 0.0], np.float32)
+
+    def initial_aux(self, k: int = 0) -> tuple[np.ndarray, np.ndarray]:
+        """(prev_action, accel), each [2] float32, at phase k: the cell's prev_action0 and
+        accel0 (every phase of a designed state). On a real-lap cell (R21) the recorded run
+        at (k / n_phases) DT before x0 is inside the control step that ends at x0, whose
+        command prev_action0 is held over the whole step: prev_action is prev_action0 at
+        every phase (the env's prev_action is the command being applied; review of R21,
+        which found it blended toward the step before's command, off by up to 0.23 in
+        pedal). accel, the env's trailing-step acceleration, is interpolated in time with
+        the state, with the same weight w = k / n_phases toward the recorded step before x0.
+        Phase 0 is (prev_action0, accel0) cast to float32, as the harness has always taken
+        them."""
+        pa = np.asarray(self.prev_action0, np.float64)
+        ac = np.asarray(self.accel0, np.float64)
+        if k != 0 and self._check_lap_step(k) == "lap":
+            w = self._lap_weight(k)
+            ac = ac + w * (np.asarray(self.accel_before, np.float64) - ac)
+        return pa.astype(np.float32), ac.astype(np.float32)
+
+    def mirrored_start(self) -> Cell:
+        """A copy whose start is the exact mirror image: x0 and x0_before by ``mirror_state``,
+        prev_action and accel (at x0 and before it) by ``mirror_aux``; a synthetic start (no
+        x0) is its own mirror. Every phase of the copy starts from the mirror of this cell's
+        start at that phase, bit for bit (negation is exact in IEEE arithmetic)."""
+        if self.x0 is None:
+            return replace(self)
+
+        def tup(a):
+            return tuple(float(v) for v in a)
+
+        pa, ac = mirror_aux(np.asarray(self.prev_action0, np.float64),
+                            np.asarray(self.accel0, np.float64))
+        kw = dict(x0=tup(mirror_state(np.asarray(self.x0, np.float64))), prev_action0=tup(pa),
+                  accel0=tup(ac))
+        if self.x0_before is not None:
+            pab, acb = mirror_aux(np.asarray(self.prev_action_before, np.float64),
+                                  np.asarray(self.accel_before, np.float64))
+            kw.update(x0_before=tup(mirror_state(np.asarray(self.x0_before, np.float64))),
+                      prev_action_before=tup(pab), accel_before=tup(acb))
+        return replace(self, **kw)
 
 
 class StimulusBank:
@@ -430,8 +546,19 @@ def stimulus_from_dict(d: dict) -> Stimulus:
         source=dict(d.get("source", {})), flags=tuple(d.get("flags", ())))
 
 
+_LAP_STEP_FIELDS = ("x0_before", "prev_action_before", "accel_before")   # R21
+
+
+def cell_record(c: Cell) -> dict:
+    """A cell's JSON record (cells.json and the design hash): every field, except the R21
+    lap-step fields of a cell that has none, so a designed cell's record, and a design
+    without real-lap cells, serialise and hash exactly as before R21."""
+    return {f.name: getattr(c, f.name) for f in fields(c)
+            if not (f.name in _LAP_STEP_FIELDS and getattr(c, f.name) is None)}
+
+
 def save_cells(path: Path, cells: list[Cell]) -> None:
-    io.write_json(path, {"cells": cells})
+    io.write_json(path, {"cells": [cell_record(c) for c in cells]})
 
 
 def load_cells(path: Path) -> list[Cell]:
@@ -446,6 +573,8 @@ def load_cells(path: Path) -> list[Cell]:
         c.x0 = None if r.get("x0") is None else tuple(_num(x) for x in r["x0"])
         c.prev_action0 = tuple(_num(x) for x in r.get("prev_action0", (0.0, 0.0)))
         c.accel0 = tuple(_num(x) for x in r.get("accel0", (0.0, 0.0)))
+        for f in _LAP_STEP_FIELDS:
+            setattr(c, f, None if r.get(f) is None else tuple(_num(x) for x in r[f]))
         out.append(c)
     return out
 
@@ -1757,15 +1886,134 @@ def pilot_minigrid() -> tuple[StimulusBank, list[Cell]]:
 RUNNERS_FROM_S1 = ("S1", *seed0_generalists())
 
 
-def _strip_state(exc: Excision, st: RealState, mirrored: bool
-                 ) -> tuple[tuple[float, ...], tuple[float, float], tuple[float, float]]:
+REAL_STATES_FILE = "real_states.json"            # written by `rollouts --real-laps` (R1)
+REAL_STATES_INDEX_FILE = "real_states_index.json"
+REAL_LAPS_DIR = "real_laps"                       # <agent>_<track>.npz
+
+
+def real_state_from_dict(d: dict) -> RealState:
+    """A RealState from its JSON record (lists back to tuples; R21 fields optional)."""
+    def tup(v):
+        return None if v is None else tuple(float(x) for x in v)
+
+    return RealState(agent=d["agent"], track=d["track"], lap=int(d["lap"]),
+                     s_real=float(d["s_real"]), x=tup(d["x"]), prev_action=tup(d["prev_action"]),
+                     accel=tup(d["accel"]), trace_index=int(d.get("trace_index", -1)),
+                     x_before=tup(d.get("x_before")),
+                     prev_action_before=tup(d.get("prev_action_before")),
+                     accel_before=tup(d.get("accel_before")))
+
+
+def attach_lap_step(st: RealState, x: np.ndarray, prev_action: np.ndarray, accel: np.ndarray,
+                    index: int, length: float, valid: np.ndarray | None = None) -> RealState:
+    """Ruling R21: ``st`` with its place on the recorded run it was taken from (the trace
+    arrays of ``agents.RealLap``: x [K, 8] with s unwrapped, prev_action [K, 2], accel
+    [K, 2]): trace_index = ``index`` and, unless the state is the run's own start (index 0),
+    the recorded step one control step earlier, with its s continuous with the state's
+    (x_before[0] = s_real - (x[index, 0] - x[index - 1, 0])). Checks that the run's step
+    ``index`` is the state bit for bit, s modulo ``length`` as ``agents.real_state`` takes
+    it, and that the earlier step is live."""
+    i0 = int(index)
+    x = np.asarray(x)
+    if not 0 <= i0 < len(x):
+        raise ValueError(f"{st.agent} {st.track}: trace index {i0} outside the run ({len(x)})")
+    xi = x[i0].astype(np.float64)
+    xi[0] = xi[0] % float(length)
+    same = (np.array_equal(xi, np.asarray(st.x, np.float64))
+            and np.array_equal(np.asarray(prev_action)[i0].astype(np.float64),
+                               np.asarray(st.prev_action, np.float64))
+            and np.array_equal(np.asarray(accel)[i0].astype(np.float64),
+                               np.asarray(st.accel, np.float64)))
+    if not same:
+        raise ValueError(f"{st.agent} {st.track} lap {st.lap}: trace step {i0} is not the "
+                         "recorded state (R21 needs the run the state was taken from)")
+    if st.trace_index not in (-1, i0):
+        raise ValueError(f"{st.agent} {st.track}: state carries trace index {st.trace_index}, "
+                         f"not {i0}")
+    if i0 == 0:
+        return replace(st, trace_index=0, x_before=None, prev_action_before=None,
+                       accel_before=None)
+    if valid is not None and not bool(np.asarray(valid)[i0 - 1]):
+        raise ValueError(f"{st.agent} {st.track}: the step before trace index {i0} is not live")
+    xb = x[i0 - 1].astype(np.float64)
+    xb[0] = float(st.s_real) - (float(x[i0, 0]) - float(x[i0 - 1, 0]))
+
+    def tup(a):
+        return tuple(float(v) for v in np.asarray(a).astype(np.float64))
+
+    return replace(st, trace_index=i0, x_before=tup(xb),
+                   prev_action_before=tup(np.asarray(prev_action)[i0 - 1]),
+                   accel_before=tup(np.asarray(accel)[i0 - 1]))
+
+
+def load_real_states(stimuli_dir: Path) -> dict[str, dict[str, RealState]]:
+    """The real-lap states of tiers D, E1 and E2 for ``build_real_design``, each with its
+    place on its recorded run attached (R21, ``attach_lap_step``): real_states.json ({agent:
+    {key: RealState fields}}), real_states_index.json ({agent: {key: trace index}}) and
+    real_laps/<agent>_<track>.npz, the files ``rollouts --real-laps`` writes under
+    ``stimuli_dir``. Reads only; raises if a state has no index or lap, or does not match
+    its run."""
+    d = Path(stimuli_dir)
+    raw = io.read_json(d / REAL_STATES_FILE)
+    index = io.read_json(d / REAL_STATES_INDEX_FILE)
+    laps: dict[tuple[str, str], dict[str, np.ndarray]] = {}
+    out: dict[str, dict[str, RealState]] = {}
+    for agent, by_key in sorted(raw.items()):
+        for key, rec in sorted(by_key.items()):
+            st = real_state_from_dict(rec)
+            i0 = index.get(agent, {}).get(key)
+            if i0 is None:
+                raise ValueError(f"{agent} {key}: no trace index in {REAL_STATES_INDEX_FILE}")
+            lk = (agent, st.track)
+            if lk not in laps:
+                with np.load(d / REAL_LAPS_DIR / f"{agent}_{st.track}.npz",
+                             allow_pickle=False) as z:
+                    laps[lk] = {k: np.asarray(z[k]) for k in
+                                ("x", "prev_action", "accel", "valid", "length")}
+            lap = laps[lk]
+            out.setdefault(agent, {})[key] = attach_lap_step(
+                st, lap["x"], lap["prev_action"], lap["accel"], int(i0), float(lap["length"]),
+                lap["valid"])
+    return out
+
+
+@dataclass(frozen=True)
+class _StripStart:
+    """A real state mapped into strip coordinates (and mirrored for a mirror member)."""
+
+    x0: tuple[float, ...]
+    pa: tuple[float, float]
+    ac: tuple[float, float]
+    x0_before: tuple[float, ...] | None      # R21: the recorded step before x0
+    pa_before: tuple[float, float] | None
+    ac_before: tuple[float, float] | None
+    run_start: bool                          # the state is its run's own start
+
+
+def _strip_state(exc: Excision, st: RealState, mirrored: bool) -> _StripStart:
+    """x0 from ``exc.to_strip(s_real)``; the recorded step before it (R21) moved by the same
+    map, its s at x0[0] + (x_before[0] - s_real) DS / ds_source; both mirrored together."""
     x = np.asarray(st.x, np.float64).copy()
     x[0] = exc.to_strip(st.s_real)
     pa, ac = np.asarray(st.prev_action, np.float64), np.asarray(st.accel, np.float64)
+    xb = pab = acb = None
+    if st.x_before is not None:
+        xb = np.asarray(st.x_before, np.float64).copy()
+        xb[0] = x[0] + (xb[0] - float(st.s_real)) / exc.ds_source * DS
+        pab = np.asarray(st.prev_action_before, np.float64)
+        acb = np.asarray(st.accel_before, np.float64)
     if mirrored:
         x = mirror_state(x)
         pa, ac = mirror_aux(pa, ac)
-    return tuple(float(v) for v in x), (float(pa[0]), float(pa[1])), (float(ac[0]), float(ac[1]))
+        if xb is not None:
+            xb = mirror_state(xb)
+            pab, acb = mirror_aux(pab, acb)
+
+    def tup(a):
+        return None if a is None else tuple(float(v) for v in a)
+
+    return _StripStart(tup(x), tup(pa), tup(ac), tup(xb), tup(pab), tup(acb),
+                       st.trace_index == 0)
 
 
 def _excision_of(track: Track, track_name: str, corner: Corner, before: float, after: float
@@ -1812,16 +2060,23 @@ def build_real_design(bank: StimulusBank, cells: list[Cell],
     S1's state (``Cell.runners``), each specialist from its own; F4 and the E1 mirror start
     from the mirrored state and share their pair (and noise) with the real road. ``swap``
     maps a Hockenheim corner to its F5 swap A partner (``swap_partner``; rows are added
-    only for corners present there). The lead-in of a ladder starts at its earliest state."""
+    only for corners present there). The lead-in of a ladder starts at its earliest state.
+
+    Ruling R21: a state with its recorded step attached (``load_real_states``) gives its
+    cells that step in strip coordinates (``Cell.x0_before``, mirrored with x0), so phase k
+    starts on the recorded run; a state at its run's own start gives the flag 'run_start'
+    (the s-shift); a state without either (stand-ins) gives cells whose phases > 0 raise.
+    Phase 0 and the strips do not depend on the attachment."""
     rows: list[_Row] = []
     new_cells: list[dict] = []          # cell kwargs, finalised once stim ids exist
     pair = max((c.pair_id for c in cells), default=-1) + 1
 
-    def add_cell(name, st_info, approach, tiers, runners, flags, pair_id, mirrored, x0, pa, ac,
+    def add_cell(name, approach, tiers, runners, flags, pair_id, mirrored, start: _StripStart,
                  src):
+        flags = set(flags) | ({RUN_START_FLAG} if start.run_start else set())
         new_cells.append(dict(name=name, approach=approach, tiers=tiers, runners=runners,
-                              flags=flags, pair_id=pair_id, mirrored=mirrored, x0=x0, pa=pa,
-                              ac=ac, state_source=src))
+                              flags=flags, pair_id=pair_id, mirrored=mirrored, start=start,
+                              state_source=src))
 
     # E1 ladders and E2 matched corners.
     jobs = []
@@ -1876,13 +2131,12 @@ def build_real_design(bank: StimulusBank, cells: list[Cell],
             start = corner.s_start - E_CUT_BEFORE < 0.0 and tier == "E1"
             for v in versions:
                 mir = v == "mirror"
-                x0, pa, ac = _strip_state(exc, st, mir)
                 pid = pair_real if v in ("real", "mirror") else pair
                 if v not in ("real", "mirror"):
                     pair += 1
                 fl = {"start_state"} if start else set()
-                add_cell(f"{base}/{v}", st, "real", (tier,), (), fl, pid, mir, x0, pa, ac,
-                         f"{agent}:lap{st.lap}@{key}")
+                add_cell(f"{base}/{v}", "real", (tier,), (), fl, pid, mir,
+                         _strip_state(exc, st, mir), f"{agent}:lap{st.lap}@{key}")
     # Tier D.
     if any(k.startswith("D/") for a in specialists() for k in states.get(a, {})):
         track = real_track(D_TRACK)
@@ -1920,12 +2174,11 @@ def build_real_design(bank: StimulusBank, cells: list[Cell],
                 pair += 1
                 for cond in conds:
                     mir = cond == "F4/mirror"
-                    x0, pa, ac = _strip_state(exc, st, mir)
                     pid = pair_a if cond in (COND_A, "F4/mirror") else pair
                     if cond not in (COND_A, "F4/mirror"):
                         pair += 1
-                    add_cell(f"{base}/{cond}", st, "real", ("D",), runners, set(), pid, mir, x0,
-                             pa, ac, f"{agent}:lap{st.lap}@{key}")
+                    add_cell(f"{base}/{cond}", "real", ("D",), runners, set(), pid, mir,
+                             _strip_state(exc, st, mir), f"{agent}:lap{st.lap}@{key}")
     if not rows:
         return bank, list(cells)
     stims, _ = _assemble(rows, start_id=len(bank))
@@ -1933,12 +2186,14 @@ def build_real_design(bank: StimulusBank, cells: list[Cell],
     out_cells = list(cells)
     for c in new_cells:
         s = by_name[c["name"]]
+        ss: _StripStart = c["start"]
         out_cells.append(Cell(
             cell_id=len(out_cells), stim_id=s.stim_id, pair_id=c["pair_id"], tiers=c["tiers"],
-            approach=c["approach"], v0=float(c["x0"][3]), D=float(S_C - c["x0"][0]),
-            x0=c["x0"], prev_action0=c["pa"], accel0=c["ac"], state_source=c["state_source"],
+            approach=c["approach"], v0=float(ss.x0[3]), D=float(S_C - ss.x0[0]),
+            x0=ss.x0, prev_action0=ss.pa, accel0=ss.ac, state_source=c["state_source"],
             flags=tuple(sorted(set(c["flags"]) | set(s.flags))), mirrored=c["mirrored"],
-            runners=tuple(c["runners"])))
+            runners=tuple(c["runners"]), x0_before=ss.x0_before, prev_action_before=ss.pa_before,
+            accel_before=ss.ac_before))
     new = StimulusBank(np.concatenate([bank.kappa, np.stack([r.profile.kappa for r in rows])]),
                        np.concatenate([bank.w_left, np.stack([r.profile.w_left for r in rows])]),
                        np.concatenate([bank.w_right, np.stack([r.profile.w_right for r in rows])]),
@@ -2235,7 +2490,60 @@ def check_design_details(bank: StimulusBank, cells: list[Cell]) -> dict[str, dic
                            accepted_by="R4" if accepted else "", rows=n_twins,
                            vacuous=n_twins == 0, length_shortfall=shortfall,
                            accepted_max_R_rel=worst_r, accepted_max_angle_deg=worst_a)
+    res["real_phase_starts"] = real_phase_check(cells)
     return res
+
+
+def real_phase_check(cells: list[Cell]) -> dict:
+    """Ruling R21's design check: every real-lap cell starts phase k on its recorded run
+    ('lap') or is its run's own start ('run_start', s-shift); none is left without its
+    recorded step ('missing': a pre-R21 design or stand-in states). Every mirror pair of
+    real cells starts phase 0 and every 'lap' phase from exact mirrors (state, prev_action
+    and accel). An s-shifted phase k > 0 needs each member's P (skipped before the layout);
+    after it, a pair whose members' P differ (each from its own direction's key, as on
+    synthetic mirror pairs) starts (k / n_phases) |Delta P| apart in s: listed in
+    ``p_mismatch`` with its largest |Delta| (``p_mismatch_max``), not a failure (review of
+    R21, finding 3; ``_save_cells`` records this check after the layout). ``fails`` lists
+    the cells without their recorded step; ``step_distance`` is the largest |Delta s| of a
+    phase-k start from x0 (m)."""
+    real = [c for c in cells if c.x0 is not None and c.state_source]
+    rules = {c.cell_id: c.phase_rule() for c in real}
+    missing = sorted(i for i, r in rules.items() if r == "missing")
+    worst, bad, step, p_bad, p_worst = 0.0, [], 0.0, [], 0.0
+    by_pair: dict[int, list[Cell]] = {}
+    for c in real:
+        by_pair.setdefault(c.pair_id, []).append(c)
+        if rules[c.cell_id] == "lap":
+            for k in range(1, c.n_phases):
+                step = max(step, abs(float(c.x0[0]) - float(c.initial_state(k)[0])))
+    for cs in by_pair.values():
+        m = [c for c in cs if c.mirrored]
+        u = [c for c in cs if not c.mirrored]
+        if len(m) != 1 or len(u) != 1 or "missing" in (rules[m[0].cell_id], rules[u[0].cell_id]):
+            continue
+        a, b = u[0], m[0]
+        for k in range(a.n_phases):
+            shifted = k > 0 and "s_shift" in (rules[a.cell_id], rules[b.cell_id])
+            if shifted and (a.P is None or b.P is None):
+                continue
+            pa, ac = a.initial_aux(k)
+            pm, am = mirror_aux(pa, ac)
+            pb, ab = b.initial_aux(k)
+            d = max(float(np.max(np.abs(mirror_state(a.initial_state(k)) - b.initial_state(k)))),
+                    float(np.max(np.abs(pm - pb))), float(np.max(np.abs(am - ab))))
+            if d > 0.0 and shifted and a.P != b.P:
+                p_worst = max(p_worst, d)
+                p_bad.append((a.cell_id, b.cell_id, k, d))
+                continue
+            worst = max(worst, d)
+            if d > 0.0:
+                bad.append((a.cell_id, b.cell_id, k, d))
+    n_lap = sum(r == "lap" for r in rules.values())
+    n_start = sum(r == "s_shift" for r in rules.values())
+    return dict(ok=not missing and not bad, lap=n_lap, run_start=n_start,
+                n_missing=len(missing), fails=missing, mirror_max_abs=worst,
+                mismatches=bad[:10], p_mismatch=p_bad[:10], p_mismatch_max=p_worst,
+                step_distance=step, vacuous=not real)
 
 
 def twin_length_shortfall(stim: Stimulus) -> float:
@@ -2309,7 +2617,7 @@ def save_design(out_dir: Path, bank: StimulusBank, cells: list[Cell]) -> str:
 
 
 def design_hash(bank: StimulusBank, cells: list[Cell]) -> str:
-    return io.sha256_json({"bank": bank.content_hash(), "cells": cells})
+    return io.sha256_json({"bank": bank.content_hash(), "cells": [cell_record(c) for c in cells]})
 
 
 def load_design(out_dir: Path) -> tuple[StimulusBank, list[Cell]]:

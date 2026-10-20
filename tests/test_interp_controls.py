@@ -7,6 +7,7 @@ from ``measures.build_model_tables`` when it exists, else from a local fallback;
 plain ``step_no_reset`` loop standing in for the harness.
 """
 
+import functools
 import math
 from types import SimpleNamespace
 
@@ -60,15 +61,21 @@ def _fallback_tables() -> ModelTables:
                        alpha_max=F1_2025.alpha_max)
 
 
-@pytest.fixture(scope="module")
-def car():
+@functools.cache
+def model_tables_once() -> ModelTables:
+    """``measures.build_model_tables()`` (else the local fallback), built once per test
+    session: about 16 CPU-s, shared with tests/test_interp_dryrun_controls.py."""
     try:
         from apexzero.interp.measures import build_model_tables
 
-        tables = build_model_tables()
+        return build_model_tables()
     except NotImplementedError:
-        tables = _fallback_tables()
-    return C.car_tables(tables)
+        return _fallback_tables()
+
+
+@pytest.fixture(scope="module")
+def car():
+    return C.car_tables(model_tables_once())
 
 
 def l_typ(R: float) -> float:
@@ -359,7 +366,9 @@ def test_c3_brakes_at_a_time_to_corner_with_a_lawful_entry_speed(car):
     assert d_b[1.6] > d_b[1.2] + 25.0
 
 
-def test_tune_cv_and_fit_tau_c_logic(car):
+def test_tune_cv_logic(car):
+    """(Ruling R26 replaced the key-fitted tau_c, fit_tau_c, by tau_c_k1: see
+    tests/test_interp_dryrun_controls.py.)"""
     bank = SimpleNamespace(stimuli=[], kappa=None)
     calls = []
 
@@ -371,15 +380,7 @@ def test_tune_cv_and_fit_tau_c_logic(car):
     assert c_v == 0.85 and calls == [0.95, 0.90, 0.85]
     assert rates[0.95] == pytest.approx(2 / 3)
     assert C.tune_cv(bank, [], car, lambda c: np.array([False]))[0] is None
-    tau = C.fit_tau_c(bank, [None], car, d_b_key=200.0, c_v=CV,
-                      d_b_fn=lambda t: 80.0 * t, tol=0.01)
-    assert tau == pytest.approx(2.5, abs=1e-3)
-    # Gentle braking at long tau_c passes the beta_f threshold late: the first crossing wins.
-    tau = C.fit_tau_c(bank, [None], car, 150.0, CV, tol=0.01,
-                      d_b_fn=lambda t: 86.0 * t if t < 2.5 else 215.0 - 60.0 * (t - 2.5))
-    assert tau == pytest.approx(150.0 / 86.0, abs=1e-3)
-    with pytest.raises(ValueError):
-        C.fit_tau_c(bank, [None], car, 1e4, CV, d_b_fn=lambda t: 80.0 * t)
+    assert not hasattr(C, "fit_tau_c")
 
 
 def test_R14_tune_cv_gates_tier_d_by_p4_competence(car):
@@ -409,18 +410,14 @@ def test_R14_tune_cv_gates_tier_d_by_p4_competence(car):
 
 
 def test_tuning_through_the_harness_on_the_pilot_minigrid(car):
-    """tune_cv, completion and fit_tau_c on the real harness (rollout, measures) with the
-    pilot mini-grid bank (scripted control only)."""
+    """tune_cv and completion on the real harness (rollout, measures) with the pilot
+    mini-grid bank (scripted control only). R26's tau_c through the harness is tested in
+    tests/test_interp_dryrun_controls.py."""
     from apexzero.interp import stimuli
 
     bank, cells = stimuli.pilot_minigrid()
     c_v, rates = C.tune_cv(bank, cells, car)
     assert c_v in C.CV_CHOICES and rates[c_v] == 1.0
-    cell = next(c for c in cells if bank.stimuli[c.stim_id].name == "pilot/R30/T90/L")
-    d_b = C._harness_d_b(bank, cell, car, c_v)
-    target = d_b(1.5)
-    assert d_b(1.0) < target < d_b(2.0)
-    assert C.fit_tau_c(bank, [cell], car, target, c_v, tol=0.5) == pytest.approx(1.5, abs=0.05)
 
 
 # ------------------------------------------------------------------------- T and K

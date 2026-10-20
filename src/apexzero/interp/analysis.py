@@ -64,8 +64,11 @@ owner before the tag (protocol 12, ruling R13):
 - AD14 P2b decomposes pair medians (v_b, observed v_e, d_b) against the pair's median
        phase-matched key values (v_b*, v_e*, d_b* of the key behind each run's onset error;
        the u = 0 key where no phase key was solved), protocol 6.1.
-- AD15 P3's held-out folds are the cells' (v0, D); runs of a geometry with no training runs
-       in a fold are not predicted (the same rows for every model).
+- AD15 P3's held-out folds are conditions; runs of a geometry with no training runs in a
+       fold are not predicted (the same rows for every model). Ruling R25: a condition is
+       the (v0, D) of the run's mirror pair (``p3_folds``), so both members share a fold;
+       the cells' own (v0, D) put a mirror run whose D differs by 0.1 m in training while
+       its partner was held out.
 - AD16 P4's single-factor F1 conditions are the three that change one factor of (a). The
        class 2 rule is applied literally; when no F6 perturbation is as far OOD as the
        failing condition it is vacuous, and details flag it. When a single-factor condition
@@ -126,6 +129,21 @@ last-3 rollouts now run tier G as well (4 deterministic phases), so the gate jud
 runs, and the confirmatory stage refuses on it. (b) 6.3 covers every final agent, the
 replicates included (logged by the keys stage; nothing here). (c) AD21 compares decision
 classes, as the variant rule does.
+
+Dry-run rulings (protocol 12, 2026-10-20). R25: the key table carries the u = 0 key's onset
+time t_b* and forced flag (``t_b_star``, ``forced_star``), and the dry-run simulator flags
+forced onsets as real runs are flagged (``simulate_runs``; an agent braking off the key's
+onset uses its own onset time). P3 is calibrated to b*, the key's slope on the agent's
+included cells with the key's forced onsets left out (``p3_b_star``): confirm b in
+[b* - 0.1, 1.1], every LOGO b in [b* - 0.15, 1.15] and M_phys wins; refute, naming the rule,
+when M_idx or M_fd beats M_phys by >= 10% and b is outside [b* - 0.15, 1.15]; the pre-tag
+separation check needs |b_idx - b*| and |b_fd - b*| >= 0.25 (``p3_separation``). AD15's
+folds are mirror-pair conditions. R24 and R26: the power table adds P1b against a saturating
+reader (the smallest support edge q1 it detects) and P3 against an earlier-of physics and
+time-to-corner driver. Control checks: R20's T64 / T32 verdicts with regret over |J*|
+(``tape_check``) and R28's check that c1's crashed u = 0 runs type as overspeed by the
+viability solves (``viability_typing``; run columns ``nr_resolved``, ``nr_s``). R24's c2
+planted-law check needs Q's offline profile and lives with it (``controls.c2_planted_law``).
 """
 
 from __future__ import annotations
@@ -150,6 +168,7 @@ from apexzero.interp.constants import (
     R_CONTROLS,
     REANCHOR_IMMATERIAL_FRACTION,
     REANCHOR_IMMATERIAL_KPH,
+    REPLAY_RTOL,
     ROOT_SEED,
     STREAM_OFFSET,
     STREAMS,
@@ -212,6 +231,10 @@ RUN_EXTRA_COLUMNS = {
                       "(6.5, AD23); False: against the nominal u = 0 key (2.2)",
     "bo_at_phase": "bool: e_ve_bo is against a backed-off key solved at this run's phase "
                    "(u = 0 runs: the u = 0 backed-off key); False: the u = 0 one, or none",
+    "nr_resolved": "bool: a crash whose point of no return the viability solves resolved, "
+                   "so 9.1's primary path typed it (certified, or viable through s_a0); "
+                   "False: no crash, or the ellipse fallback typed it (ruling R28)",
+    "nr_s": "m: the certified point of no return (nan: none, or resolved after s_a0)",
 }
 RUN_COLUMNS = (tuple(RUN_INDEX_COLUMNS) + METRIC_COLUMNS + KEY_ERROR_COLUMNS
                + tuple(RUN_EXTRA_COLUMNS))
@@ -231,6 +254,9 @@ KEY_COLUMNS = {
     "key_status": "str: verified | unsolved | infeasible_bound | skipped | missing",
     "J_star": "", "v_e_star": "m/s", "v_min_star": "m/s", "d_b_star": "m", "v_b_star": "m/s",
     "has_brake_star": "bool", "tau_vmin": "m/s (tolerance used for braking/flat)",
+    "t_b_star": "s: the key's brake onset time from its start (protocol 5; nan without one)",
+    "forced_star": "bool: the key's own onset is forced, t_b* <= 0.5 s (ruling R25: carried "
+                   "onto simulated runs; such cells are left out of P3's b*)",
     "multi_basin": "bool", "lock_limited": "bool", "slip_limited": "bool",
     "braking": "bool: key has a sustained brake and v_min* < v0 - tau (2.3)",
     # backed-off key, pinned s-OCP, QSS
@@ -362,9 +388,17 @@ POWER_COLUMNS = {
     "pairs_A1_clip": "int", "pairs_A1_below": "int", "pairs_A1_tail": "int",
     "pairs_A1_bulk": "int", "pairs_A2_clip": "int", "pairs_A2_below": "int",
     "pairs_A2_tail": "int", "pairs_A2_bulk": "int",
-    "min_overspeed": "smallest planted overspeed detected (2.5-point steps; nan: none)",
+    "min_overspeed": "smallest planted overspeed detected (2.5-point steps; nan: none, and on "
+                     "the P1b-sat and P3 rows)",
+    "min_q1": "m: P1b-sat only (ruling R24), the smallest support edge q1 at which P1b "
+              "confirms a reader saturating there, sqrt(q1 / R_seg) - 1 below q1 "
+              "(POWER_Q1_GRID; nan: none, or another test)",
     "lawful_verdict": "str: the rule's verdict on the lawful agent",
-    "planted_verdict": "str: verdict at min_overspeed (P3: on the time-to-corner agent)",
+    "planted_verdict": "str: verdict at min_overspeed (P3: on the time-to-corner agent; "
+                       "P3-hybrid: on the earlier-of physics and time-to-corner driver; "
+                       "P1b-sat: with the reader saturating at the agent's own q1)",
+    "details": "str: JSON of the numbers behind the planted verdict (P3 rows: b, b*, the "
+               "LOGO range and held-out RMSEs; P1b-sat: the verdict per q1 scanned)",
 }
 
 # Decision thresholds of section 2.4 (the band b itself comes from V8 via the manifest).
@@ -388,9 +422,13 @@ P2B_SHARE = 0.50
 P2B_BETA_TOL = 0.1
 P3_MIN_DROP = 30.0 / 3.6     # v_b - v_e >= 30 km/h
 P3_FORCED = 0.5              # s: an onset within 0.5 s of the start is forced
-P3_B_RANGE, P3_B_LOO_RANGE = (0.9, 1.1), (0.85, 1.15)
+# Ruling R25: P3 is calibrated to b*, the key's own slope on the agent's included cells (key
+# onsets not forced). Confirm b in [b* - 0.1, 1.1] with every LOGO b in [b* - 0.15, 1.15];
+# refute needs b outside [b* - 0.15, 1.15]; the upper edges are unchanged.
+P3_B_BELOW, P3_B_HI = 0.10, 1.10
+P3_B_LOO_BELOW, P3_B_LOO_HI = 0.15, 1.15
 P3_REFUTE_MARGIN = 0.10
-P3_SEPARATION = 0.25
+P3_SEPARATION = 0.25         # |b_idx - b*| and |b_fd - b*| (R25)
 P3_IDX_TIME, P3_IDX_CLIP = 6.0, (150.0, 500.0)
 P3_BRAKE_SHARE = 0.5
 P4_GATE, P4_FAIL, P4_PASS = 0.9, 0.5, 0.8
@@ -832,7 +870,8 @@ def _strip_width(bank, stim_id: int, s: float) -> float:
 def key_table(cells: list, bank, keys: KeySource, extra: dict[int, dict] | None = None
               ) -> Table:
     """KEY_COLUMNS for every cell: geometry from the bank, the u = 0 nominal, backed-off and
-    s-OCP keys' values from ``keys``, and the braking/flat class (2.3: a sustained brake and
+    s-OCP keys' values from ``keys`` (the nominal key's onset time t_b* and forced flag
+    included, ruling R25), and the braking/flat class (2.3: a sustained brake and
     v_min* < v0 - tau, tau the key's v_min tolerance, floor 0.5 km/h). ``extra`` adds or
     overrides columns per cell_id (e.g. v_min_qss). A budget rule 2 cut cell has key_status
     'no_key' and no key values (R7)."""
@@ -871,7 +910,8 @@ def key_table(cells: list, bank, keys: KeySource, extra: dict[int, dict] | None 
             key_status=status, J_star=float(nom.J) if nom is not None else np.nan,
             v_e_star=float(_attr(mm, "v_e")), v_min_star=v_min_star,
             d_b_star=float(_attr(mm, "d_b")), v_b_star=float(_attr(mm, "v_b")),
-            has_brake_star=has_b, tau_vmin=tau_v,
+            has_brake_star=has_b, tau_vmin=tau_v, t_b_star=float(_attr(mm, "t_b")),
+            forced_star=bool(_attr(mm, "forced_onset", False)),
             multi_basin=bool(nom.multi_basin) if nom is not None else False,
             lock_limited=bool(active.get("lock_limited", False)),
             slip_limited=bool(active.get("slip_limited", False)),
@@ -1097,11 +1137,12 @@ def _run_row(agent, timesteps, g, arr, i, by_id, bank, keys, tables, nulls,
     # The key behind this run's onset errors (phase-matched where one exists; P2b).
     k_ph = {f"{c}_star_k": float(_attr(nom.metrics, c)) if ok else np.nan
             for c in ("v_e", "v_b", "d_b")}
-    ctype = ""
+    ctype, nr_res, nr_s = "", False, np.nan
     if m.crashed:
         key_traj = nom.traj if ok else None
         nr = keys.no_return(cell, agent, timesteps, phase, sample, traj, key_traj)
         ctype = str(measures.crash_type(traj, marks, key_traj, nr))
+        nr_res, nr_s = no_return_resolved(nr, stim.landmarks.s_a0)
     row = dict(agent=str(agent), timesteps=int(timesteps), cell=int(cell.cell_id),
                stim=int(cell.stim_id), pair=int(cell.pair_id), phase=phase, sample=sample,
                mode=g, steer_sign=int(arr["steer_sign"][i]), W=int(arr["W"][i]),
@@ -1112,8 +1153,25 @@ def _run_row(agent, timesteps, g, arr, i, by_id, bank, keys, tables, nulls,
                key_at_phase=bool(nom.at_phase) if ok else False, crash_type=ctype,
                v_e_star_ra=float(v_ra), ra_key=ra_key, ra_phase=int(ra_phase),
                ra_key_id=ra_id, speed_at_phase=bool(speed_at_phase),
-               bo_at_phase=bo_at_phase, **k_ph)
+               bo_at_phase=bo_at_phase, nr_resolved=bool(nr_res), nr_s=float(nr_s), **k_ph)
     return row
+
+
+def no_return_resolved(nr: Any, s_a0: float) -> tuple[bool, float]:
+    """(resolved, s) of a crash's ``measures.NoReturn``, the test ``measures.crash_type``
+    applies before its ellipse fallback (9.1): resolved when certified with s set, or when s
+    is None and every tested state through s_a0 had a viable key; s is the certified point
+    (nan otherwise). Anything else, None included, is unresolved (ruling R28's check reads
+    it)."""
+    if nr is None:
+        return False, float("nan")
+    s = getattr(nr, "s", None)
+    if bool(getattr(nr, "certified", False)) and s is not None:
+        return True, float(s)
+    last = float(getattr(nr, "s_last_viable", np.nan))
+    if s is None and np.isfinite(last) and last >= s_a0:
+        return True, float("nan")
+    return False, float("nan")
 
 
 _RUN_F = ("s_crash", "v_e", "v_min", "e_ve", "e_ve_bo", "e_ve_ra", "v_e_star_ra", "e_vmin",
@@ -2176,6 +2234,8 @@ class P3Result:
     n_predicted: int = 0
     n_geometries: int = 0
     agent: str = ""
+    b_star: float = float("nan")    # ruling R25: the key's slope on the included cells
+    b_star_inputs: dict = field(default_factory=dict)   # p3_b_star's record
 
 
 def _dphys(tables, v_b: np.ndarray, v_e: np.ndarray) -> np.ndarray:
@@ -2194,6 +2254,24 @@ def _join_keys(runs: Table, keys: Table, cols: tuple[str, ...]) -> dict[str, np.
     return out
 
 
+def p3_folds(runs: Table, keys: Table) -> np.ndarray:
+    """AD15 (ruling R25): each run's held-out fold is its condition, the (v0, D) of its mirror
+    pair, read from the key row of the pair's lowest cell id, so both members of a pair share
+    a fold even where their D differ (A2 lays D out per direction, e.g. 61.9 and 62.0 m, which
+    put a mirror run in training while its partner was held out). A run whose pair has no
+    key row keeps its own cell's (v0, D)."""
+    kc, kp = _it(keys, "cell"), _it(keys, "pair")
+    v0k, Dk = _fl(keys, "v0"), _fl(keys, "D")
+    first: dict[int, int] = {}
+    for i in np.argsort(kc, kind="stable"):
+        first.setdefault(int(kp[i]), int(i))
+    label = {p: f"{v0k[i]:.3f}/{Dk[i]:.1f}" for p, i in first.items()}
+    own = _join_keys(runs, keys, ("v0", "D"))
+    return np.array([label.get(int(p), f"{a:.3f}/{c:.1f}") for p, a, c in
+                     zip(_it(runs, "pair"), own["v0"].astype(float), own["D"].astype(float),
+                         strict=True)], dtype=str)
+
+
 def _p3_data(runs: Table, keys: Table, tables, max_v0: float | None = None) -> dict:
     k = _join_keys(runs, keys, ("tiers", "geometry", "v0", "D", "key_status"))
     tiers = k["tiers"].astype(str)
@@ -2208,12 +2286,11 @@ def _p3_data(runs: Table, keys: Table, tables, max_v0: float | None = None) -> d
     dp = _dphys(tables, v_b[ok], v_e[ok]) if ok.any() else np.zeros(0)
     good = np.isfinite(dp) & (dp > 0)
     sel = np.flatnonzero(ok)[good]
-    v0, D = k["v0"].astype(float)[sel], k["D"].astype(float)[sel]
+    v0 = k["v0"].astype(float)[sel]
     return dict(y=np.log(d_b[sel]), x=np.log(dp[good]),
                 f_idx=np.log(np.clip(P3_IDX_TIME * v_b[sel], *P3_IDX_CLIP)),
-                g=k["geometry"].astype(str)[sel],
-                cond=np.array([f"{a:.3f}/{c:.1f}" for a, c in zip(v0, D, strict=True)]),
-                v_b=v_b[sel], v0=v0, n=int(sel.size))
+                g=k["geometry"].astype(str)[sel], cond=p3_folds(runs, keys)[sel],
+                cell=_it(runs, "cell")[sel], v_b=v_b[sel], v0=v0, n=int(sel.size))
 
 
 def _heldout_rmse(y: np.ndarray, f: np.ndarray, g: np.ndarray, cond: np.ndarray
@@ -2227,12 +2304,59 @@ def _heldout_rmse(y: np.ndarray, f: np.ndarray, g: np.ndarray, cond: np.ndarray
     return (float(np.sqrt(np.mean(r * r))) if r.size else float("nan")), int(r.size)
 
 
+def _require_key_onsets(keys: Table) -> None:
+    if "forced_star" not in keys or "t_b_star" not in keys:
+        raise ValueError("the key table has no t_b_star / forced_star columns (ruling R25): "
+                         "rebuild it with key_table")
+
+
+def p3_b_star(keys: Table, cells: np.ndarray, tables) -> tuple[float, dict]:
+    """Ruling R25's b*: the key's slope on the agent's included cells, excluding cells where
+    the key's own onset is forced (``forced_star``). The within-geometry slope of log d_b* on
+    log d_b^phys(v_b*, v_e*) over the u = 0 nominal keys of ``cells`` (the cells with an
+    included run), one row per cell. A cell whose key is not verified, has no sustained brake
+    or no finite d_b^phys > 0 is left out and counted (n_undefined); the cells among them
+    without a verified key are also counted on their own (n_no_key, e.g. tier B D = 250,
+    which no keys-stage item solves: there b* and the agent's b are on different cells, a
+    point for a ruling note; ``p3_fit`` adds the agent's runs on them). The record also
+    gives M_idx's and M_fd's slopes on the same cells (|b_idx - b*|, |b_fd - b*|)."""
+    _require_key_onsets(keys)
+    kidx = {int(c): i for i, c in enumerate(_it(keys, "cell"))}
+    rows = np.array(sorted({kidx[int(c)] for c in np.unique(cells) if int(c) in kidx}),
+                    dtype=np.int64)
+    forced = _bo(keys, "forced_star")[rows]
+    vb, ve, db = (_fl(keys, c)[rows] for c in ("v_b_star", "v_e_star", "d_b_star"))
+    cand = (~forced & _bo(keys, "has_brake_star")[rows]
+            & (_st(keys, "key_status")[rows] == "verified")
+            & np.isfinite(vb) & np.isfinite(ve) & np.isfinite(db) & (db > 0))
+    dp = np.full(rows.size, np.nan)
+    if cand.any():
+        dp[cand] = _dphys(tables, vb[cand], ve[cand])
+    with np.errstate(invalid="ignore"):
+        use = cand & np.isfinite(dp) & (dp > 0)
+    g = _st(keys, "geometry")[rows][use]
+    x, y = np.log(dp[use]), np.log(db[use])
+    b_star = _fe_slope(x, y, g)[0]
+    b_idx = _fe_slope(x, np.log(np.clip(P3_IDX_TIME * vb[use], *P3_IDX_CLIP)), g)[0]
+    b_fd = _fe_slope(x, np.zeros_like(x), g)[0]
+    info = dict(key="u = 0 nominal", n_cells=int(rows.size),
+                n_no_key=int(np.sum(_st(keys, "key_status")[rows] != "verified"))
+                + int(np.unique(cells).size - rows.size),
+                n_forced_excluded=int(forced.sum()), n_undefined=int((~forced & ~use).sum()),
+                n_used=int(use.sum()), n_geometries=int(np.unique(g).size),
+                b_idx=float(b_idx), b_fd=float(b_fd),
+                separation_idx=float(abs(b_idx - b_star)), separation_fd=float(abs(b_fd - b_star)))
+    return float(b_star), info
+
+
 def p3_fit(runs: Table, keys: Table, tables, max_v0: float | None = None) -> P3Result:
     """log d_b = a_g + b log d_b^phys(v_b, v_e) and the three models' held-out RMSE, one
-    (v0, D) condition held out at a time (P3). Deterministic tier A and B runs with a
-    sustained, unforced brake, v_b - v_e >= 30 km/h and v_e observed (crashes after s_c0
-    included). ``tables.d_b_phys`` is ``measures.ModelTables.d_b_phys``. ``max_v0`` (m/s)
-    drops the cells at or above it (the 310 km/h cells are analysed separately)."""
+    condition held out at a time (P3; AD15: a condition is a mirror pair's (v0, D), so both
+    members share the fold, ``p3_folds``). Deterministic tier A and B runs with a sustained,
+    unforced brake, v_b - v_e >= 30 km/h and v_e observed (crashes after s_c0 included).
+    ``tables.d_b_phys`` is ``measures.ModelTables.d_b_phys``. ``max_v0`` (m/s) drops the cells
+    at or above it (the 310 km/h cells are analysed separately). Ruling R25: b* is the key's
+    slope on the same included cells (``p3_b_star``), which ``p3`` judges b against."""
     agent = _agent(runs)
     d = _p3_data(runs, keys, tables, max_v0)
     if d["n"] < 3:
@@ -2247,7 +2371,11 @@ def p3_fit(runs: Table, keys: Table, tables, max_v0: float | None = None) -> P3R
         rmse[name], n_pred = _heldout_rmse(y, f, g, cond)
     finite = {k: v for k, v in rmse.items() if np.isfinite(v)}
     winner = min(finite, key=lambda k: finite[k]) if finite else ""
-    return P3Result(float(b), loo, rmse, winner, d["n"], n_pred, int(geos.size), agent)
+    b_star, b_in = p3_b_star(keys, d["cell"], tables)
+    st = _join_keys({"cell": d["cell"]}, keys, ("key_status",))["key_status"].astype(str)
+    b_in = dict(b_in, n_runs=int(d["n"]), n_runs_no_key=int(np.sum(st != "verified")))
+    return P3Result(float(b), loo, rmse, winner, d["n"], n_pred, int(geos.size), agent,
+                    b_star, b_in)
 
 
 def p3_ratio(runs: Table, keys: Table, tables) -> Decision:
@@ -2275,50 +2403,81 @@ def brake_share(runs: Table, keys: Table) -> float:
     return _frac(_bo(runs, "has_brake")[m])
 
 
+def p3_bands(b_star: float) -> tuple[tuple[float, float], tuple[float, float]]:
+    """Ruling R25's bands around the key's slope b*: the confirm band [b* - 0.1, 1.1] and the
+    leave-one-geometry-out / refute band [b* - 0.15, 1.15]."""
+    return (b_star - P3_B_BELOW, P3_B_HI), (b_star - P3_B_LOO_BELOW, P3_B_LOO_HI)
+
+
 def p3(result: P3Result, brake_share: float) -> Decision:
-    """Confirm: b in [0.9, 1.1], every leave-one-geometry-out b in [0.85, 1.15] and M_phys
-    has the lowest held-out RMSE. Refute naming the winner: M_idx or M_fd beats M_phys by
-    >= 10% and b outside [0.85, 1.15]. Only for agents braking in >= 50% of tier B runs."""
+    """Ruling R25 (P3 calibrated to b*, ``p3_b_star``). Confirm: b in [b* - 0.1, 1.1], every
+    leave-one-geometry-out b in [b* - 0.15, 1.15] and M_phys has the lowest held-out RMSE.
+    Refute, naming the rule: M_idx or M_fd beats M_phys by >= 10% and b outside
+    [b* - 0.15, 1.15]. Not testable without b*. Only for agents braking in >= 50% of tier B
+    runs. Details record b*, its inputs and both bands."""
     agent = result.agent
-    det = dict(b=result.b, loo_b=result.loo_b, rmse=result.rmse, winner=result.winner,
+    det = dict(b=result.b, b_star=result.b_star, b_star_inputs=result.b_star_inputs,
+               loo_b=result.loo_b, rmse=result.rmse, winner=result.winner,
                n_runs=result.n_runs, n_predicted=result.n_predicted,
                n_geometries=result.n_geometries, brake_share=brake_share)
     if not (np.isfinite(brake_share) and brake_share >= P3_BRAKE_SHARE):
         return _d("P3", agent, "not applicable", **det)
     if not np.isfinite(result.b) or not result.rmse:
         return _d("P3", agent, "not testable", **det)
+    if not np.isfinite(result.b_star):
+        return _d("P3", agent, "not testable", reason="b* undefined: the key's included "
+                  "cells with unforced onsets have no within-geometry spread (R25)", **det)
+    band, loo_band = p3_bands(result.b_star)
+    det.update(confirm_band=list(band), loo_band=list(loo_band))
     r_phys = result.rmse.get("M_phys", np.nan)
     alts = {k: v for k, v in result.rmse.items() if k != "M_phys" and np.isfinite(v)}
     best = min(alts, key=lambda k: alts[k]) if alts else ""
-    if (_in(result.b, P3_B_RANGE) and all(_in(v, P3_B_LOO_RANGE) for v in result.loo_b.values())
+    if (_in(result.b, band) and all(_in(v, loo_band) for v in result.loo_b.values())
             and result.winner == "M_phys"):
         return _d("P3", agent, "confirm", **det)
     if best and np.isfinite(r_phys) and alts[best] <= (1 - P3_REFUTE_MARGIN) * r_phys \
-            and not _in(result.b, P3_B_LOO_RANGE):
+            and not _in(result.b, loo_band):
         det["winner"] = best
         return _d("P3", agent, "refute", **det)
     return _d("P3", agent, "inconclusive", **det)
 
 
 def p3_separation(keys_table: Table, tables) -> dict:
-    """Pre-tag check: on the key's own (v_b*, v_e*), the slopes M_idx and M_fd predict must
-    differ from 1 by >= 0.25, else P3 is demoted to secondary. Within-geometry slopes of
-    each model's log d_b on log d_b^phys over tier A and B braking cells."""
+    """Pre-tag check (ruling R25): on the key's own (v_b*, v_e*), the slopes M_idx and M_fd
+    predict must each differ from b*, the key's own slope, by >= 0.25, else P3 is demoted to
+    secondary. Within-geometry slopes of each model's log d_b, and of the key's log d_b*, on
+    log d_b^phys over tier A and B braking cells with v_b* - v_e* >= 30 km/h, leaving out
+    cells where the key's own onset is forced (as b* does)."""
     kt = keys_table
+    _require_key_onsets(kt)
     tier_ab = has_tier(kt, "A") | has_tier(kt, "B")
-    vb, ve = _fl(kt, "v_b_star"), _fl(kt, "v_e_star")
-    m = (tier_ab & _bo(kt, "braking") & (_st(kt, "key_status") == "verified")
-         & np.isfinite(vb) & np.isfinite(ve) & (vb - ve >= P3_MIN_DROP))
+    vb, ve, db = _fl(kt, "v_b_star"), _fl(kt, "v_e_star"), _fl(kt, "d_b_star")
+    forced = _bo(kt, "forced_star")
+    base = (tier_ab & _bo(kt, "braking") & (_st(kt, "key_status") == "verified")
+            & np.isfinite(vb) & np.isfinite(ve) & (vb - ve >= P3_MIN_DROP)
+            & np.isfinite(db) & (db > 0))
+    m = base & ~forced
+    dp = np.full(_n(kt), np.nan)
+    if m.any():
+        dp[m] = _dphys(tables, vb[m], ve[m])
+    with np.errstate(invalid="ignore"):
+        m &= np.isfinite(dp) & (dp > 0)
+    out = dict(n_cells=int(m.sum()), n_forced_excluded=int((base & forced).sum()),
+               reference="b* (R25)")
     if m.sum() < 3:
-        return dict(b_idx=np.nan, b_fd=np.nan, passed=False, demote_p3=True, n_cells=int(m.sum()))
-    x = np.log(_dphys(tables, vb[m], ve[m]))
+        return dict(b_star=np.nan, b_idx=np.nan, b_fd=np.nan, passed=False, demote_p3=True,
+                    **out)
+    x = np.log(dp[m])
     g = _st(kt, "geometry")[m]
+    b_star = _fe_slope(x, np.log(db[m]), g)[0]
     b_idx = _fe_slope(x, np.log(np.clip(P3_IDX_TIME * vb[m], *P3_IDX_CLIP)), g)[0]
     b_fd = _fe_slope(x, np.zeros_like(x), g)[0]
-    passed = bool(np.isfinite(b_idx) and abs(b_idx - 1) >= P3_SEPARATION
-                  and np.isfinite(b_fd) and abs(b_fd - 1) >= P3_SEPARATION)
-    return dict(b_idx=float(b_idx), b_fd=float(b_fd), passed=passed, demote_p3=not passed,
-                n_cells=int(m.sum()), n_geometries=int(np.unique(g).size))
+    sep_idx, sep_fd = abs(b_idx - b_star), abs(b_fd - b_star)
+    passed = bool(np.isfinite(sep_idx) and sep_idx >= P3_SEPARATION
+                  and np.isfinite(sep_fd) and sep_fd >= P3_SEPARATION)
+    return dict(b_star=float(b_star), b_idx=float(b_idx), b_fd=float(b_fd),
+                separation_idx=float(sep_idx), separation_fd=float(sep_fd), passed=passed,
+                demote_p3=not passed, n_geometries=int(np.unique(g).size), **out)
 
 
 def p3_beta(runs: Table, keys: Table) -> list[Decision]:
@@ -2587,12 +2746,15 @@ def _run_speed(runs: Table, keys: Table, col: str) -> np.ndarray:
     return v
 
 
-def tape_errors(runs: Table, keys: Table) -> dict:
+def tape_errors(runs: Table, keys: Table, reached_only: bool = False) -> dict:
     """Control T's 'every error within tau' (protocol 7): on its deterministic u = 0 runs
     with a verified key, |v_e - v_e*|, |v_min - v_min*| and |d_b - d_b*| within the key's
     tolerances tau (6.3: max(floor, spread across the near-equal set)). A measure undefined
-    on both run and key (no brake on a straight) is no error."""
+    on both run and key (no brake on a straight) is no error. ``reached_only`` (ruling R20,
+    T32): only the runs that reach s_c1 + 250 m (``completed``)."""
     det = (_st(runs, "mode") == "det") & (_it(runs, "phase", 0) == 0)
+    if reached_only:
+        det &= _bo(runs, "completed")
     k = _join_keys(runs, keys, ("v_e_star", "v_min_star", "d_b_star", "tau_ve", "tau_vmin",
                                 "tau_db", "key_status"))
     ok_key = k["key_status"].astype(str) == "verified"
@@ -2614,6 +2776,95 @@ def tape_errors(runs: Table, keys: Table) -> dict:
     return dict(passed=bool(m.any() and not beyond.any()), n=int(m.sum()),
                 n_beyond=int(beyond.sum()), worst_over_tau=worst,
                 beyond_cells=sorted({int(c) for c in _it(runs, "cell")[beyond]})[:20])
+
+
+TAPE_REGRET_RTOL = REPLAY_RTOL       # T64's regret / |J*| bound (ruling R20)
+
+
+def tape_regret(runs: Table, keys: Table) -> dict:
+    """Ruling R20: control T's regret relative to the optimum, |J* - J| / |J*|, on its
+    deterministic u = 0 runs with a verified key. J* is the u = 0 key's objective (the key
+    table's J_star), the denominator R20 fixes (the run's own J was used before); the run
+    table's regret is J* - J against the key at the run's phase, which for these runs is that
+    key. A run without a finite regret is undefined and fails the bound."""
+    det = (_st(runs, "mode") == "det") & (_it(runs, "phase", 0) == 0)
+    k = _join_keys(runs, keys, ("J_star", "key_status"))
+    m = det & (k["key_status"].astype(str) == "verified")
+    J_star = k["J_star"].astype(float)
+    with np.errstate(divide="ignore", invalid="ignore"):
+        rel = np.abs(_fl(runs, "regret")) / np.abs(J_star)
+    ok = m & np.isfinite(rel)
+    worst = float(np.max(rel[ok])) if ok.any() else float("nan")
+    bad = m & ~(np.isfinite(rel) & (rel <= TAPE_REGRET_RTOL))
+    order = np.flatnonzero(ok)[np.argsort(-rel[ok])][:5]
+    return dict(passed=bool(m.any() and not bad.any()), n=int(m.sum()),
+                n_undefined=int((m & ~np.isfinite(rel)).sum()),
+                n_beyond=int(bad.sum()), max_rel=worst, rtol=TAPE_REGRET_RTOL,
+                worst_cells=[int(c) for c in _it(runs, "cell")[order]])
+
+
+def tape_check(runs: Table, keys: Table, precision: str) -> dict:
+    """Ruling R20's verdicts for control T, in the vocabulary of protocol 7's requirements
+    (termination 'none' | '<n> crashes', regret 'zero' | 'max rel <x>', errors 'within_tau'
+    | '<n> beyond tau').
+
+    - 'f64' (T64, blocking exactness check: the same code path in its own float64 process):
+      regret / |J*| <= 1e-6, every error within tau and no termination; passed needs all
+      three.
+    - 'f32' (T32, the float32 path the agents use): the blocking measure check on the runs
+      that reach s_c1 + 250 m; crashes and regret are reported, not blocking (the script
+      lists the crashes with the keys' margins).
+    """
+    if precision not in ("f64", "f32"):
+        raise ValueError(f"precision must be 'f64' or 'f32', got {precision!r}")
+    det = (_st(runs, "mode") == "det") & (_it(runs, "phase", 0) == 0)
+    crashed = det & _bo(runs, "crashed")
+    reg = tape_regret(runs, keys)
+    err = tape_errors(runs, keys, reached_only=precision == "f32")
+    got = dict(termination="none" if not crashed.any() else f"{int(crashed.sum())} crashes",
+               regret="zero" if reg["passed"] else f"max rel {reg['max_rel']:.2e}",
+               errors="within_tau" if err["passed"] else f"{err['n_beyond']} beyond tau")
+    if precision == "f64":
+        passed = bool(not crashed.any() and reg["passed"] and err["passed"])
+        blocking = ["termination", "regret", "errors"]
+    else:
+        passed = bool(err["passed"])
+        blocking = ["errors"]
+    return dict(precision=precision, passed=passed, blocking=blocking, got=got,
+                details=dict(regret=reg, errors=err, n_runs=int(det.sum()),
+                             crash_cells=sorted({int(c) for c in _it(runs, "cell")[crashed]})))
+
+
+def viability_typing(runs: Table, keys: Table | None = None) -> dict:
+    """Ruling R28: the crashed deterministic u = 0 runs of a control (c1) must be typed by
+    9.1's primary path, the certified point of no return from the viability solves
+    (``nr_resolved``), and typed overspeed. passed: at least one such crash, every one resolved
+    by the viability solves and every one typed overspeed. Counts by type and the cells that
+    were unresolved or typed otherwise are listed.
+
+    ``keys`` (the key table) restricts the check to cells whose u = 0 nominal key is
+    verified: the viability solves start from that key (``answer_key.viability_keys``), and
+    crash typing compares against it, so a cell without one cannot be typed by this path.
+    Crashed u = 0 runs on the other cells are counted and listed (``no_key_cells``), not
+    judged."""
+    m = ((_st(runs, "mode") == "det") & (_it(runs, "phase", 0) == 0) & _bo(runs, "crashed"))
+    cell = _it(runs, "cell")
+    no_key = np.zeros(_n(runs), bool)
+    if keys is not None:
+        k = _join_keys(runs, keys, ("key_status",))
+        no_key = m & (k["key_status"].astype(str) != "verified")
+        m &= ~no_key
+    res, ct = _bo(runs, "nr_resolved"), _st(runs, "crash_type")
+    n = int(m.sum())
+    ok = m & res & (ct == "overspeed")
+    types = {str(t): int(((ct == t) & m).sum()) for t in np.unique(ct[m])}
+    return dict(passed=bool(n and ok.sum() == n), n_crashed=n, n_resolved=int((m & res).sum()),
+                n_overspeed=int((m & (ct == "overspeed")).sum()),
+                n_resolved_overspeed=int(ok.sum()), types=types,
+                has_column="nr_resolved" in runs, n_no_key=int(no_key.sum()),
+                no_key_cells=sorted({int(c) for c in cell[no_key]})[:40],
+                unresolved_cells=sorted({int(c) for c in cell[m & ~res]})[:40],
+                not_overspeed_cells=sorted({int(c) for c in cell[m & (ct != "overspeed")]})[:40])
 
 
 def p5(runs: Table, keys: Table) -> Decision:
@@ -3538,8 +3789,8 @@ KEY_NUMBERS = {
     "P2": {"n_O": ("n_O",), "frac_onset_late": ("frac_onset_late",),
            "frac_resp_late": ("frac_resp_late",),
            "median_overspeed_share": ("median_overspeed_share",)},
-    "P3": {"b": ("b",), "winner": ("winner",), "brake_share": ("brake_share",),
-           "n_runs": ("n_runs",)},
+    "P3": {"b": ("b",), "b_star": ("b_star",), "winner": ("winner",),
+           "brake_share": ("brake_share",), "n_runs": ("n_runs",)},
 }
 
 
@@ -3795,12 +4046,24 @@ def simulate_runs(kind: str, keys_table: Table, rng: np.random.Generator,
     v_e = 0.99 sqrt(v_e*^2 + 2 abar* delta). A run whose e_ve exceeds ``crash_margin``
     crashes in the corner, typed overspeed. Kinds: 'lawful', 'overspeed_below_12' (e =
     0.15 * 12 / R_seg below 12 m, A1 and A2), 'late_onset' (15 m late at A1),
-    'time_to_corner' (d_b = c clip(6 v_b, 150, 500), entry speed lawful), 'planted' (use
-    ``plant``)."""
+    'time_to_corner' (d_b = c clip(6 v_b, 150, 500), entry speed lawful),
+    'time_to_corner_hybrid' (the earlier of the key's onset and that time-to-corner trigger,
+    d_b = max(d_b*, c clip(6 v_b, 150, 500)), entry speed lawful; a power-table row, R26),
+    'planted' (use ``plant``).
+
+    Forced onsets (ruling R25): a run's onset is forced as a real run's is (t_b <= 0.5 s from
+    its start; such onsets are left out of the onset pair values and of P3). An agent braking
+    at the key's d_b* carries the key's flag (``forced_star``); one braking elsewhere (late
+    onset, time-to-corner) uses its own onset time, the key's t_b* moved by the distance it
+    brakes later or earlier, covered at v_b* (the simulated v_b): t_b = t_b* + (d_b* - d_b) /
+    v_b*. The phase jitter of d_b (under one step) does not move the flag. The key table must
+    carry t_b_star and forced_star (``key_table``)."""
+    _require_key_onsets(keys_table)
     rows_k = _key_rows(keys_table)
     plant = plant or _plant_for(kind, planted)
     agent = agent or kind
-    c_ttc = _ttc_constant(rows_k) if kind == "time_to_corner" else np.nan
+    ttc = kind in ("time_to_corner", "time_to_corner_hybrid")
+    c_ttc = _ttc_constant(rows_k) if ttc else np.nan
     noise: dict[tuple, tuple[float, float]] = {}
     snoise: dict[tuple, float] = {}
     out: list[dict] = []
@@ -3825,8 +4088,10 @@ def simulate_runs(kind: str, keys_table: Table, rng: np.random.Generator,
                 d_b = d_bs - dl
             else:
                 v_e = v_es * SIM_LAWFUL * (1 + e_pl)
-            if kind == "time_to_corner" and brake:
-                d_b = c_ttc * float(np.clip(P3_IDX_TIME * v_bs, *P3_IDX_CLIP))
+            if ttc and brake:
+                d_ttc = c_ttc * float(np.clip(P3_IDX_TIME * v_bs, *P3_IDX_CLIP))
+                d_b = d_ttc if kind == "time_to_corner" else max(d_bs, d_ttc)
+            forced = _sim_forced(r, d_b) if brake else False
             v_e *= 1 + SIM_SIGMA_V * phase_noise * eps
             d_b = d_b + u * v_bs * DT * phase_noise if brake else np.nan
             e = v_e / v_es - 1
@@ -3834,7 +4099,7 @@ def simulate_runs(kind: str, keys_table: Table, rng: np.random.Generator,
             crash = bool(e > crash_margin)
             ex = dict(v_e=v_e, e_ve=e, e_ve_bo=v_e / r["v_e_star_bo"] - 1, e_ve_ra=e,
                       v_e_star_ra=v_es, v_min=r["v_min_star"] * (1 + e),
-                      e_vmin=e, has_brake=brake, forced_onset=False,
+                      e_vmin=e, has_brake=brake, forced_onset=forced,
                       d_b=d_b, dd_b=d_b - d_bs if brake else np.nan,
                       v_b=v_bs if brake else np.nan, d_resp=d_b + SIM_RESP_LEAD,
                       dd_resp=(d_b - d_bs) if brake else np.nan)
@@ -3871,8 +4136,18 @@ def _sim_run(agent: str, r: dict, k: int, sample: int, mode: str, steer: int, cr
               "dd_b", "v_b", "d_resp", "dd_resp"):
         row[c] = float(extra.get(c, np.nan))
     row["has_brake"] = bool(extra.get("has_brake", False))
-    row["forced_onset"] = False
+    row["forced_onset"] = bool(extra.get("forced_onset", False))
     return row
+
+
+def _sim_forced(r: dict, d_b: float) -> bool:
+    """Ruling R25: a simulated run's forced flag from its planned onset distance d_b (before
+    the phase jitter). At the key's d_b* it is the key's own flag; elsewhere the onset time is
+    t_b* + (d_b* - d_b) / v_b* and forced means within 0.5 s of the start (protocol 5)."""
+    t_bs, v_bs, d_bs = float(r["t_b_star"]), float(r["v_b_star"]), float(r["d_b_star"])
+    if d_b == d_bs or not (np.isfinite(t_bs) and np.isfinite(v_bs) and v_bs > 0):
+        return bool(r["forced_star"])
+    return bool(t_bs + (d_bs - d_b) / v_bs <= P3_FORCED + 1e-12)
 
 
 def simulate_pairs(kind: str, keys_table: Table, rng: np.random.Generator,
@@ -4054,51 +4329,110 @@ def _power_plant(test: str, e: float, rt) -> Callable[[dict], tuple[float, float
 
 
 POWER_DETECT = {"P1a": "refute", "P1-tail": "confirm", "P1b": "confirm", "P2": "confirm"}
+# Ruling R24: support edges q1 scanned for P1b against a reader saturating at its own q1
+# (5% steps from 8 m; only those below the agent's q10 are used).
+POWER_Q1_GRID = tuple(round(8.0 * 1.05 ** i, 2) for i in range(26))
+
+
+def _saturation_plant(q1: float) -> Callable[[dict], tuple[float, float]]:
+    """Ruling R24's saturating reader: corners tighter than q1 read as q1, an entry-speed
+    excess sqrt(q1 / R_seg) - 1 below q1 at A1 and A2 (zero at q1, above log(1 + b) only
+    below q1 / (1 + b)^2)."""
+    return lambda r: (math.sqrt(q1 / r["R_seg"]) - 1.0
+                      if r["R_seg"] < q1 and r["approach"] in ("A1", "A2") else 0.0, 0.0)
+
+
+def _p3_numbers(details: dict) -> dict:
+    loo = [float(v) for v in (details.get("loo_b") or {}).values() if np.isfinite(v)]
+    return dict(b=details.get("b"), b_star=details.get("b_star"),
+                loo_range=[min(loo), max(loo)] if loo else [],
+                rmse=details.get("rmse"), winner=details.get("winner"),
+                reason=details.get("reason"))
 
 
 def power_table(keys_table: Table, support, b: float, tables=None,
-                steps: tuple[float, ...] = POWER_STEPS, phase_noise: float = 1.0) -> Table:
+                steps: tuple[float, ...] = POWER_STEPS, phase_noise: float = 1.0,
+                q1_grid: tuple[float, ...] = POWER_Q1_GRID) -> Table:
     """Per confirmatory test and agent: pairs per regime and the smallest planted overspeed
     (2.5-point steps) the rule detects (P1a: refute when the bulk A2 pairs overspeed;
     P1-tail: confirm when the A1 tail pairs do; P1b: confirm with e q1 / R_seg below
-    support; P2: confirm with a late onset sized to give e at the A1 tail and below-support
-    cells). P3: the verdicts on the lawful and time-to-corner agents.
+    support, a step plant; P2: confirm with a late onset sized to give e at the A1 tail and
+    below-support cells). P1b-sat (ruling R24): P1b against a reader saturating at its
+    support edge, sqrt(q1 / R_seg) - 1 below q1, judged as if the agent's q1 were each
+    support edge of ``q1_grid`` below its q10 (its q10 and clip radius kept); min_q1 is the
+    smallest q1 detected, planted_verdict the verdict at the agent's own q1. P3: the verdicts
+    on the lawful and time-to-corner agents under R25; P3-hybrid (R26's power statement):
+    on the driver braking at the earlier of the key's onset and the time-to-corner trigger.
 
     ``support`` is ``support.SupportTables`` (its ``regimes``) or a dict agent -> regime.
     Ruling R18's replicates come after the other agents, so every other agent keeps its
     simulation streams (``_dry_rng(100 + its index)``) and its rows."""
+    import json
+
+    from apexzero.interp.io import _jsonable
+
+    def js(d: dict) -> str:
+        return json.dumps(_jsonable(d), sort_keys=True)
+
     regimes = support.regimes if hasattr(support, "regimes") else dict(support)
     order = sorted(a for a in regimes if not is_replicate(a))
     order += [a for a in replicates() if a in regimes]
+    nan = float("nan")
     rows = []
     for ia, (agent, rt) in enumerate((a, regimes[a]) for a in order):
         counts = _regime_counts(keys_table, rt)
         clip = getattr(rt, "r_clip_max", np.nan)
-        lawful_runs = simulate_runs("lawful", keys_table, _dry_rng(100 + ia, 0), phase_noise,
-                                    agent=agent, r_clip_max=clip)
+
+        def verdict(test, runs, regime, agent=agent):
+            pairs = pair_values(runs, keys_table, {agent: regime}, b)
+            return _verdict_of(test, pairs, runs, keys_table, tables, b)
+
+        def sim(kind, rng, plant=None, agent=agent, clip=clip):
+            return simulate_runs(kind, keys_table, rng, phase_noise, plant=plant, agent=agent,
+                                 r_clip_max=clip)
+
+        lawful_runs = sim("lawful", _dry_rng(100 + ia, 0))
         lawful_pairs = pair_values(lawful_runs, keys_table, {agent: rt}, b)
+        lawful = {test: _verdict_of(test, lawful_pairs, lawful_runs, keys_table, tables, b)
+                  for test in (*POWER_DETECT, "P3")}
         for it, test in enumerate(POWER_DETECT):
-            lawful_v = _verdict_of(test, lawful_pairs, lawful_runs, keys_table, tables, b)[0]
-            min_e, planted_v = float("nan"), ""
+            min_e, planted_v = nan, ""
             for ie, e in enumerate(steps):
-                runs = simulate_runs("planted", keys_table, _dry_rng(100 + ia, it + 1, ie),
-                                     phase_noise, plant=_power_plant(test, e, rt), agent=agent,
-                                     r_clip_max=clip)
-                pairs = pair_values(runs, keys_table, {agent: rt}, b)
-                v = _verdict_of(test, pairs, runs, keys_table, tables, b)[0]
+                runs = sim("planted", _dry_rng(100 + ia, it + 1, ie), _power_plant(test, e, rt))
+                v = verdict(test, runs, rt)[0]
                 if v == POWER_DETECT[test]:
                     min_e, planted_v = float(e), v
                     break
             rows.append(dict(test=test, agent=agent, **counts, min_overspeed=min_e,
-                             lawful_verdict=lawful_v, planted_verdict=planted_v))
-        ttc_runs = simulate_runs("time_to_corner", keys_table, _dry_rng(100 + ia, 99),
-                                 phase_noise, agent=agent, r_clip_max=clip)
-        ttc_pairs = pair_values(ttc_runs, keys_table, {agent: rt}, b)
-        rows.append(dict(test="P3", agent=agent, **counts, min_overspeed=float("nan"),
-                         lawful_verdict=_verdict_of("P3", lawful_pairs, lawful_runs,
-                                                    keys_table, tables, b)[0],
-                         planted_verdict=_verdict_of("P3", ttc_pairs, ttc_runs, keys_table,
-                                                     tables, b)[0]))
+                             min_q1=nan, lawful_verdict=lawful[test][0],
+                             planted_verdict=planted_v, details="{}"))
+        scanned: list[tuple[float, str]] = []
+        min_q1 = nan
+        for iq, q in enumerate(x for x in q1_grid if x < rt.q10):
+            reg = Regime(float(q), float(rt.q10), float(clip))
+            v = verdict("P1b", sim("planted", _dry_rng(100 + ia, 5, iq), _saturation_plant(q)),
+                        reg)[0]
+            scanned.append((float(q), v))
+            if v == "confirm":
+                min_q1 = float(q)
+                break
+        own = verdict("P1b", sim("planted", _dry_rng(100 + ia, 6), _saturation_plant(rt.q1)),
+                      rt)
+        rows.append(dict(test="P1b-sat", agent=agent, **counts, min_overspeed=nan,
+                         min_q1=min_q1, lawful_verdict=lawful["P1b"][0],
+                         planted_verdict=own[0],
+                         details=js(dict(q1_own=float(rt.q1), q10=float(rt.q10),
+                                         verdict_by_q1=scanned,
+                                         own=dict(n_pairs=own[1].get("n_pairs"),
+                                                  frac_departure=own[1].get("frac_departure"),
+                                                  kendall_tau=own[1].get("kendall_tau"))))))
+        for test, kind, stream in (("P3", "time_to_corner", 99),
+                                   ("P3-hybrid", "time_to_corner_hybrid", 98)):
+            v, det = verdict("P3", sim(kind, _dry_rng(100 + ia, stream)), rt)
+            rows.append(dict(test=test, agent=agent, **counts, min_overspeed=nan, min_q1=nan,
+                             lawful_verdict=lawful["P3"][0], planted_verdict=v,
+                             details=js(dict(planted=_p3_numbers(det),
+                                             lawful=_p3_numbers(lawful["P3"][1])))))
     return _to_table(rows, POWER_COLUMNS)
 
 
