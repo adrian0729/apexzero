@@ -90,13 +90,13 @@ _ROWS = {
     11: (("G",), "G", "straight/W12", None, {}),                   # null: never
     12: (("D",), "real", "D/3/F1/real/real/real", None,
          {"condition": "F1/real/real/real", "corner_index": 3}),   # s-OCP only: never
-    13: (("B",), "B", "B/R9.4/T90/L", (9.4, 90.0), {}),            # tier B: no nominal key
+    13: (("B",), "B", "B/R9.4/T90/L", (9.4, 90.0), {}),            # tier B D = 600 (P1, R17c)
     14: (("V",), "A2", "V/R40/T90/L", (40.0, 90.0), {}),           # validation cell, braking
 }
 # 2.3's braking class of each cell's nominal key once solved (core cell 0 says False: the
 # core set keeps its keys whatever the class).
 _BRAKING = {0: False, 1: True, 2: False, 3: True, 4: True, 5: True, 6: True, 7: False,
-            8: True, 9: True, 10: True, 14: True}
+            8: True, 9: True, 10: True, 13: True, 14: True}
 
 
 def _design():
@@ -153,18 +153,20 @@ def test_v7_remedy_log_counts_cells_without_a_nominal_key_apart(ps, monkeypatch)
 
 def test_v7_remedy_sets_every_nominal_key_cell_and_old_set_when_v7_passes(ps):
     """V7 holds: protocol 6.1's set (A1, R <= 18.3) only. V7 failed: every cell with an
-    agent-free nominal key, at its nominal key's priority; nulls, tier D and tier B cells
-    without a nominal key never."""
+    agent-free nominal key, at its nominal key's priority; nulls and tier D never. Tier B
+    D = 600 (cell 13) has a P1 nominal key since ruling R17c, so it is a phase item too."""
     bank, cells = _design()
     held = ps._key_sets(bank, cells, both=False)
     assert _ids(held["phase"]) == [0, 4] and held["phase_P1"] == held["phase_P2"] == []
+    assert held["phase_B600"] == [] and _ids(held["nominal_B600"]) == [13]
     assert ps._key_sets(bank, cells, False, v7_failed=False)["phase"] == held["phase"]
     failed = ps._key_sets(bank, cells, both=False, v7_failed=True)
     assert _ids(failed["phase"]) == [0, 1, 2, 3, 4, 5, 14]      # tier A, E1 real, tier V
     assert _ids(failed["phase_P1"]) == [6, 7, 8]                # E1 twin, E2, E3
     assert _ids(failed["phase_P2"]) == [9, 10]                  # tier C, recovery
+    assert _ids(failed["phase_B600"]) == [13]                   # tier B D = 600 (P1, R17c)
     every = {i for k in ps.PHASE_ITEMS for i in _ids(failed[k])}
-    assert not every & {11, 12, 13}
+    assert not every & {11, 12}
     # the other items are untouched by V7
     assert {k: _ids(v) for k, v in held.items() if k not in ps.PHASE_ITEMS} == {
         k: _ids(v) for k, v in failed.items() if k not in ps.PHASE_ITEMS}
@@ -218,7 +220,9 @@ def test_v7_remedy_budget_counts_the_expanded_set_and_rule_2_credit(ps, monkeypa
     assert (it["phase_P1"]["n"], it["phase_P1"]["priority"]) == (6, "P1")
     assert (it["phase_P2"]["n"], it["phase_P2"]["priority"]) == (6, "P2")
     assert it["phase_P1"]["item"] == it["phase_P2"]["item"] == "warm"
-    assert proj["phase_keys"]["braking_unknown"] == {"phase": 1, "phase_P1": 0, "phase_P2": 0}
+    assert (it["phase_B600"]["n"], it["phase_B600"]["priority"]) == (3, "P1")     # R17c
+    assert proj["phase_keys"]["braking_unknown"] == {"phase": 1, "phase_P1": 0,
+                                                     "phase_B600": 0, "phase_P2": 0}
     # Without a cache nothing is known yet: every candidate counts.
     nocache = ps._budget(bank, cells, False, _manifest(V7_FAILED), 1)
     assert nocache["items"]["phase"]["n"] == 3 * 7
@@ -233,6 +237,7 @@ def test_v7_remedy_budget_counts_the_expanded_set_and_rule_2_credit(ps, monkeypa
         assert credit[k] == 3 * (len(cs) - len(ps._cut(bank, cs, rule2, k)))
     assert _ids(ps._cut(bank, counted["phase"], rule2, "phase")) == [4]
     assert (credit["phase"], credit["phase_P1"], credit["phase_P2"]) == (15, 3, 3)
+    assert credit["phase_B600"] == 3                    # cell 13 is a 90 deg corner
     # Old behaviour while V7 holds: the credit is the non-180 deg core cells.
     assert ps._rule2_cut_counts(bank, ps._key_sets(bank, cells, False))["phase"] == 3
     # Rule 2 firing (P0 > 35 CPU-h) takes that credit off each phase item.
@@ -240,12 +245,14 @@ def test_v7_remedy_budget_counts_the_expanded_set_and_rule_2_credit(ps, monkeypa
                      cache=cache)
     assert any(c.startswith("rule 2") for c in cut["cuts"])
     assert cut["items"]["phase"]["n"] == 3 * 1 and cut["items"]["phase_P1"]["n"] == 3 * 1
+    assert cut["items"]["phase_B600"]["n"] == 0
 
 
 def test_v7_remedy_keys_stage_solves_phase_keys_after_their_nominal_keys(ps, monkeypatch):
     """The keys stage plans each item's phase-matched keys after its nominal keys are
-    solved (P0 after tier A and E1, P1 after E1 twins / E2 / E3, P2 after tier C and
-    recovery) and skips the flat ones; while V7 holds only the core set is solved."""
+    solved (P0 after tier A and E1, P1 after E1 twins / E2 / E3 and tier B D = 600 (R17c),
+    P2 after tier C and recovery) and skips the flat ones; while V7 holds only the core set
+    is solved."""
     bank, cells = _design()
     solved: set[int] = {14}             # the validation cell's nominal key: validate stage
     calls: list[list[tuple]] = []
@@ -289,11 +296,12 @@ def test_v7_remedy_keys_stage_solves_phase_keys_after_their_nominal_keys(ps, mon
     ps.stage_keys(args)
     assert len(calls) == 6
     # P0's pool solved cell 3's nominal key too (it brakes): flat 2, 7 and nulls get none
-    assert phase_calls() == [[], [0, 1, 3, 4, 5, 14], [], [6, 8], [], [9, 10]]
+    assert phase_calls() == [[], [0, 1, 3, 4, 5, 14], [], [6, 8, 13], [], [9, 10]]
     # each phase pool comes after the pool that solved its cells' nominal keys
     nominal_in = [{c for w, cs in call if w in ("series", "nominal") for c in cs}
                   for call in calls]
-    assert {0, 1, 2, 3, 4, 5} <= nominal_in[0] and {6, 7, 8} <= nominal_in[2]
+    assert {0, 1, 2, 3, 4, 5} <= nominal_in[0] and {6, 7, 8, 13} <= nominal_in[2]
+    assert 13 not in nominal_in[0]
     assert {9, 10} <= nominal_in[4]
 
     calls.clear()

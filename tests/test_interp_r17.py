@@ -6,6 +6,7 @@ hand-built, and files go to tmp dirs only."""
 
 from __future__ import annotations
 
+import dataclasses
 import importlib
 import sys
 from pathlib import Path
@@ -74,6 +75,10 @@ def _bank(n_phases: int = 4, approach: str = "A1"):
                   n_phases=n_phases, flags=("p7",) if n_phases == 16 else ()),
              Cell(1, 1, 1, ("G",), "G", 86.0, 600.0, W=400, P=4.0)]
     return bank, cells
+
+
+# A u = 0 key that brakes by 2.3 at v0 = 86 m/s (a sustained brake, v_min* < v0 - tau).
+_BRAKES = {"v_e": 30.0, "v_min": 20.0, "d_b": 100.0, "v_b": 60.0, "has_brake": True}
 
 
 def _record(kind: str, phase: int, *, key_id: str = "", agent: str = "", snapshot: str = "",
@@ -273,11 +278,12 @@ def test_R17a_anchored_jobs_one_per_deterministic_phase(ps):
 
 
 def test_R17a_anchored_job_solves_a_missing_nominal_key_once_per_cell(ps, monkeypatch):
-    """Review finding 1: a cell without a cached nominal key (tier B D = 600) is solved
-    once per (agent, cell) job, not once per phase by concurrent workers; a phase that fails
-    leaves the others' keys and reports itself."""
+    """Review finding 1: a cell without a cached nominal key is solved once per (agent,
+    cell) job, not once per phase by concurrent workers (since ruling R17c only a fallback:
+    the keys stage solves tier B D = 600's too), and marked ``nominal_inline``; a phase that
+    fails leaves the others' keys and reports itself."""
     bank, cells = _bank()
-    cold = _record("nominal", 0)
+    cold = _record("nominal", 0, measures_=dict(_BRAKES))       # brakes by 2.3
     solves, anchored = [], []
 
     def fake_key_for(cell, kind, phase=0, agent="", cache=None, bank=None, **kw):
@@ -301,8 +307,11 @@ def test_R17a_anchored_job_solves_a_missing_nominal_key_once_per_cell(ps, monkey
     monkeypatch.setattr(ak, "anchored_key", fake_anchored)
     det = _det([(cells[0].cell_id, k) for k in range(4)])
     (job,) = ps.anchored_jobs([cells[0]], "f.npz", det, "S1", 7, "P1")
-    out = ps._anchored_job(job)
-    assert solves == [cells[0].cell_id]
+    out = ps._anchored_job(dict(job, v7_failed=True, rule2=False))
+    assert solves == [cells[0].cell_id] and out["nominal_inline"] is True
+    # phases 1 and 3 had no phase key although the keys stage solves one (V7 failed, the
+    # nominal key brakes): anchored from the u = 0 key (R17a's fallback)
+    assert out["u0_base_phases"] == [1, 3]
     assert anchored == [(cold.key_id, "run0", 0), (cold.key_id, "run1", 1),
                         (cold.key_id, "run3", 3)]
     assert out["phases"] == [0, 1, 3] and [k["phase"] for k in out["keys"]] == [0, 1, 3]
@@ -399,6 +408,10 @@ def test_R17a_anchored_keys_stage_solves_a_key_per_phase(ps, monkeypatch, tmp_pa
     monkeypatch.setattr(A, "kappa_clipped_pairs", lambda rt: set())
     monkeypatch.setattr(A, "viability_targets", lambda t, kt: {})
     monkeypatch.setattr(ps, "_pool", fake_pool)
+    monkeypatch.setattr(ps, "_anchored_preflight", lambda *a, **k: dict(
+        cells=2, nominal_missing=[], b600_nominal_missing=[], phase_missing=[],
+        b600_phase_missing=[], viability_nominal_missing=[]))
+    monkeypatch.setattr(ps, "_tuned_cv", lambda: None)
     monkeypatch.setattr(agents, "update_manifest", lambda fn: None)
     ps.stage_anchored_keys(SimpleNamespace(priority="P0", workers=1, force=False))
     got = [(j["cell"].cell_id, k, r) for j in pooled for k, r in j["phases"]]
@@ -553,7 +566,7 @@ def test_R17a_budget_counts_p1_anchored_keys_as_the_stage_selects_them(ps):
     assert got["anchored_S"]["p7_keys"] == 3 * 16
     assert got["anchored_B"]["keys"] == 3 * 4 and got["anchored_B"]["u0_keys"] == 3
     assert got["anchored_B"]["protocol_u0"] == 108
-    # the anchored stage solves tier B D = 600's missing nominal keys: budgeted once per cell
+    # ruling R17c: the keys stage solves tier B D = 600's nominal keys (P1), one per cell
     m = SimpleNamespace(validation={}, budget={})
     it = ps._budget(SimpleNamespace(stimuli=stims), cells, True, m, 1)["items"]
     assert it["nominal_B600"]["n"] == 1 and it["nominal_B600"]["priority"] == "P1"
@@ -710,3 +723,434 @@ def test_R17b_analysis_reads_the_key_at_each_of_the_16_phases(monkeypatch, tmp_p
     assert rt["v_e_star_k"] == pytest.approx(30.0 + np.arange(16) / 10)
     assert rt["dd_b"] == pytest.approx(95.0 - (100.0 + np.arange(16)))
     assert rt["e_ve"] == pytest.approx(33.0 / (30.0 + np.arange(16) / 10) - 1.0)
+
+
+# ------------------------------------------------------------------------- (c) tier B D = 600
+
+# Ruling R17c: tier B D = 600 cells (the band reads e_ve^RA) get nominal keys in the keys
+# stage (P1) and, with V7 failed, phase-matched keys at their phases (braking cells only),
+# so their per-phase re-anchored keys start from and fall back to the key at their phase.
+# cell -> (tiers, approach, D, (R, theta), direction, pair); synthetic, v0 = 60 m/s.
+_B_ROWS = {
+    0: (("A",), "A1", 600.0, (14.6, 90.0), 1, 0),      # tier A A1, core
+    1: (("B",), "B", 600.0, (9.4, 90.0), 1, 1),        # B D = 600, left
+    2: (("B",), "B", 600.0, (9.4, 90.0), -1, 1),       # its mirror
+    3: (("B",), "B", 600.0, (18.3, 180.0), 1, 2),      # B D = 600, 180 deg, left
+    4: (("B",), "B", 600.0, (18.3, 180.0), -1, 2),     # its mirror
+    5: (("B",), "B", 250.0, (9.4, 90.0), 1, 3),        # B D = 250: no key
+    6: (("B",), "REC", 100.0, (9.4, 180.0), 1, 4),     # recovery (P2)
+    7: (("B",), "B", 600.0, (22.9, 90.0), 1, 5),       # B D = 600, flat by its key
+}
+_B_BRAKING = {0: True, 1: True, 2: True, 3: True, 4: True, 5: True, 6: True, 7: False}
+
+
+def _b_design():
+    lm = Landmarks(1000.0, 1010.0, 1020.0, 1030.0, 1040.0)
+    stims, cells = [], []
+    for i, (tiers, ap, D, (R, th), d, pair) in _B_ROWS.items():
+        geo = Geometry(R, th, np.nan, R, th, 40.0, 0.0, 1020.0, d, False, 6.0)
+        spec = CornerSpec(R=R, theta_deg=th, direction=d, width=12.0, l_r=20.0)
+        stims.append(Stimulus(i, f"syn/R{R}/T{th}/{'L' if d > 0 else 'R'}/{ap}{D:g}",
+                              "synthetic", tiers, d, -1, lm, geo, spec))
+        cells.append(Cell(i, i, pair, tiers, ap, 60.0, D, W=400, P=4.0,
+                          flags=("recovery",) if ap == "REC" else ()))
+    return SimpleNamespace(stimuli=stims), cells
+
+
+def test_R17c_tier_b_d600_cells_are_a_p1_nominal_and_phase_item(ps):
+    """Tier B D = 600 is the keys stage's P1 nominal item 'nominal_B600' (one direction
+    with the mirror shortcut, both without it) whatever V7 says, and with V7 failed the phase
+    item 'phase_B600'; tier B at D = 250 and recovery cells are not in either. Its cells are
+    exactly the tier B cells the anchored stage re-anchors."""
+    bank, cells = _b_design()
+    assert [ps._b600_cell(c) for c in cells] == [False, True, True, True, True, False, False,
+                                                 True]
+    assert ps.PHASE_ITEMS == ("phase", "phase_P1", "phase_B600", "phase_P2")
+    held = ps._key_sets(bank, cells, both=False)
+    assert _ids(held["nominal_B600"]) == [1, 3, 7] and held["phase_B600"] == []
+    both = ps._key_sets(bank, cells, both=True)
+    assert _ids(both["nominal_B600"]) == [1, 2, 3, 4, 7]
+    failed = ps._key_sets(bank, cells, True, v7_failed=True)
+    assert _ids(failed["phase_B600"]) == [1, 2, 3, 4, 7]
+    assert _ids(failed["phase_P2"]) == [6]
+    assert not {1, 2, 3, 4, 7} & {i for k in ("phase", "phase_P1", "phase_P2")
+                                   for i in _ids(failed[k])}
+    assert not {5} & {i for k, v in failed.items() for i in _ids(v)}
+    # the anchored stage's tier B cells (both directions: anchored keys start from each
+    # agent's own state) all have a keys-stage nominal key now
+    for gen in (True, False):
+        sel = [c for c in ps.anchored_cells(cells, bank, {}, "G1", "P1", gen) if c.approach == "B"]
+        assert _ids(sel) == _ids(both["nominal_B600"])
+
+
+def _manifest_v(validation, cuts=None):
+    return SimpleNamespace(validation=validation, budget={"cuts": cuts} if cuts else {},
+                           snapshots=[])
+
+
+def test_R17c_budget_counts_b600_nominal_and_phase_keys(ps, monkeypatch):
+    """'nominal_B600' (P1, cold timing) counts one key per cell solved; 'phase_B600' (P1,
+    warm) 3 keys per braking (or not yet known) cell, only while V7 failed; budget rule 2
+    keeps 180 deg cells only, as for every phase item."""
+    bank, cells = _b_design()
+    monkeypatch.setattr(ps, "_nominal_braking", lambda b, c, cache: _B_BRAKING[c.cell_id])
+    monkeypatch.setattr(ps, "_anchored_g_count", lambda bank, cells: dict(
+        n=0, source="test", r12_below_support=0, protocol=96))
+    monkeypatch.setattr(ps, "_frozen_regimes", lambda: None)
+    cache = object()
+    proj = ps._budget(bank, cells, True, _manifest_v(V7_FAILED), 1, cache=cache)
+    it = proj["items"]
+    assert (it["nominal_B600"]["n"], it["nominal_B600"]["priority"],
+            it["nominal_B600"]["item"]) == (5, "P1", "nominal")
+    # cells 1-4 brake, 7 is flat
+    assert (it["phase_B600"]["n"], it["phase_B600"]["priority"],
+            it["phase_B600"]["item"]) == (3 * 4, "P1", "warm")
+    pk = proj["phase_keys"]
+    assert pk["candidates"]["phase_B600"] == 5 and pk["counted"]["phase_B600"] == 4
+    assert pk["keys"]["phase_B600"] == 12 and pk["braking_unknown"]["phase_B600"] == 0
+    # one direction with the mirror shortcut
+    one = ps._budget(bank, cells, False, _manifest_v(V7_FAILED), 1, cache=cache)["items"]
+    assert one["nominal_B600"]["n"] == 3 and one["phase_B600"]["n"] == 3 * 2
+    # before the nominal keys exist every candidate is counted (an upper bound)
+    nocache = ps._budget(bank, cells, True, _manifest_v(V7_FAILED), 1)["items"]
+    assert nocache["phase_B600"]["n"] == 3 * 5
+    # V7 holds: the nominal keys stay, no phase item
+    held = ps._budget(bank, cells, True, _manifest_v(V7_PASSED), 1, cache=cache)["items"]
+    assert held["nominal_B600"]["n"] == 5 and "phase_B600" not in held
+    # rule 2's credit is what ``_cut`` drops: the 90 deg cells 1 and 2
+    sets = ps._key_sets(bank, cells, True, v7_failed=True)
+    counted = {k: ps._phase_targets(bank, sets[k], cache, True, unknown=True)
+               for k in ps.PHASE_ITEMS}
+    assert ps._rule2_cut_counts(bank, sets, counted)["phase_B600"] == 3 * 2
+    assert _ids(ps._cut(bank, counted["phase_B600"], {"cuts": ["rule 2: x"]},
+                        "phase_B600")) == [3, 4]
+
+
+def _stub_keys_stage(ps, monkeypatch, bank, cells, validation, solved: set, calls: list):
+    def fake_pool(jobs, workers, log, fn=None, init=None):
+        calls.append([(j["what"], tuple(_ids(j.get("cells", [])))) for j in jobs])
+        for j in jobs:
+            if j["what"] in ("series", "nominal"):
+                solved.update(_ids(j["cells"]))
+        return [dict(what=j["what"], label=j["label"], keys=[], cpu=0.0) for j in jobs]
+
+    monkeypatch.setattr(ps, "_nominal_braking", lambda b, c, cache: _B_BRAKING[c.cell_id]
+                        if c.cell_id in solved else None)
+    monkeypatch.setattr(ps, "_anchored_g_count", lambda bank, cells: dict(
+        n=0, source="test", r12_below_support=0, protocol=96))
+    monkeypatch.setattr(ps, "_frozen_regimes", lambda: None)
+    monkeypatch.setattr(ps, "_pool", fake_pool)
+    monkeypatch.setattr(ps, "_refuse_after_tag", lambda *a, **k: None)
+    monkeypatch.setattr(ps, "_require_steps", lambda *a, **k: None)
+    monkeypatch.setattr(ps, "_design", lambda laid_out=False: (bank, cells))
+    monkeypatch.setattr(ps, "_manifest", lambda: _manifest_v(validation))
+    monkeypatch.setattr(ps, "_tuned_cv", lambda: None)
+    monkeypatch.setattr(ps, "_flag_budget_cuts", lambda bank, cells, proj, log: cells)
+    monkeypatch.setattr(ps, "_save_cells", lambda bank, cells, log, why: ("h", cells))
+    monkeypatch.setattr(ps, "_tier_d_doses", lambda *a: [])
+    monkeypatch.setattr(ps, "_acceptance", lambda *a: None)
+    monkeypatch.setattr(measures, "model_tables", lambda: None)
+    monkeypatch.setattr(io, "StageLog", _NullLog)
+    monkeypatch.setattr(agents, "update_manifest", lambda fn: None)
+    monkeypatch.setattr(ak, "KeyCache", lambda: SimpleNamespace(
+        get_flag=lambda name, default=None: False))                  # V5 failed: both
+    monkeypatch.setattr(ak, "_x64", lambda: None)
+    monkeypatch.setattr(ak, "key_for", lambda *a, **k: None)
+    monkeypatch.setattr(ak, "refresh_phase_cycles", lambda bank, cells, cache: cells)
+    monkeypatch.setattr(ak, "refresh_stale", lambda *a: {"refreshed": [], "moved": []})
+
+
+def test_R17c_keys_stage_solves_b600_nominal_then_phase_keys_at_p1(ps, monkeypatch):
+    """The keys stage solves tier B D = 600's nominal keys in P1's pool (both directions,
+    as descending-R series, cold: no warm start), then, with V7 failed, the braking cells'
+    phase-matched keys after them with the other P1 phase items (flat cell 7 gets none);
+    nothing of tier B D = 600 at P0 or P2."""
+    bank, cells = _b_design()
+    solved: set[int] = set()
+    calls: list = []
+    _stub_keys_stage(ps, monkeypatch, bank, cells, V7_FAILED, solved, calls)
+    ps.stage_keys(SimpleNamespace(priority="P2", workers=1, smoke=False, force=False,
+                                  layout_only=False))
+    # P0 nominal, P0 phase / backed-off, P1 nominal, P1 phase, P2 nominal, P2 phase
+    assert len(calls) == 6
+    series = [cs for w, cs in calls[2] if w == "series"]
+    assert sorted(c for cs in series for c in cs) == [1, 2, 3, 4, 7]
+    # a series per (theta, direction, v0, D), in descending R: no cell is solved warm
+    assert all(w in ("series", "nominal", "socp") for w, _ in calls[2])
+    assert {w for w, _ in calls[3]} == {"phase"}
+    assert sorted(c for _, cs in calls[3] for c in cs) == [1, 2, 3, 4]
+    b600 = {1, 2, 3, 4, 7}
+    for i in (0, 1, 4, 5):
+        assert not b600 & {c for _, cs in calls[i] for c in cs}
+    # at P0 only, tier B D = 600 gets nothing
+    calls.clear()
+    solved.clear()
+    ps.stage_keys(SimpleNamespace(priority="P0", workers=1, smoke=False, force=False,
+                                  layout_only=False))
+    assert not b600 & {c for call in calls for _, cs in call for c in cs}
+    # V7 holds: the nominal keys at P1, no phase keys
+    calls.clear()
+    solved.clear()
+    _stub_keys_stage(ps, monkeypatch, bank, cells, V7_PASSED, solved, calls)
+    ps.stage_keys(SimpleNamespace(priority="P1", workers=1, smoke=False, force=False,
+                                  layout_only=False))
+    assert len(calls) == 3
+    assert b600 <= {c for w, cs in calls[2] if w == "series" for c in cs}
+    assert not b600 & {c for w, cs in calls[1] if w == "phase" for c in cs}
+
+
+def test_R17c_anchored_job_finds_the_keys_cached_and_solves_inline_only_as_fallback(
+        ps, monkeypatch):
+    """With the keys stage's nominal and phase-matched keys cached, the anchored job solves
+    nothing but the re-anchored keys, each from the key at its phase; only a missing nominal
+    key is solved inline (``nominal_inline``, with the job's tuned c_v)."""
+    bank, cells = _bank(approach="B")
+    nom = _record("nominal", 0)
+    phase = {k: _record("phase", k) for k in (1, 2, 3)}
+    have = {"nominal": True}
+    calls, solves = [], []
+
+    def fake_key_for(cell, kind, k=0, agent="", cache=None, bank=None, **kw):
+        if kind == "nominal":
+            return nom if have["nominal"] else None
+        return phase.get(k) if kind == "phase" else None
+
+    def fake_full(bank_, cell, cache=None, tables=None, **kw):
+        solves.append(kw.get("q_cv"))
+        return nom
+
+    def fake_anchored(bank_, cell, base, agent, traj, cache, *, snapshot="", phase=0, **kw):
+        calls.append((base.key_id, phase))
+        return _record("anchored", phase, agent=agent, snapshot=snapshot)
+
+    monkeypatch.setattr(ps, "_W", dict(bank=bank, tables=None, cache=object()))
+    monkeypatch.setattr(rollout, "load_rollouts", lambda p: ({"det": {}}, {}))
+    monkeypatch.setattr(measures, "trajectory_from_rollout", lambda arr, i, g: f"run{i}")
+    monkeypatch.setattr(ak, "key_for", fake_key_for)
+    monkeypatch.setattr(ak, "full_recipe", fake_full)
+    monkeypatch.setattr(ak, "anchored_key", fake_anchored)
+    (job,) = ps.anchored_jobs([cells[0]], "f.npz", _det([(0, k) for k in range(4)]), "G1",
+                              7, "P1")
+    out = ps._anchored_job(dict(job, q_cv=0.9))
+    assert "error" not in out and solves == []
+    assert "nominal_inline" not in out and "u0_base_phases" not in out
+    assert calls == [(nom.key_id, 0)] + [(phase[k].key_id, k) for k in (1, 2, 3)]
+    # the fallback: no cached nominal key (keys stage not run since R17c)
+    have["nominal"] = False
+    out = ps._anchored_job(dict(job, q_cv=0.9))
+    assert solves == [0.9] and out["nominal_inline"] is True and "error" not in out
+
+
+def test_R17c_anchored_preflight_reports_missing_nominal_and_phase_keys(ps, tmp_path):
+    """The anchored stage's pre-flight lists the job cells whose nominal key the keys stage
+    has not cached and, at each job phase k > 0, the missing or unverified phase-matched
+    keys the keys stage would have solved (braking cells when V7 failed; budget rule 2's
+    cut cells excepted). It looks up, never solves or writes."""
+    bank, cells = _bank(approach="B")
+    c = cells[0]
+    cache = ak.KeyCache(tmp_path / "keys")
+    jobs = ps.anchored_jobs([c], "f.npz", _det([(0, k) for k in range(4)]), "G1", 7, "P1")
+    pre = ps._anchored_preflight(bank, jobs, cache, True)
+    assert pre["cells"] == 1 and pre["nominal_missing"] == [0]
+    assert pre["b600_nominal_missing"] == [0] and pre["phase_missing"] == []
+    braking = {"v_e": 30.0, "v_min": 20.0, "d_b": 100.0, "v_b": 60.0, "has_brake": True}
+    cache.put(_record("nominal", 0, key_id=ak.expected_key_id(bank, c, "nominal", 0),
+                      x0=ak._cell_x0(c, 0), measures_=braking))
+    pre = ps._anchored_preflight(bank, jobs, cache, True)
+    assert pre["nominal_missing"] == [] and pre["phase_missing"] == [(0, 1), (0, 2), (0, 3)]
+    assert pre["b600_phase_missing"] == pre["phase_missing"]
+    assert ps._anchored_preflight(bank, jobs, cache, False)["phase_missing"] == []   # V7 holds
+    assert ps._anchored_preflight(bank, jobs, cache, True, ["rule 2: x"])["phase_missing"] == []
+    for k in (1, 2, 3):
+        cache.put(_record("phase", k, key_id=ak.expected_key_id(bank, c, "phase", k),
+                          x0=ak._cell_x0(c, k), measures_=braking,
+                          status="unsolved" if k == 2 else "verified"))
+    assert ps._anchored_preflight(bank, jobs, cache, True)["phase_missing"] == [(0, 2)]
+    # a flat nominal key: no phase-matched keys are expected (6.5: braking cells only)
+    cache.put(_record("nominal", 0, key_id=ak.expected_key_id(bank, c, "nominal", 0),
+                      x0=ak._cell_x0(c, 0), measures_=dict(braking, has_brake=False)))
+    assert ps._anchored_preflight(bank, jobs, cache, True)["phase_missing"] == []
+
+
+    # viability jobs' cells without a nominal key are listed apart (not an R17c fallback);
+    # a cell with a re-anchored job is not listed twice
+    d250 = Cell(2, 0, 2, ("B",), "B", 86.0, 250.0, W=400, P=4.0)
+    empty = ak.KeyCache(tmp_path / "empty")
+    via = [dict(what="viability", cell=d250), dict(what="viability", cell=c)]
+    pre = ps._anchored_preflight(bank, jobs + via, empty, True)
+    assert pre["nominal_missing"] == [0] and pre["viability_nominal_missing"] == [2]
+    assert pre["cells"] == 1
+
+
+def _stub_anchored_stage(ps, monkeypatch, tmp_path, finals, cuts, vt, pre, pools, mm):
+    """``stage_anchored_keys`` on ``_b_design`` with its pool, pre-flight and inputs stubbed:
+    ``pools`` collects each pool's jobs; a 'nominal' job reports ``nominal_inline`` and cell
+    7's re-anchored jobs ``u0_base_phases`` [1, 3]. Returns the pre-flight's arguments."""
+    bank, cells = _b_design()
+    reg = {"G1": SimpleNamespace(q1=8.0, q10=20.0, r_clip_max=5.0)}
+    det = _det([(c.cell_id, k) for c in cells for k in range(4)])
+    f = tmp_path / "G1.npz"
+    f.write_bytes(b"x")
+    pre_args = []
+
+    def fake_pool(jobs, workers, log, fn=None, init=None):
+        pools.append(list(jobs))
+        out = []
+        for j in jobs:
+            r = dict(label=j["label"], keys=[], cpu=0.0, cells=[j["cell"].cell_id],
+                     what=j["what"])
+            if j["what"] == "nominal":
+                r["nominal_inline"] = True
+            elif j["what"] == "anchored" and j["cell"].cell_id == 7:
+                r["u0_base_phases"] = [1, 3]
+            out.append(r)
+        return out
+
+    def fake_pre(bank_, jobs, cache, v7_failed, cuts=()):
+        pre_args.append((len(jobs), v7_failed, list(cuts)))
+        return dict(pre)
+
+    monkeypatch.setattr(ps, "_require_tag", lambda *a, **k: None)
+    monkeypatch.setattr(ps, "_design", lambda laid_out=False: (bank, cells))
+    monkeypatch.setattr(support, "load_support", lambda d: SimpleNamespace(regimes=reg))
+    monkeypatch.setattr(ps, "_manifest", lambda: _manifest_v(V7_FAILED, cuts))
+    monkeypatch.setattr(ps, "_finals", lambda m: {a: SimpleNamespace(timesteps=7)
+                                                  for a in finals})
+    monkeypatch.setattr(measures, "model_tables", lambda: None)
+    monkeypatch.setattr(ak, "KeyCache", lambda: None)
+    monkeypatch.setattr(io, "StageLog", _NullLog)
+    monkeypatch.setattr(io, "rollout_path", lambda a, t: f)
+    monkeypatch.setattr(rollout, "load_rollouts", lambda p: ({"det": det}, {}))
+    monkeypatch.setattr(ps, "_beaten_jobs", lambda *a: ([], {"cells_checked": 0, "beaten": {}}))
+    monkeypatch.setattr(A, "CachedKeys", lambda *a, **k: None)
+    monkeypatch.setattr(A, "key_table", lambda *a, **k: {})
+    monkeypatch.setattr(ps, "_run_table", lambda *a, **k: {"pair": np.array([10])})
+    monkeypatch.setattr(A, "kappa_clipped_pairs", lambda rt: set())
+    monkeypatch.setattr(A, "viability_targets", lambda t, kt: vt)
+    monkeypatch.setattr(ps, "_pool", fake_pool)
+    monkeypatch.setattr(ps, "_anchored_preflight", fake_pre)
+    monkeypatch.setattr(ps, "_tuned_cv", lambda: 0.9)
+    monkeypatch.setattr(agents, "update_manifest", lambda fn: fn(mm))
+    return pre_args
+
+
+def test_R17c_anchored_stage_reports_the_preflight_and_fallbacks(ps, monkeypatch, tmp_path,
+                                                                capsys):
+    """The anchored stage runs the pre-flight over its jobs (V7's verdict and the budget
+    cuts from the manifest), solves a missing nominal key once before the jobs, hands every
+    job Q's tuned c_v and the pre-flight's V7 and rule 2 switches, and records the
+    pre-flight counts, the nominal keys solved here and the u = 0-based phases in the
+    manifest status. Its advice can be followed (review of R17c, finding 3): the keys stage
+    runs before the tag, after it only as a logged deviation."""
+    pools, mm = [], SimpleNamespace(lists={}, validation={}, deviations=[])
+    pre = dict(cells=6, nominal_missing=[7], b600_nominal_missing=[7], phase_missing=[(1, 2)],
+               b600_phase_missing=[(1, 2)], viability_nominal_missing=[])
+    pre_args = _stub_anchored_stage(ps, monkeypatch, tmp_path, ["G1"], ["rule 3: x"], {}, pre,
+                                    pools, mm)
+    ps.stage_anchored_keys(SimpleNamespace(priority="P1", workers=1, force=False))
+    assert [[(j["what"], j["cell"].cell_id) for j in p] for p in pools[:1]] == [[("nominal", 7)]]
+    # P0: G1's A1 cell (tail); P1: G1's five tier B D = 600 cells
+    assert len(pools) == 2 and sorted(j["cell"].cell_id for j in pools[1]) == [0, 1, 2, 3, 4, 7]
+    assert pre_args == [(6, True, ["rule 3: x"])]
+    assert all(j["q_cv"] == 0.9 for p in pools for j in p)
+    assert all(j["v7_failed"] is True and j["rule2"] is False for j in pools[1])
+    st = mm.validation["anchored_keys"]["P1"]
+    assert st["preflight"] == dict(cells=6, nominal_missing=1, b600_nominal_missing=1,
+                                   phase_missing=1, b600_phase_missing=1,
+                                   viability_nominal_missing=0)
+    assert st["nominal_inline"] == [7] and st["viability_nominal_inline"] == []
+    assert st["u0_base_phases"] == 2 and st["errors"] == 0
+    said = capsys.readouterr().out
+    assert "should have solved them before the tag" in said
+    assert "--post-tag-deviation" in said and "before the tag) solves them" not in said
+
+
+def test_R17c_review_missing_nominal_keys_are_solved_once_and_viability_apart(
+        ps, monkeypatch, tmp_path):
+    """Review of R17c, findings 2 and 5: at P1 a tier B D = 600 cell has a re-anchored job
+    from every final (here G1 and S1); a nominal key the keys stage did not cache is solved
+    once, in a pool before those jobs, not by each job at once. A viability job's cell with
+    no nominal key (tier B D = 250: no keys-stage item solves it) is solved the same way but
+    reported apart (``viability_nominal_inline``), not as an R17c fallback."""
+    pools, mm = [], SimpleNamespace(lists={}, validation={}, deviations=[])
+    pre = dict(cells=6, nominal_missing=[1, 7], b600_nominal_missing=[1, 7], phase_missing=[],
+               b600_phase_missing=[], viability_nominal_missing=[5])
+    vt = dict(agent=np.array(["G1", "G1"]), timesteps=np.array([7, 7]), cell=np.array([5, 1]),
+              phase=np.array([0, 2]))
+    _stub_anchored_stage(ps, monkeypatch, tmp_path, ["G1", "S1"], ["rule 2: x"], vt, pre,
+                         pools, mm)
+    ps.stage_anchored_keys(SimpleNamespace(priority="P1", workers=1, force=False))
+    assert len(pools) == 2
+    assert [(j["what"], j["cell"].cell_id) for j in pools[0]] == [
+        ("nominal", 1), ("nominal", 7), ("nominal", 5)]
+    jobs = [(j["what"], j["cell"].cell_id) for j in pools[1]]
+    assert jobs.count(("anchored", 1)) == 2 and jobs.count(("anchored", 7)) == 2   # G1, S1
+    assert ("viability", 5) in jobs and ("viability", 1) in jobs
+    assert all(j["rule2"] is True for j in pools[1])
+    st = mm.validation["anchored_keys"]["P1"]
+    assert st["nominal_inline"] == [1, 7] and st["viability_nominal_inline"] == [5]
+    assert st["preflight"]["viability_nominal_missing"] == 1
+
+
+def test_R17c_review_u0_based_phases_are_the_preflights_missing_phase_keys(
+        ps, monkeypatch, tmp_path):
+    """Review of R17c, finding 1: the worker counts a phase k > 0 anchored from the u = 0
+    key as a fallback (``u0_base_phases``) only where the keys stage solves a phase-matched
+    key (``_phase_key_expected``), so it equals the pre-flight's ``phase_missing``: not on a
+    cell whose nominal key has a sustained brake but does not brake by 2.3, not on a
+    non-core cell while V7 holds, not on budget rule 2's 90 deg cells; on a P7 cell at every
+    phase whatever V7 says."""
+    monkeypatch.setattr(rollout, "load_rollouts", lambda p: ({"det": {}}, {}))
+    monkeypatch.setattr(measures, "trajectory_from_rollout", lambda arr, i, g: f"run{i}")
+    monkeypatch.setattr(ak, "anchored_key", lambda *a, phase=0, **k: _record("anchored", phase))
+    not_23 = dict(_BRAKES, v_min=85.9)              # a sustained brake, v_min* >= v0 - tau
+    cases = [  # (phases, nominal key's measures, V7 failed, budget cuts, phases counted)
+        (4, _BRAKES, True, [], [1, 2, 3]),
+        (4, not_23, True, [], []),
+        (4, _BRAKES, False, [], []),                # A1 R 40: not a core cell
+        (4, _BRAKES, True, ["rule 2: x"], []),      # 90 deg
+        (16, dict(_BRAKES, has_brake=False), False, [], list(range(1, 16))),     # P7
+    ]
+    for i, (n_ph, meas, v7, cuts, want) in enumerate(cases):
+        bank, cells = _bank(n_phases=n_ph)
+        c = cells[0]
+        cache = ak.KeyCache(tmp_path / f"keys{i}")
+        cache.put(_record("nominal", 0, key_id=ak.expected_key_id(bank, c, "nominal", 0),
+                          x0=ak._cell_x0(c, 0), measures_=meas))
+        (job,) = ps.anchored_jobs([c], "f.npz", _det([(0, k) for k in range(n_ph)]), "G1", 7,
+                                  "P0")
+        pre = ps._anchored_preflight(bank, [job], cache, v7, cuts)
+        monkeypatch.setattr(ps, "_W", dict(bank=bank, tables=None, cache=cache))
+        out = ps._anchored_job(dict(job, v7_failed=v7, rule2=bool(cuts)))
+        assert "error" not in out and out["phases"] == list(range(n_ph)), i
+        assert [k for _, k in pre["phase_missing"]] == want, i
+        assert out.get("u0_base_phases", []) == want, i
+
+
+def test_R17c_review_p1_phase_cycles_follow_the_nominal_keys_whatever_v7_says(
+        ps, monkeypatch):
+    """Review of R17c, finding 6: once P1's nominal keys are solved, the phase cycles are
+    refreshed from them (D26) whether or not V7 failed, so tier B D = 600's P comes from its
+    nominal key in both cases (as E1 twins', E2's and E3's, and after P2's pool tier C's and
+    recovery's); while V7 holds no P1 or P2 phase pool runs."""
+    bank, cells = _b_design()
+    for validation, n_pools in ((V7_PASSED, 4), (V7_FAILED, 6)):
+        solved: set[int] = set()
+        calls: list = []
+        saved: list = []
+        _stub_keys_stage(ps, monkeypatch, bank, cells, validation, solved, calls)
+        monkeypatch.setattr(ak, "refresh_phase_cycles", lambda bank_, cs, cache, solved=solved: [
+            dataclasses.replace(c, P=5.0) if ps._b600_cell(c) and c.cell_id in solved else c
+            for c in cs])
+
+        def save(bank_, cs, log, why, saved=saved, calls=calls):
+            saved.append((why, len(calls), sorted(c.cell_id for c in cs if c.P == 5.0)))
+            return "h", cs
+
+        monkeypatch.setattr(ps, "_save_cells", save)
+        ps.stage_keys(SimpleNamespace(priority="P2", workers=1, smoke=False, force=False,
+                                      layout_only=False))
+        assert len(calls) == n_pools, validation
+        # P0's refresh (always saved), then P1's, after P1's pool, with the new P
+        assert saved == [("phase cycles from the nominal keys", 1, []),
+                         ("phase cycles from the P1 nominal keys", 3, [1, 2, 3, 4, 7])]

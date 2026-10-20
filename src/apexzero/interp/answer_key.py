@@ -2995,6 +2995,11 @@ BUDGET_ITEMS = {
     # V7's remedy (6.5, V7 failed on speeds): phase-matched keys for the braking cells of the
     # P1 and P2 nominal-key items too, each at the priority of its nominal key.
     "phase_P1": ("warm", "P1"), "phase_P2": ("warm", "P2"),
+    # Ruling R17c: tier B D = 600 cells (the band reads e_ve^RA there) get their nominal keys
+    # in the keys stage (cold, one per cell solved), and under V7's remedy phase-matched keys
+    # at their phases (warm from the nominal key), so per-phase re-anchored keys (R17a) start
+    # from and fall back to the key at their own phase.
+    "nominal_B600": ("nominal", "P1"), "phase_B600": ("warm", "P1"),
 }
 # Budget rule 2's cuts: tier A 180 deg cells with R >= 35.8 (3 radii <= 55.9 x A1, A2, each a
 # nominal and a backed-off key; ruling R7 corrects the protocol's "5 geometries" and keeps the

@@ -1076,8 +1076,17 @@ def _version(bank, c) -> str:
     return bank.stimuli[c.stim_id].name.rsplit("/", 1)[-1]
 
 
-PHASE_ITEMS = ("phase", "phase_P1", "phase_P2")     # phase-matched keys at P0, P1, P2
+# Phase-matched keys at P0, P1 and P2; 'phase_B600' (P1) holds tier B D = 600's (ruling R17c).
+PHASE_ITEMS = ("phase", "phase_P1", "phase_B600", "phase_P2")
 PHASE_R_MAX = 18.3      # 6.1: phase-matched keys on the A1 cells with R <= 18.3 (P2b, P7's null)
+B600_D = 600.0          # tier B's free approach whose band reads e_ve^RA (2.2, analysis uses_ra)
+
+
+def _b600_cell(c) -> bool:
+    """A tier B D = 600 cell (approach 'B', D = 600 m): the free approaches whose band reads
+    e_ve^RA besides A1 (``analysis`` ``uses_ra``). Tier B's (310 km/h, 600 m) cells are the
+    A1 cells (approach 'A1'), so these are the other three speeds, both directions."""
+    return bool(c.approach == "B" and c.D is not None and abs(float(c.D) - B600_D) < 1e-6)
 
 
 def _core_phase_cell(bank, c) -> bool:
@@ -1140,7 +1149,13 @@ def _key_sets(bank, cells: list, both: bool, v7_failed: bool = False) -> dict[st
     keys only) have none. Only braking candidates get keys (``_phase_targets``: known once
     the nominal key is solved); the core cells keep theirs regardless. Ruling R17b: P7's
     20 cells (``_p7_cell``) get keys at all 16 phases in every case, so while V7 holds
-    'phase' holds them too (R 28.6 and 55.9 besides the core set)."""
+    'phase' holds them too (R 28.6 and 55.9 besides the core set).
+
+    Ruling R17c: tier B D = 600 cells (``_b600_cell``; the band reads e_ve^RA there) are a
+    P1 nominal-key item, 'nominal_B600' (one direction with the mirror shortcut, both without
+    it), solved as protocol 6.2's descending-R series like tier A's; when V7 failed they are
+    the phase item 'phase_B600' (P1, braking cells only), so their per-phase re-anchored
+    keys (R17a) start from, and fall back to, the key at their own phase."""
     cs = _one_direction(bank, cells, both)
     sets = {
         "nominal_A": [c for c in cs if "A" in c.tiers and c.approach in ("A1", "A2")],
@@ -1154,9 +1169,10 @@ def _key_sets(bank, cells: list, both: bool, v7_failed: bool = False) -> dict[st
                            ("F1/real/real/real", "F2/lambda"))],
         "tierC": [c for c in cs if "C" in c.tiers],
         "recovery": [c for c in cs if c.approach == "REC"],
+        "nominal_B600": [c for c in cs if _b600_cell(c)],
     }
     sets["phase"] = [c for c in sets["nominal_A"] if _core_phase_cell(bank, c) or _p7_cell(c)]
-    sets["phase_P1"], sets["phase_P2"] = [], []
+    sets["phase_P1"], sets["phase_B600"], sets["phase_P2"] = [], [], []
     if v7_failed:
         seen: set[int] = set()
 
@@ -1168,6 +1184,7 @@ def _key_sets(bank, cells: list, both: bool, v7_failed: bool = False) -> dict[st
         sets["phase"] = fresh(sets["nominal_A"] + sets["nominal_E1"]
                               + [c for c in cs if "V" in c.tiers])
         sets["phase_P1"] = fresh(sets["E1_twins"] + sets["E2"] + sets["E3"])
+        sets["phase_B600"] = fresh(sets["nominal_B600"])
         sets["phase_P2"] = fresh(sets["tierC"] + sets["recovery"])
     return sets
 
@@ -1393,7 +1410,8 @@ def _rule2_cut_counts(bank, sets: dict, phase: dict | None = None) -> dict[str, 
 def _budget(bank, cells: list, both: bool, m, workers: int, cache=None) -> dict:
     """Protocol 10's projection under the budget rule. Phase-matched keys follow V7 (6.5):
     the core A1 set while it holds; when it failed on speeds, the braking cells of every
-    nominal-key item at their nominal key's priority ('phase' P0, 'phase_P1', 'phase_P2'),
+    nominal-key item at their nominal key's priority ('phase' P0, 'phase_P1' and
+    'phase_B600' P1, 'phase_P2'),
     braking read from ``cache``'s nominal keys where solved and counted as braking where not
     (an upper bound; ``proj['phase_keys']``). Ruling R17b: each phase cell counts the keys
     of every phase but u = 0 (``_phase_key_indices``: 3, and 15 on P7's 16-phase cells,
@@ -1401,7 +1419,10 @@ def _budget(bank, cells: list, both: bool, m, workers: int, cache=None) -> dict:
     phase: P0's on the design (``_anchored_g_count``), and P1's and P2's on the design too
     (``_anchored_p12_count``: the specialists' A1 and tier B D = 600 cells, the generalists'
     tier B D = 600 cells, at every phase of a final; the checkpoints' 4 phases once the
-    regimes are frozen) (``proj['anchored_phases']``)."""
+    regimes are frozen) (``proj['anchored_phases']``). Ruling R17c: tier B D = 600's
+    nominal keys are the keys stage's P1 item 'nominal_B600' (one per cell solved: one
+    direction with the mirror shortcut, both without it) and, when V7 failed, its braking
+    cells' phase-matched keys the phase item 'phase_B600' (P1)."""
     from apexzero.interp import answer_key as ak
     from apexzero.interp.constants import N_PHASES
 
@@ -1427,14 +1448,13 @@ def _budget(bank, cells: list, both: bool, m, workers: int, cache=None) -> dict:
               "viability": 200, "E1_twins": len(sets["E1_twins"]) or 15,
               "E2": len(sets["E2"]) or 39, "E3": len(sets["E3"]), "tierD_socp": 140,
               "tierC": len(sets["tierC"]), "recovery": len(sets["recovery"]),
+              # R17c: tier B D = 600's nominal keys, a keys-stage item at P1 (the anchored
+              # stage then finds them cached; its inline solve is only a fallback).
+              "nominal_B600": len(sets["nominal_B600"]),
               **{k: v["keys"] for k, v in ra12.items()}}
     if v7_failed:
-        counts.update(phase_P1=n_keys["phase_P1"], phase_P2=n_keys["phase_P2"])
-    # Tier B D = 600's u = 0 nominal keys: no keys-stage item solves them, so the anchored
-    # stage solves each cold, once per (agent, cell) job; counted once per cell.
-    n_b600 = len({c.cell_id for c in anchored_cells(cells, bank, {}, "G1", "P1", True)})
-    if n_b600:
-        counts["nominal_B600"] = ("nominal", "P1", n_b600)
+        counts.update(phase_P1=n_keys["phase_P1"], phase_B600=n_keys["phase_B600"],
+                      phase_P2=n_keys["phase_P2"])
     proj = ak.project_budget(timings, counts, cut_counts=_rule2_cut_counts(bank, sets, ph),
                              workers=workers)
     proj["anchored_G"] = anchored_g
@@ -1517,7 +1537,8 @@ def stage_keys(args: argparse.Namespace) -> None:
     """Step 4 (answer_key): the A2 layout (pool of --workers, then the global D rule), then,
     once validation has run, the P0 keys (tier A nominal in descending-R series, E1 real and
     isolated, nulls; then backed-off and phase-matched keys warm from them), P1 (E1 twins,
-    E2, E3, tier D s-OCPs) and P2 (tier C, recovery) up to --priority, under the budget rule
+    E2, E3, tier B D = 600 (ruling R17c), tier D s-OCPs; then, with V7 failed, their
+    phase-matched keys) and P2 (tier C, recovery) up to --priority, under the budget rule
     of protocol 10. Resumes from the key cache. Ends with the acceptance checks V1, V4, V6
     and V7 over every key, and the infeasible / unsolved / multi-basin lists and tau table in
     the manifest. --smoke: one validation-sized solve through the pool, nothing cached.
@@ -1600,13 +1621,18 @@ def stage_keys(args: argparse.Namespace) -> None:
         log.set_total(log.done + len(jobs))
         results += _pool_kw(jobs)
 
-        def _phase_after(item: str, why: str):
-            # V7's remedy for a P1 / P2 item, once its nominal keys exist: their phase
-            # cycles (D26) first, so the phases are solved where the runs will start.
+        def _phase_after(items: tuple[str, ...], why: str):
+            # Once the P1 / P2 nominal keys exist: their phase cycles (D26), whatever V7 says
+            # (review of R17c, finding 6: the P of P1 / P2 cells followed their nominal keys
+            # only when V7 failed), then V7's remedy for the P1 / P2 phase items, so the
+            # phases are solved where the runs will start.
             nonlocal cells, sets
             cells = _refresh_phase_cycles(bank, cells, cache, log, why)
             sets = _key_sets(bank, cells, both, v7_failed)
-            pj = _phase_jobs(bank, sets[item], cache, proj, item, v7_failed, log)
+            if not v7_failed:
+                return []                       # no P1 / P2 phase items while V7 holds
+            pj = [j for item in items
+                  for j in _phase_jobs(bank, sets[item], cache, proj, item, v7_failed, log)]
             log.set_total(log.done + len(pj))
             return _pool_kw(pj)
 
@@ -1614,6 +1640,9 @@ def stage_keys(args: argparse.Namespace) -> None:
             jobs = [dict(what="nominal", label=f"P1 {bank.stimuli[c.stim_id].name}", cells=[c])
                     for c in sets["E1_twins"] + sets["E2"]]
             jobs += _series_jobs(bank, sets["E3"], "E3")
+            # Ruling R17c: tier B D = 600's nominal keys (the band reads e_ve^RA there), as
+            # 6.2's descending-R series, so the anchored stage finds them cached.
+            jobs += _series_jobs(bank, sets["nominal_B600"], "tier B D600")
             dsets = sets["tierD_socp"]
             cond_a = [c for c in dsets if (bank.stimuli[c.stim_id].source or {}).get(
                 "condition") == "F1/real/real/real"]
@@ -1621,16 +1650,15 @@ def stage_keys(args: argparse.Namespace) -> None:
             log.set_total(log.done + len(jobs))
             results += _pool_kw(jobs)
             results += _tier_d_doses(bank, cells, dsets, cond_a, cache, args.workers, log)
-            if v7_failed:
-                results += _phase_after("phase_P1", "phase cycles from the P1 nominal keys")
+            results += _phase_after(("phase_P1", "phase_B600"),
+                                    "phase cycles from the P1 nominal keys")
         if "P2" in prios:
             jobs = _series_jobs(bank, sets["tierC"], "tier C")
             jobs += [dict(what="nominal", label=f"recovery cell {c.cell_id}", cells=[c])
                      for c in sets["recovery"]]
             log.set_total(log.done + len(jobs))
             results += _pool_kw(jobs)
-            if v7_failed:
-                results += _phase_after("phase_P2", "phase cycles from the P2 nominal keys")
+            results += _phase_after(("phase_P2",), "phase cycles from the P2 nominal keys")
         # Cached measures computed by older measures code are recomputed from the stored
         # solutions; keys whose multi-basin measures moved are listed for a re-solve.
         ak._x64()
@@ -2538,10 +2566,17 @@ def _stage_rollouts_post_tag(args) -> None:
 def _anchored_job(job: dict) -> dict:
     """Re-anchored keys of one (agent, snapshot, cell), one per deterministic phase of
     ``job['phases']`` ((phase, row) pairs; ruling R17a), or viability keys of one (agent,
-    snapshot, cell) run, in a key worker. A cell's phases share one job so that a missing
-    u = 0 nominal key (tier B D = 600 has none from the keys stage) is solved once per
-    (agent, cell), not by concurrent workers; a phase that fails does not stop the others
-    (``error`` lists each failed phase)."""
+    snapshot, cell) run, in a key worker. The keys stage solves every anchored cell's u = 0
+    nominal key (tier B D = 600's at P1, ruling R17c) and, where its rule applies, the
+    phase-matched keys, so the job finds them cached. Solving a missing nominal key here is
+    only a fallback (``nominal_inline``; start (3) with ``job['q_cv']``). The stage solves
+    each missing one once in a first pool (``what`` 'nominal': the nominal key only), so the
+    jobs of several agents do not cold-solve it concurrently; a cell's phases share one job
+    for the same reason. ``u0_base_phases`` lists the phases k > 0 whose phase-matched key
+    the keys stage solves (``_phase_key_expected`` with ``job['v7_failed']`` and
+    ``job['rule2']``, as the pre-flight) but none verified was cached, so they started from
+    the u = 0 key (R17a's fallback). A phase that fails does not stop the others (``error``
+    lists each failed phase)."""
     import traceback
 
     from apexzero.interp import answer_key as ak
@@ -2552,7 +2587,7 @@ def _anchored_job(job: dict) -> dict:
     c0 = time.process_time()
     try:
         cell = job["cell"]
-        if job["what"] != "beaten":
+        if job["what"] not in ("beaten", "nominal"):
             groups, _ = rollout.load_rollouts(Path(job["file"]))
         if job["what"] == "beaten":
             # Protocol 6.3: re-solve warm from every final agent's u = 0 rollout.
@@ -2569,10 +2604,20 @@ def _anchored_job(job: dict) -> dict:
             return out
         nom = ak.key_for(cell, "nominal", 0, cache=cache, bank=bank)
         if nom is None:
-            nom = ak.full_recipe(bank, cell, cache=cache, tables=tables)
-        if job["what"] == "anchored":
+            # Fallback only (R17c): the keys stage solves these, tier B D = 600's included;
+            # the stage's first pool ('nominal' jobs) solves each missing one once.
+            nom = ak.full_recipe(bank, cell, cache=cache, tables=tables,
+                                 q_cv=float(job.get("q_cv") or ak_default_cv()))
+            out["nominal_inline"] = True
+        if job["what"] == "nominal":
+            out["keys"] = [_rec_summary(nom)]
+        elif job["what"] == "anchored":
             # Ruling R17a: each phase anchored on its own run, from the key at that phase
-            # (the phase-matched key where one is cached, else the u = 0 key).
+            # (the phase-matched key where one is cached, else the u = 0 key). A phase k > 0
+            # counts as R17a's fallback only where the keys stage solves a phase-matched key
+            # (the pre-flight's rule, ``_phase_key_expected``) and none verified was cached.
+            expect = _phase_key_expected(bank, cell, nom, bool(job.get("v7_failed")),
+                                         bool(job.get("rule2")))
             phases = job.get("phases") or [(int(job.get("phase", 0)), int(job["row"]))]
             failed = []
             out["phases"] = []
@@ -2586,6 +2631,8 @@ def _anchored_job(job: dict) -> dict:
                                           tables=tables, force=bool(job.get("force")))
                     out["keys"].append(_rec_summary(rec))
                     out["phases"].append(k)
+                    if k and base is nom and expect:
+                        out.setdefault("u0_base_phases", []).append(k)
                 except Exception:  # noqa: BLE001  (one phase's failure keeps the others)
                     failed.append(f"phase {k}:\n{traceback.format_exc()}")
             if failed:
@@ -2621,8 +2668,9 @@ def anchored_jobs(cells: list, file: str, det: dict, agent: str, timesteps: int,
                   force: bool = False) -> list[dict]:
     """Ruling R17a: one re-anchored key per (cell, deterministic phase) of a snapshot's run
     file, each anchored on that phase's own run. One job per cell carries its phases'
-    (phase, row) pairs in phase order (``phases``), so the cell's missing nominal key is
-    solved once, not by 4 (16 on P7 cells) concurrent workers."""
+    (phase, row) pairs in phase order (``phases``), so a nominal key the keys stage did not
+    cache (the fallback, R17c) is solved once, not by 4 (16 on P7 cells) concurrent
+    workers."""
     rows = _det_rows(det, cells)
     out = []
     for c in cells:
@@ -2633,6 +2681,62 @@ def anchored_jobs(cells: list, file: str, det: dict, agent: str, timesteps: int,
                             label=f"RA {agent}@{timesteps} cell {c.cell_id} "
                                   f"x{len(ph)} phases ({prio})"))
     return out
+
+
+def _phase_key_expected(bank, c, nom, v7_failed: bool, rule2: bool) -> bool:
+    """Whether the keys stage solves phase-matched keys (at every phase but u = 0) for a
+    re-anchored cell (A1 or tier B D = 600), as ``_phase_split`` and ``_cut`` decide: the core
+    and P7 cells always; with V7 failed every cell whose nominal key ``nom`` brakes (2.3:
+    a sustained brake and v_min* < v0 - tau); budget rule 2 (``rule2``) keeps 180 deg cells
+    only. Elsewhere the u = 0 key is the key at every phase by design, not a fallback."""
+    if rule2 and not _rule2_keeps_phase(bank, c):
+        return False
+    return bool(_core_phase_cell(bank, c) or _p7_cell(c) or (v7_failed and _braking(nom, c)))
+
+
+def _anchored_preflight(bank, jobs: list[dict], cache, v7_failed: bool, cuts=()) -> dict:
+    """Ruling R17c (and R17b's order of stages): the keys the re-anchored jobs start from
+    should be cached by the keys stage before ``anchored-keys`` runs: every job cell's u = 0
+    nominal key (tier B D = 600's included, solved at P1 since R17c) and, at each of the
+    job's phases k > 0, the verified phase-matched key the keys stage solves there
+    (``_phase_key_expected``; budget rule 2 read from the manifest's ``cuts``). Nothing is
+    solved or written here, and a missing key is not fatal: the stage solves each missing
+    nominal key once before the jobs (the fallback) and the worker anchors a phase without
+    its key from the u = 0 key (R17a's fallback; ``anchored_key`` re-solves it from the phase
+    key once one is cached). ``viability_nominal_missing`` lists the viability jobs' other
+    cells without a cached nominal key, solved the same way but not an R17c fallback (e.g.
+    tier B D = 250, which no keys-stage item solves)."""
+    from apexzero.interp import answer_key as ak
+
+    rule2 = any(str(c).startswith("rule 2") for c in cuts)
+    by_cell: dict[int, tuple] = {}
+    for j in jobs:
+        if j.get("what") != "anchored":
+            continue
+        c = j["cell"]
+        by_cell.setdefault(c.cell_id, (c, set()))[1].update(
+            int(k) for k, _ in j.get("phases") or [] if int(k) > 0)
+    nominal_missing, phase_missing = [], []
+    for cid, (c, ks) in sorted(by_cell.items()):
+        nom = ak.key_for(c, "nominal", 0, cache=cache, bank=bank)
+        if nom is None:
+            nominal_missing.append(cid)
+            continue
+        if not _phase_key_expected(bank, c, nom, v7_failed, rule2):
+            continue
+        for k in sorted(ks):
+            rec = ak.key_for(c, "phase", k, cache=cache, bank=bank)
+            if rec is None or rec.status != "verified":
+                phase_missing.append((cid, k))
+    via = {j["cell"].cell_id: j["cell"] for j in jobs
+           if j.get("what") == "viability" and j["cell"].cell_id not in by_cell}
+    return dict(cells=len(by_cell), nominal_missing=nominal_missing,
+                b600_nominal_missing=[i for i in nominal_missing if _b600_cell(by_cell[i][0])],
+                phase_missing=phase_missing,
+                b600_phase_missing=[(i, k) for i, k in phase_missing
+                                    if _b600_cell(by_cell[i][0])],
+                viability_nominal_missing=[i for i, c in sorted(via.items()) if ak.key_for(
+                    c, "nominal", 0, cache=cache, bank=bank) is None])
 
 
 def anchored_cells(cells: list, bank, regimes: dict, agent: str, prio: str,
@@ -2658,7 +2762,7 @@ def anchored_cells(cells: list, bank, regimes: dict, agent: str, prio: str,
             continue
         st = bank.stimuli[c.stim_id]
         a1 = c.approach == "A1" and "A" in c.tiers
-        b600 = c.approach == "B" and c.D is not None and abs(float(c.D) - 600.0) < 1e-6
+        b600 = _b600_cell(c)
         reg = support.regime(st.geometry.R_seg, rt) if rt is not None else "bulk"
         if prio == "P0":
             if kappa_clipped is None:
@@ -2748,8 +2852,13 @@ def stage_anchored_keys(args: argparse.Namespace) -> None:
     final's runs), plus viability; P1: the specialists' finals (A1 and
     tier B D = 600) and the generalist finals' tier B D = 600 cells; P2: the generalists'
     P6c checkpoints (first gate-passing, two log-spaced middle; the final is P0), skipped
-    when the finals show re-anchoring is immaterial or budget rule 1 cut P2. Pool of
-    --workers (default 5; protocol 10)."""
+    when the finals show re-anchoring is immaterial or budget rule 1 cut P2. Ruling R17c:
+    the nominal keys (tier B D = 600's included) and phase-matched keys the jobs start from
+    come from the keys stage; ``_anchored_preflight`` reports any not cached. Solving a
+    missing nominal key here is a fallback, once per cell in a pool before the jobs
+    (``nominal_inline`` in the status; viability cells apart, ``viability_nominal_inline``);
+    ``u0_base_phases`` counts the phases anchored from the u = 0 key where the keys stage
+    solves a phase-matched key. Pool of --workers (default 5; protocol 10)."""
     from apexzero.interp import agents, io, measures, rollout, support
     from apexzero.interp import analysis as A
     from apexzero.interp import answer_key as ak
@@ -2852,14 +2961,61 @@ def stage_anchored_keys(args: argparse.Namespace) -> None:
                                  label=f"viability {agent}@{ts} cell {cid} ph{ph}",
                                  agent=agent, timesteps=ts, cell=by[cid], file=str(f), row=row,
                                  snapshot=f"{ts}-ph{ph}"))
-        log.set_total(log.done + len(jobs))
+        # R17c: the keys stage solved the nominal (tier B D = 600's included) and phase-matched
+        # keys these jobs start from; report any it did not (the jobs fall back).
+        v7, cuts = _v7_failed(m), m.budget.get("cuts", [])
+        rule2 = any(str(c).startswith("rule 2") for c in cuts)
+        pre = _anchored_preflight(bank, jobs, cache, v7, cuts)
+        if pre["nominal_missing"] or pre["phase_missing"]:
+            _say(log, f"R17c pre-flight: {len(pre['nominal_missing'])} of {pre['cells']} "
+                      f"re-anchored cells have no cached nominal key "
+                      f"({len(pre['b600_nominal_missing'])} tier B D = 600) and "
+                      f"{len(pre['phase_missing'])} (cell, phase) pairs "
+                      f"({len(pre['b600_phase_missing'])} tier B D = 600) no verified "
+                      f"phase-matched key where the keys stage solves one. The keys stage "
+                      f"should have solved them before the tag (`keys --priority P1` or P2; "
+                      f"after the tag it runs only with --post-tag-deviation). Fallbacks: each "
+                      f"missing nominal key is solved once, in a pool before the jobs; those "
+                      f"phases are anchored from the u = 0 key (re-solved from the phase key "
+                      f"once one is cached)")
+        else:
+            _say(log, f"R17c pre-flight: the nominal and phase-matched keys of all "
+                      f"{pre['cells']} re-anchored cells are cached")
+        if pre["viability_nominal_missing"]:
+            _say(log, f"{len(pre['viability_nominal_missing'])} viability cells have no cached "
+                      f"nominal key (not an R17c fallback: e.g. tier B D = 250, which no "
+                      f"keys-stage item solves); solved once each before the jobs")
+        q_cv = _tuned_cv()
+        jobs = [dict(j, q_cv=q_cv, v7_failed=v7, rule2=rule2) for j in jobs]
+        # One solve per missing nominal key (review of R17c, finding 5): at P1 a tier B
+        # D = 600 cell has a job from each of up to 6 finals, which would otherwise each
+        # cold-solve it at once. The jobs then find it cached.
+        by_id = {j["cell"].cell_id: j["cell"] for j in jobs}
+        njobs = [dict(what="nominal", cell=by_id[i], q_cv=q_cv,
+                      label=f"nominal key cell {i} (missing: solved before its jobs)")
+                 for i in pre["nominal_missing"] + pre["viability_nominal_missing"]]
+        log.set_total(log.done + len(njobs) + len(jobs))
+        res_n = _pool(njobs, args.workers, log, fn=_anchored_job) if njobs else []
         res = _pool(jobs, args.workers, log, fn=_anchored_job)
+        solved = {c for r in res_n + res if r.get("nominal_inline") for c in r["cells"]}
+        ra_cells = {j["cell"].cell_id for j in jobs if j["what"] == "anchored"}
+        inline, via_inline = sorted(solved & ra_cells), sorted(solved - ra_cells)
+        u0_base = sum(len(r.get("u0_base_phases", [])) for r in res)
+        if inline or u0_base:
+            _say(log, f"fallbacks: {len(inline)} re-anchored cells' nominal keys solved here; "
+                      f"{u0_base} re-anchored keys at k > 0 started from the u = 0 key where "
+                      f"the keys stage solves a phase-matched key (none cached)")
+        if via_inline:
+            _say(log, f"viability: {len(via_inline)} cells' nominal keys solved here")
         status = dict(priority=args.priority, time=time.strftime("%Y-%m-%dT%H:%M:%S"),
-                      jobs=len(jobs), errors=len(_errors(res)), beaten=bsum["beaten"],
-                      p6=(p6_note or "checkpoints re-anchored") if args.priority == "P2" else "")
+                      jobs=len(jobs), errors=len(_errors(res_n + res)), beaten=bsum["beaten"],
+                      p6=(p6_note or "checkpoints re-anchored") if args.priority == "P2" else "",
+                      preflight={k: (v if k == "cells" else len(v)) for k, v in pre.items()},
+                      nominal_inline=inline, viability_nominal_inline=via_inline,
+                      u0_base_phases=u0_base)
 
         def upd(mm):
-            mm.lists["anchored_errors"] = _errors(res) + _errors(res_b)
+            mm.lists["anchored_errors"] = _errors(res_n) + _errors(res) + _errors(res_b)
             mm.validation.setdefault("anchored_keys", {})[args.priority] = status
 
         agents.update_manifest(upd)
