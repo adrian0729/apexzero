@@ -141,9 +141,21 @@ separation check needs |b_idx - b*| and |b_fd - b*| >= 0.25 (``p3_separation``).
 folds are mirror-pair conditions. R24 and R26: the power table adds P1b against a saturating
 reader (the smallest support edge q1 it detects) and P3 against an earlier-of physics and
 time-to-corner driver. Control checks: R20's T64 / T32 verdicts with regret over |J*|
-(``tape_check``) and R28's check that c1's crashed u = 0 runs type as overspeed by the
-viability solves (``viability_typing``; run columns ``nr_resolved``, ``nr_s``). R24's c2
-planted-law check needs Q's offline profile and lives with it (``controls.c2_planted_law``).
+(``tape_check``) and R28's check of c1's crash typing by the viability solves
+(``viability_typing``). R24's c2 planted-law check needs Q's offline profile and lives with
+it (``controls.c2_planted_law``).
+
+Ruling R30 (overspeed defined causally, 9.1's primary path): the run table's viability
+columns (``no_return_columns``: ``nr_resolved``, ``nr_s``, ``nr_target``, ``nr_s_target``,
+``nr_dv``, ``nr_cf``, ``nr_overruled``, ``nr_cf_dv``, ``nr_tested``, ``nr_missing``,
+``nr_stale``) mirror ``measures.crash_type``'s resolution rule
+(``no_return_resolved``). ``viability_typing`` is R30's replacement of the R28 check: every
+crashed u = 0 run of c1 resolved by the viability path, none over-brake or line/steer, every
+run unrecoverable at or before s_c0 overspeed, the rest listed with the deciding solve. The
+planted crash controls (``planted_typing``: typed as planted, with complete solves) are
+judged by the dry run, and the regression counts of T and c2 (``crash_type_counts``) are
+reported. P2(b) is also reported on the crashes the
+solves typed (pair columns ``typed_solve``, ``overspeed_frac_solve``).
 """
 
 from __future__ import annotations
@@ -231,10 +243,28 @@ RUN_EXTRA_COLUMNS = {
                       "(6.5, AD23); False: against the nominal u = 0 key (2.2)",
     "bo_at_phase": "bool: e_ve_bo is against a backed-off key solved at this run's phase "
                    "(u = 0 runs: the u = 0 backed-off key); False: the u = 0 one, or none",
-    "nr_resolved": "bool: a crash whose point of no return the viability solves resolved, "
-                   "so 9.1's primary path typed it (certified, or viable through s_a0); "
-                   "False: no crash, or the ellipse fallback typed it (ruling R28)",
-    "nr_s": "m: the certified point of no return (nan: none, or resolved after s_a0)",
+    "nr_resolved": "bool: a crash the viability solves resolved, so 9.1's primary path typed "
+                   "it (ruling R30: some tested state non-viable after overruling, or every "
+                   "tested state through s_a0 viable); False: no crash, or the ellipse "
+                   "fallback typed it",
+    "nr_s": "m: the first non-viable tested state after the last viable one (its own s; "
+            "nan: none)",
+    "nr_target": "str: that state's target (s_b | s_c0-50 | s_c0 | s_a0; '' none)",
+    "nr_s_target": "m: that target's position (s_a0 for the s_a0 test; nan: none)",
+    "nr_dv": "m/s: vx - vx* there (the key 9.1's dv uses)",
+    "nr_cf": "str: the qualifying tested state whose counterfactual (slowed to vx*(s)) "
+             "verified: the crash is overspeed by 9.1's primary path (R30); '' none",
+    "nr_overruled": "str: comma-joined non-viable targets a later verified one overrules",
+    "nr_cf_dv": "m/s: vx - vx* at the state nr_cf names (the solve that typed it overspeed; "
+                "nan: none)",
+    "nr_tested": "str: comma-joined targets of the run's tested states judged under R30 ('' "
+                 "no solves)",
+    "nr_missing": "str: comma-joined solves the verdict still needs (a tested state of the "
+                  "run without a record, '<target> (judged before R30)', '<target>:cf'); a "
+                  "crash with any is unresolved and listed (R30)",
+    "nr_stale": "int: solved tested-state records of the (agent, snapshot, cell, phase) left "
+                "out: another rollout's (kept in the cache after a re-roll), or an older s_b "
+                "record of this run",
 }
 RUN_COLUMNS = (tuple(RUN_INDEX_COLUMNS) + METRIC_COLUMNS + KEY_ERROR_COLUMNS
                + tuple(RUN_EXTRA_COLUMNS))
@@ -323,6 +353,9 @@ PAIR_COLUMNS = {
     "typed_crashes": "int: typed crashes (det + matched)", "typed_overspeed": "int",
     "typed_overbrake": "int", "typed_line_steer": "int", "typed_other": "int",
     "overspeed_frac": "typed crashes (det + matched) classified overspeed",
+    "typed_solve": "int: typed crashes the viability path resolved (R30: P2(b) is also "
+                   "reported on this subset)",
+    "overspeed_frac_solve": "those classified overspeed, over typed_solve",
     "dt_corner": "s median", "regret": "median (u = 0 runs with a key at phase)",
     "osc_index": "median oscillation index of the deterministic runs",
     "excluded": "str: '' or the exclusion reason (9.4)",
@@ -852,12 +885,20 @@ class CachedKeys:
         return self._get(cell, "socp")
 
     def no_return(self, cell, agent, timesteps, phase, sample, traj, key_traj):
+        """``answer_key.no_return`` of the run's viability records (ruling R30) against
+        ``key_traj``, the key 9.1's dv uses (the run table's nominal key at the run's phase):
+        s_c0 and s_a0 from the stimulus (the tested states the run must have), only the
+        run's own records, and only counterfactuals scaled to that key count."""
         recs = self.viability.get((agent, int(timesteps), cell.cell_id, int(phase), int(sample)))
         if not recs or key_traj is None:
             return None
         from apexzero.interp import answer_key
 
-        return answer_key.no_return(recs, traj, key_traj)
+        nom = self.nominal(cell, int(phase))
+        kid = nom.key_id if nom is not None and nom.traj is key_traj else ""
+        lm = self.bank.stimuli[cell.stim_id].landmarks
+        return answer_key.no_return(recs, traj, key_traj, s_a0=float(lm.s_a0), key_id=kid,
+                                    s_c0=float(lm.s_c0))
 
 
 def _strip_width(bank, stim_id: int, s: float) -> float:
@@ -1137,12 +1178,12 @@ def _run_row(agent, timesteps, g, arr, i, by_id, bank, keys, tables, nulls,
     # The key behind this run's onset errors (phase-matched where one exists; P2b).
     k_ph = {f"{c}_star_k": float(_attr(nom.metrics, c)) if ok else np.nan
             for c in ("v_e", "v_b", "d_b")}
-    ctype, nr_res, nr_s = "", False, np.nan
+    ctype, nr_cols = "", no_return_columns(None)
     if m.crashed:
         key_traj = nom.traj if ok else None
         nr = keys.no_return(cell, agent, timesteps, phase, sample, traj, key_traj)
         ctype = str(measures.crash_type(traj, marks, key_traj, nr))
-        nr_res, nr_s = no_return_resolved(nr, stim.landmarks.s_a0)
+        nr_cols = no_return_columns(nr)
     row = dict(agent=str(agent), timesteps=int(timesteps), cell=int(cell.cell_id),
                stim=int(cell.stim_id), pair=int(cell.pair_id), phase=phase, sample=sample,
                mode=g, steer_sign=int(arr["steer_sign"][i]), W=int(arr["W"][i]),
@@ -1153,25 +1194,45 @@ def _run_row(agent, timesteps, g, arr, i, by_id, bank, keys, tables, nulls,
                key_at_phase=bool(nom.at_phase) if ok else False, crash_type=ctype,
                v_e_star_ra=float(v_ra), ra_key=ra_key, ra_phase=int(ra_phase),
                ra_key_id=ra_id, speed_at_phase=bool(speed_at_phase),
-               bo_at_phase=bo_at_phase, nr_resolved=bool(nr_res), nr_s=float(nr_s), **k_ph)
+               bo_at_phase=bo_at_phase, **nr_cols, **k_ph)
     return row
 
 
-def no_return_resolved(nr: Any, s_a0: float) -> tuple[bool, float]:
-    """(resolved, s) of a crash's ``measures.NoReturn``, the test ``measures.crash_type``
-    applies before its ellipse fallback (9.1): resolved when certified with s set, or when s
-    is None and every tested state through s_a0 had a viable key; s is the certified point
-    (nan otherwise). Anything else, None included, is unresolved (ruling R28's check reads
-    it)."""
-    if nr is None:
+def no_return_resolved(nr: Any, s_a0: float = float("nan")) -> tuple[bool, float]:
+    """(resolved, s) of a crash's ``measures.NoReturn``: the test ``measures.crash_type``
+    applies before its ellipse fallback (9.1 as ruling R30 defines it,
+    ``measures.no_return_resolved``): resolved when some tested state is non-viable after
+    overruling (s set) or when every tested state through s_a0 is viable (the s_a0 target
+    tested). s is the first non-viable tested state (nan otherwise). Anything else, None
+    included, is unresolved. ``s_a0`` is not needed (the s_a0 test counts by target) and is
+    kept for callers."""
+    if not measures.no_return_resolved(nr):
         return False, float("nan")
     s = getattr(nr, "s", None)
-    if bool(getattr(nr, "certified", False)) and s is not None:
-        return True, float(s)
-    last = float(getattr(nr, "s_last_viable", np.nan))
-    if s is None and np.isfinite(last) and last >= s_a0:
-        return True, float("nan")
-    return False, float("nan")
+    return True, float(s) if s is not None else float("nan")
+
+
+def no_return_columns(nr: Any) -> dict:
+    """The run table's viability columns (``nr_*``) of a crash's ``measures.NoReturn``: the
+    resolution, the deciding tested state (target, its position, dv), the counterfactual
+    that typed it overspeed and the overruled states (ruling R30's listing)."""
+    res, s = no_return_resolved(nr)
+    if nr is None:
+        return dict(nr_resolved=False, nr_s=float("nan"), nr_target="", nr_s_target=float("nan"),
+                    nr_dv=float("nan"), nr_cf="", nr_overruled="", nr_cf_dv=float("nan"),
+                    nr_tested="", nr_missing="", nr_stale=0)
+
+    def joined(name):
+        return ",".join(str(x) for x in (getattr(nr, name, ()) or ()))
+
+    return dict(nr_resolved=bool(res), nr_s=s, nr_target=str(getattr(nr, "target", "") or ""),
+                nr_s_target=float(getattr(nr, "s_target", np.nan)),
+                nr_dv=float(getattr(nr, "dv", np.nan)) if getattr(nr, "s", None) is not None
+                else float("nan"),
+                nr_cf=str(getattr(nr, "cf_verified_at", "") or ""),
+                nr_overruled=joined("overruled"),
+                nr_cf_dv=float(getattr(nr, "cf_dv", np.nan)), nr_tested=joined("tested"),
+                nr_missing=joined("missing"), nr_stale=int(getattr(nr, "n_stale", 0) or 0))
 
 
 _RUN_F = ("s_crash", "v_e", "v_min", "e_ve", "e_ve_bo", "e_ve_ra", "v_e_star_ra", "e_vmin",
@@ -1179,7 +1240,7 @@ _RUN_F = ("s_crash", "v_e", "v_min", "e_ve", "e_ve_bo", "e_ve_ra", "v_e_star_ra"
           "clip_frac_edges", "clip_frac_ego", "clip_frac_context", "dt_corner", "regret",
           "osc_index", "v_e_star_k", "v_b_star_k", "d_b_star_k")
 _RUN_B = ("crashed", "completed", "has_brake", "forced_onset", "unsettled", "time_censored",
-          "kappa_clipped", "ra_key", "speed_at_phase")
+          "kappa_clipped", "ra_key", "speed_at_phase", "nr_resolved")
 
 
 def _clip_other_runs(runs: Table) -> np.ndarray:
@@ -1305,6 +1366,8 @@ def _pair_row(cols: dict, idx: np.ndarray, keys: Table, kidx: dict, kdir: np.nda
     typed = cols["crashed"][typed_idx] & (cols["crash_type"][typed_idx] != "")
     tt = cols["crash_type"][typed_idx][typed]
     n_typed = int(typed.sum())
+    solve = cols["nr_resolved"][typed_idx][typed]
+    n_solve = int(solve.sum())
     rt = regimes.get(agent)
     R_seg = float(K("R_seg"))
     reg = regime_of(R_seg, rt.q1, rt.q10, getattr(rt, "r_clip_max", np.nan)) if rt else ""
@@ -1367,6 +1430,9 @@ def _pair_row(cols: dict, idx: np.ndarray, keys: Table, kidx: dict, kdir: np.nda
         typed_line_steer=int((tt == "line_steer").sum()),
         typed_other=int(n_typed - np.isin(tt, ("overspeed", "overbrake", "line_steer")).sum()),
         overspeed_frac=float((tt == "overspeed").sum() / n_typed) if n_typed else np.nan,
+        typed_solve=n_solve,
+        overspeed_frac_solve=float((tt[solve] == "overspeed").sum() / n_solve) if n_solve
+        else np.nan,
         dt_corner=_median(dtc), regret=_median(cols["regret"][det]),
         osc_index=_median(cols["osc_index"][det]), excluded=excluded,
     )
@@ -2107,11 +2173,18 @@ def p2(pairs: Table, runs: Table | None, b: float) -> Decision:
     b_ok = bool(np.isfinite(med) and med >= P2_OVERSPEED_MEDIAN)
     b_ref = bool(np.isfinite(med) and med < P2_REFUTE_OVERSPEED and top
                  in ("overbrake", "line_steer") and not tie)
+    # Ruling R30: (b) also on the crashes the viability solves typed (beyond the 200-solve cap
+    # the ellipse fallback types most crashes, and it cannot see recoverability). Reported.
+    cells_s = _p2_scope(pairs, EXCL_ALL) & (_it(pairs, "typed_solve", 0) > 0)
+    med_s = (_median(_fl(pairs, "overspeed_frac_solve")[cells_s]) if cells_s.any()
+             else float("nan"))
     details = dict(n_O=int(O.sum()), frac_onset_late=a_onset, frac_resp_late=a_resp,
                    no_brake_entries=int(nob.sum()), frac_onset_not_late=_frac(ddb >= 0),
                    crash_cells=int(cells.sum()), median_overspeed_share=med,
                    crash_type_counts=counts, a=bool(a), b=b_ok, a_refute=bool(a_ref),
-                   b_refute=b_ref)
+                   b_refute=b_ref, crash_cells_solve=int(cells_s.sum()),
+                   median_overspeed_share_solve=med_s,
+                   b_solve=bool(np.isfinite(med_s) and med_s >= P2_OVERSPEED_MEDIAN))
     if runs is not None and _n(runs):
         pair_ids = set(_it(pairs, "pair")[O].tolist())
         rm = (_st(runs, "mode") == "det") & np.isin(_it(runs, "pair"), list(pair_ids)) \
@@ -2836,35 +2909,120 @@ def tape_check(runs: Table, keys: Table, precision: str) -> dict:
 
 
 def viability_typing(runs: Table, keys: Table | None = None) -> dict:
-    """Ruling R28: the crashed deterministic u = 0 runs of a control (c1) must be typed by
-    9.1's primary path, the certified point of no return from the viability solves
-    (``nr_resolved``), and typed overspeed. passed: at least one such crash, every one resolved
-    by the viability solves and every one typed overspeed. Counts by type and the cells that
-    were unresolved or typed otherwise are listed.
+    """Ruling R30's check of c1's crash typing (it replaces R28's and R29(2)'s): over the
+    crashed deterministic u = 0 runs,
+    - every one is resolved by the viability path (``nr_resolved``; none by the fallback);
+    - none is typed over-brake or line/steer;
+    - every one unrecoverable at or before s_c0 (the first non-viable tested state's target
+      at or before s_c0: s_c0 - 50, s_c0, or an s_b before s_c0) is typed overspeed;
+    - the others are listed with their type and the solve that decides it (``others``:
+      target, its position relative to s_c0 and s_a0, dv, the counterfactual and its dv,
+      overruled, missing solves).
+    passed needs at least one such crash and all three. A run whose verdict still needs a
+    solve (``nr_missing``) is not resolved; such runs are also counted (``n_incomplete``) and
+    listed (``incomplete_cells``). Counts by type are listed.
 
     ``keys`` (the key table) restricts the check to cells whose u = 0 nominal key is
-    verified: the viability solves start from that key (``answer_key.viability_keys``), and
-    crash typing compares against it, so a cell without one cannot be typed by this path.
-    Crashed u = 0 runs on the other cells are counted and listed (``no_key_cells``), not
-    judged."""
+    verified: the viability solves start from that key and crash typing compares against it,
+    so a cell without one cannot be typed by this path. Crashed u = 0 runs on the other cells
+    are counted and listed (``no_key_cells``), not judged. Without ``keys`` an s_b target is
+    never counted as at or before s_c0 (s_c0 comes from the key table)."""
     m = ((_st(runs, "mode") == "det") & (_it(runs, "phase", 0) == 0) & _bo(runs, "crashed"))
     cell = _it(runs, "cell")
     no_key = np.zeros(_n(runs), bool)
+    s_c0 = np.full(_n(runs), np.nan)
+    s_a0 = np.full(_n(runs), np.nan)
     if keys is not None:
-        k = _join_keys(runs, keys, ("key_status",))
+        k = _join_keys(runs, keys, ("key_status", "s_c0", "s_a0"))
         no_key = m & (k["key_status"].astype(str) != "verified")
         m &= ~no_key
+        s_c0, s_a0 = k["s_c0"].astype(float), k["s_a0"].astype(float)
     res, ct = _bo(runs, "nr_resolved"), _st(runs, "crash_type")
+    tgt, s_t = _st(runs, "nr_target"), _fl(runs, "nr_s_target")
+    early = np.isin(tgt, ("s_c0-50", "s_c0")) | ((tgt == "s_b") & (s_t <= s_c0))
+    early &= m & res
     n = int(m.sum())
-    ok = m & res & (ct == "overspeed")
+    wrong = m & np.isin(ct, ("overbrake", "line_steer"))
+    early_ok = early & (ct == "overspeed")
     types = {str(t): int(((ct == t) & m).sum()) for t in np.unique(ct[m])}
-    return dict(passed=bool(n and ok.sum() == n), n_crashed=n, n_resolved=int((m & res).sum()),
+    dv, cf, ov = _fl(runs, "nr_dv"), _st(runs, "nr_cf"), _st(runs, "nr_overruled")
+    cf_dv, miss = _fl(runs, "nr_cf_dv"), _st(runs, "nr_missing")
+    incomplete = m & (miss != "")
+    others = [dict(cell=int(cell[i]), crash_type=str(ct[i]), resolved=bool(res[i]),
+                   target=str(tgt[i]), s_target_rel_c0=float(s_t[i] - s_c0[i]),
+                   s_target_rel_a0=float(s_t[i] - s_a0[i]), dv=float(dv[i]), cf=str(cf[i]),
+                   cf_dv=float(cf_dv[i]), overruled=str(ov[i]), missing=str(miss[i]))
+              for i in np.flatnonzero(m & ~early_ok)]
+    passed = bool(n and (m & res).sum() == n and not wrong.any()
+                  and early_ok.sum() == early.sum())
+    return dict(passed=passed, n_crashed=n, n_resolved=int((m & res).sum()),
                 n_overspeed=int((m & (ct == "overspeed")).sum()),
-                n_resolved_overspeed=int(ok.sum()), types=types,
+                n_early=int(early.sum()), n_early_overspeed=int(early_ok.sum()),
+                n_overbrake=int((m & (ct == "overbrake")).sum()),
+                n_line_steer=int((m & (ct == "line_steer")).sum()), types=types,
                 has_column="nr_resolved" in runs, n_no_key=int(no_key.sum()),
                 no_key_cells=sorted({int(c) for c in cell[no_key]})[:40],
                 unresolved_cells=sorted({int(c) for c in cell[m & ~res]})[:40],
-                not_overspeed_cells=sorted({int(c) for c in cell[m & (ct != "overspeed")]})[:40])
+                n_incomplete=int(incomplete.sum()),
+                incomplete_cells=sorted({int(c) for c in cell[incomplete]})[:40],
+                not_overspeed_cells=sorted({int(c) for c in cell[m & (ct != "overspeed")]})[:40],
+                early_not_overspeed_cells=sorted({int(c) for c in cell[early & ~early_ok]})[:40],
+                others=others[:60], n_others=len(others),
+                rule="R30: resolved by the viability path; no over-brake or line/steer; "
+                     "overspeed wherever unrecoverable at or before s_c0")
+
+
+PLANTED_TYPES = ("overbrake", "line_steer", "not overspeed")
+
+
+def planted_typing(runs: Table, want: str) -> dict:
+    """Ruling R30's planted crash controls: every deterministic u = 0 run crashes and is
+    typed ``want`` ('overbrake' or 'line_steer'), or anything but overspeed ('not
+    overspeed'), with its viability solves present (``nr_tested``: the run has tested states
+    judged under R30) and complete (``nr_missing`` empty: no tested state or counterfactual
+    the verdict needs is absent), so the type comes from the path the control exists to
+    test, or from the ellipse fallback only where R30 sends it there. got is ``want`` when
+    every run holds; each run is listed with its type and viability columns."""
+    if want not in PLANTED_TYPES:
+        raise ValueError(f"planted type {want!r}; expected one of {PLANTED_TYPES}")
+    m = (_st(runs, "mode") == "det") & (_it(runs, "phase", 0) == 0)
+    crashed, ct = _bo(runs, "crashed"), _st(runs, "crash_type")
+    tested, miss = _st(runs, "nr_tested"), _st(runs, "nr_missing")
+    solved, complete = tested != "", miss == ""
+    typed = crashed & ((ct != "overspeed") if want == "not overspeed" else (ct == want))
+    ok = typed & solved & complete
+    n, n_ok = int(m.sum()), int((m & ok).sum())
+    rows = [dict(cell=int(_it(runs, "cell")[i]), crashed=bool(crashed[i]), crash_type=str(ct[i]),
+                 resolved=bool(_bo(runs, "nr_resolved")[i]), target=str(_st(runs, "nr_target")[i]),
+                 dv=float(_fl(runs, "nr_dv")[i]), cf=str(_st(runs, "nr_cf")[i]),
+                 tested=str(tested[i]), missing=str(miss[i]))
+            for i in np.flatnonzero(m)]
+    if not n:
+        got = "no u = 0 run"
+    elif n_ok == n:
+        got = want
+    else:
+        why = [f"{k} {w}" for k, w in ((int((m & ~crashed).sum()), "without a crash"),
+                                       (int((m & crashed & ~solved).sum()),
+                                        "without viability solves"),
+                                       (int((m & crashed & solved & ~complete).sum()),
+                                        "with solves missing"))
+               if k]
+        got = f"{n - n_ok} of {n} not {want}" + (f" ({', '.join(why)})" if why else "")
+    return dict(passed=bool(n and n_ok == n), got=got, want=want, n=n, n_ok=n_ok, runs=rows)
+
+
+def crash_type_counts(runs: Table) -> dict:
+    """Crashed deterministic runs by 9.1 type, and how many the viability path resolved (the
+    rest the ellipse fallback typed): R30's regression counts, reported (T's fallback is
+    expected to type none of its crashes overspeed; c2's lock-limited crashes to stay
+    overspeed)."""
+    m = (_st(runs, "mode") == "det") & _bo(runs, "crashed")
+    ct = _st(runs, "crash_type")
+    return dict(n=int(m.sum()), types={str(t): int(((ct == t) & m).sum()) for t in np.unique(ct[m])},
+                n_overspeed=int((m & (ct == "overspeed")).sum()),
+                n_resolved=int((m & _bo(runs, "nr_resolved")).sum()),
+                cells=sorted({int(c) for c in _it(runs, "cell")[m]})[:40])
 
 
 def p5(runs: Table, keys: Table) -> Decision:

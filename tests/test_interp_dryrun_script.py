@@ -125,7 +125,7 @@ def _stub_controls_stage(ps, monkeypatch, tmp_path, bank, cells):
     monkeypatch.setattr(ps, "_design", lambda laid_out=False: (bank, cells))
     monkeypatch.setattr(ps, "_run_one_control", run_one)
     monkeypatch.setattr(ps, "_knn_fallback", lambda res, *a: res)
-    monkeypatch.setattr(ps, "_c1_viability", lambda *a: note("viability") or dict(jobs=2))
+    monkeypatch.setattr(ps, "_control_viability", lambda *a: note("viability") or dict(jobs=2))
     monkeypatch.setattr(ps, "_t64", lambda *a: note("T64") or "2 runs")
     monkeypatch.setattr(measures, "model_tables", lambda: None)
     monkeypatch.setattr(controls, "car_tables", lambda t: "CAR")
@@ -281,10 +281,22 @@ def _stub_verdicts(ps, monkeypatch, tmp_path, verdicts: dict, f6=(1.0,), vacuous
     monkeypatch.setattr(A, "p4", lambda res: _decision(
         "P4", verdicts[res.agent[8:]]["P4"], vacuous=vacuous))
     monkeypatch.setattr(A, "tape_check", lambda rt, kt, prec: dict(
-        got=verdicts["T" if prec == "f32" else "T64"], details=dict(crash_cells=[])))
+        got={k: v for k, v in verdicts["T" if prec == "f32" else "T64"].items()
+             if k not in ("crash_cells", "n_overspeed")},
+        details=dict(crash_cells=verdicts["T"].get("crash_cells", []) if prec == "f32"
+                     else [])))
+    monkeypatch.setattr(ps, "_tape_crash_margins", lambda bank, cells, cache, crash: [
+        dict(cell=int(c), corridor_min_m=0.05) for c in crash])
     monkeypatch.setattr(A, "viability_typing", lambda rt, kt: dict(
-        passed=verdicts["c1"]["viability"], n_crashed=3,
-        n_resolved_overspeed=3 if verdicts["c1"]["viability"] else 2))
+        passed=verdicts["c1"]["viability"], n_crashed=3, n_resolved=3, n_overbrake=0,
+        n_line_steer=0, n_early=3, n_early_overspeed=3 if verdicts["c1"]["viability"] else 2))
+    monkeypatch.setattr(A, "planted_typing", lambda rt, want: dict(
+        got=verdicts[str(rt["agent"][0])[8:]]["crash_type"]))
+    monkeypatch.setattr(A, "crash_type_counts", lambda rt: dict(
+        n=11, n_overspeed=verdicts["T"].get("n_overspeed", 0)))
+    monkeypatch.setattr(controls, "c2_lock_typing", lambda *a: dict(
+        passed=verdicts["c2"].get("lock", True), n=48,
+        n_overspeed=48 if verdicts["c2"].get("lock", True) else 47))
     monkeypatch.setattr(controls, "offline_match_runs", lambda *a: dict(passed=True, n=5, n_fail=0))
     monkeypatch.setattr(controls, "c2_planted_law", lambda *a: dict(
         passed=verdicts["c2"]["planted"], n=10, n_fail=0 if verdicts["c2"]["planted"] else 2))
@@ -304,17 +316,21 @@ _AGENTS_OK = {
     "c2": dict(P1a="cautious but lawful", P1b="inconclusive", planted=True),
     "c3": dict(P3="refute"),
     "K": dict(P4="class 2"),
+    "OB": dict(crash_type="overbrake"),
+    "LS": dict(crash_type="line_steer"),
+    "LSK": dict(crash_type="line_steer"),
+    "LSKF": dict(crash_type="not overspeed"),
 }
 
 
-def _verdicts(ps, monkeypatch, tmp_path, changes=None, **kw):
+def _verdicts(ps, monkeypatch, tmp_path, changes=None, cache=None, **kw):
     v = {k: dict(d) for k, d in _AGENTS_OK.items()}
     for k, d in (changes or {}).items():
         v[k].update(d)
     seen = _stub_verdicts(ps, monkeypatch, tmp_path, v, **kw)
     sup = SimpleNamespace(regimes={"G1": SimpleNamespace(q1=12.02, q10=21.3)})
     bank, cells = _design()
-    out = ps._control_verdicts(bank, cells, {}, "KEYS", None, 0.1, sup, _Log())
+    out = ps._control_verdicts(bank, cells, {}, "KEYS", None, 0.1, sup, _Log(), cache=cache)
     return out, seen
 
 
@@ -328,9 +344,11 @@ def test_R20_to_R28_dry_run_required_verdicts(ps, monkeypatch, tmp_path):
     assert {k: v["status"] for k, v in out.items()} == {k: "pass" for k in _AGENTS_OK}
     assert out["T"]["got"]["termination"] == "3 crashes" and out["T"]["required"] == {
         "errors": ["within_tau"]}
+    assert out["T"]["reported"] == ["termination", "regret", "crash_types"]      # R30 count
     assert out["c2"]["required"]["P1a"] == ["cautious but lawful"]       # Q's own verdict
     assert seen["control-c2"]["P1a"] == 21.3 and seen["control-c2"]["P1b"] == 20.0
-    assert out["c2"]["got"]["P1b"] == "inconclusive" and out["c2"]["reported"] == ["P1b"]
+    assert out["c2"]["got"]["P1b"] == "inconclusive"
+    assert out["c2"]["reported"] == ["P1b", "lock_crashes"]                      # R30 count
     assert out["c3"]["got"]["P3"] == "refute:M_idx" and "power_finding" not in out["c3"]["details"]
     # misses
     bad, _ = _verdicts(ps, monkeypatch, tmp_path, dict(
@@ -341,7 +359,8 @@ def test_R20_to_R28_dry_run_required_verdicts(ps, monkeypatch, tmp_path):
     assert st["T"] == st["T64"] == st["c1"] == "FAIL"
     assert st["c2"] == "pass" and bad["c2"]["required"]["P1a"] == ["confirm"]   # equals Q's
     assert st["c3"] == "pass" and "power finding" in bad["c3"]["details"]["power_finding"]
-    assert bad["c1"]["got"]["viability_typing"].startswith("1 of 3")
+    assert bad["c1"]["got"]["viability_typing"] == (
+        "1 of 3 unrecoverable at or before s_c0 not overspeed")
     other, _ = _verdicts(ps, monkeypatch, tmp_path, dict(c2=dict(P1a="refute")))
     assert other["c2"]["status"] == "FAIL"
     planted, _ = _verdicts(ps, monkeypatch, tmp_path, dict(c2=dict(planted=False)))
@@ -355,6 +374,42 @@ def test_R20_to_R28_dry_run_required_verdicts(ps, monkeypatch, tmp_path):
     assert "class-1 path" in k2["K"]["details"]["P4"]["statement"]
     k3, _ = _verdicts(ps, monkeypatch, tmp_path, dict(K=dict(P4="class 1")), f6=(0.5,))
     assert k3["K"]["status"] == "FAIL"
+
+
+def test_R30_dry_run_requires_the_planted_and_regression_typings(ps, monkeypatch, tmp_path):
+    """Ruling R30: the planted crash controls are blocking controls of their own (OB
+    over-brake, LS and LSK line/steer, LSKF not overspeed). The adjudication's regression
+    counts (T's fallback-typed crashes, expected to include no overspeed; c2's lock-limited
+    crashes, expected to stay overspeed) are reported, never blocking: R30 adds no verdict
+    for them, R20 reports T32's crashes and R29(1) lists c2's lock-limited cells (review)."""
+    out, _ = _verdicts(ps, monkeypatch, tmp_path)
+    assert {n: out[n]["required"] for n in controls.PLANTED} == {
+        "OB": {"crash_type": ["overbrake"]}, "LS": {"crash_type": ["line_steer"]},
+        "LSK": {"crash_type": ["line_steer"]}, "LSKF": {"crash_type": ["not overspeed"]}}
+    assert out["c2"]["got"]["lock_crashes"] == "overspeed"
+    assert out["T"]["got"]["crash_types"] == "no overspeed"
+    bad, _ = _verdicts(ps, monkeypatch, tmp_path, dict(
+        OB=dict(crash_type="1 of 2 not overbrake"), LSK=dict(crash_type="1 of 1 not line_steer"),
+        LSKF=dict(crash_type="1 of 1 not not overspeed"), T=dict(n_overspeed=6),
+        c2=dict(lock=False)))
+    st = {k: v["status"] for k, v in bad.items()}
+    assert st["OB"] == st["LSK"] == st["LSKF"] == "FAIL"
+    assert st["LS"] == st["T"] == st["c2"] == "pass"
+    assert bad["T"]["got"]["crash_types"] == "6 of 11 overspeed"
+    assert bad["c2"]["got"]["lock_crashes"] == "1 of 48 not overspeed"
+    assert bad["T"]["details"]["crash_types"]["n_overspeed"] == 6
+
+
+def test_R20_T32_crashes_are_reported_with_the_keys_margins(ps, monkeypatch, tmp_path):
+    """Review of R30's wiring: T32's crashes are listed with their tape keys' margins (R20)
+    again; R30's planted-control block had swallowed that step, so it never ran for T."""
+    out, _ = _verdicts(ps, monkeypatch, tmp_path, dict(T=dict(crash_cells=[3, 7])),
+                       cache="CACHE")
+    assert out["T"]["details"]["crashes_with_key_margins"] == [
+        dict(cell=3, corridor_min_m=0.05), dict(cell=7, corridor_min_m=0.05)]
+    assert out["T"]["status"] == "pass"
+    none, _ = _verdicts(ps, monkeypatch, tmp_path, cache="CACHE")
+    assert "crashes_with_key_margins" not in none["T"]["details"]
 
 
 def test_dry_run_judges_only_rollouts_made_with_the_current_inputs(ps, monkeypatch, tmp_path):

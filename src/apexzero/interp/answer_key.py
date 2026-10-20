@@ -40,6 +40,17 @@ the corridor by 0.35 m per side is a different Track for the same compiled libra
 (gamma, action_cost, steps, ...) are compiled in, so the min-time-in-actuation key
 (gamma = 1, action_cost = 1e-4) needs one compile per window length.
 
+Viability solves (9.1, ruling R30): a start is judged by its last non-refine round and its
+replay (frozen keys keep 6.2's any-round cap rule); a cell without a backed-off key (tier B,
+recovery) gets Q's rollout as its distinct second start; after the four tested states,
+counterfactual solves of the qualifying ones (the same state with (vx, vy, r) scaled to the
+key's vx*(s)), in s order, stopping at the first that verifies (``viability_keys``,
+``qualifying_states``, ``no_return``). The point-mass bound is recorded only on tested states
+before s_c0 (s_c0 - 50, and s_b where it lies before s_c0). ``no_return`` reads only records
+solved from the run it types (another rollout's records stay in the cache under the same agent,
+snapshot and cell) and counterfactuals made from those records at the current key's speed, and
+names the solves a verdict still needs (``NoReturn.missing``).
+
 Keys run in float64 (``replay`` switches x64 on globally): never in a rollout process. Every
 key is solved for the car the rollouts drive: ``racing.default_context()`` as exact float32
 values (``key_ctx``), hidden_mu = 1. Measures come from ``measures.response_metrics`` through
@@ -93,6 +104,7 @@ from apexzero.interp.constants import (
     BUDGET_P0_CPU_H,
     BUDGET_TOTAL_CPU_H,
     CONT_STAGES,
+    CRASH_DV_TAU,
     DS,
     DT,
     IPOPT_STAGE_MAX_ITER,
@@ -1089,12 +1101,21 @@ def socp_extra(s_end: float, shrink: float = 0.0, vx_upper: dict | None = None) 
             "lead_in": SOCP_LEAD_IN, "vx_rule": "interp"}
 
 
-def _was_capped(res: WindowResult) -> bool:
+def _was_capped(res: WindowResult, last_round_only: bool = False) -> bool:
     """A solve round hit max_iter or the CPU cap. The polishing refine round is left out: when
     it stops short the solver keeps the converged unrefined optimum (``WindowSolver.solve``),
-    and the retry would hit the same 100-iteration refine cap."""
-    return any(str(r.get("status")) in CAPPED_STATUSES for r in res.meta.get("rounds", [])
-               if r.get("round") != "refine")
+    and the retry would hit the same 100-iteration refine cap.
+
+    ``last_round_only`` (ruling R30, viability solves only): only the last non-refine round
+    counts. A first round that hits max_iter against the +-60 m window bound is re-centred
+    and solved again; when that round converges, the start is judged by it and by its replay
+    (12 c1 viability records were discarded as capped although they replay-verify). Frozen
+    keys keep protocol 6.2's rule (any capped round), so no existing key id or verdict
+    changes."""
+    rounds = [r for r in res.meta.get("rounds", []) if r.get("round") != "refine"]
+    if last_round_only:
+        return bool(rounds) and str(rounds[-1].get("status")) in CAPPED_STATUSES
+    return any(str(r.get("status")) in CAPPED_STATUSES for r in rounds)
 
 
 def _max_slip(x: np.ndarray, p: VehicleParams) -> float:
@@ -1156,7 +1177,10 @@ def _run_start(prob: _Problem, name: str, first_guess: tuple[np.ndarray, np.ndar
                extend: Callable, stages: tuple[int, ...], max_iter: int
                ) -> tuple[StartRecord, WindowResult | None]:
     """One start through the continuation stages (``window.solve_continuation`` one stage at a
-    time, so the start's CPU budget is checked between stages), then ``verify_key``."""
+    time, so the start's CPU budget is checked between stages), then ``verify_key``. A start
+    is capped when a solve round of its last stage hit max_iter or the CPU cap (6.2); for a
+    viability problem only that stage's last non-refine round counts (ruling R30,
+    ``_was_capped``)."""
     used, iters, chain, rounds = 0.0, 0, [], []
     prev_good: WindowResult | None = None
     last: WindowResult | None = None
@@ -1185,7 +1209,8 @@ def _run_start(prob: _Problem, name: str, first_guess: tuple[np.ndarray, np.ndar
             prev_good = res
         last = res
     final = last if last is not None and len(last.a) == stages[-1] else None
-    capped = capped or used > START_MAX_CPU or (final is not None and _was_capped(final))
+    capped = capped or used > START_MAX_CPU or (
+        final is not None and _was_capped(final, last_round_only=prob.kind == "viability"))
     success = final is not None and final.success and not capped
     verified, replay_cpu, measures = False, 0.0, {}
     if success:
@@ -1334,6 +1359,25 @@ def window_length(socp: SocpKey, landmarks: Landmarks) -> int:
     return W_SHORT if t_c1 <= W_RULE_TIME else W_LONG
 
 
+_CAR_TABLES: dict[int, tuple] = {}
+
+
+def _car_tables(tables):
+    """``controls.car_tables`` of ``tables``, built once per tables object in this process (it
+    takes about 2 CPU-s, and R30's viability solves start Q on every tier B / recovery
+    state). A CarTables is returned as it is."""
+    from apexzero.interp import controls
+
+    if isinstance(tables, controls.CarTables):
+        return tables
+    hit = _CAR_TABLES.get(id(tables))
+    if hit is None or hit[0] is not tables:
+        hit = (tables, controls.car_tables(tables))
+        _CAR_TABLES.clear()
+        _CAR_TABLES[id(tables)] = hit
+    return hit[1]
+
+
 def q_rollout_guess(bank: StimulusBank, cell: Cell, x0: np.ndarray, steps: int,
                     tables: ModelTables, c_v: float = Q_CV_DEFAULT, phase: int = 0
                     ) -> tuple[np.ndarray, np.ndarray]:
@@ -1349,7 +1393,7 @@ def q_rollout_guess(bank: StimulusBank, cell: Cell, x0: np.ndarray, steps: int,
     from apexzero.interp import controls
 
     _x64()
-    params, aux = controls.q_params(bank, [cell], tables, c_v, "Q")
+    params, aux = controls.q_params(bank, [cell], _car_tables(tables), c_v, "Q")
     policy = controls.make_q_policy("Q")
     tr = _track_arrays64(bank.track(cell.stim_id))
     env = racing.EnvParams(window_steps=10**9)
@@ -1673,66 +1717,388 @@ def anchored_key(bank: StimulusBank, cell: Cell, nominal: KeyRecord, agent: str,
 
 
 VIABILITY_TARGETS = ("s_b", "s_c0-50", "s_c0", "s_a0")
+CF_SUFFIX = ":cf"            # target of a counterfactual record: '<tested target>:cf' (R30)
+# Ruling R30: a viability record judged under R30 (a start judged by its last non-refine
+# round and its replay; a distinct second start where the cell has no backed-off key). An
+# unverified record cached without it is re-judged (``_reusable_starts``).
+VIABILITY_RULE_FLAG = "R30: starts judged by their last non-refine round; distinct second start"
+# The point-mass bound (6.4) is recorded only where it is a valid relaxation, before s_c0: at
+# s_c0 and s_a0 it certifies the verified key's own state infeasible (131 and 54 of c1's 318
+# cells), so it is never computed there (R30), nor at an s_b target at or past s_c0 (a late
+# braker's; c1 cells 138 and 139). It is evidence; it never sets a viability verdict.
+VIABILITY_BOUND_TARGETS = ("s_b", "s_c0-50")
+
+
+def _usable(rec: KeyRecord | None) -> bool:
+    return rec is not None and rec.status == "verified" and rec.x is not None
+
+
+def viability_starts(nominal: KeyRecord | None, backoff: KeyRecord | None,
+                     tables: ModelTables | None) -> list[tuple[str, KeyRecord | None]]:
+    """The first two starts of a viability solve (protocol 6.1), as (name, source key): the
+    nominal key re-timed, then the backed-off key re-timed. Ruling R30: a cell without its own
+    verified backed-off key (tier B and the recovery cells; the stage used to pass the nominal
+    key twice) gets a distinct second start instead, the agent-free Q controller's rollout
+    from the state (6.2's start (3); source None), when the model tables are at hand."""
+    out: list[tuple[str, KeyRecord | None]] = []
+    if _usable(nominal):
+        out.append((f"{nominal.kind}:{nominal.key_id}", nominal))
+    if _usable(backoff) and not (nominal is not None and backoff.key_id == nominal.key_id):
+        out.append((f"{backoff.kind}:{backoff.key_id}", backoff))
+    elif out and tables is not None:
+        out.append(("Q", None))
+    return out
+
+
+def _start_rounds(sr: StartRecord) -> list[dict]:
+    return [r for st in (sr.rounds or []) for r in st.get("rounds", [])]
+
+
+def _judged_alike(sr: StartRecord) -> bool:
+    """A failed start of a cached viability record that R30's rule judges as before and that a
+    re-run reproduces: not verified, never stopped by the CPU cap (time-dependent), and not
+    R30's case, a start counted as capped by an earlier round although its last round
+    converged (status Solve_Succeeded with no flag: R30 replays it). A capped start whose
+    last round failed otherwise fails under both rules."""
+    if sr.verified or sr.cpu_seconds > START_MAX_CPU:
+        return False
+    rounds = _start_rounds(sr)
+    if any(str(r.get("status")) == "Maximum_CpuTime_Exceeded" for r in rounds):
+        return False
+    last = [r for r in (sr.rounds[-1].get("rounds", []) if sr.rounds else [])
+            if r.get("round") != "refine"]
+    converged = bool(last) and str(last[-1].get("status")) not in CAPPED_STATUSES
+    return not (sr.capped and converged and sr.status == "Solve_Succeeded")
+
+
+def _reusable_starts(hit: KeyRecord, plan: list[tuple[str, KeyRecord | None]]
+                     ) -> dict[str, StartRecord]:
+    """Starts of a viability record cached before R30 that R30's solve would run unchanged
+    (same name, so the same source key and guess, and the same IPOPT problem: the record id
+    hashes it) and judge alike (``_judged_alike``), by name. Nothing when the record was
+    started from another nominal key. The retry is reused only with start 1."""
+    if not plan or not hit.starts or hit.starts[0].name != plan[0][0]:
+        return {}
+    names = {n for n, _ in plan} | {"retry"}
+    out: dict[str, StartRecord] = {}
+    for sr in hit.starts:
+        if sr.name in names and sr.name not in out and _judged_alike(sr):
+            out[sr.name] = sr
+    if plan[0][0] not in out:
+        out.pop("retry", None)
+    return out
+
+
+def _viability_record(bank: StimulusBank, cell: Cell, x_prev: np.ndarray, a_prev: np.ndarray,
+                      target: str, anchor: dict, nominal: KeyRecord, backoff: KeyRecord | None,
+                      cache: KeyCache | None, *, agent: str, snapshot: str,
+                      tables: ModelTables | None, p: VehicleParams, force: bool,
+                      q_cv: float) -> KeyRecord:
+    """One viability solve (W = 200) from x_prev with a_0 = a_prev: the starts of
+    ``viability_starts``, one retry at max_iter 3000 when neither verifies, each judged by
+    R30's rule. A cached record is used when verified or judged under R30; an unverified one
+    cached before R30 is re-solved, its starts that R30 judges alike reused
+    (``_reusable_starts``)."""
+    prob = _problem(bank, cell, "viability", 0, p, W=VIABILITY_W, x0=x_prev, a0_fixed=a_prev,
+                    tables=tables)
+    spec_w = dataclasses.replace(prob.spec, steps=VIABILITY_W)
+    kid = key_id("viability", prob.row_hash, x_prev, VIABILITY_W, prob.p, spec_w,
+                 {"a0": np.asarray(a_prev, float).tolist(), "agent": agent,
+                  "snapshot": snapshot, "target": target})
+    plan = viability_starts(nominal, backoff, tables)
+    prior: dict[str, StartRecord] = {}
+    hit = None
+    if cache is not None and not force:
+        hit = cache.get("viability", kid)
+        if hit is not None:
+            if hit.status == "verified" or VIABILITY_RULE_FLAG in hit.flags:
+                return hit
+            prior = _reusable_starts(hit, plan)
+    pairs: list[tuple[StartRecord, WindowResult | None]] = []
+
+    def guess_of(src: KeyRecord | None):
+        if src is None:
+            return q_rollout_guess(bank, cell, x_prev, VIABILITY_W, tables, q_cv)
+        return retime(src, x_prev, VIABILITY_W, track=prob.track, p=prob.p)
+
+    flags = [VIABILITY_RULE_FLAG]
+    for name, src in plan:
+        if name in prior:
+            pairs.append((prior[name], None))
+            continue
+        ext_src = src if src is not None else nominal
+
+        def extend(state, n, src=ext_src):
+            return retime(src, state, n, track=prob.track, p=prob.p)
+
+        if src is None:
+            flags.append(f"Q start c_v {q_cv:g}")
+        pairs.append(_run_start(prob, name, guess_of(src), extend, (VIABILITY_W,),
+                                IPOPT_STAGE_MAX_ITER))
+    if pairs and not any(sr.verified for sr, _ in pairs):
+        if "retry" in prior:
+            pairs.append((prior["retry"], None))
+        else:
+            src = nominal if _usable(nominal) else backoff
+
+            def extend_r(state, n, src=src):
+                return retime(src, state, n, track=prob.track, p=prob.p)
+
+            pairs.append(_run_start(prob, "retry", guess_of(src), extend_r, (VIABILITY_W,),
+                                    RETRY_MAX_ITER))
+    if not pairs:
+        flags.append("no verified nominal or backed-off key to start from")
+    used = [sr.name for sr, r in pairs if r is None and sr.name in prior]
+    if used:
+        flags.append(f"R30: re-judged the record of {hit.created}; reused starts {used}")
+    rec = _record(prob, pairs, key_id_=kid, socp_id=nominal.socp_id if nominal else "",
+                  agent=agent, anchor=anchor, flags=flags)
+    if (rec.status != "verified" and target in VIABILITY_BOUND_TARGETS and tables is not None
+            and pairs and float(anchor.get("s_target", np.inf)) < float(prob.landmarks.s_c0)):
+        b = infeasibility_bound(prob.track0, prob.x0, prob.landmarks, tables)
+        rec.bound = dataclasses.asdict(b)
+        if b.infeasible:
+            rec.flags.append("point-mass bound certifies the state infeasible (6.4)")
+    return _store(rec, cache)
+
+
+def _vx_at(x: np.ndarray, s: float) -> float:
+    """vx of a trajectory's states x [n, 8] at s (linear in s, s made monotone)."""
+    x = np.asarray(x, float)
+    return float(np.interp(s, _monotone_s(x[:, 0]), x[:, 3]))
+
+
+def _is_cf(r: KeyRecord) -> bool:
+    return str(r.anchor.get("target", "")).endswith(CF_SUFFIX)
+
+
+def _target(r: KeyRecord) -> str:
+    return str(r.anchor.get("target", ""))
+
+
+def _target_rank(name: str) -> int:
+    """A target's place in VIABILITY_TARGETS (ties in s: s_b and s_c0 - 50 can share a step)."""
+    base = name.removesuffix(CF_SUFFIX)
+    return VIABILITY_TARGETS.index(base) if base in VIABILITY_TARGETS else len(VIABILITY_TARGETS)
+
+
+def _s_crash(run: Trajectory) -> float:
+    """s of the state after the run's terminating transition (inf if it never terminates)."""
+    if run.term_step < 0:
+        return np.inf
+    return float(run.x[min(run.term_step + 1, len(run.x) - 1), 0])
+
+
+def target_steps(run: Trajectory, targets: dict) -> dict[str, int]:
+    """A run's tested states (protocol 9.1): for each target of ``targets`` ({name: s}) in
+    VIABILITY_TARGETS order with a finite position before the crash, the step L of the first
+    state reached alive at or past it (``_anchor_index``), when L >= 1; the solve starts from
+    x_{L-1} with a_0 = a_{L-1}. ``viability_keys`` solves these, and ``no_return`` expects a
+    record at each it can place (s_c0 - 50, s_c0, s_a0)."""
+    s_crash = _s_crash(run)
+    out: dict[str, int] = {}
+    for name in VIABILITY_TARGETS:
+        if name not in targets or targets[name] is None:
+            continue
+        s_t = float(targets[name])
+        if not np.isfinite(s_t) or s_t >= s_crash:
+            continue
+        L = _anchor_index(run, s_t)
+        if L is not None and L >= 1:
+            out[name] = int(L)
+    return out
+
+
+def _from_run(r: KeyRecord, run: Trajectory) -> bool:
+    """A tested-state record solved from this run: its start state and action are the run's
+    x_{L-1} and a_{L-1} at its step L (R30's "from the same state"). The record id hashes
+    the state, so another rollout of the same agent, snapshot and cell (re-rolled after a
+    change of c_v, shifts or design) leaves records that fail this."""
+    L = r.anchor.get("step")
+    if L is None or r.x0 is None:
+        return False
+    L = int(L)
+    if not 1 <= L < len(run.x):
+        return False
+    if not np.array_equal(np.asarray(r.x0, float).reshape(-1), np.asarray(run.x[L - 1], float)):
+        return False
+    a = r.anchor.get("a_prev")
+    if a is not None and run.a is not None and L - 1 < len(run.a):
+        return bool(np.array_equal(np.asarray(a, float), np.asarray(run.a[L - 1], float)))
+    return True
+
+
+def _r30_judged(r: KeyRecord) -> bool:
+    """A viability verdict R30 accepts: verified (the same under both rules), or unverified
+    and judged under R30's rule (``VIABILITY_RULE_FLAG``)."""
+    return r.status == "verified" or VIABILITY_RULE_FLAG in r.flags
+
+
+def _run_records(viability: list[KeyRecord], run: Trajectory,
+                 steps: dict[str, int] | None = None) -> tuple[list[KeyRecord], int]:
+    """The tested-state records of this run (counterfactuals and records never solved left
+    out; ``_from_run``; at the step ``steps`` expects for its target), one per target (the
+    latest created: an s_b record left by a changed s_b), in s order of the tested state
+    (ties in target order). Returns (records, how many solved tested-state records were
+    left out)."""
+    cand = [r for r in viability if not _is_cf(r) and r.starts]
+    by: dict[str, KeyRecord] = {}
+    for r in cand:
+        name = _target(r)
+        if not _from_run(r, run):
+            continue
+        if steps is not None and name in steps and int(r.anchor["step"]) != steps[name]:
+            continue
+        old = by.get(name)
+        if old is None or (str(r.created), r.key_id) > (str(old.created), old.key_id):
+            by[name] = r
+    out = sorted(by.values(), key=lambda r: (_tested_s(r), _target_rank(_target(r))))
+    return out, len(cand) - len(out)
+
+
+def _tested_states(viability: list[KeyRecord], run: Trajectory) -> list[KeyRecord]:
+    """The tested-state records of ``run`` (``_run_records``: solved, of that run, one per
+    target, in s order) judged under R30 (``_r30_judged``)."""
+    return [r for r in _run_records(viability, run)[0] if _r30_judged(r)]
+
+
+def _s_a0_of(tested: list[KeyRecord], s_a0: float | None) -> float:
+    if s_a0 is not None and np.isfinite(s_a0):
+        return float(s_a0)
+    for r in tested:
+        if _target(r) == "s_a0":
+            return float(r.anchor.get("s_target", np.inf))
+    return np.inf
+
+
+def qualifying_states(viability: list[KeyRecord], run: Trajectory, key_x: np.ndarray,
+                      s_a0: float | None = None, tau: float = CRASH_DV_TAU
+                      ) -> list[tuple[KeyRecord, float]]:
+    """Ruling R30's tested states that can make a crash overspeed, in s order, with their dv:
+    no verified crash-free continuation and no verified tested state after them (a later
+    verified state overrules), at or before s_a0 by target (the s_a0 test counts as at s_a0;
+    an s_b target after s_a0 does not), and vx above the key's vx*(s) by more than ``tau``
+    (``key_x``: the states of the key 9.1's dv uses). s_a0 is the stimulus's (else the s_a0
+    record's target, else every target counts). Only this run's records judged under R30
+    count (``_tested_states``); two targets at one step (s_b and s_c0 - 50) are one state,
+    named by the first target, so its counterfactual is solved once."""
+    tested = _tested_states(viability, run)
+    ok = [i for i, r in enumerate(tested) if r.status == "verified"]
+    after = tested[(ok[-1] + 1) if ok else 0:]
+    a0 = _s_a0_of(tested, s_a0)
+    valid = np.asarray(run.valid, bool)
+    out, steps = [], set()
+    for r in after:
+        name = _target(r)
+        if name != "s_a0" and not float(r.anchor.get("s_target", np.inf)) <= a0:
+            continue
+        L = int(r.anchor["step"])
+        if L in steps:
+            continue
+        s = _tested_s(r)
+        dv = _vx_at(run.x[valid], s) - _vx_at(key_x, s)
+        if dv > tau:
+            out.append((r, float(dv)))
+            steps.add(L)
+    return out
+
+
+def _cf_scale(rec: KeyRecord, run: Trajectory, key_x: np.ndarray) -> tuple[float, float, float]:
+    """(scale, vx(s_L), vx*(s_L)) of a tested state's counterfactual: vx*(s_L) / vx(s_L), s_L
+    and vx(s_L) the run's tested state x_L, vx* from the key's states ``key_x``."""
+    L = int(rec.anchor["step"])
+    s_L, vx_L = float(run.x[L, 0]), float(run.x[L, 3])
+    vk = _vx_at(key_x, s_L)
+    return vk / vx_L, vx_L, vk
+
+
+def _cf_of(cfs: list[KeyRecord], rec: KeyRecord, run: Trajectory, key_x: np.ndarray
+           ) -> list[KeyRecord]:
+    """The counterfactual records made from tested record ``rec`` at the current key's speed:
+    ``anchor['tested_key']`` is ``rec``'s id, and the start is ``rec``'s x_{L-1} scaled by
+    vx*(s_L) / vx(s_L) of ``key_x`` (``counterfactual_state``) with ``rec``'s a_0. A key
+    re-solved in place (6.3: same id, better J) or a counterfactual of another rollout's state
+    does not match."""
+    want = counterfactual_state(rec.x0, _cf_scale(rec, run, key_x)[0])
+    a = rec.anchor.get("a_prev")
+    out = []
+    for c in cfs:
+        if str(c.anchor.get("tested_key", "")) != str(rec.key_id) or c.x0 is None:
+            continue
+        if not np.array_equal(np.asarray(c.x0, float).reshape(-1), want):
+            continue
+        ca = c.anchor.get("a_prev")
+        if a is not None and ca is not None and not np.array_equal(np.asarray(ca, float),
+                                                                   np.asarray(a, float)):
+            continue
+        out.append(c)
+    return out
 
 
 def viability_keys(bank: StimulusBank, cell: Cell, run: Trajectory, nominal: KeyRecord,
-                   backoff: KeyRecord, cache: KeyCache | None = None, *, agent: str = "",
-                   snapshot: str = "", tables: ModelTables | None = None,
-                   p: VehicleParams = F1_2025, force: bool = False) -> list[KeyRecord]:
+                   backoff: KeyRecord | None, cache: KeyCache | None = None, *,
+                   agent: str = "", snapshot: str = "", tables: ModelTables | None = None,
+                   p: VehicleParams = F1_2025, force: bool = False,
+                   key: KeyRecord | None = None, q_cv: float = Q_CV_DEFAULT,
+                   tau: float = CRASH_DV_TAU) -> list[KeyRecord]:
     """Viability solves (W = 200) from the agent's states at s_b, s_c0 - 50, s_c0 and s_a0
-    (those before its crash), each from x_{L-1} with a_0 = a_{L-1}; starts: the nominal and
-    backed-off keys re-timed (and the one retry). 'verified' means a crash-free continuation
-    exists from that state. Post-tag."""
+    (those before its crash: ``target_steps``), each from x_{L-1} with a_0 = a_{L-1};
+    'verified' means a crash-free continuation exists from that state. Starts:
+    ``viability_starts`` (the nominal and backed-off keys re-timed, or Q's rollout where the
+    cell has no backed-off key, R30) and the one retry; a start is judged by its last
+    non-refine round and its replay (R30).
+
+    Then ruling R30's counterfactuals: for each qualifying tested state
+    (``qualifying_states``: non-viable, not overruled by a later verified one, at or before
+    s_a0, vx above vx*(s) of ``key`` by more than ``tau``; one per step), in s order, one
+    solve from the same x_{L-1} with (vx, vy, r) scaled by vx*(s_L) / vx(s_L), s_L the
+    tested state, and s, n, xi, delta, pedal and a_0 unchanged (target '<name>:cf',
+    ``anchor['cf_scale']``, ``anchor['tested_key']`` the tested record's id), with the same
+    starts and retry; they stop at the first that verifies. ``key`` is the key 9.1's dv uses
+    (the key at the run's phase where one is verified; default ``nominal``). Returns the
+    tested states' records, then the counterfactuals'. Post-tag, and R28's controls."""
     stim = bank.stimuli[cell.stim_id]
     lm = stim.landmarks
     mr = run_metrics(run, _marks(stim, bank, cell.stim_id, run.x[0, 0], len(run.x) - 1), tables, p)
     targets = {"s_b": mr.get("s_b", np.nan), "s_c0-50": lm.s_c0 - 50.0, "s_c0": lm.s_c0,
                "s_a0": lm.s_a0}
-    s_crash = float(run.x[min(run.term_step + 1, len(run.x) - 1), 0]) if run.term_step >= 0 else np.inf
+    kw = dict(agent=agent, snapshot=snapshot, tables=tables, p=p, force=force, q_cv=q_cv)
     out = []
-    for name in VIABILITY_TARGETS:
+    for name, L in target_steps(run, targets).items():
         s_t = float(targets[name])
-        if not np.isfinite(s_t) or s_t >= s_crash:
-            continue
-        L = _anchor_index(run, s_t)
-        if L is None or L < 1:
-            continue
         x_prev = np.asarray(run.x[L - 1], float)
         a_prev = np.asarray(run.a[L - 1], float)
-        prob = _problem(bank, cell, "viability", 0, p, W=VIABILITY_W, x0=x_prev, a0_fixed=a_prev,
-                        tables=tables)
-        spec_w = dataclasses.replace(prob.spec, steps=VIABILITY_W)
-        kid = key_id("viability", prob.row_hash, x_prev, VIABILITY_W, prob.p, spec_w,
-                     {"a0": a_prev.tolist(), "agent": agent, "snapshot": snapshot, "target": name})
-        if cache is not None and not force:
-            hit = cache.get("viability", kid)
-            if hit is not None:
-                out.append(hit)
-                continue
-        pairs = []
-        for src in (nominal, backoff):
-            if src is None or src.status != "verified" or src.x is None:
-                continue
-            guess = retime(src, x_prev, VIABILITY_W, track=prob.track, p=prob.p)
-
-            def extend(state, n, src=src, prob=prob):
-                return retime(src, state, n, track=prob.track, p=prob.p)
-
-            pairs.append(_run_start(prob, f"{src.kind}:{src.key_id}", guess, extend,
-                                    (VIABILITY_W,), IPOPT_STAGE_MAX_ITER))
-        if pairs and not any(sr.verified for sr, _ in pairs):
-            src = nominal if nominal.status == "verified" else backoff
-            guess = retime(src, x_prev, VIABILITY_W, track=prob.track, p=prob.p)
-
-            def extend_r(state, n, src=src, prob=prob):
-                return retime(src, state, n, track=prob.track, p=prob.p)
-
-            pairs.append(_run_start(prob, "retry", guess, extend_r, (VIABILITY_W,), RETRY_MAX_ITER))
         anchor = {"target": name, "s_target": s_t, "step": L, "s_anchor": float(x_prev[0]),
                   "s_state": float(run.x[L, 0]), "a_prev": a_prev.tolist(), "snapshot": snapshot}
-        rec = _record(prob, pairs, key_id_=kid, socp_id=nominal.socp_id, agent=agent, anchor=anchor,
-                      flags=[] if pairs else ["no verified nominal or backed-off key to start from"])
-        out.append(_store(rec, cache))
+        out.append(_viability_record(bank, cell, x_prev, a_prev, name, anchor, nominal, backoff,
+                                     cache, **kw))
+    key = nominal if key is None else key
+    if not _usable(key):
+        return out
+    kx = np.asarray(key.x, float)
+    for rec, dv in qualifying_states(out, run, kx, lm.s_a0, tau):
+        L = int(rec.anchor["step"])
+        x_prev = np.asarray(rec.x0, float)
+        a_prev = np.asarray(rec.anchor.get("a_prev", run.a[L - 1]), float)
+        scale, vx_L, vk = _cf_scale(rec, run, kx)
+        x_cf = counterfactual_state(x_prev, scale)
+        name = _target(rec)
+        anchor = dict(rec.anchor, target=name + CF_SUFFIX, tested=name, cf_scale=float(scale),
+                      vx_state=vx_L, vx_key=float(vk), dv=float(dv), key=str(key.key_id),
+                      tested_key=str(rec.key_id))
+        cf = _viability_record(bank, cell, x_cf, a_prev, name + CF_SUFFIX, anchor, nominal,
+                               backoff, cache, **kw)
+        out.append(cf)
+        if cf.status == "verified":
+            break
+    return out
+
+
+def counterfactual_state(x: np.ndarray, scale: float) -> np.ndarray:
+    """Ruling R30's slowed state: (vx, vy, r) times ``scale``, so the car keeps its path and
+    body slip, just slower; s, n, xi, delta and the pedal state unchanged."""
+    out = np.asarray(x, float).reshape(NX).copy()
+    out[3:6] *= float(scale)
     return out
 
 
@@ -1742,24 +2108,78 @@ def _tested_s(r: KeyRecord) -> float:
     return float(r.anchor.get("s_state", r.anchor.get("s_anchor", np.inf)))
 
 
-def no_return(viability: list[KeyRecord], run: Trajectory, key: Trajectory) -> NoReturn:
-    """Point of no return from the viability solves: the first tested state (in s) with no
-    verified crash-free solution; certified when the tested state before it has one. dv is
-    vx - vx* there (the key as a Trajectory). ``s_last_viable`` is the last tested state
-    before it with a verified key (all of them viable: s None, and s_last_viable the last
-    tested state, which crash typing reads as resolved once it is >= s_a0)."""
-    recs = sorted(viability, key=_tested_s)
-    last_ok = np.nan
-    for i, r in enumerate(recs):
-        if r.status != "verified":
-            s = _tested_s(r)
-            certified = i > 0 and recs[i - 1].status == "verified"
-            ok = np.asarray(run.valid, bool)
-            v_run = float(np.interp(s, _monotone_s(run.x[ok, 0]), run.x[ok, 3]))
-            v_key = float(np.interp(s, _monotone_s(key.x[:, 0]), key.x[:, 3]))
-            return NoReturn(s=s, certified=bool(certified), dv=v_run - v_key, s_last_viable=last_ok)
-        last_ok = _tested_s(r)
-    return NoReturn(s=None, certified=False, dv=np.nan, s_last_viable=last_ok)
+def no_return(viability: list[KeyRecord], run: Trajectory, key: Trajectory,
+              s_a0: float | None = None, tau: float = CRASH_DV_TAU,
+              key_id: str = "", s_c0: float | None = None) -> NoReturn | None:
+    """``measures.NoReturn`` from a run's viability records (ruling R30).
+
+    Only this run's tested-state records count (``_run_records``: solved from the run's own
+    x_{L-1} and a_{L-1}; at the step ``target_steps`` gives for the s_c0 - 50, s_c0 and s_a0
+    targets it can place from ``s_c0`` and ``s_a0``; one per target); records of another
+    rollout of the same agent, snapshot and cell are left out (``n_stale``). An unverified record judged before
+    R30 is no verdict. In s order, a verified tested state overrules every non-viable one
+    before it (``overruled``). ``s`` is the first non-viable tested state after the last
+    viable one (its own s), with its target, the target's position and dv = vx - vx* there
+    (``key``: the key 9.1's dv uses, as a Trajectory); None when every tested state is viable.
+
+    ``cf_verified_at`` is the first qualifying state (``qualifying_states``) with a verified
+    counterfactual made from its record at the current key's speed (``_cf_of``; with
+    ``key_id``, the key's cache id, only those scaled to that key), and ``cf_dv`` its dv.
+
+    ``missing`` names what the verdict still needs: an expected tested state with no record
+    of this run, or one judged before R30 ('<target> (judged before R30)'), after the last
+    viable tested state (one before it is overruled anyway); and, when no counterfactual
+    verified, each qualifying state without one ('<target>:cf'). A crash with anything
+    missing is unresolved (``measures.no_return_resolved``) and listed. ``certified`` is
+    R28's (a verified tested state before s) and decides nothing. None without any solved
+    tested-state record."""
+    if not any(not _is_cf(r) and r.starts for r in viability):
+        return None
+    places = {"s_a0": s_a0}
+    if s_c0 is not None:
+        places.update({"s_c0-50": float(s_c0) - 50.0, "s_c0": float(s_c0)})
+    expected = target_steps(run, places)
+    mine, n_stale = _run_records(viability, run, expected)
+    tested = [r for r in mine if _r30_judged(r)]
+    names = tuple(_target(r) for r in tested)
+    have = {_target(r) for r in mine}
+    absent = [(float(run.x[L, 0]), _target_rank(name), name)
+              for name, L in expected.items() if name not in have]
+    absent += [(_tested_s(r), _target_rank(_target(r)), f"{_target(r)} (judged before R30)")
+               for r in mine if not _r30_judged(r)]
+    if not tested and not absent:
+        return None
+    ok = [i for i, r in enumerate(tested) if r.status == "verified"]
+    last = ok[-1] if ok else -1
+    s_last = _tested_s(tested[last]) if last >= 0 else np.nan
+    floor = s_last if last >= 0 else -np.inf
+    missing = [lab for s, _, lab in sorted(absent) if s > floor]
+    overruled = tuple(_target(r) for r in tested[:max(last, 0)] if r.status != "verified")
+    if last == len(tested) - 1:
+        return NoReturn(s=None, certified=False, dv=np.nan, s_last_viable=s_last, tested=names,
+                        overruled=overruled, missing=tuple(missing), n_stale=n_stale)
+    first = tested[last + 1]
+    s = _tested_s(first)
+    valid = np.asarray(run.valid, bool)
+    kx = np.asarray(key.x, float)
+    dv = _vx_at(run.x[valid], s) - _vx_at(kx, s)
+    cfs = [r for r in viability if _is_cf(r) and r.starts
+           and (not key_id or str(r.anchor.get("key", key_id)) == key_id)]
+    cf_at, cf_dv, cf_missing = "", np.nan, []
+    for r, dq in qualifying_states(tested, run, kx, s_a0, tau):
+        made = _cf_of(cfs, r, run, kx)
+        if any(c.status == "verified" for c in made):
+            cf_at, cf_dv = _target(r), float(dq)
+            break
+        if not made:
+            cf_missing.append(_target(r) + CF_SUFFIX)
+    if not cf_at:
+        missing += cf_missing
+    return NoReturn(s=s, certified=last >= 0, dv=float(dv),
+                    s_last_viable=s_last, target=_target(first),
+                    s_target=float(first.anchor.get("s_target", np.nan)),
+                    cf_verified_at=cf_at, overruled=overruled, tested=names,
+                    cf_dv=cf_dv, missing=tuple(missing), n_stale=n_stale)
 
 
 # Marks an actuation key whose starts were verified with ``verify_key`` (its own reward,

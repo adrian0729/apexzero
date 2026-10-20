@@ -215,6 +215,11 @@ CRASH_UTIL = 0.98                    # crash typing: util >= 0.98 ...
 CRASH_UTIL_STEPS = 3                 # ... for >= 3 steps
 LINE_STEER_UTIL = 0.9                # line/steer: max util < 0.9 over the last second
 CRASH_LOOKBACK = 1.0                 # s
+# Ruling R30: the speed excess that counts as "too fast" in crash typing, 6.3's speed floor
+# (0.5 km/h). Overspeed needs vx - vx* > tau (the primary path's tested state and the
+# ellipse fallback), over-brake dv <= tau; float32 noise at the key's own speed (T's crashes:
+# dv of 1e-5 to 2e-4 m/s) no longer reads as a sign.
+CRASH_DV_TAU = kph(0.5)              # m/s
 A_DEC_PEDAL_STEP = 0.005             # a_dec(v) table: pedal sweep step on [-1, 0]
 A_DEC_V_STEP_KPH = 1.0               # a_dec(v) grid step
 A_Y_V_GRID_KPH = (20.0, 315.0, 5.0)  # a_y,max(v) grid (start, stop, step)

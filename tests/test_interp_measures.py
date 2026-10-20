@@ -462,14 +462,19 @@ def test_crash_type_rules():
     assert M.crash_type(sat, mk, key, unresolved) == "overspeed"
     slower = traj(sat.s, np.full(K, 70.0))            # key faster: dv < 0
     assert M.crash_type(sat, mk, slower, None) == "other"
-    # A resolved point of no return decides; the ellipse rule is then not used.
-    after = M.NoReturn(s=None, certified=True, dv=np.nan, s_last_viable=LM.s_a0)
+    # A resolved crash (ruling R30) is decided by the viability path; the ellipse rule is
+    # then not used: every tested state through s_a0 viable ...
+    after = M.NoReturn(s=None, certified=False, dv=np.nan, s_last_viable=LM.s_a0 + 1.0,
+                       tested=("s_b", "s_c0", "s_a0"))
     assert M.crash_type(sat, mk, key, after) == "other"
-    late = M.NoReturn(s=LM.s_a0 + 10.0, certified=True, dv=3.0)
+    # ... or a non-viable tested state, overspeed only with a verified counterfactual.
+    late = M.NoReturn(s=LM.s_a0 + 1.0, certified=True, dv=3.0, target="s_a0")
     assert M.crash_type(sat, mk, key, late) == "other"
-    early = M.NoReturn(s=LM.s_c0, certified=True, dv=3.0)
+    early = M.NoReturn(s=LM.s_c0, certified=False, dv=3.0, target="s_c0", cf_verified_at="s_c0")
     plain, _ = crash_run()
     assert M.crash_type(plain, mk, key, early) == "overspeed"
+    no_cf = M.NoReturn(LM.s_c0, True, 3.0, target="s_c0")       # dv > 0 alone: not overspeed
+    assert M.crash_type(plain, mk, key, no_cf) == "line_steer"
     assert M.crash_type(plain, mk, key, M.NoReturn(LM.s_c0, True, -1.0)) == "line_steer"
     # Over-brake: front locked under brake demand in the last second, slower than the key.
     kt45 = crash_run(v=45.0)[1]

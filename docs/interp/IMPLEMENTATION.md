@@ -84,7 +84,7 @@ scripts/psychophysics.py imports everything lazily, inside each stage function.
 | 5 | Every measure | `measures.response_metrics` → `ResponseMetrics`; pieces in `brake_onset`, `response_onset`, `line_eta`, `path_curvature`, `first_sight`, `oscillation_index`, `crash_cause` |
 | 5 | Errors against a key | `measures.key_errors` → `KeyErrors`; `measures.delta_v` |
 | 5 | Trajectory adapters | `measures.trajectory_from_rollout`, `_from_window`, `_from_replay`, `_from_socp` |
-| 6.1 | Nominal, backed-off, phase, null, re-anchored, viability, actuation keys | `answer_key.full_recipe`, `warm_key`, `backoff_problem`, `null_key`, `anchored_key` (one per deterministic phase, from `anchor_base` and `anchor_for`: R17a), `viability_keys`, `actuation_key` |
+| 6.1 | Nominal, backed-off, phase, null, re-anchored, viability, actuation keys | `answer_key.full_recipe`, `warm_key`, `backoff_problem`, `null_key`, `anchored_key` (one per deterministic phase, from `anchor_base` and `anchor_for`: R17a), `viability_keys` (with R30's counterfactual records), `actuation_key` |
 | 6.1 | `solve_from_state` | `answer_key.AnchoredSolver.solve(a0_fixed=…)`, `answer_key.solve_from_state` |
 | 6.2 | Pinned s-OCP | `answer_key.pinned_strip`, `solve_min_time_pinned`, `socp_from_state`, `socp_end` |
 | 6.2 | Guess, stages and starts | `answer_key.socp_guess`, `extend_straight`, `stages_for`, `retime`, `make_solver` |
@@ -95,7 +95,7 @@ scripts/psychophysics.py imports everything lazily, inside each stage function.
 | 7 | Controls and required verdicts | `controls.make_q_policy`, `make_tape_policy`, `make_knn_policy`, `CONTROLS`, `T64`, `tune_cv`, `tau_c_k1`, `c1_shifts`, `c2_planted_law`, `c3_checks`, `knn_fallback`, `offline_prediction`; `rollout.run_tape_rollouts_x64` (R20) |
 | 7 | Dry run and power table | `analysis.simulate_pairs`, `analysis.power_table` |
 | 8 | Agents, loading, manifest, gate | `registry.AGENTS` (re-exported as `agents.AGENTS`), `load_agent`, `freeze_manifest`, `Manifest`, `SnapshotEntry`; gate via `ResponseMetrics.osc_index` and completion |
-| 9.1 | Pair values, crash typing | `analysis.pair_values`, `measures.crash_type`, `answer_key.no_return` → `measures.NoReturn` |
+| 9.1 | Pair values, crash typing (overspeed as ruling R30 defines it) | `analysis.pair_values`, `measures.crash_type`, `answer_key.no_return` → `measures.NoReturn`, `answer_key.qualifying_states` |
 | 9.2 | Beta-binomial, Clopper–Pearson, permutations, bootstrap | `analysis.beta_binomial`, `clopper_pearson`, `permutation_spearman`, `bootstrap_band` |
 | 9.3 | R50 and Firth | `analysis.r50`, `analysis.firth_logistic` |
 | 10 | Stages, logging, budget | `scripts/psychophysics.py`, `io.StageLog`, `answer_key.project_budget` |
@@ -1084,29 +1084,126 @@ Nothing below has been run. Never pass `--force` to `keys`: it would re-solve ev
 5. **Only if K's status is 'halve F6'** (R27): `stimuli --real --force --f6-scale 0.5`, then `keys --priority P2` (layout of the new F6 rows; F6 has no keys), `controls` (c_v resumes unless its cells changed, since F6 does not touch tier A or tier D (a); the controls re-run on the new design hash; cached viability solves are reused) and `dryrun`.
 6. **Commit and tag** if every planted verdict and control passes. That is the user's call.
 
+## Ruling R30: overspeed defined causally (protocol 12, 2026-10-20)
+
+R28's check failed on c1: 251 of 318 crashed u = 0 runs were not typed overspeed (249 unresolved, 2 "other"). R30 (the adjudication's paste-ready ruling) fixes three implementation faults and redefines 9.1's primary path. Nothing here ran a pipeline stage, rolled out an agent or solved a key, and nothing was written under `outputs/psychophysics/`; the counts below come from read-only passes over the saved c1 rollouts and the key cache, with the solves stubbed.
+
+### Implementation map
+
+| R30 item | Implemented by | Tests (`tests/test_interp_r30.py` unless named) |
+|---|---|---|
+| A viability start is judged by its last non-refine round and its replay; frozen keys keep 6.2's rule | **`answer_key`**: `_was_capped(res, last_round_only)`; `_run_start` passes `last_round_only=prob.kind == "viability"`. Nominal, backoff, phase, null, anchored and actuation keys still count any capped solve round, so no key id or verdict of a frozen key changes. The per-start CPU budget (`used > START_MAX_CPU`) still caps | `test_R30_a_viability_start_is_judged_by_its_last_non_refine_round` (capped first round then converged: verified for kind 'viability', capped for 'nominal' and 'phase') |
+| Counterfactual records | **`answer_key.viability_keys(..., key=, q_cv=, tau=)`**: after the four tested states, `qualifying_states` (non-viable; no verified tested state after it; at or before s_a0 by target, so the s_a0 test counts as at s_a0 and an s_b target after s_a0 does not; vx − vx\*(s) > τ against `key`, the key 9.1's Δv uses), in s order; each gets one record (`target` '<name>:cf', `anchor`: `tested`, `cf_scale`, `vx_state`, `vx_key`, `dv`, `key`, `tested_key`) solved from the tested record's x_{L−1} with (vx, vy, r) times vx\*(s_L)/vx(s_L) (`counterfactual_state`; s, n, ξ, δ, pedal and a_0 unchanged), with the same starts and retry; the loop stops at the first that verifies. The scale follows the adjudication's `vsolve.py --cf` | `test_R30_unrecoverable_at_s_a0_and_recoverable_slowed_is_overspeed`, `test_R30_counterfactual_keeps_s_n_xi_delta_and_pedal`, `test_R30_counterfactuals_run_in_s_order_and_stop_at_the_first_verified`, `test_R30_no_counterfactual_within_tau_of_the_key`, `test_R30_qualifying_states_by_target` |
+| Distinct second start for tier B and recovery | **`answer_key.viability_starts`**: start 2 is the backed-off key re-timed when the cell has its own verified one, else Q's rollout from the state (`q_rollout_guess`, 6.2's agent-free start (3); flag `Q start c_v <c_v>`), never the nominal key twice. `_car_tables` builds Q's car tables once per process (about 2 CPU-s each). **Script**: `_anchored_job` passes `key_for(cell, 'backoff', 0)` without the `or nom` fallback, and Q's c_v (`q_cv`: the controls stage's tuned c_v; the anchored-keys stage's `_tuned_cv()`) | `test_R30_distinct_second_start_for_cells_without_a_backed_off_key` |
+| No point-mass bound at s_c0 or s_a0 | `VIABILITY_BOUND_TARGETS = ('s_b', 's_c0-50')`, and only when the target lies before s_c0 (review: a late braker's s_b can lie at or past s_c0, c1 cells 138 and 139): an unverified record there carries `infeasibility_bound` in `bound` (and a flag when it certifies), as evidence; it never sets a viability status. Never computed at s_c0, s_a0, an s_b at or past s_c0, or on a counterfactual | `test_R30_point_mass_bound_only_at_s_b_and_s_c0_minus_50`, `test_R30_point_mass_bound_not_at_an_s_b_past_s_c0` |
+| `NoReturn` gains target, cf_verified_at, overruled; certified no longer decides | **`measures.NoReturn`**: `s` (first non-viable tested state after the last viable one), `target`, `s_target`, `dv`, `cf_verified_at`, `cf_dv` (Δv at the state that typed it overspeed), `overruled`, `tested` (target names in s order), `missing` (solves the verdict still needs), `n_stale`; `certified` kept for the record. **`answer_key.no_return(recs, run, key, s_a0=, tau=, key_id=, s_c0=)`**: only the run's own tested records (`_run_records`: start state and action equal to the run's x_{L−1}, a_{L−1} at the record's step; at the step `target_steps` gives for s_c0 − 50, s_c0 and s_a0; one per target, ties in s ordered by target); a counterfactual counts only when its `tested_key` is that record's id and its start is that record's state scaled to the current key's vx\*(s_L) (`_cf_of`), and, with `key_id`, scaled to that key; an unverified record without R30's flag is no verdict; None without a solved tested-state record | `test_interp_answer_key.py::test_no_return_from_viability_records`, `test_R30_a_later_verified_state_overrules_an_earlier_non_viable_one`, `test_R30_review_*` (seven tests) |
+| `crash_type`: primary path by target name; resolution; τ; fallback scope | **`measures.crash_type(..., tau=CRASH_DV_TAU)`**: overspeed when resolved with `cf_verified_at` set; `measures.no_return_resolved` (some tested state non-viable after overruling, or the s_a0 target tested with every tested state viable, and nothing in `missing`); the ellipse fallback only when unresolved (no solves; a crash before s_a0 with every tested state viable; a verdict with a solve missing, listed: X9), with Δv > τ; over-brake with Δv ≤ τ. **`constants.CRASH_DV_TAU`** = 0.5 km/h (6.3's speed floor) | `test_R30_fallback_and_over_brake_use_tau`; `test_interp_measures.py::test_crash_type_rules` (updated) |
+| analysis mirrors the rules; the R28 check replaced; P2(b) on the solve-typed subset | **`analysis`**: `no_return_resolved` (calls `measures.no_return_resolved`), `no_return_columns` and run columns `nr_resolved`, `nr_s`, `nr_target`, `nr_s_target`, `nr_dv`, `nr_cf`, `nr_overruled`, `nr_cf_dv`, `nr_tested`, `nr_missing`, `nr_stale`. `viability_typing(runs, keys)`: every judged crashed u = 0 run resolved, none over-brake or line/steer, every run unrecoverable at or before s_c0 (`nr_target` s_c0 − 50 or s_c0, or s_b with `nr_s_target` ≤ s_c0 from the key table) overspeed; the others listed (`others`: type, target relative to s_c0 and s_a0, Δv, counterfactual and its Δv, overruled, missing solves); runs with a solve missing are unresolved, counted (`n_incomplete`) and listed (`incomplete_cells`). Pair columns `typed_solve`, `overspeed_frac_solve`; `p2` details `crash_cells_solve`, `median_overspeed_share_solve`, `b_solve` (reported, never deciding). `CachedKeys.no_return` passes s_c0, s_a0 and the key id | `test_interp_dryrun_analysis.py::test_R30_no_return_resolved_mirrors_crash_typing`, `::test_R28_run_table_records_the_typing_path`, `::test_R30_viability_typing`; `test_R30_pair_table_reports_p2b_on_the_solve_typed_subset` |
+| Planted crash controls | **`controls`**: `PLANT_SITES` (A1: R14.6/90°/W12/typical/left, cell 28 in the saved design; A2: R28.6/90°/W12/typical/left, cell 46), `planted_cells` (tier A synthetic cells with the site's approach, direction, angle, width and ramp kind, no no-cap variant, closest in log R; ties to the lower id), `PLANTED`: OB (Q, pedal −1 from s_c0 − 5 m; A1 and A2), LS (Q, steering × 0.25 from s_c0 + 2 m; A1 and A2), LSK (the u = 0 nominal key's float32 tape, steering × 0.3 from the first key state at or past s_c0 + 2 m; A2), LSKF (LSK plus the key's braking before s_c0 × 0.9; A2), as the adjudication's `plant.py` built them; `make_planted_q_policy`, `planted_tape`. Each is a `CONTROLS` entry requiring `crash_type` overbrake / line_steer / line_steer / not overspeed. **`analysis.planted_typing`**: every u = 0 run crashes and gets the type, with its viability solves present (`nr_tested`) and complete (`nr_missing` empty; review: LSK without its solves is typed line/steer by the fallback) | `test_R30_planted_cells_are_chosen_by_geometry`, `test_R30_planted_tapes`, `test_R30_planted_q_policies_change_only_their_fault`, `test_R30_planted_controls_run_through_the_harness` (OB and LSK through the float32 harness, u = 0 only), `test_R30_planted_typing_verdicts` |
+| T's fallback 0 of 11 overspeed; c2's lock-limited crashes stay overspeed (the adjudication's acceptance checks, not R30's text) | **Reported, never blocking** (review; X12): `'crash_types' in CONTROLS['T'].reported` (`analysis.crash_type_counts`; got 'no overspeed' or 'k of n overspeed'); `'lock_crashes' in CONTROLS['c2'].reported` (`controls.c2_lock_typing`: c2's crashed deterministic runs on cells with raw radius ≤ `lock_radius`; got 'overspeed' when at least one and all are) | `test_R30_regression_counts_of_T_and_c2`; `test_interp_dryrun_controls.py::test_control_specs_follow_the_dry_run_rulings` (updated) |
+| Script wiring | **Controls stage**: step 4 runs the planted controls with the others (`_run_one_control`: u = 0 only; `_control_cells` → `planted_cells`; resume key `plant_keys_hash` from `_plant_hash`: cells and their u = 0 nominal key ids, plus `q_law` for OB and LS). Step 5 is `_control_viability` (was `_c1_viability`): for c1 and the four planted controls (`VIABILITY_CONTROLS`), one job per crashed u = 0 run on a cell with a verified u = 0 key (snapshot '0-ph0', phase 0, Q's c_v), solving the tested states then the counterfactuals; counts per control (`tested_*`, `cf_*`, CPU) go to the manifest (`validation['c1_viability']`). **Dry run**: `_control_verdicts` judges the planted controls (`planted_typing`) and c1's new `viability_typing` (its miss message names which of the three rules failed, and how many runs have solves missing), and reports T's `crash_types` and c2's `lock_crashes`; T32's crashes are listed with their keys' margins again (`crashes_with_key_margins`, R20; review: the planted block had swallowed that step). `_viability_map(cache, log)` logs unverified viability records not yet judged under R30 | `test_R30_controls_stage_solves_c1_and_the_planted_controls`; `test_interp_dryrun_script.py::test_R30_dry_run_requires_the_planted_and_regression_typings`, `::test_R20_T32_crashes_are_reported_with_the_keys_margins` (new), `::test_R20_to_R28_dry_run_required_verdicts`, `::test_R20_to_R28_controls_stage_order_and_resume` (updated) |
+
+### Decisions made while implementing
+
+| # | Decision | Reason |
+|---|---|---|
+| X1 | **Cached records are re-judged, not re-solved wholesale.** A verified viability record is kept. An unverified record without the R30 flag (`VIABILITY_RULE_FLAG`) is solved again under R30's plan, reusing every cached start that R30 would run unchanged (same name, so the same source key and guess; the record id already fixes the problem) and judge alike (`_judged_alike`: not verified, no CPU cap anywhere in its rounds, and not R30's case of a start counted capped although its last round converged with status Solve_Succeeded and no flag). The retry is reused only with start 1. The record gets the flag and a note naming the reused starts | Re-solving all 1,171 unverified c1 records would cost about 30 CPU-h (the original solves took 117,662 CPU-s); IPOPT is deterministic for a start that the CPU cap did not stop, so a reused failure is what a re-run gives |
+| X2 | **A record never solved** (no start: no verified nominal or backed-off key) is not a tested state; where `no_return` expects that tested state, it is missing (X9) | It carries no evidence; before, it counted as non-viable |
+| X3 | **The counterfactual scale** is vx\*(s_L)/vx(s_L) at the tested state x_L, applied to x_{L−1}, the state the solve starts from (with a_0 = a_{L−1} unchanged) | The adjudication's `vsolve.py --cf`, whose solves R30's numbers come from |
+| X4 | **"At or before s_a0" by target**: the s_a0 target always qualifies; s_c0 − 50 and s_c0 always lie before it; an s_b target qualifies when its position is ≤ s_a0 | R30: "the s_a0 test counts as at s_a0"; an s_b after s_a0 is a state after the corner entry |
+| X5 | **The planted controls are blocking `CONTROLS` entries** (rollouts `control-OB` etc.), each with its own viability and counterfactual solves (agents `control-<name>`, snapshot '0-ph0'); every u = 0 run must crash | R30: they "must" type as stated; a planted run that does not crash exercises nothing |
+| X6 | **LSK and LSKF run on the A2 site only**, OB and LS on both | The adjudication's construction table names cell 46 for LSK and LSKF; the restriction is the adjudication's, made before the ruling: its scratch solves ran LSK on cell 28 too (`c1typing/adj/res/pl_LSK03_28_sa0.json`: s_a0 verified viable, Δv +0.86 m/s), so on A1 LSK is typed "other", not line/steer (the last second is not below 0.9 tyre use). R30's text names no sites: **point for a ruling note** (the review's finding 7), not changed here |
+| X7 | **Counterfactual solves are outside 9.1's cap of 200** (`viability_targets` counts tested states only) | R30 adds at most one *verified* counterfactual per crash, but up to one per qualifying tested state (at most four, one per step) when none verifies; the cap's wording ("200 solves in all") predates R30. **Point for a ruling note** |
+| X8 | **Only a run's own records count** (review finding 1): `no_return` keeps a tested record only when its start state and action are the run's x_{L−1} and a_{L−1} at its step (and, for s_c0 − 50, s_c0 and s_a0, at the step the target gives), one per target (the latest created), and a counterfactual only when made from that record (`tested_key`) at the current key's vx\*(s_L) | Records are grouped by (agent, snapshot, cell, phase) only and a record id hashes the state, so a re-rolled run (changed c_v, shifts or design) leaves the old rollout's records in the group: an old verified s_a0 overruled the current verdict, and an old verified counterfactual of another state typed the crash overspeed. A key re-solved in place (6.3: same id, better J) leaves counterfactuals scaled to the old key's speed. Read-only check on the real cache: all 1,242 c1 records match their runs (0 left out, 0 step mismatches), and all 1,242 ids reproduce on the current (F6-halved) design |
+| X9 | **A missing solve is not a failed one** (review findings 2 and 4): a verdict that needs a solve that is absent (a tested state of the run with no record after the last viable one, its solve errored or the stage stopped; with no counterfactual verified, a qualifying state without its counterfactual) is unresolved, typed by the ellipse fallback like a crash without solves, and listed (`nr_missing`); it is out of P2(b)'s solve-typed subset, fails c1's `viability_typing` and fails a planted control | Before, a missing counterfactual read as a failed one (resolved, not overspeed, nothing flagged), and a crash after s_a0 with its s_a0 solve missing went to the fallback unflagged. Typing it "other" would repeat the first fault (overspeed silently lowered); the fallback is how 9.1 types crashes the solves do not decide, and the listing keeps it visible. A crash whose last alive state lies before s_a0 has no s_a0 test, so nothing is missing (R30's fallback case) |
+| X10 | **An unverified record judged before R30 is no verdict** (listed as '<target> (judged before R30)') | Its verdict comes from the old cap rule that R30 replaces (12 such records verify under R30). The controls stage re-judges every one; a dry run before it now fails c1's check instead of typing with them |
+| X11 | **Ties in one step** (review finding 6; s_b and s_c0 − 50 share a step in 21 c1 runs): tested states sort by s, then target order (s_b first), and two qualifying targets at one step are one state, whose counterfactual is solved once under the first | Before, `nr_target` followed the cache's file order, and a failed counterfactual was solved again under the second target |
+| X12 | **T's and c2's regression counts are reported, not required** (review) | R30's text makes the replaced c1 check and the four planted controls dry-run requirements; the T and c2 counts are the adjudication's acceptance checks. R20 reports T32's crashes and R29(1) lists c2's lock-limited cells without judging them; a blocking verdict there would need a ruling |
+
+### Expected solve counts of the next controls stage (read-only, solves stubbed)
+
+On the saved c1 rollouts and key cache (`control-c1`, 318 crashed u = 0 runs, all on cells with a verified u = 0 key), `viability_keys` with `_run_start` stubbed (a re-run of a start R30 judges differently taken as verified, a Q start as failed, a counterfactual's first start as verified except on the adjudication's five failures):
+
+| What | Records | IPOPT starts | Expected CPU |
+|---|---|---|---|
+| Verified tested states (kept as they are) | 71 | 0 | 0 |
+| Unverified, re-judged with every start reused (A1, A2) | 406 | 0 | ~0 |
+| Unverified with R30's cap case (12 records in cells 23, 26, 30, 31, 38, 43, 46, 47, 50, 51, as the adjudication found) | 12 | 13 (5 nominal, 6 backed-off, 2 retries; a retry is not run once a start verifies) | ~0.1 CPU-h |
+| Unverified on tier B and recovery cells: R30's Q start (old start 1 and retry reused) | 753 | 753 Q starts (+ 753 Q rollouts) | ~4 CPU-h (a failed start: median 18 CPU-s) |
+| Counterfactuals | 313 (311 runs, plus one failed each on cells 30 and 38) | 628 (two starts each; three on 30 and 38) | ~2-2.5 CPU-h |
+| Planted controls (OB 28 and 46, LS 28 and 46, LSK 46, LSKF 46) | 18 tested states (3, 2, 4, 3, 3, 3) + up to 2 counterfactuals (LSK and LSKF at s_a0, Δv +1.44 and +2.46 m/s) | ~40-60 | ~0.3 CPU-h |
+| **Total** | **~1,575 records, ~1,100 with new starts** | **~1,450** | **~6.5-7 CPU-h, about 1.5 h on 5 workers** |
+
+The counts assume the controls stage's re-run of c1 (stale only by the frozen-code hash) reproduces its saved u = 0 runs bit for bit: the design, c_v, Q's law and c1's shifts are unchanged, and a viability record's id hashes the run's state bytes. If any of those inputs changed, every c1 tested state is solved fresh (the first R28 run took 32.7 CPU-h).
+
+Under those assumptions the stub types c1 exactly as the adjudication projects: 311 overspeed by a verified counterfactual (first non-viable state s_b 267, s_c0 − 50 40, s_c0 4), and 7 other: 30 and 38 (s_a0, Δv +1.25 / +0.19 m/s, counterfactual not verified), 43, 46 and 47 (s_a0, not faster than the key), 50 and 51 (viable through s_a0). Q starts that verify a tested state would move that run's first non-viable state later.
+
+Caveat on LSKF: the adjudication's counterfactual at LSKF's s_a0 failed within the scratch budget (80 CPU-s per start; its retry stopped on the CPU cap at 4,965 of 6,000 iterations). With the protocol's 400 CPU-s that retry may converge, which would type LSKF overspeed and fail its control. LSK's counterfactual retry reached the iteration cap (6,000), so it is not exposed the same way.
+
+### Review of the R30 implementation (two read-only reviews: crash typing; solver and controls)
+
+Each finding was checked against the code and, where it made a claim about data, against the saved c1 rollouts and the key cache (read-only). T = typing review, S = solver and controls review.
+
+| Finding | Verdict | Change | Regression test |
+|---|---|---|---|
+| T1 = S1: records of another rollout of the same (agent, snapshot, cell, phase) are mixed in; counterfactuals matched by target name only | **Confirmed** (the review's E1b and E1c reproduce; latent: the cache holds one c1 rollout's records) | X8: `no_return` keeps only the run's own records and counterfactuals made from them at the current key's speed | `test_R30_review_records_of_another_rollout_are_left_out` |
+| T2: a missing counterfactual reads as a failed one | **Confirmed** (E2: identical `nr_*` columns) | X9: unresolved, listed (`nr_missing`) | `test_R30_review_a_missing_solve_is_not_a_failed_one` |
+| T3: the key-id filter cannot see a key replaced in place (6.3) | **Confirmed** (`resolve_beaten_key` stores the better key under the same id; `anchor['vx_key']` was never compared) | X8: the counterfactual's start must be the tested state scaled to the current key's vx\*(s_L); otherwise it is missing (X9) | `test_R30_review_a_key_re_solved_in_place_voids_its_counterfactuals` |
+| T4: the fallback types a crash after s_a0 whose s_a0 tested state is missing | **Confirmed** (E3). The straddling case is not a defect: a crash whose last alive state lies before s_a0 has no s_a0 test, which is R30's "crash before s_a0" | X9: an expected tested state with no record after the last viable one is missing; `no_return` takes s_c0 too, so s_c0 − 50 and s_c0 are checked as well | same test |
+| T5: a crash can be overspeed though already unrecoverable at the key's speed at an earlier tested state | **Spec tension, not a code defect**: R30 says "some tested state"; E4 reproduces it. Not changed (no ruling). The reporting half is real: `nr_dv` and `nr_target` describe the first non-viable state, not the deciding one | `cf_dv` / `nr_cf_dv`; `viability_typing`'s listing carries it | `test_R30_review_the_deciding_state_is_reported` |
+| T6: ties within one step | **Confirmed** (low) | X11 | `test_R30_review_two_targets_at_one_step` |
+| T7: LSK and LSKF on the A2 site only | **Confirmed as a process gap, not a calibration by the implementation**: the adjudication itself ran LSK on cell 28 and tabled cell 46 only. Needs a ruling note | none (X6) | none |
+| T8 = S5: the point-mass bound computed at an s_b at or past s_c0 | **Confirmed** (low; evidence only) | bound only for targets before s_c0 | `test_R30_point_mass_bound_not_at_an_s_b_past_s_c0` |
+| S2: T's `crash_types` and c2's `lock_crashes` blocking without a ruling; c2's against R29(1) | **Confirmed** | X12: both reported | `test_interp_dryrun_script.py::test_R30_dry_run_requires_the_planted_and_regression_typings`, `test_interp_dryrun_controls.py::test_control_specs_follow_the_dry_run_rulings` |
+| S3: T32's crash margins (R20) never computed | **Confirmed**: the margins block sat inside the planted-control branch, never true for T | dedented back into the T / T64 branch | `test_interp_dryrun_script.py::test_R20_T32_crashes_are_reported_with_the_keys_margins` |
+| S4: planted verdicts can pass without their solves | **Confirmed** (LSK's fallback type is line/steer) | `planted_typing` needs the run's solves present (`nr_tested`) and complete (`nr_missing` empty) | `test_R30_planted_typing_verdicts` (extended) |
+| S6: counterfactuals outside the 200-solve cap; X7's "at most one" | **Confirmed**: up to one per qualifying state (at most four) when none verifies | X7 corrected; needs a ruling note | none (documentation) |
+| S "verified correct" items (cap rule viability-only, cached-start reuse, counterfactual construction, Q start, plant constructions, replaced c1 check) | Agreed; unchanged | none | existing tests |
+
+Not in either review, seen while checking: for tier G cells the viability job scales counterfactuals to the u = 0 nominal key, while the run table types them against the null key, so their counterfactuals never match. Before this change they were silently ignored; now they are listed as missing. No G cell has viability solves (c1 and the planted controls are tiers A and B), and no change is made here.
+
+### Tests
+
+All 447 interp tests pass, and `ruff check` is clean on `src/apexzero/interp`, `scripts/psychophysics.py` and the interp tests. Two halves do not fit under 3 CPU-min each: the suite is about 400 CPU-s (a first half of ten files was stopped by `ulimit -t 180`), so it runs in four parts, each under `ulimit -t 180` (CPU-s user + sys):
+- `controls`, `dryrun_stimuli`, `dryrun_script`, `dryrun_analysis`, `r30`: 93 tests, 97 CPU-s;
+- `dryrun_controls`: 21 tests, 112 CPU-s (it builds the model tables again when it runs apart from `controls`);
+- `analysis`, `answer_key`, `measures`, `skeleton`: 154 tests, 86 CPU-s;
+- `r17`, `r18`, `r19`, `review`, `rollout`, `rulings`, `script`, `stimuli`, `support`, `v3_validation`, `v7_remedy`: 179 tests, 107 CPU-s.
+
+New file: `tests/test_interp_r30.py` (27 tests), untracked until `git add`.
+
+### What must be re-run, in this order
+
+Nothing below has been run from this change. The stage logs show the R27 F6 halving's first stages already ran on 2026-10-20: `stimuli --real --force --f6-scale 0.5` (12:20), `keys` P0 with the layout (12:20-12:35), `validate` (12:35-12:36) and `keys --priority P2` (12:36-12:49). The saved design is at F6 scale 0.5 (design hash e7846c92…), and all 1,242 c1 viability record ids reproduce on it. R30 changes `measures.py` and `constants.py` only in crash typing, so the cached keys' stored measures are stale by `measures_hash` but unchanged in value, and the analysis recomputes key measures from the stored solutions anyway (AD25): no keys run is needed.
+
+1. **`uv run python scripts/psychophysics.py controls`**: every control re-runs (the design and the frozen code changed), the planted controls included, then step 5's viability and counterfactual solves (table above: about 6.5-7 CPU-h if c1's re-run reproduces its saved u = 0 runs bit for bit; about 32.7 CPU-h if it does not), then T64.
+2. **`uv run python scripts/psychophysics.py dryrun`**: c1's `viability_typing` (expected pass: 311 overspeed, 7 other listed, none with solves missing), the planted controls' types, and T's `crash_types` and c2's `lock_crashes` reported.
+3. **Commit and tag** if every planted verdict and control passes. That is the user's call.
+
 ## Pre-registration record (written by `dryrun`; frozen at the tag)
 
 <!-- prereg-record:begin -->
 ```json
 {
  "band": 0.1,
- "code_hash": "df06efe940abe0744e9208b951042dc2c9c8bb4ff0d171be941d51790142e58b",
+ "code_hash": "c4337dfdef84a621d9417eb39c7cc81d11e2b7bb6e8d4f62653455f00ae3537f",
  "controls": {
-  "K": "FAIL",
-  "Q": "FAIL",
+  "K": "halve F6",
+  "Q": "pass",
   "Qp": "pass",
-  "T": "FAIL",
+  "T": "pass",
+  "T64": "pass",
   "c1": "FAIL",
-  "c2": "FAIL",
-  "c3": "FAIL"
+  "c2": "pass",
+  "c3": "pass"
  },
- "dry_run_passed": false,
- "frozen_code_hash": "8e0fa113ee7f5accb3262677e497dc095b360627e48140532d95ec18ac6bf702",
- "key_cache_hash": "54ff23e29a720441cb5d8349341af5041474ea7a220febf5b7f28c5fa28bb847",
+ "dry_run_passed": true,
+ "frozen_code_hash": "abae4bafeb095a825a36ea67665dd863df0eff451cf0d19e37998996a2159200",
+ "key_cache_hash": "c7ea77dbe642ce1e67c14ef663d712139e8165d9ca7a5b9b92ae4528b4e397db",
  "p3_demoted": false,
- "stimulus_hash": "90a24294fea9c0a845bfb3609fe14a8590aca01acac424ce46a7e4751901b403",
+ "stimulus_hash": "0a19cc7fee62c56f18223c9e7f79825a915b0e6b598a4271dc64085e95f3617e",
  "tag": "psychophysics-prereg-v2",
- "written": "2026-10-20T00:27:11"
+ "written": "2026-10-20T10:23:01"
 }
 ```
 <!-- prereg-record:end -->

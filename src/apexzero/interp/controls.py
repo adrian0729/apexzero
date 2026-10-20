@@ -32,6 +32,17 @@ called with obs_rms = None), except K, which normalises with S1's obs_rms itself
         action); k = 5 with distance weights if C(a) < 0.9, C(a) logged at both k
         (``knn_fallback``)
 
+Ruling R30's planted crash controls (``PLANTED``; deterministic u = 0 runs, one planted
+fault each, on cells chosen by geometry: ``planted_cells``), with their viability and
+counterfactual solves; they check that overspeed is not a catch-all:
+
+    OB    Q with the pedal held at -1 from s_c0 - 5 m: must type over-brake
+    LS    Q with its steering scaled by 0.25 from s_c0 + 2 m: must type line/steer
+    LSK   the u = 0 nominal key's float32 tape (T32) with its steering scaled by 0.3 from the
+          step it passes s_c0 + 2 m: line/steer at the key's speed
+    LSKF  LSK with the key's braking before s_c0 scaled by 0.9 (enters about 0.95 m/s fast,
+          recoverable at s_c0, then the same fault): must not type overspeed
+
 Implementation choices (IMPLEMENTATION.md, decisions C1-C12; each was forced by a
 measured failure of the literal reading, noted there):
 
@@ -117,7 +128,7 @@ from apexzero.vehicle.ops import Ops
 from apexzero.vehicle.params import F1_2025, VehicleParams
 from apexzero.vehicle.sim import TrackArrays, global_pose, lookup
 
-CONTROL_NAMES = ("T", "Q", "Qp", "c1", "c2", "c3", "K")
+CONTROL_NAMES = ("T", "Q", "Qp", "c1", "c2", "c3", "K", "OB", "LS", "LSK", "LSKF")
 Q_VARIANTS = ("Q", "Qp", "c1", "c2", "c3")
 CV_CHOICES = (0.95, 0.90, 0.85, 0.80)
 LOOKAHEAD_MIN = 8.0          # m
@@ -1727,20 +1738,29 @@ SAME_AS_Q = "same_as:Q"      # c2's P1a must equal Q's verdict (label and class)
 CONTROLS = {
     # R20: T is the float32 path (T32): its measure check on runs reaching s_c1 + 250 m
     # blocks; terminations and regret (divided by |J*|) are reported with the keys' margins.
+    # R30's regression count (the adjudication's acceptance check, not a ruling): its crashes,
+    # typed by the ellipse fallback (no viability solves), by type, expected to include no
+    # overspeed now that dv must exceed CRASH_DV_TAU (float32 noise at the key's own speed
+    # read as a sign: 6 of 11). Reported: R20 reports T32's crashes, and R30 adds no verdict.
     "T": ControlSpec("T", ("A", "G"), {"errors": ("within_tau",)},
-                     reported=("termination", "regret")),
+                     reported=("termination", "regret", "crash_types")),
     "Q": ControlSpec("Q", ("A", "B", "D"), {"offline_match": ("pass",),
                                             "P1a": ("confirm", "cautious but lawful"),
                                             "P3": ("confirm",), "P4": ("class 4", "class 5"),
                                             "P5": ("symmetric",)}),
     "Qp": ControlSpec("Qp", ("A", "O"), {"runs": ("clean",)}),
-    # R28: c1's crashed u = 0 runs (cells with a verified u = 0 key) get viability solves
-    # before the tag, and must type as overspeed by the certified point of no return.
+    # R28 as R30 replaces its check: c1's crashed u = 0 runs (cells with a verified u = 0
+    # key) get viability and counterfactual solves before the tag; every one is resolved by
+    # the viability path, none over-brake or line/steer, and every one unrecoverable at or
+    # before s_c0 overspeed (``analysis.viability_typing``).
     "c1": ControlSpec("c1", ("A", "B"), {"P2": ("confirm",), "P2b": ("onset_share>0.5",),
                                          "viability_typing": ("pass",)}),
-    # R24: P1a equals Q's verdict; the planted-law check replaces P1b's requirement.
+    # R24: P1a equals Q's verdict; the planted-law check replaces P1b's requirement. R30's
+    # regression count (the adjudication's acceptance check): its crashes on the lock-limited
+    # cells, expected to stay overspeed (``c2_lock_typing``). Reported: R29(1) lists these
+    # cells, it does not judge them.
     "c2": ControlSpec("c2", ("A",), {"P1a": (SAME_AS_Q,), "planted_law": ("pass",)},
-                      reported=("P1b",)),
+                      reported=("P1b", "lock_crashes")),
     # R26: before P3 is read, k <= 1, entry within one step of Q's target and no overspeed
     # crashes on tiers A/B; P3 refuting naming M_idx is expected, a miss a power finding.
     "c3": ControlSpec("c3", ("A", "B"), {"k_le_1": ("pass",), "entry": ("pass",),
@@ -1748,6 +1768,147 @@ CONTROLS = {
                       expected={"P3": ("refute:M_idx",)}),
     "K": ControlSpec("K", ("D",), {"P4": ("class 2", "class 3")}),
 }
+
+
+@dataclass(frozen=True)
+class PlantSite:
+    """Where a planted crash control runs (ruling R30), by geometry: the tier A synthetic cell
+    with this approach, direction, angle, width and ramp kind whose R is closest to ``R``
+    (the adjudication's cells 28 and 46 of the design they were built on)."""
+
+    R: float
+    theta_deg: float
+    approach: str
+    direction: int = 1
+    width: float = 12.0
+    ramp_kind: str = "typical"
+
+
+PLANT_SITES = {"A1": PlantSite(14.6, 90.0, "A1"),     # cell 28: R14.6/T90/W12/typical/L, A1
+               "A2": PlantSite(28.6, 90.0, "A2")}     # cell 46: R28.6/T90/W12/typical/L, A2
+
+
+@dataclass(frozen=True)
+class PlantSpec:
+    """A planted crash control (ruling R30): Q ('Q') or the u = 0 nominal key's float32 tape
+    ('tape', T32's path) with one planted fault, on ``sites``, and the type it must get
+    (``analysis.planted_typing``). Offsets are metres from s_c0."""
+
+    name: str
+    base: str                          # 'Q' | 'tape'
+    sites: tuple[str, ...]
+    want: str                          # 'overbrake' | 'line_steer' | 'not overspeed'
+    pedal_from: float | None = None    # pedal held at -1 from s_c0 + this (OB)
+    steer_from: float | None = None    # steering scaled from s_c0 + this
+    steer_gain: float = 1.0
+    brake_gain: float | None = None    # the key's braking (pedal < 0) before s_c0 scaled (LSKF)
+
+
+PLANTED = {
+    "OB": PlantSpec("OB", "Q", ("A1", "A2"), "overbrake", pedal_from=-5.0),
+    "LS": PlantSpec("LS", "Q", ("A1", "A2"), "line_steer", steer_from=2.0, steer_gain=0.25),
+    "LSK": PlantSpec("LSK", "tape", ("A2",), "line_steer", steer_from=2.0, steer_gain=0.3),
+    "LSKF": PlantSpec("LSKF", "tape", ("A2",), "not overspeed", steer_from=2.0, steer_gain=0.3,
+                      brake_gain=0.9),
+}
+for _pl in PLANTED.values():
+    CONTROLS[_pl.name] = ControlSpec(_pl.name, ("A",), {"crash_type": (_pl.want,)})
+del _pl
+
+
+def planted_cells(bank: StimulusBank, cells: list[Cell], name: str) -> list[Cell]:
+    """The cells of planted control ``name``, one per site (``PLANT_SITES``): among the tier A
+    cells on synthetic corners with the site's approach, direction, angle, width and ramp kind
+    (no no-cap variant), the one whose R is closest in log R (ties: the lower cell id). A site
+    with no such cell is left out."""
+    out = []
+    for site in PLANTED[name].sites:
+        st = PLANT_SITES[site]
+        best = None
+        for c in cells:
+            stim = bank.stimuli[c.stim_id]
+            sp = getattr(stim, "spec", None)
+            if ("A" not in c.tiers or c.approach != st.approach or sp is None
+                    or int(stim.direction) != st.direction
+                    or not math.isclose(float(sp.theta_deg), st.theta_deg)
+                    or not math.isclose(float(sp.width), st.width)
+                    or str(getattr(sp, "ramp_kind", "")) != st.ramp_kind
+                    or bool(getattr(sp, "no_cap", False))):
+                continue
+            d = abs(math.log(float(sp.R) / st.R))
+            if best is None or (d, c.cell_id) < best[0]:
+                best = ((d, c.cell_id), c)
+        if best is not None and all(c.cell_id != best[1].cell_id for c in out):
+            out.append(best[1])
+    return out
+
+
+@functools.cache
+def make_planted_q_policy(name: str) -> Policy:
+    """Q with ``PLANTED[name]``'s fault (params QParams, aux Q's target row; s_corner is the
+    row's s_c0): the pedal command held at -1 from s_c0 + pedal_from (the friction-ellipse
+    clip bypassed, so the fronts lock while turning in: OB), or the steering command scaled
+    by steer_gain from s_c0 + steer_from (a weak wheel at Q's own sub-limit speed: LS)."""
+    pl = PLANTED[name]
+    if pl.base != "Q":
+        raise ValueError(f"{name} is not a Q-based planted control")
+    q = make_q_policy("Q")
+
+    def policy(params: QParams, o, state: racing.EnvState, tr: TrackArrays, aux):
+        mean, ls = q(params, o, state, tr, aux)
+        s, s_c0 = state.x[0], params.s_corner[aux]
+        steer, pedal = mean[0], mean[1]
+        if pl.pedal_from is not None:
+            pedal = jnp.where(s >= s_c0 + pl.pedal_from, -1.0, pedal)
+        if pl.steer_from is not None:
+            steer = jnp.where(s >= s_c0 + pl.steer_from, pl.steer_gain * steer, steer)
+        return jnp.stack([steer, pedal]).astype(o.dtype), ls
+
+    return policy
+
+
+def planted_tape(key_x: np.ndarray, key_a: np.ndarray, s_c0: float, name: str) -> np.ndarray:
+    """``PLANTED[name]``'s tape (float32, T32's cast) from the u = 0 nominal key's states
+    [W+1, 8] and commands [W, 2] (float64): steering times steer_gain from the first state
+    at or past s_c0 + steer_from on, and (LSKF) the braking commands before the first state
+    at or past s_c0 times brake_gain."""
+    pl = PLANTED[name]
+    if pl.base != "tape":
+        raise ValueError(f"{name} is not a tape planted control")
+    x, acts = np.asarray(key_x, float), np.asarray(key_a, float).copy()
+    if pl.steer_from is not None:
+        t_f = int(np.argmax(x[:, 0] >= s_c0 + pl.steer_from))
+        acts[t_f:, 0] *= pl.steer_gain
+    if pl.brake_gain is not None:
+        t_c0 = int(np.argmax(x[:, 0] >= s_c0))
+        head = acts[:t_c0, 1]
+        head[head < 0] *= pl.brake_gain
+    return acts.astype(np.float32)
+
+
+def c2_lock_typing(c2_runs, bank: StimulusBank, cells: list[Cell], r_lock: float) -> dict:
+    """R30's regression count of c2 (reported, never blocking: R29(1) lists these cells): its
+    crashed deterministic runs on lock-limited cells (the tightest raw radius 1/max|kappa| <=
+    ``r_lock``, the cells ``c2_planted_law`` lists) by type; passed when there is at least one
+    and all are typed overspeed (the ellipse fallback with dv > CRASH_DV_TAU; c2 has no
+    viability solves), as the adjudication expects (48 of 48)."""
+    by = {c.cell_id: c for c in cells}
+    det = np.asarray(c2_runs["mode"]).astype(str) == "det"
+    crashed = np.asarray(c2_runs["crashed"]).astype(bool)
+    ct = np.asarray(c2_runs["crash_type"]).astype(str)
+    rows = []
+    for i in np.flatnonzero(det & crashed):
+        c = by.get(int(c2_runs["cell"][i]))
+        if c is None:
+            continue
+        k_max = float(np.max(np.abs(np.asarray(bank.kappa[c.stim_id]))))
+        if k_max > 0 and 1.0 / k_max <= r_lock:
+            rows.append(dict(cell=c.cell_id, phase=int(c2_runs["phase"][i]), crash_type=str(ct[i]),
+                             R_raw=1.0 / k_max))
+    n_ov = sum(r["crash_type"] == "overspeed" for r in rows)
+    return dict(passed=bool(rows) and n_ov == len(rows), n=len(rows), n_overspeed=n_ov,
+                not_overspeed=[r for r in rows if r["crash_type"] != "overspeed"][:20],
+                cells=sorted({r["cell"] for r in rows}), r_lock=float(r_lock))
 
 # R20: T64 runs in its own float64 process (``rollout.run_tape_rollouts_x64``), so it is
 # not among the in-process CONTROLS. It is blocking.

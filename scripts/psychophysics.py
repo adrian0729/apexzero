@@ -12,9 +12,10 @@ Stages (docs/interp/psychophysics-protocol.md, section 10):
     validate        step 3 (--measures: model tables, brake demand, known-answer measures, one
                     TO-OCP solution against its replay); step 4 V1-V11
     controls        step 4/5: tune Q's c_v, c3's tau_c (R26), c1's shifts (R23), the
-                    Section 7 controls through the harness, c1's viability solves (R28) and
-                    T64 in its own float64 process (R20) (--knn-buffer: S1's Hockenheim
-                    laps, protocol exception 2)
+                    Section 7 controls and R30's planted crash controls through the
+                    harness, the viability and counterfactual solves of c1's and the planted
+                    controls' crashed u = 0 runs (R28, R30) and T64 in its own float64
+                    process (R20) (--knn-buffer: S1's Hockenheim laps, protocol exception 2)
     keys            step 4: A2 layout, then P0 / P1 / P2 keys under the budget rule
     dryrun          step 5: dry run on the real key design, power table, hashes
     anchored-keys   step 7: re-anchored and viability keys (post-tag)
@@ -36,9 +37,10 @@ tag: rollouts (finals det, then nat/mat, then checkpoints); anchored-keys; probe
 [--confirmatory]; plots. After the dry-run rulings R20-R28 (protocol 12, 2026-10-20): stimuli
 --real --force (R21's real-lap phase starts); keys --priority P2 (the layout from the cache and
 the re-solved phase keys of the real cells); controls (c_v re-tuned under R14, tau_c, c1's
-shifts, every control, c1's viability solves, T64); dryrun; and, if K lands in class 1, protocol
-7's one halving (R27): stimuli --real --force --f6-scale 0.5, keys --priority P2, controls,
-dryrun (IMPLEMENTATION.md, "Dry-run rulings R20-R28").
+shifts, every control, the viability and counterfactual solves of R28 and R30, T64); dryrun;
+and, if K lands in class 1, protocol 7's one halving (R27): stimuli --real --force --f6-scale
+0.5, keys --priority P2, controls, dryrun (IMPLEMENTATION.md, "Dry-run rulings R20-R28" and
+"Ruling R30").
 
 Freeze rule: no trained agent is rolled out on a protocol stimulus before the git tag
 psychophysics-prereg-v2. The rollouts stage refuses to run without the tag, except
@@ -919,10 +921,13 @@ def _rec_summary(rec) -> dict:
                     status="verified" if rec.result.success else "failed",
                     has_brake=bool(rec.measures.get("has_brake", False)),
                     v_min=_jsonable(rec.measures.get("v_min")))
-    return dict(kind=rec.kind, key_id=rec.key_id, cell=rec.cell_id, phase=rec.phase,
-                status=rec.status, W=int(rec.W), cpu=float(rec.cpu_seconds), name=rec.stim_name,
-                multi_basin=bool(rec.multi_basin), n_starts=len(rec.starts),
-                has_brake=bool(rec.measures.get("has_brake", False)))
+    out = dict(kind=rec.kind, key_id=rec.key_id, cell=rec.cell_id, phase=rec.phase,
+               status=rec.status, W=int(rec.W), cpu=float(rec.cpu_seconds), name=rec.stim_name,
+               multi_basin=bool(rec.multi_basin), n_starts=len(rec.starts),
+               has_brake=bool(rec.measures.get("has_brake", False)))
+    if rec.kind == "viability":
+        out["target"] = str((rec.anchor or {}).get("target", ""))
+    return out
 
 
 def _key_job(job: dict) -> dict:
@@ -2302,10 +2307,11 @@ def _knn_buffer(args) -> None:
 
 def _control_want(name: str, *, design: str, code: str, c_v: float | None = None,
                   tau_c: float | None = None, shifts_hash: str | None = None,
-                  tape_hash: str | None = None) -> dict:
+                  tape_hash: str | None = None, plant_hash: str | None = None) -> dict:
     """The inputs a control's saved runs must have been made with: c_v, the design, the
-    frozen code, Q's law (the Q family), c3's tau_c, c1's shift hash and T's tape key ids
-    (T64: design, code and tapes). The controls stage resumes a control only on these
+    frozen code, Q's law (the Q family and the Q-based planted controls), c3's tau_c, c1's
+    shift hash, T's tape key ids (T64: design, code and tapes) and a planted control's cells
+    and keys (R30, ``_plant_hash``). The controls stage resumes a control only on these
     (``_control_resume_ok``), and the dry run judges only rollouts made with the current
     ones (``_stale_inputs``)."""
     from apexzero.interp import controls
@@ -2313,8 +2319,11 @@ def _control_want(name: str, *, design: str, code: str, c_v: float | None = None
     if name == "T64":
         return dict(design_hash=design, frozen_code_hash=code, tape_keys_hash=tape_hash)
     want = dict(c_v=c_v, design_hash=design, frozen_code_hash=code)
-    if name in controls.Q_VARIANTS:
+    planted = controls.PLANTED.get(name)
+    if name in controls.Q_VARIANTS or (planted is not None and planted.base == "Q"):
         want["q_law"] = controls.Q_LAW
+    if planted is not None:
+        want["plant_keys_hash"] = plant_hash
     if name == "c3":
         want["tau_c"] = tau_c
     if name == "c1":
@@ -2346,7 +2355,9 @@ def _current_control_wants(bank, cells, cache) -> dict:
     tape = io.sha256_json(_tape_keys(bank, cells, cache)[2]) if cache is not None else None
     c_v = float(tun["c_v"]) if tun.get("c_v") is not None else None
     return {n: _control_want(n, design=design, code=code, c_v=c_v, tau_c=tun.get("tau_c"),
-                             shifts_hash=sh.get("hash"), tape_hash=tape)
+                             shifts_hash=sh.get("hash"), tape_hash=tape,
+                             plant_hash=_plant_hash(n, bank, cells, cache)
+                             if n in controls.PLANTED and cache is not None else None)
             for n in (*controls.CONTROLS, "T64")}
 
 
@@ -2399,6 +2410,21 @@ def _tape_keys(bank, cells: list, cache, dtype=np.float32) -> tuple[list, list, 
     return tapes, keep, ids
 
 
+def _plant_hash(name: str, bank, cells: list, cache) -> str:
+    """Hash of a planted control's inputs from the design and the cache (ruling R30): its
+    cells (chosen by geometry, ``controls.planted_cells``) and their u = 0 nominal key ids
+    (the tapes of LSK and LSKF; the key every planted run is typed against)."""
+    from apexzero.interp import answer_key as ak
+    from apexzero.interp import controls, io
+
+    rows = []
+    for c in _control_cells(name, controls.CONTROLS[name], bank, cells):
+        key = ak.key_for(c, "nominal", 0, cache=cache, bank=bank)
+        rows.append([int(c.cell_id), str(key.key_id) if key is not None else "",
+                     str(key.status) if key is not None else "missing"])
+    return io.sha256_json(rows)
+
+
 def stage_controls(args: argparse.Namespace) -> None:
     """Steps 4 and 5 (protocol 7, as the dry-run rulings R20-R28 amend it), in order:
 
@@ -2417,8 +2443,12 @@ def stage_controls(args: argparse.Namespace) -> None:
        from S1's state, as for the generalists), written as rollouts/control-<name>/0.npz
        for the dryrun stage's verdicts. K falls back to k = 5 with distance weighting when
        its C(a) < 0.9, C(a) logged at both k (protocol 7, ``controls.knn_fallback``).
-    5. R28: the viability solves of c1's crashed u = 0 runs (cells with a verified u = 0
-       key, no cap), in the key workers (float64; cached solves are reused).
+       R30's planted crash controls (OB, LS, LSK, LSKF: ``controls.PLANTED``) run here too,
+       deterministic u = 0 runs on their cells by geometry.
+    5. R28 and R30: the viability solves of c1's and the planted controls' crashed u = 0
+       runs (cells with a verified u = 0 key, no cap), then their counterfactual solves
+       (``answer_key.viability_keys``), in the key workers (float64; cached solves are
+       reused, and an unverified record cached before R30 is re-judged under R30's rule).
     6. R20: T64, T's tapes in float64 through the same harness code, in its own float64
        process (``rollout.run_tape_rollouts_x64``), as rollouts/control-T64/0.npz.
 
@@ -2447,7 +2477,8 @@ def stage_controls(args: argparse.Namespace) -> None:
     code = io.code_hash(FROZEN_PATHS)
     by = {c.cell_id: c for c in cells}
     with io.StageLog("controls", total=5 + len(controls.CONTROLS),
-                     note="tuning, tau_c, c1 shifts, controls, viability, T64") as log:
+                     note="tuning, tau_c, c1 shifts, controls, viability (R28, R30), "
+                          "T64") as log:
         # 1. c_v (R14), re-tuned after R22 A and after a change of its cells (R21).
         p = out / "tuning.json"
         tun = io.read_json(p) if p.exists() and not args.force else {}
@@ -2544,13 +2575,15 @@ def stage_controls(args: argparse.Namespace) -> None:
                   f"out: {st_count}; Q's offline lead over the key {rec['lead_m']} m")
         log.step(note=f"c1 shifts: {st_count}")
 
-        # 4. The controls through the harness.
+        # 4. The controls through the harness (R30's planted crash controls included).
         tape_hash = io.sha256_json(_tape_keys(bank, cells, cache)[2])
         for name, spec in controls.CONTROLS.items():
             path = io.rollout_path(CONTROL_AGENT.format(name), 0)
             want = _control_want(name, c_v=c_v, design=design, code=code,
                                  tau_c=tun.get("tau_c"), shifts_hash=sh_hash,
-                                 tape_hash=tape_hash)
+                                 tape_hash=tape_hash,
+                                 plant_hash=_plant_hash(name, bank, cells, cache)
+                                 if name in controls.PLANTED else None)
             if path.exists() and not args.force:
                 meta = rollout.load_rollouts(path)[1]
                 if _control_resume_ok(meta, want):
@@ -2571,62 +2604,86 @@ def stage_controls(args: argparse.Namespace) -> None:
             _say(log, f"control {name}: {len(done)} runs, completion {done.mean():.1%}")
             log.step(note=f"{name}: {len(done)} runs")
 
-        # 5. R28: viability solves for c1's crashed u = 0 runs.
-        via = _c1_viability(bank, cells, kt, keys, tables, c_v, args.workers, log)
+        # 5. R28 and R30: viability, then counterfactual, solves for the crashed u = 0 runs
+        # of c1 and of the planted crash controls.
+        via = _control_viability(bank, cells, kt, keys, tables, c_v, args.workers, log)
         agents.update_manifest(lambda m: m.validation.__setitem__("c1_viability", via))
-        log.step(note=f"c1 viability: {via.get('jobs', 0)} runs")
+        log.step(note=f"viability (R28, R30): {via.get('jobs', 0)} runs")
 
         # 6. R20: T64 in its own float64 process.
         t64 = _t64(design, code, tape_hash, args, log)
         log.step(note=f"T64: {t64}")
 
 
-def _c1_viability(bank, cells, kt, keys, tables, c_v: float, workers: int, log) -> dict:
-    """Ruling R28: viability solves (protocol 9.1, ``answer_key.viability_keys``) for every
-    crashed deterministic u = 0 run of c1 whose cell has a verified u = 0 nominal key (the
-    solves start from it and crash typing compares against it), with no cap, in the key
-    workers (float64), tagged as the agents' are (snapshot '<timesteps>-ph<phase>'); cached
-    solves are reused. Crashed u = 0 runs on cells without a verified key are counted and
-    listed. The dry run reads the solves (``_viability_map``) and requires every judged crash
-    to type as overspeed (``analysis.viability_typing``)."""
+VIABILITY_CONTROLS = ("c1", "OB", "LS", "LSK", "LSKF")   # R28; R30's planted controls
+
+
+def _control_viability(bank, cells, kt, keys, tables, c_v: float, workers: int, log) -> dict:
+    """Rulings R28 and R30: viability solves (protocol 9.1, ``answer_key.viability_keys``) for
+    every crashed deterministic u = 0 run of c1 and of the planted crash controls
+    (``VIABILITY_CONTROLS``) whose cell has a verified u = 0 nominal key (the solves start
+    from it and crash typing compares against it), with no cap, then R30's counterfactual
+    solves (one per qualifying tested state, in s order, stopping at the first that
+    verifies), in the key workers (float64), tagged as the agents' are (snapshot
+    '<timesteps>-ph<phase>'); cached solves are reused (an unverified record cached before
+    R30 is re-judged under R30's rule, its starts that R30 judges alike reused). Crashed u = 0
+    runs on cells without a verified key are counted and listed. The dry run reads the
+    solves (``_viability_map``): c1's typing (``analysis.viability_typing``) and the planted
+    controls' (``analysis.planted_typing``). ``kt`` is the key table of c1's cells (tiers A
+    and B; the planted controls' cells are tier A). Returns per-control and total counts:
+    jobs, records (tested states and counterfactuals) and their statuses, CPU."""
     from apexzero.interp import analysis as A
     from apexzero.interp import io, rollout
 
-    agent = CONTROL_AGENT.format("c1")
-    f = io.rollout_path(agent, 0)
-    if not f.exists():
-        _say(log, "R28: no c1 rollouts, so no viability solves")
-        return dict(jobs=0, note="no c1 rollouts")
-    groups, _ = rollout.load_rollouts(f)
-    rt = _run_table(agent, 0, groups, cells, bank, keys, tables)
-    vt = A.viability_targets(rt, kt, cap=10**9)
+    by = {c.cell_id: c for c in cells}
     ok = {int(c) for c, st in zip(kt["cell"], kt["key_status"], strict=True)
           if str(st) == "verified"}
-    by = {c.cell_id: c for c in cells}
-    rows = _u0_rows(groups["det"], cells)
-    jobs, no_key = [], []
-    for i in range(A._n(vt)):
-        cid, ph = int(vt["cell"][i]), int(vt["phase"][i])
-        if ph != 0:
-            continue                       # R28: the crashed u = 0 runs
-        if cid not in ok:
-            no_key.append(cid)
+    jobs, per = [], {}
+    for name in VIABILITY_CONTROLS:
+        agent = CONTROL_AGENT.format(name)
+        f = io.rollout_path(agent, 0)
+        if not f.exists():
+            per[name] = dict(jobs=0, note=f"no {name} rollouts")
             continue
-        jobs.append(dict(what="viability", agent=agent, timesteps=0, cell=by[cid], file=str(f),
-                         row=int(rows[cid]), snapshot="0-ph0", q_cv=c_v,
-                         label=f"viability c1 cell {cid}"))
-    _say(log, f"R28: viability solves for {len(jobs)} crashed u = 0 runs of c1 "
-              f"({int(vt['n_solves'].sum()) if A._n(vt) else 0} target states before the cap "
-              f"is waived); {len(no_key)} crashed u = 0 runs on cells without a verified "
-              f"u = 0 key are listed, not solved")
+        groups, _ = rollout.load_rollouts(f)
+        rt = _run_table(agent, 0, groups, cells, bank, keys, tables)
+        vt = A.viability_targets(rt, kt, cap=10**9)
+        rows = _u0_rows(groups["det"], cells)
+        n_jobs, no_key = 0, []
+        for i in range(A._n(vt)):
+            cid, ph = int(vt["cell"][i]), int(vt["phase"][i])
+            if ph != 0:
+                continue                       # R28 / R30: the crashed u = 0 runs
+            if cid not in ok:
+                no_key.append(cid)
+                continue
+            jobs.append(dict(what="viability", agent=agent, timesteps=0, cell=by[cid],
+                             file=str(f), row=int(rows[cid]), snapshot="0-ph0", phase=0,
+                             q_cv=c_v, label=f"viability {name} cell {cid}", control=name))
+            n_jobs += 1
+        per[name] = dict(jobs=n_jobs, n_no_key=len(no_key), no_key_cells=sorted(no_key)[:40])
+        _say(log, f"R28/R30: viability and counterfactual solves for {n_jobs} crashed u = 0 "
+                  f"runs of {name}; {len(no_key)} crashed u = 0 runs on cells without a "
+                  f"verified u = 0 key are listed, not solved")
     log.set_total(log.total + len(jobs))
     res = _pool(jobs, workers, log, fn=_anchored_job) if jobs else []
     errs = _errors(res)
     for e in errs[:5]:
-        _say(log, f"R28 viability error: {e}")
+        _say(log, f"R28/R30 viability error: {e}")
+    control_of = {j["label"]: j["control"] for j in jobs}
+    for r in res:
+        d = per.setdefault(control_of.get(r["label"], ""), {})
+        for k in r.get("keys", []):
+            kind = "cf" if str(k.get("target", "")).endswith(":cf") else "tested"
+            key = f"{kind}_{k.get('status', '')}"
+            d[key] = d.get(key, 0) + 1
+        d["cpu"] = d.get("cpu", 0.0) + float(r.get("cpu", 0.0))
     return dict(jobs=len(jobs), solves=sum(len(r.get("keys", [])) for r in res),
-                errors=len(errs), no_key_cells=sorted(no_key)[:40], n_no_key=len(no_key),
+                errors=len(errs), per_control=per,
+                n_no_key=sum(v.get("n_no_key", 0) for v in per.values()),
                 cpu=float(sum(r.get("cpu", 0.0) for r in res)),
+                rule="R30: tested states judged by the last non-refine round; one "
+                     "counterfactual per qualifying state, stopping at the first verified",
                 time=time.strftime("%Y-%m-%dT%H:%M:%S"))
 
 
@@ -2753,7 +2810,12 @@ def _knn_fallback(first, spec, bank, cells, car, c_v, cache, tables, log):
 def _control_cells(name: str, spec, bank, cells) -> list:
     """The cells a control runs: its tiers' cells (tier O is the probes stage's) and their
     nulls; tier D only from S1's state (as for the generalists: K is S1's memoriser, Q
-    reads the road); Qp on the A1 short corners and every P7 cell."""
+    reads the road); Qp on the A1 short corners and every P7 cell; a planted crash control
+    (R30) on its cells by geometry (``controls.planted_cells``)."""
+    from apexzero.interp import controls
+
+    if name in controls.PLANTED:
+        return controls.planted_cells(bank, cells, name)
     tiers = tuple(t for t in spec.tiers if t != "O")
     cs = _tier_cells(bank, cells, tiers)
     cs = [c for c in cs if "D" not in c.tiers or "S1" in (c.runners or ("S1",))]
@@ -2767,7 +2829,10 @@ def _run_one_control(name: str, spec, bank, cells, car, c_v: float, tau_c, cache
                      shifts: dict | None = None, only: set | None = None):
     """(det arrays, meta) of one control on its tiers, or the reason it cannot run yet. T is
     T32 (float32 tapes, ruling R20); c1 needs ``shifts`` (R23, ``controls.c1_shifts``), c3
-    its tau_c (R26). ``only``: run just these cell ids of its tiers (K's C(a) at k = 5)."""
+    its tau_c (R26). ``only``: run just these cell ids of its tiers (K's C(a) at k = 5). A
+    planted crash control (R30, ``controls.PLANTED``) runs u = 0 only: Q with its fault, or
+    the u = 0 nominal key's float32 tape with its fault (``controls.planted_tape``), which
+    needs every one of its cells' keys verified."""
     from apexzero.interp import controls, io
 
     cs = _control_cells(name, spec, bank, cells)
@@ -2777,6 +2842,28 @@ def _run_one_control(name: str, spec, bank, cells, car, c_v: float, tau_c, cache
         return f"no cells of tiers {spec.tiers} in the design"
     meta = dict(agent=CONTROL_AGENT.format(name), timesteps=0, log_std=[-np.inf, -np.inf],
                 control=name, c_v=c_v, tau_c=tau_c if name == "c3" else None)
+    if name in controls.PLANTED:
+        from apexzero.interp import answer_key as ak
+
+        pl = controls.PLANTED[name]
+        cs = [dataclasses.replace(c, n_phases=1) for c in cs]      # u = 0 only
+        meta.update(n_phases=1, precision="float32", plant=dataclasses.asdict(pl),
+                    plant_cells=[c.cell_id for c in cs])
+        if pl.base == "Q":
+            params, aux = controls.q_params(bank, cs, car, c_v, "Q")
+            policy = controls.make_planted_q_policy(name)
+            meta["q_law"] = controls.Q_LAW
+        else:
+            tapes = []
+            for c in cs:
+                key = ak.key_for(c, "nominal", 0, cache=cache, bank=bank)
+                if key is None or key.status != "verified" or key.a is None:
+                    return f"no verified u = 0 key on cell {c.cell_id}"
+                lm = bank.stimuli[c.stim_id].landmarks
+                tapes.append(controls.planted_tape(key.x, key.a, lm.s_c0, name))
+            params, aux = controls.tape_params(tapes), np.arange(len(cs))
+            policy = controls.make_tape_policy()
+        return controls.run_control(policy, params, aux, bank, cs), meta
     if name == "T":
         tapes, keep, _ = _tape_keys(bank, cells, cache)
         if not keep:
@@ -2811,16 +2898,28 @@ def _run_one_control(name: str, spec, bank, cells, car, c_v: float, tau_c, cache
 # ------------------------------------------------------------------------- step 5: dry run
 
 
-def _viability_map(cache) -> dict:
+def _viability_map(cache, log=None) -> dict:
     """Viability records by run, (agent, timesteps, cell, phase, sample -1: deterministic),
     from the snapshot tag '<timesteps>-ph<phase>' the solves carry (the anchored-keys
-    stage's jobs and R28's c1 jobs)."""
+    stage's jobs and the controls stage's R28 / R30 jobs), counterfactuals (R30, target
+    '<name>:cf') included. A group can hold records of an earlier rollout of the same run
+    (kept in the cache after a re-roll); ``answer_key.no_return`` reads only the run's own
+    (R30 review). With ``log``, unverified records not judged under R30 (cached before it
+    and not re-judged: the controls stage has not run since) are counted there; they are
+    no verdict under R30 (``NoReturn.missing``)."""
+    from apexzero.interp import answer_key as ak
+
     vmap: dict = {}
+    stale = 0
     for r in cache.records("viability"):
+        stale += int(r.status != "verified" and ak.VIABILITY_RULE_FLAG not in r.flags)
         snap = str((r.anchor or {}).get("snapshot", ""))
         if "-ph" in snap:
             ts, ph = snap.split("-ph")
             vmap.setdefault((r.agent, int(ts), r.cell_id, int(ph), -1), []).append(r)
+    if log is not None and stale:
+        _say(log, f"R30: {stale} unverified viability records were judged before R30 (the "
+                  "first capped round counted): run `controls` to re-judge them")
     return vmap
 
 
@@ -2877,8 +2976,8 @@ def _f6_scales(bank, cells) -> list[float]:
 def _control_verdicts(bank, cells, kt, keys, tables, b: float, sup, log, cache=None,
                       wants: dict | None = None) -> dict:
     """Protocol 7's required verdicts of every control whose rollouts exist, as the dry-run
-    rulings R20-R28 amend them (``controls.CONTROLS`` and ``controls.T64``). 'pass' needs
-    every required verdict. ``expected`` verdicts (c3's P3, R26) and ``reported`` ones
+    rulings R20-R28 and R30 amend them (``controls.CONTROLS`` and ``controls.T64``). 'pass'
+    needs every required verdict. ``expected`` verdicts (c3's P3, R26) and ``reported`` ones
     (T32's termination and regret, c2's P1b) never block; a missed expectation is reported
     as a power finding. Only rollouts made with the controls stage's current inputs are
     judged (``wants``, default ``_current_control_wants``: c_v, design, frozen code, Q's
@@ -2886,15 +2985,26 @@ def _control_verdicts(bank, cells, kt, keys, tables, b: float, sup, log, cache=N
     rollouts' (e.g. a skipped control's or a failed T64's older file).
 
     - T (T32, R20): every error within tau on the u = 0 runs reaching s_c1 + 250 m; its
-      crashes listed with the keys' margins; regret divided by |J*|. T64: regret / |J*| <=
-      1e-6, every error within tau, no termination (``analysis.tape_check``).
+      crashes listed with the keys' margins; regret divided by |J*|; R30's regression count
+      of its crashes by type (typed by the ellipse fallback; expected: none overspeed;
+      ``analysis.crash_type_counts``), reported.
+      T64: regret / |J*| <= 1e-6, every error within tau, no termination
+      (``analysis.tape_check``).
     - Q: offline_match (R22), P1a, P3, P4 (d_OOD against S1's buffer) and P5.
     - Qp: no crash.
-    - c1: P2 and P2b (R23: 15 m late against the key), and R28's viability typing of its
-      crashed u = 0 runs on cells with a verified u = 0 key (``viability_typing``).
+    - c1: P2 and P2b (R23: 15 m late against the key), and the viability typing of its
+      crashed u = 0 runs on cells with a verified u = 0 key (R28's check as R30 replaces it,
+      ``viability_typing``: every one resolved by the viability path, none over-brake or
+      line/steer, every one unrecoverable at or before s_c0 overspeed, the rest listed).
     - c2 (R24): P1a equal to Q's verdict (label and class; judged under Q's regime, so only
       the driving differs); the planted-law check (``controls.c2_planted_law``); P1b
-      reported (under c2's own q1 = 12, q10 = 20).
+      reported (under c2's own q1 = 12, q10 = 20); R30's regression count of its crashes
+      on the lock-limited cells (expected: all overspeed; ``controls.c2_lock_typing``),
+      reported, since R29(1) lists those cells and does not judge them.
+    - The planted crash controls (R30, ``controls.PLANTED``): OB over-brake, LS and LSK
+      line/steer, LSKF not overspeed, on every u = 0 run, each of which must crash and have
+      its viability solves present and complete (``analysis.planted_typing``; typed with
+      their viability and counterfactual solves).
     - c3 (R26): k <= 1, entry within one step of Q's target and no overspeed crash on tiers
       A/B (``controls.c3_checks``); P3 refuting naming M_idx is expected, a miss a power
       finding (tau_c is not retuned).
@@ -2992,6 +3102,17 @@ def _control_verdicts(bank, cells, kt, keys, tables, b: float, sup, log, cache=N
             if name == "T" and tc["details"]["crash_cells"] and cache is not None:
                 extra["crashes_with_key_margins"] = _tape_crash_margins(
                     bank, cells, cache, tc["details"]["crash_cells"])
+        if "crash_types" in need:
+            # R30's regression count (reported): T's crashes, typed by the ellipse fallback,
+            # expected to include no overspeed.
+            cc = A.crash_type_counts(rt)
+            got["crash_types"] = ("no overspeed" if not cc["n_overspeed"] else
+                                  f"{cc['n_overspeed']} of {cc['n']} overspeed")
+            extra["crash_types"] = cc
+        if name in controls.PLANTED and "crash_type" in req:
+            pt = A.planted_typing(rt, controls.PLANTED[name].want)
+            got["crash_type"] = pt["got"]
+            extra["planted"] = pt
         if name == "Q" and "offline_match" in req:
             om = controls.offline_match_runs(rt, kt, bank, cells, car, c_v or 0.95)
             got["offline_match"] = "pass" if om["passed"] else f"{om['n_fail']} of {om['n']} differ"
@@ -3000,10 +3121,25 @@ def _control_verdicts(bank, cells, kt, keys, tables, b: float, sup, log, cache=N
             got["runs"] = "clean" if not A._bo(rt, "crashed").any() else "crashes"
         if name == "c1" and "viability_typing" in req:
             vt = A.viability_typing(rt, kt)
-            got["viability_typing"] = "pass" if vt["passed"] else (
-                "no crashed u = 0 run" if not vt["n_crashed"] else
-                f"{vt['n_crashed'] - vt['n_resolved_overspeed']} of {vt['n_crashed']} not "
-                "typed overspeed by the viability solves")
+            if vt["passed"]:
+                got["viability_typing"] = "pass"
+            elif not vt["n_crashed"]:
+                got["viability_typing"] = "no crashed u = 0 run"
+            else:
+                miss = []
+                if vt["n_resolved"] < vt["n_crashed"]:
+                    gap = int(vt.get("n_incomplete", 0) or 0)
+                    miss.append(f"{vt['n_crashed'] - vt['n_resolved']} of {vt['n_crashed']} "
+                                "not resolved by the viability path"
+                                + (f" ({gap} with solves missing)" if gap else ""))
+                if vt["n_overbrake"] or vt["n_line_steer"]:
+                    miss.append(f"{vt['n_overbrake']} over-brake, {vt['n_line_steer']} "
+                                "line/steer")
+                if vt["n_early_overspeed"] < vt["n_early"]:
+                    miss.append(f"{vt['n_early'] - vt['n_early_overspeed']} of "
+                                f"{vt['n_early']} unrecoverable at or before s_c0 not "
+                                "overspeed")
+                got["viability_typing"] = "; ".join(miss)
             extra["viability_typing"] = vt
         if name == "c2":
             q_rt = run_tables.get("Q")
@@ -3013,6 +3149,13 @@ def _control_verdicts(bank, cells, kt, keys, tables, b: float, sup, log, cache=N
                 got["planted_law"] = ("pass" if pl["passed"]
                                       else f"{pl['n_fail']} of {pl['n']} differ")
                 extra["planted_law"] = {k: v for k, v in pl.items() if k != "rows"}
+            if "lock_crashes" in need:
+                lk = controls.c2_lock_typing(rt, bank, cells, controls.lock_radius(tables))
+                got["lock_crashes"] = ("overspeed" if lk["passed"] else
+                                       "no lock-limited crash" if not lk["n"] else
+                                       f"{lk['n'] - lk['n_overspeed']} of {lk['n']} not "
+                                       "overspeed")
+                extra["lock_crashes"] = lk
             if controls.SAME_AS_Q in req.get("P1a", ()):
                 q_p1a = ((out.get("Q") or {}).get("got") or {}).get("P1a")
                 req["P1a"] = (q_p1a,) if q_p1a else ()
@@ -3072,8 +3215,8 @@ def stage_dryrun(args: argparse.Namespace) -> None:
     ruling R25), the dry run (the simulated agents must get their planted verdicts), the
     power table (with R24's saturating reader and R26's hybrid driver), P3's pre-tag
     separation check against b* (R25), the controls' required verdicts (protocol 7 as R20,
-    R23, R24, R26, R27 and R28 amend them; any miss blocks the tag; see
-    ``_control_verdicts``), and the code, stimulus and key-cache hashes in the manifest and
+    R23, R24, R26, R27, R28 and R30 amend them, R30's planted crash controls included; any
+    miss blocks the tag; see ``_control_verdicts``), and the code, stimulus and key-cache hashes in the manifest and
     in the pre-registration record of docs/interp/IMPLEMENTATION.md (tracked, so the tag
     carries them; post-tag stages check against it). Writes
     analysis/{key_table,dry_run,power}.npz. Refused after the tag."""
@@ -3093,8 +3236,10 @@ def stage_dryrun(args: argparse.Namespace) -> None:
     b = float(m.band) if m.band is not None else BAND_EXPECTED
     out = io.ANALYSIS_DIR
     with io.StageLog("dryrun", total=6, note=f"b = {b}") as log:
-        # R28: c1's viability solves type its crashes (the agents' primary path).
-        keys = A.CachedKeys(bank, cells, cache, viability=_viability_map(cache), tables=tables)
+        # R28 / R30: the viability and counterfactual solves type c1's and the planted
+        # controls' crashes (the agents' primary path).
+        keys = A.CachedKeys(bank, cells, cache, viability=_viability_map(cache, log),
+                            tables=tables)
         kt = A.key_table(cells, bank, keys)
         io.save_table(out / "key_table.npz", kt)
         log.step(note=f"key table: {A._n(kt)} cells, {int((kt['key_status'] == 'verified').sum())} verified")
@@ -3443,10 +3588,21 @@ def _anchored_job(job: dict) -> dict:
                 out["error"] = "\n".join(failed)
         else:
             traj = measures.trajectory_from_rollout(groups["det"], int(job["row"]), "det")
-            bo = ak.key_for(cell, "backoff", 0, cache=cache, bank=bank) or nom
+            # Ruling R30: no backed-off key (tier B, recovery) gives a distinct second start
+            # (Q's rollout), no longer the nominal key twice; the counterfactuals scale to
+            # the key 9.1's dv uses, the key at the run's phase where one is verified.
+            bo = ak.key_for(cell, "backoff", 0, cache=cache, bank=bank)
+            snap = str(job["snapshot"])
+            ph = (int(job["phase"]) if "phase" in job
+                  else int(snap.rsplit("-ph", 1)[1]) if "-ph" in snap else 0)
+            key = nom
+            if ph:
+                pk = ak.key_for(cell, "phase", ph, cache=cache, bank=bank)
+                key = pk if pk is not None and pk.status == "verified" else nom
             recs = ak.viability_keys(bank, cell, traj, nom, bo, cache, agent=job["agent"],
                                      snapshot=job["snapshot"], tables=tables,
-                                     force=bool(job.get("force")))
+                                     force=bool(job.get("force")), key=key,
+                                     q_cv=float(job.get("q_cv") or ak_default_cv()))
             out["keys"] = [_rec_summary(r) for r in recs]
     except Exception:  # noqa: BLE001  (a worker reports every failure to the main process)
         out["error"] = traceback.format_exc()
@@ -3805,7 +3961,7 @@ def stage_anchored_keys(args: argparse.Namespace) -> None:
                 jobs.append(dict(what="viability", force=force,
                                  label=f"viability {agent}@{ts} cell {cid} ph{ph}",
                                  agent=agent, timesteps=ts, cell=by[cid], file=str(f), row=row,
-                                 snapshot=f"{ts}-ph{ph}"))
+                                 snapshot=f"{ts}-ph{ph}", phase=ph, q_cv=_tuned_cv()))
         # R17c: the keys stage solved the nominal (tier B D = 600's included) and phase-matched
         # keys these jobs start from; report any it did not (the jobs fall back).
         v7, cuts = _v7_failed(m), m.budget.get("cuts", [])

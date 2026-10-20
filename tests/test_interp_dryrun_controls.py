@@ -726,12 +726,13 @@ def test_knn_fallback_logs_c_a_at_both_k():
 def test_control_specs_follow_the_dry_run_rulings():
     spec = C.CONTROLS
     assert spec["T"].required == {"errors": ("within_tau",)}               # R20 T32
-    assert set(spec["T"].reported) == {"termination", "regret"}
+    assert set(spec["T"].reported) == {"termination", "regret", "crash_types"}   # R30 count
     assert C.T64.required == {"regret": ("zero",), "errors": ("within_tau",),
                               "termination": ("none",)} and C.T64_REGRET_TOL == 1e-6
     assert "T64" not in spec                                                # own process
     assert spec["c2"].required == {"P1a": (C.SAME_AS_Q,), "planted_law": ("pass",)}  # R24
     assert "P1b" in spec["c2"].reported and "P1b" not in spec["c2"].required
+    assert "lock_crashes" in spec["c2"].reported                     # R30 count, R29(1)
     assert "P3" not in spec["c3"].required and spec["c3"].expected == {"P3": ("refute:M_idx",)}
     assert set(spec["c3"].required) == {"k_le_1", "entry", "overspeed_crashes"}  # R26
     assert spec["c1"].required == {"P2": ("confirm",), "P2b": ("onset_share>0.5",),

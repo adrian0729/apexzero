@@ -466,19 +466,38 @@ def test_R20_t64_blocks_on_everything_and_t32_on_the_measures_of_runs_that_reach
         A.tape_check(runs, keys, "f16")
 
 
-# ------------------------------------------------------------------------- R28: viability typing
+# ------------------------------------------------------------------------- R28 / R30: viability typing
 
 
-def test_R28_no_return_resolved_mirrors_crash_typing():
+def test_R30_no_return_resolved_mirrors_crash_typing():
+    """Ruling R30's resolution rule: some tested state non-viable (s set, certified or not),
+    or every tested state through s_a0 viable (the s_a0 target tested); else unresolved."""
     nr = measures.NoReturn
     ok, s = A.no_return_resolved(None, 1020.0)
     assert not ok and np.isnan(s)
     assert A.no_return_resolved(nr(1005.0, True, 2.0), 1020.0) == (True, 1005.0)
-    ok, s = A.no_return_resolved(nr(None, False, np.nan, 1030.0), 1020.0)
-    assert ok and np.isnan(s)                      # viable through s_a0: resolved, after it
-    assert not A.no_return_resolved(nr(None, False, np.nan, 1000.0), 1020.0)[0]
-    assert not A.no_return_resolved(nr(1005.0, False, 2.0), 1020.0)[0]   # not certified
+    assert A.no_return_resolved(nr(1005.0, False, 2.0)) == (True, 1005.0)   # R30: certified
+    ok, s = A.no_return_resolved(nr(None, False, np.nan, 1030.0,                # decides nothing
+                                    tested=("s_b", "s_c0", "s_a0")), 1020.0)
+    assert ok and np.isnan(s)                      # viable through s_a0: resolved
+    assert not A.no_return_resolved(nr(None, False, np.nan, 1000.0, tested=("s_b", "s_c0")))[0]
+    assert not A.no_return_resolved(nr(None, False, np.nan, 1030.0))[0]       # no target named
     assert not A.no_return_resolved("NR", 1020.0)[0]
+    cols = A.no_return_columns(nr(1005.0, False, 2.0, 990.0, target="s_a0", s_target=1000.0,
+                                  cf_verified_at="s_a0", overruled=("s_b",),
+                                  tested=("s_b", "s_c0", "s_a0")))
+    nan_dv = cols.pop("nr_cf_dv")
+    assert np.isnan(nan_dv)
+    assert cols == dict(nr_resolved=True, nr_s=1005.0, nr_target="s_a0", nr_s_target=1000.0,
+                        nr_dv=2.0, nr_cf="s_a0", nr_overruled="s_b", nr_tested="s_b,s_c0,s_a0",
+                        nr_missing="", nr_stale=0)
+    # R30 review: a verdict that still needs a solve (a tested state of the run with no
+    # record, or a qualifying state's counterfactual) is unresolved, and listed
+    gap = nr(1005.0, False, 2.0, 990.0, target="s_c0", tested=("s_b", "s_c0"),
+             missing=("s_a0",), n_stale=2)
+    assert not measures.no_return_resolved(gap) and not A.no_return_resolved(gap)[0]
+    cols = A.no_return_columns(gap)
+    assert (cols["nr_resolved"], cols["nr_missing"], cols["nr_stale"]) == (False, "s_a0", 2)
 
 
 def test_R28_run_table_records_the_typing_path(monkeypatch):
@@ -509,31 +528,58 @@ def test_R28_run_table_records_the_typing_path(monkeypatch):
     assert (v["n_crashed"], v["n_resolved"], v["n_overspeed"]) == (2, 1, 2)
 
 
-def test_R28_viability_typing():
-    def runs(nr, ct, crashed=None, phase=None):
+def test_R30_viability_typing():
+    """Ruling R30's check of c1 (it replaces R28's): every crashed u = 0 run resolved by the
+    viability path, none over-brake or line/steer, every one unrecoverable at or before s_c0
+    overspeed; the others (an s_a0 decision, an s_b after s_c0) listed with the solve."""
+    def runs(nr, ct, tgt=None, s_t=None, crashed=None, phase=None):
         n = len(nr)
         return A._to_table([dict(cell=i, mode="det", phase=0 if phase is None else phase[i],
                                  sample=-1, crashed=True if crashed is None else crashed[i],
-                                 nr_resolved=nr[i], crash_type=ct[i]) for i in range(n)],
+                                 nr_resolved=nr[i], crash_type=ct[i],
+                                 nr_target=(tgt or ["s_c0"] * n)[i],
+                                 nr_s_target=(s_t or [1000.0] * n)[i], nr_dv=3.0,
+                                 nr_cf="s_c0" if ct[i] == "overspeed" else "", nr_overruled="")
+                            for i in range(n)],
                            ("cell", "mode", "phase", "sample", "crashed", "nr_resolved",
-                            "crash_type"))
+                            "crash_type", "nr_target", "nr_s_target", "nr_dv", "nr_cf",
+                            "nr_overruled"))
 
     ok = A.viability_typing(runs([True, True], ["overspeed", "overspeed"]))
-    assert ok["passed"] and ok["n_resolved_overspeed"] == 2 and ok["types"] == {"overspeed": 2}
+    assert ok["passed"] and ok["n_early_overspeed"] == ok["n_early"] == 2
+    assert ok["types"] == {"overspeed": 2} and ok["others"] == []
+    # an early state not typed overspeed fails; one decided at s_a0 is listed, not failed
     other = A.viability_typing(runs([True, True], ["overspeed", "other"]))
-    assert not other["passed"] and other["not_overspeed_cells"] == [1]
+    assert not other["passed"] and other["early_not_overspeed_cells"] == [1]
+    a0 = A.viability_typing(runs([True, True], ["overspeed", "other"], tgt=["s_c0", "s_a0"],
+                                 s_t=[1000.0, 1036.0]))
+    assert a0["passed"] and [o["cell"] for o in a0["others"]] == [1]
+    assert a0["others"][0]["target"] == "s_a0" and a0["others"][0]["cf"] == ""
+    # over-brake or line/steer anywhere fails; so does a run the fallback typed
+    assert not A.viability_typing(runs([True, True], ["overspeed", "line_steer"],
+                                       tgt=["s_c0", "s_a0"]))["passed"]
+    unres = A.viability_typing(runs([True, False], ["overspeed", "overspeed"]))
+    assert not unres["passed"] and unres["unresolved_cells"] == [1]
     # crashes at u_k > 0 and survivors do not count; none at u = 0 exercises nothing
     only_k = runs([False, True], ["other", "overspeed"], phase=[1, 0])
     assert A.viability_typing(only_k)["passed"]
     none = A.viability_typing(runs([False], [""], crashed=[False]))
     assert not none["passed"] and none["n_crashed"] == 0
     # with the key table: a crash on a cell without a verified u = 0 key (no viability
-    # solve can start there) is listed, not judged; a verified cell's crash still counts
-    keys = A._to_table([dict(cell=0, key_status="verified"), dict(cell=1, key_status="missing")],
-                       ("cell", "key_status"))
+    # solve can start there) is listed, not judged; s_b counts as early only before s_c0
+    keys = A._to_table([dict(cell=0, key_status="verified", s_c0=1000.0, s_a0=1036.0),
+                        dict(cell=1, key_status="missing", s_c0=1000.0, s_a0=1036.0)],
+                       ("cell", "key_status", "s_c0", "s_a0"))
     two = runs([True, False], ["overspeed", "other"])
     assert not A.viability_typing(two)["passed"]
     scoped = A.viability_typing(two, keys)
     assert scoped["passed"] and scoped["n_crashed"] == 1
     assert scoped["n_no_key"] == 1 and scoped["no_key_cells"] == [1]
     assert not A.viability_typing(runs([False, True], ["other", "overspeed"]), keys)["passed"]
+    keys2 = A._to_table([dict(cell=i, key_status="verified", s_c0=1000.0, s_a0=1036.0)
+                         for i in range(2)], ("cell", "key_status", "s_c0", "s_a0"))
+    sb = runs([True, True], ["other", "overspeed"], tgt=["s_b", "s_b"], s_t=[1010.0, 980.0])
+    v = A.viability_typing(sb, keys2)                      # 1010 > s_c0: listed (138, 139)
+    assert v["passed"] and v["n_early"] == 1 and v["others"][0]["s_target_rel_c0"] == 10.0
+    assert not A.viability_typing(runs([True], ["other"], tgt=["s_b"], s_t=[980.0]),
+                                  keys2)["passed"]

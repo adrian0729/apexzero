@@ -54,6 +54,7 @@ from apexzero.interp.constants import (
     BRAKE_OFF,
     BRAKE_ON,
     COMPLETE_AFTER_EXIT,
+    CRASH_DV_TAU,
     CRASH_LOOKBACK,
     CRASH_UTIL,
     CRASH_UTIL_STEPS,
@@ -585,19 +586,44 @@ def make_marks(stimulus, w_left: np.ndarray, w_right: np.ndarray, s0: float, W: 
 
 @dataclass(frozen=True)
 class NoReturn:
-    """Point of no return of a crashed run, from the viability solves (answer_key).
+    """What the viability solves (answer_key) say about a crashed run, for 9.1's primary path
+    as ruling R30 defines it. The tested states are the run's states at s_b, s_c0 - 50, s_c0
+    and s_a0 (those before its crash), each named by its target; a state is viable when a
+    verified crash-free continuation exists from it, and a verified state overrules every
+    non-viable one before it (``overruled``).
 
-    - certified with s set: no viable key from the state at s, a verified one from the tested
-      state before it, so the point of no return lies in (that state, s];
-    - s None and s_last_viable >= s_a0: every tested state through s_a0 had a viable key,
-      so the point of no return lies after s_a0;
-    - anything else (no solves, solver failures, or the first tested state already
-      non-viable) is unresolved, and crash typing falls back to the ellipse rule."""
+    - ``s`` set: the first non-viable tested state after the last viable one; the crash is
+      resolved. It is overspeed when ``cf_verified_at`` names a tested state that qualifies
+      (non-viable, at or before s_a0 by target, vx above the key's vx*(s) by more than
+      CRASH_DV_TAU) and whose counterfactual (the same state with (vx, vy, r) scaled to
+      vx*(s)) has a verified continuation;
+    - ``s`` None and the s_a0 target among ``tested``: every tested state through s_a0 is
+      viable; resolved, not overspeed;
+    - anything else (no solves; a crash before s_a0 with every tested state viable) is
+      unresolved, and crash typing falls back to the ellipse rule.
 
-    s: float | None           # m, first tested state with no viable key; None = unresolved
-    certified: bool           # the previous tested state has a verified viable key
-    dv: float                 # m/s, vx - vx* at s (nan if unresolved)
+    A verdict that still needs a solve (``missing``: a tested state of the run with no record
+    of it, or one judged before R30, after the last viable one; or, with no counterfactual
+    verified, a qualifying state without its counterfactual) is unresolved too: the solves
+    did not decide the crash, which is listed (``analysis.no_return_columns``: ``nr_missing``)
+    rather than typed as if the missing solve had failed.
+
+    ``certified`` (a verified tested state right before s) is R28's test, kept for the record;
+    it decides nothing (R30)."""
+
+    s: float | None           # m, first non-viable tested state (its own s); None: none
+    certified: bool           # R28's: the tested state just before s is viable (not used)
+    dv: float                 # m/s, vx - vx* at s (nan if s is None)
     s_last_viable: float = np.nan   # m, last tested state with a verified viable key
+    target: str = ""          # target of s: 's_b' | 's_c0-50' | 's_c0' | 's_a0' ('' if None)
+    s_target: float = np.nan  # m, that target's position (lm.s_a0 for the s_a0 test)
+    cf_verified_at: str = ""  # target whose counterfactual verified ('' if none)
+    overruled: tuple = ()     # non-viable targets a later verified tested state overrules
+    tested: tuple = ()        # target names of the tested states, in s order
+    cf_dv: float = np.nan     # m/s, vx - vx* at the state cf_verified_at names (the deciding one)
+    missing: tuple = ()       # solves the verdict still needs: '<target>', '<target>:cf', ...
+    n_stale: int = 0          # solved tested-state records left out (another rollout's, or
+                              # an older s_b record of this run: a changed s_b)
 
 
 def _get(trace, key: str, group: str):
@@ -1291,19 +1317,26 @@ def delta_v(traj: Trajectory, key: Trajectory, marks: Marks) -> tuple[np.ndarray
 
 
 def crash_type(traj: Trajectory, marks: Marks, key: Trajectory | None,
-               no_return: NoReturn | None, p: VehicleParams = F1_2025) -> str:
-    """Protocol 9.1, for a crashed run ('' otherwise), in this order:
-    'overspeed': a certified point of no return at or before s_a0 with dv > 0; or, with the
-      point of no return unresolved (see ``NoReturn``), util_f or util_r >= 0.98 for >= 3
-      consecutive steps with beta_f < 1 and dv > 0 at the first such step, searched from
-      s_c0 - 50 m to the crash (the whole run for a crash before s_c0 - 50 m), so a
-      survived earlier corner of a real strip cannot type the crash;
+               no_return: NoReturn | None, p: VehicleParams = F1_2025,
+               tau: float = CRASH_DV_TAU) -> str:
+    """Protocol 9.1 as ruling R30 defines it, for a crashed run ('' otherwise), in this order:
+    'overspeed': 9.1's primary path, read from ``no_return`` by target name: some tested state
+      at or before s_a0 (the s_a0 test counts as at s_a0) has no verified crash-free
+      continuation (after a later verified state's overruling), exceeds the key's vx*(s) by
+      more than ``tau``, and the same state slowed to vx*(s) has a verified one
+      (``NoReturn.cf_verified_at``). Only when the viability path leaves the crash
+      unresolved (no solves, or a crash before s_a0 whose tested states were all viable, or a
+      verdict with a solve missing, which is listed; see ``NoReturn``) the ellipse fallback: util_f or util_r >= 0.98 for >= 3 consecutive steps
+      with beta_f < 1 and dv > ``tau`` at the first such step, searched from s_c0 - 50 m to
+      the crash (the whole run for a crash before s_c0 - 50 m), so a survived earlier corner
+      of a real strip cannot type the crash;
     'overbrake': beta_f >= 1 and util_f >= 0.98 for >= 3 consecutive steps in the last
-      second, with dv <= 0 at the first of them;
+      second, with dv <= ``tau`` at the first of them;
     'line_steer': max(util_f, util_r) < 0.9 at every state of the last 1.0 s;
     'other': none of the above.
     dv = vx - vx*(s) from ``key`` (NaN without a key, so only line_steer or other can then be
-    assigned). Slip and spin terminations are typed by the same rule."""
+    assigned); ``tau`` = CRASH_DV_TAU (0.5 km/h, 6.3's speed floor). Slip and spin
+    terminations are typed by the same rule."""
     v = _View(traj, marks.W, p)
     if not v.crashed:
         return ""
@@ -1316,14 +1349,9 @@ def crash_type(traj: Trajectory, marks: Marks, key: Trajectory | None,
     def dv(k: int) -> float:
         return float(v.vx[k] - kv.at(float(s[k]), kv.vx)) if kv is not None else np.nan
 
-    resolved = False
-    if no_return is not None and no_return.certified and no_return.s is not None:
-        resolved = True
-        if no_return.s <= lm.s_a0 and no_return.dv > 0.0:
-            return "overspeed"
-    elif (no_return is not None and no_return.s is None
-          and np.isfinite(no_return.s_last_viable) and no_return.s_last_viable >= lm.s_a0):
-        resolved = True
+    resolved = no_return_resolved(no_return)
+    if resolved and no_return.s is not None and getattr(no_return, "cf_verified_at", ""):
+        return "overspeed"
     if not resolved:
         k0 = 0
         if s[kt] >= lm.s_c0 - V_MIN_MARGIN:
@@ -1331,16 +1359,28 @@ def crash_type(traj: Trajectory, marks: Marks, key: Trajectory | None,
         sat = ((uf >= CRASH_UTIL) | (ur >= CRASH_UTIL)) & (bf < 1.0)
         sat[:k0] = False
         runs = [r for r in _runs(sat) if r[1] - r[0] >= CRASH_UTIL_STEPS]
-        if runs and dv(runs[0][0]) > 0.0:
+        if runs and dv(runs[0][0]) > tau:
             return "overspeed"
     last = t >= t[kt] - CRASH_LOOKBACK - 1e-9
     ob = (bf >= 1.0) & (uf >= CRASH_UTIL) & last
     runs = [r for r in _runs(ob) if r[1] - r[0] >= CRASH_UTIL_STEPS]
-    if runs and dv(runs[0][0]) <= 0.0:
+    if runs and dv(runs[0][0]) <= tau:
         return "overbrake"
     if np.all(np.maximum(uf[last], ur[last]) < LINE_STEER_UTIL):
         return "line_steer"
     return "other"
+
+
+def no_return_resolved(no_return: NoReturn | None) -> bool:
+    """Ruling R30's resolution rule: the viability path decides a crash when some tested
+    state is non-viable (after overruling: ``NoReturn.s`` set) or when every tested state
+    through s_a0 is viable (s None and the s_a0 target tested), with no solve the verdict
+    needs missing (``NoReturn.missing``). Anything else, None included, leaves it to the
+    ellipse fallback."""
+    if no_return is None or tuple(getattr(no_return, "missing", ()) or ()):
+        return False
+    return (getattr(no_return, "s", None) is not None
+            or "s_a0" in tuple(getattr(no_return, "tested", ()) or ()))
 
 
 # ------------------------------------------------------------------------- pieces (tested)

@@ -591,21 +591,41 @@ def test_v1_v4_v6_v7_v11_on_records():
 
 
 def test_no_return_from_viability_records():
-    def viab(s, status):
-        return record(kind="viability", status=status, anchor={"s_anchor": s - 4.0, "s_state": s})
-
+    """Ruling R30: the first non-viable tested state after the last viable one, its target
+    and dv; a later verified state overrules an earlier non-viable one; records never solved
+    (no start) are not tested states; a qualifying state without its counterfactual is
+    missing (the verdict is not resolved)."""
     x = np.zeros((50, 8))
     x[:, 0] = np.arange(50) * 4.0
     x[:, 3] = 80.0
     run = Trajectory(source="agent", t=np.arange(50) * DT, x=x, valid=np.ones(50, bool))
+
+    def viab(s, status, target="s_c0"):
+        L = round(s / 4.0)                       # the run's state x_L at s, solved from x_{L-1}
+        return record(kind="viability", status=status, key_id=f"v{target}",
+                      starts=[start("nominal:k", 1.0, status == "verified")],
+                      x0=run.x[L - 1].copy(), flags=[ak.VIABILITY_RULE_FLAG],
+                      anchor={"s_anchor": s - 4.0, "s_state": s, "target": target,
+                              "s_target": s - 1.0, "step": L})
+
     key = Trajectory(source="to_ocp", t=np.arange(50) * DT, x=x * [1, 1, 1, 0.9, 1, 1, 1, 1],
                      valid=np.ones(50, bool))
-    nr = ak.no_return([viab(120.0, "verified"), viab(40.0, "verified"), viab(160.0, "unsolved")], run, key)
+    nr = ak.no_return([viab(120.0, "verified", "s_c0"), viab(40.0, "verified", "s_b"),
+                       viab(160.0, "unsolved", "s_a0")], run, key)
     assert nr.s == 160.0 and nr.certified and nr.dv == pytest.approx(8.0) and nr.s_last_viable == 120.0
-    nr = ak.no_return([viab(40.0, "unsolved")], run, key)
+    assert nr.target == "s_a0" and nr.s_target == 159.0 and nr.tested == ("s_b", "s_c0", "s_a0")
+    assert nr.cf_verified_at == "" and nr.overruled == () and nr.missing == ("s_a0:cf",)
+    nr = ak.no_return([viab(40.0, "unsolved", "s_b")], run, key)
     assert nr.s == 40.0 and not nr.certified and np.isnan(nr.s_last_viable)
-    nr = ak.no_return([viab(40.0, "verified"), viab(90.0, "verified")], run, key)
-    assert nr.s is None and nr.s_last_viable == 90.0
+    assert nr.missing == ("s_b:cf",)
+    nr = ak.no_return([viab(40.0, "verified", "s_b"), viab(90.0, "verified", "s_a0")], run, key)
+    assert nr.s is None and nr.s_last_viable == 90.0 and nr.tested == ("s_b", "s_a0")
+    # overruled: s_b non-viable, s_c0 verified, s_a0 non-viable
+    nr = ak.no_return([viab(40.0, "unsolved", "s_b"), viab(120.0, "verified", "s_c0"),
+                       viab(160.0, "unsolved", "s_a0")], run, key)
+    assert nr.s == 160.0 and nr.overruled == ("s_b",) and nr.target == "s_a0"
+    never = dataclasses.replace(viab(40.0, "unsolved", "s_b"), starts=[])
+    assert ak.no_return([never], run, key) is None
 
 
 def test_project_budget_applies_the_cut_rules():
