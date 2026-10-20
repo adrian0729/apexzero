@@ -1186,24 +1186,28 @@ Nothing below has been run from this change. The stage logs show the R27 F6 halv
 ```json
 {
  "band": 0.1,
- "code_hash": "c4337dfdef84a621d9417eb39c7cc81d11e2b7bb6e8d4f62653455f00ae3537f",
+ "code_hash": "b4072de7e040844cc211b681b3955d6ae54aff4831e9945b20f3f08dc1131558",
  "controls": {
-  "K": "halve F6",
+  "K": "pass",
+  "LS": "pass",
+  "LSK": "pass",
+  "LSKF": "pass",
+  "OB": "pass",
   "Q": "pass",
   "Qp": "pass",
   "T": "pass",
   "T64": "pass",
-  "c1": "FAIL",
+  "c1": "pass",
   "c2": "pass",
   "c3": "pass"
  },
  "dry_run_passed": true,
- "frozen_code_hash": "abae4bafeb095a825a36ea67665dd863df0eff451cf0d19e37998996a2159200",
- "key_cache_hash": "c7ea77dbe642ce1e67c14ef663d712139e8165d9ca7a5b9b92ae4528b4e397db",
+ "frozen_code_hash": "8650965a68aed988f2675f0ee17ef6d0dd970374f35ffcabead6cad7d98f1ede",
+ "key_cache_hash": "6d79b16333cea8c1b9fb637b98591d32748496b72e144fb6cbacfb31f97db061",
  "p3_demoted": false,
- "stimulus_hash": "0a19cc7fee62c56f18223c9e7f79825a915b0e6b598a4271dc64085e95f3617e",
+ "stimulus_hash": "e7846c92b1e419723aaddbfcd0537db478eacf7908c4e4d1bb24398ec995194e",
  "tag": "psychophysics-prereg-v2",
- "written": "2026-10-20T10:23:01"
+ "written": "2026-10-20T19:14:28"
 }
 ```
 <!-- prereg-record:end -->
