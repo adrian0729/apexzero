@@ -35,25 +35,28 @@ circuits, and the specialist crashes on a plain synthetic straight. Next: answer
 positive controls, the `psychophysics-prereg-v2` tag, then rollouts. Step 2 measures
 receptive fields; idea 2 asks whether the networks encode Pontryagin's costate.
 
-## Paused (19 Oct, 15:05): resume checklist
+## Paused (20 Oct, 15:50): resume checklist
 
-Psychophysics step 1, pre-tag. Done: harness, rulings R1–R17 (protocol Section 12), stimuli
-(753 rows, 2,009 cells), controls Q/Qp/c1/c2/K, validation V1–V11, and **all 1,613 answer keys**
-(verified by replay; 0 unsolved, 0 infeasible, 15 multi-basin). No agent has been rolled out
-on any protocol stimulus. To resume, in order:
+Psychophysics step 1, pre-tag. Done:
+- harness, with rulings R1–R31 in protocol Section 12;
+- six replicate generalists as prospective agents (R18);
+- stimuli (762 rows, 2,036 cells, F6 at half amplitude per R27);
+- validation and all 2,694 keys (verified, 0 unsolved);
+- dry-run fixes R20–R30 (13/13 planted verdicts; T, T64, Q, Qp, c2 and c3 pass).
 
-1. Implement ruling R17c: tier B D = 600 cells get nominal and phase-matched keys in the keys
-   stage at P1 (R17 itself is done and committed).
-2. `psychophysics.py keys --priority P2`, which solves R17's extra P7 phase keys and R17c's tier B keys
-   (resumes from the cache). It runs before `anchored-keys`.
-3. `psychophysics.py stimuli --real --force`, which adds the F5 swap-A rows now that tier D's braking
-   corners are known. Then `keys --layout-only` and `keys --priority P2` for the new rows.
-4. `psychophysics.py controls`, which runs T and c3 now that keys exist.
-5. `psychophysics.py dryrun`. Every control must return its planted verdict. Then tag
-   `psychophysics-prereg-v2`.
-6. After the tag: `rollouts`, `anchored-keys`, `probes`, `analyse --confirmatory`, `plots`.
+No agent has been rolled out on a protocol stimulus. When the lid closed, the
+`controls` stage was running (c1 and the planted crash controls with their viability and
+counterfactual solves, about 7 CPU-h), followed by `dryrun`. To resume:
 
-`scripts/dashboard.py` shows anything running.
+1. Check `runs/psychophysics-controls.log` and `runs/psychophysics-dryrun.log`. If either
+   stopped, rerun `psychophysics.py controls --workers 10`, then `psychophysics.py dryrun`.
+   Both resume from the caches.
+2. If the dry run reports every required verdict, tag `psychophysics-prereg-v2` and push the tag.
+   If not, diagnose before changing anything, as for R20–R30.
+3. After the tag: `rollouts`, `anchored-keys` (about 30 CPU-h; a Massed Compute box's 12 CPUs
+   can share it), `probes`, `analyse --confirmatory`, `plots`.
+
+`scripts/dashboard.py` shows everything running: stages, agent workflows, GPU.
 
 ## Protocol deviation (recorded)
 
