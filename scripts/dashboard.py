@@ -371,6 +371,54 @@ def stage_state(log: Path, running: bool) -> StageState | None:
     return st
 
 
+
+# Agent workflows run by Claude Code for this repo keep a journal per run (started / result
+# events per agent) under ~/.claude/projects/<repo path as a slug>/<session>/subagents/.
+CLAUDE_PROJECT = Path.home() / ".claude" / "projects" / re.sub(r"[/ ]", "-", str(ROOT))
+STALL_S = 20 * 60
+
+
+@dataclass
+class WorkflowState:
+    name: str
+    running: list[str]            # labels of agents started without a result
+    done: int
+    started: int
+    last_s: float                 # seconds since any of its files changed
+
+
+def workflows(base: Path = CLAUDE_PROJECT, within_s: float = 12 * 3600,
+              now: float | None = None) -> list[WorkflowState]:
+    """Recent agent workflows: their running agents, progress and last activity."""
+    now = time.time() if now is None else now
+    names = {f.stem.rsplit("-wf_", 1)[1]: f.stem.rsplit("-wf_", 1)[0]
+             for f in base.glob("*/workflows/scripts/*-wf_*.js")}
+    out = []
+    for j in base.glob("*/subagents/workflows/wf_*/journal.jsonl"):
+        files = [j, *j.parent.glob("agent-*.jsonl")]
+        try:
+            last = max(f.stat().st_mtime for f in files)
+        except OSError:
+            continue
+        if now - last > within_s:
+            continue
+        started, results = {}, set()
+        for ln in _tail_text(j, 1 << 20).splitlines():
+            try:
+                e = json.loads(ln)
+            except ValueError:
+                continue
+            if e.get("type") == "started":
+                started[e.get("agentId")] = e.get("label") or e.get("phase") or "agent"
+            elif e.get("type") == "result":
+                results.add(e.get("agentId"))
+        run_id = j.parent.name.removeprefix("wf_")
+        out.append(WorkflowState(names.get(run_id, j.parent.name), [
+            lab for a, lab in started.items() if a not in results],
+            len(results & set(started)), len(started), now - last))
+    return sorted(out, key=lambda w: w.last_s)
+
+
 _BREV: dict = {"t": 0.0, "rows": None}
 
 
@@ -474,6 +522,24 @@ def render(width: int) -> list[str]:
         shown += 1
     if not shown:
         lines.append(f"  {DIM}no stage has run{RESET}")
+    lines.append("")
+
+    # --- agent workflows
+    wfs = workflows(now=now)[:4]
+    lines.append(f"{BOLD}AGENT WORKFLOWS{RESET} {DIM}(Claude's background work, last 12 h){RESET}")
+    if wfs:
+        for w in wfs:
+            if w.running and w.last_s > STALL_S:
+                st = f"{RED}stalled?{RESET}"
+            elif w.running:
+                st = f"{GREEN}running{RESET} "
+            else:
+                st = f"{BLUE}done{RESET}    "
+            now_doing = ", ".join(w.running) if w.running else ""
+            lines.append(f"  {w.name[:34]:<34} {st} {w.done}/{w.started} agents   "
+                         f"last activity {fmt_dur(w.last_s):>9} ago   {DIM}{now_doing}{RESET}")
+    else:
+        lines.append(f"  {DIM}none{RESET}")
     lines.append("")
 
     # --- GPU instances

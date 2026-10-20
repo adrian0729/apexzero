@@ -92,3 +92,25 @@ def test_stage_state_reads_the_latest_stage_run(tmp_path):
     assert st.status == "failed" and st.summary == "in 0.0 min (ValueError: boom)"
     log.write_text("2026-10-19 23:00:00 start keys: 0/9 (P0)\n")
     assert dashboard.stage_state(log, running=False).status == "stopped"
+
+
+def test_workflows_reports_running_agents_progress_and_stalls(tmp_path):
+    sess = tmp_path / "sess"
+    wf = sess / "subagents" / "workflows" / "wf_abc123"
+    wf.mkdir(parents=True)
+    (sess / "workflows" / "scripts").mkdir(parents=True)
+    (sess / "workflows" / "scripts" / "psychophysics-r30-wf_abc123.js").write_text("")
+    (wf / "journal.jsonl").write_text(
+        '{"type":"launched"}\n'
+        '{"type":"started","agentId":"a1","label":"implement","phase":"Implement"}\n'
+        '{"type":"result","agentId":"a1","result":"..."}\n'
+        '{"type":"started","agentId":"a2","label":"fix","phase":"Fix"}\n')
+    (wf / "agent-a2.jsonl").write_text("{}\n")
+    import os
+    t = os.path.getmtime(wf / "agent-a2.jsonl")
+    (w,) = dashboard.workflows(tmp_path, now=t + 60)
+    assert (w.name, w.running, w.done, w.started) == ("psychophysics-r30", ["fix"], 1, 2)
+    assert 59 <= w.last_s <= 61
+    (w,) = dashboard.workflows(tmp_path, now=t + 30 * 60)
+    assert w.last_s > dashboard.STALL_S
+    assert dashboard.workflows(tmp_path, now=t + 13 * 3600) == []
