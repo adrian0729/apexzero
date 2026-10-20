@@ -419,6 +419,28 @@ def workflows(base: Path = CLAUDE_PROJECT, within_s: float = 12 * 3600,
     return sorted(out, key=lambda w: w.last_s)
 
 
+
+REMOTE_JOBS = RUNS / "remote_jobs.json"     # [{"host", "log", "label"}]: jobs on rented boxes
+_REMOTE: dict = {"t": 0.0, "lines": {}}
+
+
+def remote_jobs(every: float = 60.0) -> list[tuple[str, str, str]]:
+    """(label, host, last log line) for each job listed in runs/remote_jobs.json, read over
+    ssh at most once a minute (5 s timeout per host)."""
+    try:
+        jobs = json.loads(REMOTE_JOBS.read_text())
+    except (OSError, ValueError):
+        return []
+    if time.time() - _REMOTE["t"] > every:
+        for j in jobs:
+            out = _run(["ssh", "-o", "ConnectTimeout=5", "-o", "BatchMode=yes", j["host"],
+                        f"tail -n 1 {j['log']}"])
+            _REMOTE["lines"][j["host"] + j["log"]] = out.strip().splitlines()[-1] if out.strip() else "(no reply)"
+        _REMOTE["t"] = time.time()
+    return [(j.get("label", j["log"]), j["host"], _REMOTE["lines"].get(j["host"] + j["log"], "..."))
+            for j in jobs]
+
+
 _BREV: dict = {"t": 0.0, "rows": None}
 
 
@@ -553,6 +575,8 @@ def render(width: int) -> list[str]:
                              f"{' '.join(f[5:])}")
         else:
             lines.append(f"  {DIM}none{RESET}")
+        for label, host, last in remote_jobs():
+            lines.append(f"  {CYAN}{label}{RESET} {DIM}on {host}:{RESET} {last}")
         lines.append("")
 
     # --- other experiment processes
