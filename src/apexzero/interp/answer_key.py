@@ -3000,6 +3000,11 @@ BUDGET_ITEMS = {
     # at their phases (warm from the nominal key), so per-phase re-anchored keys (R17a) start
     # from and fall back to the key at their own phase.
     "nominal_B600": ("nominal", "P1"), "phase_B600": ("warm", "P1"),
+    # Ruling R18: the replicates' finals get G1-G3's re-anchored keys (P0: A1; P1: tier B
+    # D = 600) and their own viability solves (9.1's cap applied to them apart), never P2's
+    # checkpoint keys (P6 stays on seed 0).
+    "anchored_R": ("anchored", "P0"), "viability_R": ("viability", "P0"),
+    "anchored_B_R": ("anchored", "P1"),
 }
 # Budget rule 2's cuts: tier A 180 deg cells with R >= 35.8 (3 radii <= 55.9 x A1, A2, each a
 # nominal and a backed-off key; ruling R7 corrects the protocol's "5 geometries" and keeps the

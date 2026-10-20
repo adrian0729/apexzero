@@ -1,5 +1,9 @@
 """Agents, snapshots and the manifest (protocol 8, step 0).
 
+The agents are ``registry.AGENTS`` (re-exported here): S1-S3, G1-G3 and ruling R18's seed
+replicates G1s1, G1s2, G2s1, G2s2, G3s1, G3s2 (prospective, ``prospective_after`` 0, never
+evaluated on a protocol stimulus before the tag).
+
 Snapshots load with ``audit.rollouts.snapshot_from_pickle``, the PPOConfig filtered to its
 known fields (as viz/export.load_policy does) and ``Actor(cfg, 2, False)``. The manifest
 (``outputs/psychophysics/manifest.json``) records every snapshot's sha256, timesteps, size
@@ -51,38 +55,29 @@ from apexzero.interp.io import (
     sha256_file,
     write_json,
 )
+from apexzero.interp.registry import (  # noqa: F401  (re-exported, see below)
+    AGENTS,
+    AgentSpec,
+    agent_grammar,
+    generalists,
+    is_generalist,
+    is_replicate,
+    is_specialist,
+    replicates,
+    seed0_generalists,
+    seed0_of,
+    seed_of,
+    specialists,
+    variant_of,
+    variant_seeds,
+    variants,
+)
 from apexzero.interp.stimuli import RealState
-from apexzero.interp.support import GRAMMARS, GrammarSpec
 
+# The agent registry (protocol 8 and ruling R18) lives in ``registry`` so that the modules this
+# one imports can read it too; it is re-exported here as ``agents.AGENTS``, ``agents.AgentSpec``
+# and the id helpers (``agents.generalists()``, ``seed0_generalists()``, ``replicates()``, ...).
 
-@dataclass(frozen=True)
-class AgentSpec:
-    """One trained agent of protocol 8."""
-
-    agent_id: str                 # 'S1', 'S2', 'S3', 'G1', 'G2', 'G3'
-    run: str                      # repo-relative run directory
-    kind: str                     # 'specialist' | 'generalist'
-    pilot_informed: bool          # seen in the pilots (secondary family)
-    prospective_after: float      # snapshots with timesteps > this are prospective (inf: none)
-    final_file: str               # 'agent.pkl' (S1) or 'ckpt' (last ckpt/*.pkl)
-    done_file: str                # file whose presence marks the run finished
-    grammar: GrammarSpec | None   # training grammar (generalists)
-
-
-AGENTS = {
-    "S1": AgentSpec("S1", "runs/hockenheim-specialist-mlp-200M", "specialist", True,
-                    float("inf"), "agent.pkl", "agent.pkl", None),
-    "S2": AgentSpec("S2", "runs/hockenheim-specialist-mlp-200M-s2", "specialist", False,
-                    122.3e6, "ckpt", "agent.pkl", None),
-    "S3": AgentSpec("S3", "runs/hockenheim-specialist-mlp-200M-s3", "specialist", False,
-                    0.0, "ckpt", "agent.pkl", None),
-    "G1": AgentSpec("G1", "runs/dr-pilot-200M", "generalist", True, float("inf"), "ckpt",
-                    "eval_rdev.json", GRAMMARS["base"]),
-    "G2": AgentSpec("G2", "runs/dr-pilot-v2-tilt30", "generalist", True, float("inf"),
-                    "ckpt", "eval_rdev.json", GRAMMARS["v2mix"]),
-    "G3": AgentSpec("G3", "runs/dr-pilot-v3-tilt50a2", "generalist", False, 0.0, "ckpt",
-                    "eval_rdev.json", GRAMMARS["v3mix"]),
-}
 EXCLUDED_RUNS = ("runs/hockenheim-specialist-mlp",)
 
 
@@ -281,6 +276,10 @@ def _git_commit() -> str:
 
 def _agent_record(spec: AgentSpec, snaps: list[Path]) -> dict:
     rec = {f.name: getattr(spec, f.name) for f in dataclasses.fields(spec)}
+    if is_replicate(spec.agent_id):
+        # Ruling R18: a prospective seed replicate of its variant's seed-0 agent.
+        rec["replicate_of"] = seed0_of(spec.agent_id)
+        rec["ruling"] = "R18"
     rec["finished"] = bool(snaps)
     rec["n_snapshots"] = len(snaps)
     rec["final"] = _rel(snaps[-1]) if snaps else ""
@@ -325,7 +324,9 @@ def freeze_manifest(out: Path = MANIFEST_PATH, agents: dict[str, AgentSpec] = AG
                     existing: Manifest | None = None) -> Manifest:
     """Step 0: list every finished run's snapshots (adding new ones to ``existing``, never
     changing an entry already there), verify each loads and gives a finite forward pass, and
-    write the manifest. G3 and S3 enter when they finish.
+    write the manifest. G3 and S3 enter when they finish, and so do ruling R18's replicates
+    (G1s1 .. G3s2: finished when eval_rdev.json exists; prospective, every entry not
+    evaluated).
 
     ``existing`` defaults to the manifest already at ``out``. Two exceptions to "never
     changed": an entry that failed to load (``error`` set) is retried and replaced, so a

@@ -275,7 +275,9 @@ def stage_manifest(args: argparse.Namespace) -> None:
     """Step 0 (agents.freeze_manifest): every finished run's snapshots with sha256, size,
     timesteps, exp(log_std) and a finite forward pass on a dummy observation; prospective
     snapshots recorded as not evaluated; runs still training listed as pending. Re-running
-    adds new snapshots and never changes an existing entry."""
+    adds new snapshots and never changes an existing entry. Ruling R18's replicates (G1s1 ..
+    G3s2) are listed like every agent (finished when eval_rdev.json exists; prospective; not
+    evaluated), each with its variant, seed and seed-0 agent."""
     from apexzero.interp import agents, io
 
     specs = agents.AGENTS
@@ -295,7 +297,10 @@ def stage_manifest(args: argparse.Namespace) -> None:
             pro = [e for e in ents if e.prospective]
             ev = [e.path for e in pro if e.evaluated_on_stimuli]
             std = fin[0].std if fin else (float("nan"), float("nan"))
-            lines.append(f"{aid}: {rec['status']}; {len(ents)} snapshots, final "
+            who = (f"{aid} (R18 replicate of {agents.seed0_of(aid)}: variant "
+                   f"{agents.variant_of(aid)}, seed {agents.seed_of(aid)})"
+                   if agents.is_replicate(aid) else aid)
+            lines.append(f"{who}: {rec['status']}; {len(ents)} snapshots, final "
                          f"{fin[0].path if fin else '-'} ({fin[0].timesteps if fin else '-'}), "
                          f"std (steer, pedal) = ({std[0]:.4f}, {std[1]:.4f}); forward pass "
                          f"finite {len(ents) - len(bad)}/{len(ents)}; prospective {len(pro)}, "
@@ -307,6 +312,12 @@ def stage_manifest(args: argparse.Namespace) -> None:
         for ln in lines:
             _say(log, ln)
         ok = all(not e.error and e.forward_pass_ok for e in m.snapshots)
+        reps = agents.replicates()
+        rep_ents = [e for e in m.snapshots if e.agent in reps]
+        _say(log, f"R18 replicates: {sum(m.agents[a]['finished'] for a in reps if a in m.agents)}"
+                  f"/{len(reps)} finished, {len(rep_ents)} snapshots, prospective "
+                  f"{sum(e.prospective for e in rep_ents)}, evaluated on stimuli "
+                  f"{sum(e.evaluated_on_stimuli for e in rep_ents)}")
         _say(log, f"manifest: {len(m.snapshots)} snapshots, all load with a finite forward pass: "
                   f"{ok}; written to {io.MANIFEST_PATH}")
 
@@ -609,7 +620,7 @@ def _pilot(log) -> dict:
     _say(log, f"pilot mini-grid: {len(bank)} rows; kappa and widths vs the pilot's own "
               f"construction: max |diff| {worst:.2e}")
     recs = []
-    for aid in ("G1", "G2"):
+    for aid in rollout.PILOT_EXPECTED:          # G1 and G2, the pilot's agents
         res = rollout.pilot_replication(aid)
         match = res.pop("match")
         crashed = {k: v for k, v in res.items() if v[0]}
@@ -665,7 +676,7 @@ def stage_rollouts(args: argparse.Namespace) -> None:
     states, the fidelity-gate traces and G3's crash corners: allowed before the tag (ruling
     R1), on the frozen code after it. Otherwise step 6 (post-tag only): agent rollouts per
     snapshot, and --yasmarina."""
-    from apexzero.interp import io
+    from apexzero.interp import io, rollout
 
     if args.pilot_replication:
         bank, cells = _design()
@@ -680,7 +691,7 @@ def stage_rollouts(args: argparse.Namespace) -> None:
             bench = _benchmark(log)
             _say(log, f"throughput B=2048 T=800: full {bench['full_sps']:,.0f} steps/s, stoch "
                       f"{bench['stoch_sps']:,.0f} steps/s (rule 3 fires: {bench['rule3_fires']})")
-            verdict = ok and bool(pilot) and all(pilot[a]["match"] for a in ("G1", "G2"))
+            verdict = ok and bool(pilot) and all(pilot[a]["match"] for a in rollout.PILOT_EXPECTED)
             io.write_json(out / "step2.json", dict(gates=gates, pilot=pilot, benchmark=bench,
                                                     passed=verdict,
                                                     created=time.strftime("%Y-%m-%dT%H:%M:%S")))
@@ -1280,13 +1291,16 @@ def _frozen_regimes() -> dict | None:
 
 def _r12_extra_anchored(bank, cells: list, regimes: dict | None = None) -> int:
     """Ruling R12's addition to P0's re-anchored keys: the non-clipped below-support A1
-    cells of every generalist (design-time clipping; the stage applies the run-time one),
-    from the frozen regimes. 0 before the support stage has frozen them."""
+    cells of every seed-0 generalist (design-time clipping; the stage applies the run-time
+    one), from the frozen regimes. 0 before the support stage has frozen them. R18's
+    replicates are counted apart (``_anchored_rep_count``)."""
+    from apexzero.interp import agents
+
     regimes = _frozen_regimes() if regimes is None else regimes
     if not regimes:
         return 0
     return sum(len(_r12_below_cells(bank, cells, regimes, a))
-               for a in ("G1", "G2", "G3") if a in regimes)
+               for a in agents.seed0_generalists() if a in regimes)
 
 
 def _r12_below_cells(bank, cells: list, regimes: dict, agent: str) -> list:
@@ -1314,19 +1328,21 @@ def _anchored_g_count(bank, cells: list) -> dict:
     Ruling R17a: one key per deterministic phase of each cell (``_ra_phases_final``: 4, and
     16 on P7's cells), so ``n`` (keys) is about 4x ``cells``; ``u0_keys`` is the count
     before R17 (one per cell, at u = 0)."""
+    from apexzero.interp import agents
     from apexzero.interp.constants import N_PHASES
 
+    gens = agents.seed0_generalists()
     regimes = _frozen_regimes()
-    if not regimes or not any(a in regimes for a in ("G1", "G2", "G3")):
+    if not regimes or not any(a in regimes for a in gens):
         return dict(n=N_PHASES * ANCHORED_G_PROTOCOL, cells=ANCHORED_G_PROTOCOL,
                     u0_keys=ANCHORED_G_PROTOCOL, p7_cells=0, p7_keys=0,
                     source="protocol (regimes not frozen) x 4 phases (R17a)",
                     rule="R17a: one re-anchored key per deterministic phase",
                     r12_below_support=0, r12_below_support_keys=0,
                     protocol=ANCHORED_G_PROTOCOL)
-    sel = [c for a in ("G1", "G2", "G3") if a in regimes
+    sel = [c for a in gens if a in regimes
            for c in anchored_cells(cells, bank, regimes, a, "P0", True)]
-    below = [c for a in ("G1", "G2", "G3") if a in regimes
+    below = [c for a in gens if a in regimes
              for c in _r12_below_cells(bank, cells, regimes, a)]
     p7 = [c for c in sel if _p7_cell(c)]
     return dict(n=sum(_ra_phases_final(c) for c in sel), cells=len(sel), u0_keys=len(sel),
@@ -1353,17 +1369,19 @@ def _anchored_p12_count(bank, cells: list) -> dict[str, dict]:
     ``P6C_CHECKPOINTS`` checkpoints, 4 phases each (checkpoints run the 4-phase grid), once
     the generalists' regimes are frozen; before that, the protocol's 216 x 4. Each item
     records its u = 0 count (one key per cell and snapshot) and its source."""
+    from apexzero.interp import agents
     from apexzero.interp.constants import N_PHASES
 
     out: dict[str, dict] = {}
-    for item, agents_, gen in (("anchored_S", ("S1", "S2", "S3"), False),
-                               ("anchored_B", ("G1", "G2", "G3"), True)):
+    for item, agents_, gen in (("anchored_S", agents.specialists(), False),
+                               ("anchored_B", agents.seed0_generalists(), True)):
         sel = [c for a in agents_ for c in anchored_cells(cells, bank, {}, a, "P1", gen)]
         out[item] = dict(keys=sum(_ra_phases_final(c) for c in sel), u0_keys=len(sel),
                          p7_keys=sum(_ra_phases_final(c) for c in sel if _p7_cell(c)),
                          source="design", protocol_u0=RA_U0_PROTOCOL[item])
     regimes = _frozen_regimes()
-    gens = [a for a in ("G1", "G2", "G3") if regimes and a in regimes]
+    # P6c's checkpoints (P2) stay on seed 0 (ruling R18).
+    gens = [a for a in agents.seed0_generalists() if regimes and a in regimes]
     if gens:
         sel = [c for a in gens for c in anchored_cells(cells, bank, regimes, a, "P2", True)]
         u0 = P6C_CHECKPOINTS * len(sel)
@@ -1376,6 +1394,117 @@ def _anchored_p12_count(bank, cells: list) -> dict[str, dict]:
         out["anchored_ckpt"] = dict(keys=N_PHASES * v, u0_keys=v, p7_keys=0,
                                     source=f"protocol 10 x {N_PHASES} phases (regimes not "
                                            "frozen)", protocol_u0=v)
+    return out
+
+
+def _replicate_regimes(regimes: dict | None) -> tuple[dict, dict[str, str]]:
+    """Ruling R18: each replicate's frozen regime (q1 / q10 of its variant's grammar, R_clip
+    from its own obs_rms, written by the support stage once its final is in the manifest),
+    or, until then, its seed-0 agent's as a stand-in (the same grammar, so the same q1 / q10;
+    only R_clip, and so the R12 below-support boundary, can differ). Returns (regimes by
+    replicate, the source of each)."""
+    from apexzero.interp import agents
+
+    regimes = regimes or {}
+    out, src = {}, {}
+    for a in agents.replicates():
+        if a in regimes:
+            out[a], src[a] = regimes[a], "own"
+        elif agents.seed0_of(a) in regimes:
+            out[a], src[a] = regimes[agents.seed0_of(a)], f"stand-in: {agents.seed0_of(a)}'s"
+    return out, src
+
+
+def _anchored_rep_count(bank, cells: list) -> dict[str, dict]:
+    """Ruling R18's re-anchored keys for the replicates' finals, for the budget projection:
+    'anchored_R' (P0) their A1 tail, bulk and non-clipped below-support cells (R12), and
+    'anchored_B_R' (P1) their tier B D = 600 cells, both as G1-G3's (``anchored_cells``),
+    one key per deterministic phase of a final (R17a: 4, 16 on P7 cells). No P2 item: P6's
+    checkpoint history stays on seed 0. Regimes from ``_replicate_regimes`` (a replicate
+    whose own are not frozen yet is counted with its seed-0 agent's); before any regimes
+    are frozen, the protocol's 96 cells per 3 generalists, x 4 phases."""
+    from apexzero.interp import agents
+    from apexzero.interp.constants import N_PHASES
+
+    reps = agents.replicates()
+    regs, src = _replicate_regimes(_frozen_regimes())
+    out: dict[str, dict] = {}
+    if regs:
+        sel = [c for a in reps if a in regs
+               for c in anchored_cells(cells, bank, regs, a, "P0", True)]
+        below = [c for a in reps if a in regs for c in _r12_below_cells(bank, cells, regs, a)]
+        out["anchored_R"] = dict(keys=sum(_ra_phases_final(c) for c in sel), u0_keys=len(sel),
+                                 p7_keys=sum(_ra_phases_final(c) for c in sel if _p7_cell(c)),
+                                 r12_below_support_keys=sum(_ra_phases_final(c) for c in below),
+                                 agents=list(regs), regimes=src, source="design")
+    else:
+        n = round(ANCHORED_G_PROTOCOL * len(reps) / max(1, len(agents.seed0_generalists())))
+        out["anchored_R"] = dict(keys=N_PHASES * n, u0_keys=n, p7_keys=0,
+                                 r12_below_support_keys=0, agents=list(reps), regimes={},
+                                 source="protocol (regimes not frozen) x 4 phases (R17a)")
+    sel = [c for a in reps for c in anchored_cells(cells, bank, {}, a, "P1", True)]
+    out["anchored_B_R"] = dict(keys=sum(_ra_phases_final(c) for c in sel), u0_keys=len(sel),
+                               p7_keys=sum(_ra_phases_final(c) for c in sel if _p7_cell(c)),
+                               agents=list(reps), source="design")
+    return out
+
+
+def _rollout_runs(c, kind: str, mode: str) -> int:
+    """Protocol 4's replication table: the runs one snapshot of ``kind`` makes on cell ``c``
+    in ``mode`` (as ``_rollout_job`` plans them with ``rollout.plan_runs``)."""
+    from apexzero.interp import rollout
+    from apexzero.interp.constants import REPLICATION
+
+    rep = REPLICATION[kind]
+    if mode == "det":
+        tiers = rep.get("det_tiers")
+        if tiers is not None and not set(c.tiers) & set(tiers):
+            return 0
+        return len(rollout.det_phase_indices(int(c.n_phases), rep.get("det_phases")))
+    samples = rep.get("native" if mode == "nat" else "matched")
+    return rollout._samples_for(c, samples) if samples else 0
+
+
+def _rollout_projection(cells: list, sps: dict | None = None) -> dict:
+    """Agent rollouts of step 6 counted on the design (protocol 4's replication table, every
+    snapshot ``_snapshot_kinds(..., 'all')`` lists, each run W steps, tier D cells by
+    ``Cell.runners`` with R18's replicates running their seed-0 agent's), per agent, kind
+    and mode, with process hours at the measured steps/s (``sps``: 'full' for det, 'stoch'
+    for nat and mat; protocol 10: 3 processes). Budget rule 3 is on throughput, not on this
+    count. Agents whose run has no snapshot on disk count as one final (a plan)."""
+    from apexzero.interp import agents, registry
+
+    by_agent: dict[str, dict] = {}
+    for a in agents.AGENTS:
+        kinds = _count(k for _, k in _snapshot_kinds(a, "all")) or {"final": 1}
+        mine = [c for c in cells if registry.runs_cell(tuple(c.runners or ()), a)]
+        steps = {"det": 0, "nat": 0, "mat": 0}
+        runs = {"det": 0, "nat": 0, "mat": 0}
+        for kind, n_snap in kinds.items():
+            for c in mine:
+                W = int(c.W or 800)
+                for mode in steps:
+                    n = n_snap * _rollout_runs(c, kind, mode)
+                    runs[mode] += n
+                    steps[mode] += n * W
+        by_agent[a] = dict(snapshots=kinds, runs=runs, steps=steps,
+                           total_steps=sum(steps.values()))
+    sps = sps or {}
+    full, stoch = float(sps.get("full", np.nan)), float(sps.get("stoch", np.nan))
+
+    def hours(rows):
+        det = sum(r["steps"]["det"] for r in rows)
+        sto = sum(r["steps"]["nat"] + r["steps"]["mat"] for r in rows)
+        return det / full / 3600.0 + sto / stoch / 3600.0 if sps else float("nan")
+
+    reps = [by_agent[a] for a in agents.replicates()]
+    rest = [v for a, v in by_agent.items() if not agents.is_replicate(a)]
+    out = dict(by_agent=by_agent, steps_total=sum(v["total_steps"] for v in by_agent.values()),
+               steps_replicates=sum(v["total_steps"] for v in reps),
+               steps_pre_r18=sum(v["total_steps"] for v in rest),
+               process_h=hours(list(by_agent.values())), process_h_replicates=hours(reps),
+               sps=dict(full=full, stoch=stoch), processes=3)
+    out["wall_h"] = out["process_h"] / out["processes"]
     return out
 
 
@@ -1422,9 +1551,16 @@ def _budget(bank, cells: list, both: bool, m, workers: int, cache=None) -> dict:
     regimes are frozen) (``proj['anchored_phases']``). Ruling R17c: tier B D = 600's
     nominal keys are the keys stage's P1 item 'nominal_B600' (one per cell solved: one
     direction with the mirror shortcut, both without it) and, when V7 failed, its braking
-    cells' phase-matched keys the phase item 'phase_B600' (P1)."""
+    cells' phase-matched keys the phase item 'phase_B600' (P1).
+
+    Ruling R18: the replicates' finals get G1-G3's re-anchored keys, 'anchored_R' (P0: A1
+    tail, bulk and non-clipped below-support cells) and 'anchored_B_R' (P1: tier B D = 600),
+    and their own viability solves, 'viability_R' (P0: 9.1's cap of 200 applied to the
+    replicates apart, so G1-G3's seeded subset is unchanged) (``_anchored_rep_count``,
+    ``proj['replicates']``). Their agent rollouts (finals and the last three checkpoints)
+    are counted in ``proj['rollouts']`` (``_rollout_projection``)."""
     from apexzero.interp import answer_key as ak
-    from apexzero.interp.constants import N_PHASES
+    from apexzero.interp.constants import N_PHASES, VIABILITY_CAP
 
     timings = dict(DEFAULT_TIMINGS)
     timings.update(m.budget.get("timings", {}))
@@ -1441,6 +1577,7 @@ def _budget(bank, cells: list, both: bool, m, workers: int, cache=None) -> dict:
     n_a2 = sum(1 for c in cells if c.approach == "A2")
     anchored_g = _anchored_g_count(bank, cells)
     ra12 = _anchored_p12_count(bank, cells)
+    ra_rep = _anchored_rep_count(bank, cells)
     counts = {"layout_socp": n_a2, "v8_socp": 36, "validation": 30,
               "nominal_A": len(sets["nominal_A"]), "nominal_E1": len(sets["nominal_E1"]) or 30,
               "null": len(sets["null"]), "backoff": 66, "phase": n_keys["phase"],
@@ -1451,7 +1588,9 @@ def _budget(bank, cells: list, both: bool, m, workers: int, cache=None) -> dict:
               # R17c: tier B D = 600's nominal keys, a keys-stage item at P1 (the anchored
               # stage then finds them cached; its inline solve is only a fallback).
               "nominal_B600": len(sets["nominal_B600"]),
-              **{k: v["keys"] for k, v in ra12.items()}}
+              **{k: v["keys"] for k, v in ra12.items()},
+              # R18: the replicates' re-anchored keys and viability solves.
+              **{k: v["keys"] for k, v in ra_rep.items()}, "viability_R": VIABILITY_CAP}
     if v7_failed:
         counts.update(phase_P1=n_keys["phase_P1"], phase_B600=n_keys["phase_B600"],
                       phase_P2=n_keys["phase_P2"])
@@ -1462,7 +1601,19 @@ def _budget(bank, cells: list, both: bool, m, workers: int, cache=None) -> dict:
         rule="R17a: one re-anchored key per deterministic phase, anchored on that phase's run",
         anchored_G=dict(keys=anchored_g["n"], cells=anchored_g.get("cells"),
                         u0_keys=anchored_g.get("u0_keys"), source=anchored_g.get("source")),
-        **ra12)
+        **ra12, **ra_rep)
+    items = proj["items"]
+    rep_items = [k for k in ("anchored_R", "anchored_B_R", "viability_R") if k in items]
+    proj["replicates"] = dict(
+        rule="R18: the replicates' finals get G1-G3's re-anchored keys (P0 A1, P1 tier B "
+             "D = 600; no P2: P6 stays on seed 0) and their own viability solves (cap 200)",
+        items={k: dict(n=items[k]["n"], cpu_h=items[k]["cpu_h"],
+                       priority=items[k]["priority"]) for k in rep_items},
+        cpu_h=sum(items[k]["cpu_h"] for k in rep_items),
+        before_without_replicates={pr: proj["before"][pr] - sum(
+            items[k]["cpu_h"] for k in rep_items if items[k]["priority"] == pr)
+            for pr in ("P0", "P1", "P2")})
+    proj["rollouts"] = _rollout_projection(cells, m.budget.get("rollout_sps"))
     p7 = {k: [c for c in cs if _p7_cell(c)] for k, cs in ph.items()}
     proj["phase_keys"] = dict(
         v7_failed=v7_failed, rule="every braking cell with a nominal key (V7 failed on speeds)"
@@ -2025,7 +2176,7 @@ def _knn_buffer(args) -> None:
     from apexzero.interp import agents, controls, io
 
     who = args.agent or ["S1"]
-    if set(who) - {"S1", "S2", "S3"}:
+    if set(who) - set(agents.specialists()):
         raise SystemExit("--knn-buffer builds specialists' buffers (S1, S2, S3)")
     if set(who) - {"S1"}:
         _require_tag("S2's / S3's kNN buffers (agent laps outside the two pre-tag exceptions)",
@@ -2505,7 +2656,9 @@ def _rollout_job(job: dict) -> dict:
 def _snapshot_kinds(agent: str, which: str) -> list[tuple[str, str]]:
     """(repo-relative path, replication kind) of the snapshots to roll out (protocol 4's
     replication table): finals; the two before the final ('last3', generalists); every
-    other checkpoint ('other_generalist' / 'other_specialist')."""
+    other checkpoint ('other_generalist' / 'other_specialist'). Ruling R18: a replicate runs
+    its final and the two before it only (protocol 8's stability rule); P6's checkpoint
+    history stays on seed 0, so 'all' gives a replicate what 'last3' gives."""
     from apexzero.interp import agents
 
     spec = agents.AGENTS[agent]
@@ -2516,7 +2669,7 @@ def _snapshot_kinds(agent: str, which: str) -> list[tuple[str, str]]:
     out = [(rel[-1], "final")]
     if which in ("last3", "all") and spec.kind == "generalist":
         out += [(p, "last3") for p in rel[-3:-1]]
-    if which == "all":
+    if which == "all" and not agents.is_replicate(agent):
         other = "other_generalist" if spec.kind == "generalist" else "other_specialist"
         skip = rel[-3:] if spec.kind == "generalist" else rel[-1:]
         out += [(p, other) for p in rel if p not in skip]
@@ -2599,7 +2752,7 @@ def _anchored_job(job: dict) -> dict:
             rec, dev = ak.resolve_beaten_key(bank, cell, key, runs, cache, tables=tables)
             out["keys"] = [_rec_summary(rec)]
             out["deviation"] = dict(dev, agents_beating=job["beating"], category="key",
-                                    returns=job["returns"])
+                                    returns=job["returns"], r18=job.get("r18", {}))
             out["cpu"] = time.process_time() - c0
             return out
         nom = ak.key_for(cell, "nominal", 0, cache=cache, bank=bank)
@@ -2803,12 +2956,34 @@ def select_p6_checkpoints(timesteps: list[int], gate: dict[int, bool]) -> list[i
     return sorted(set(out))
 
 
+def _replicate_regime_problems(sup, agents_in) -> list[str]:
+    """R18 replicates among ``agents_in`` without frozen regimes that carry R_clip (from their
+    own obs_rms, support stage): one rule for the anchored-keys stage (which refuses) and the
+    analysis stage (which refuses under --confirmatory and logs otherwise). A regime without
+    R_clip has no 'clip' set, so ``anchored_cells`` and P1b / P2 would read clip-saturated
+    cells as below support."""
+    from apexzero.interp import agents
+
+    out = []
+    for a in [x for x in agents.replicates() if x in agents_in]:
+        r = sup.regimes.get(a)
+        if r is None:
+            out.append(f"R18 replicate {a} has no frozen regimes")
+        elif not (r.r_clip and np.isfinite(r.r_clip_max)):
+            out.append(f"R18 replicate {a} has frozen regimes without R_clip")
+    return out
+
+
 def _beaten_jobs(bank, cells, finals: dict, cache) -> tuple[list[dict], dict]:
     """Protocol 6.3: per cell with a verified u = 0 key (nominal; null on tier G), each
     final's deterministic u = 0 return; cells where an agent beats the key by > 1e-6 |J*|
-    become re-solve jobs warm from every final's u = 0 run."""
+    become re-solve jobs warm from every final's u = 0 run. Ruling R18's replicates are
+    final agents, so they count both ways (6.3's "any agent", "every final agent"); a key
+    is shared, so its re-solve reaches G1-G3's errors too. Each job, its deviation and the
+    summary record the replicates' part (``r18``: beaten by replicates only; replicate
+    starts), so any change to G1-G3's keys that the replicates caused is listed."""
+    from apexzero.interp import agents, io, measures, rollout
     from apexzero.interp import answer_key as ak
-    from apexzero.interp import io, measures, rollout
 
     runs: dict[int, dict[str, tuple[str, int, float]]] = {}
     for a, e in finals.items():
@@ -2823,7 +2998,7 @@ def _beaten_jobs(bank, cells, finals: dict, cache) -> tuple[list[dict], dict]:
             runs.setdefault(cid, {})[a] = (str(f), i, measures.discounted_return(
                 traj, int(det["W"][i])))
     by = {c.cell_id: c for c in cells}
-    jobs, summary = [], {"cells_checked": 0, "beaten": {}}
+    jobs, summary = [], {"cells_checked": 0, "beaten": {}, "beaten_by_replicates_only": []}
     for cid, per in sorted(runs.items()):
         c = by[cid]
         kind = "null" if "G" in c.tiers else "nominal"
@@ -2834,8 +3009,12 @@ def _beaten_jobs(bank, cells, finals: dict, cache) -> tuple[list[dict], dict]:
         beat = ak.agent_beats_key(key, {a: v[2] for a, v in per.items()})
         if beat:
             summary["beaten"][cid] = beat
+            r18 = dict(beaten_by_replicates_only=all(agents.is_replicate(a) for a in beat),
+                       replicate_starts=sorted(a for a in per if agents.is_replicate(a)))
+            if r18["beaten_by_replicates_only"]:
+                summary["beaten_by_replicates_only"].append(cid)
             jobs.append(dict(what="beaten", label=f"6.3 re-solve cell {cid} ({','.join(beat)})",
-                             cell=c, kind=kind, beating=beat,
+                             cell=c, kind=kind, beating=beat, r18=r18,
                              returns={a: v[2] for a, v in per.items()} | {"J_star": key.J},
                              runs={a: (v[0], v[1]) for a, v in per.items()}))
     return jobs, summary
@@ -2852,7 +3031,11 @@ def stage_anchored_keys(args: argparse.Namespace) -> None:
     final's runs), plus viability; P1: the specialists' finals (A1 and
     tier B D = 600) and the generalist finals' tier B D = 600 cells; P2: the generalists'
     P6c checkpoints (first gate-passing, two log-spaced middle; the final is P0), skipped
-    when the finals show re-anchoring is immaterial or budget rule 1 cut P2. Ruling R17c:
+    when the finals show re-anchoring is immaterial or budget rule 1 cut P2. Ruling R18: the
+    replicates' finals get G1-G3's P0 and P1 keys (their own runs and regimes; never P2's
+    checkpoint keys, P6 stays on seed 0) and their own viability solves, 9.1's cap applied
+    to them apart so G1-G3's seeded subset is unchanged; a replicate needs its own frozen
+    regimes (support stage). Ruling R17c:
     the nominal keys (tier B D = 600's included) and phase-matched keys the jobs start from
     come from the keys stage; ``_anchored_preflight`` reports any not cached. Solving a
     missing nominal key here is a fallback, once per cell in a pool before the jobs
@@ -2868,8 +3051,13 @@ def stage_anchored_keys(args: argparse.Namespace) -> None:
     sup = support.load_support(io.SUPPORT_DIR)
     m = _manifest()
     finals = _finals(m)
-    gen = [a for a in ("G1", "G2", "G3") if a in finals]
-    spec = [a for a in ("S1", "S2", "S3") if a in finals]
+    gen = [a for a in agents.seed0_generalists() if a in finals]
+    reps = [a for a in agents.replicates() if a in finals]          # R18
+    spec = [a for a in agents.specialists() if a in finals]
+    no_reg = _replicate_regime_problems(sup, finals)
+    if no_reg:
+        raise SystemExit("; ".join(no_reg) + ": run `psychophysics.py support` (it adds every "
+                         "final's obs_rms)")
     tables = measures.model_tables()
     cache = ak.KeyCache()
     force = bool(args.force)
@@ -2877,15 +3065,18 @@ def stage_anchored_keys(args: argparse.Namespace) -> None:
         # 6.3 first: anchored keys warm from the nominal key, which a re-solve may replace.
         bjobs, bsum = _beaten_jobs(bank, cells, finals, cache)
         _say(log, f"6.3: {bsum['cells_checked']} keys checked against the finals' u = 0 "
-                  f"returns; beaten on {len(bsum['beaten'])} cells")
+                  f"returns; beaten on {len(bsum['beaten'])} cells"
+                  + (f" ({len(bsum.get('beaten_by_replicates_only', []))} by R18 replicates only: "
+                     "their re-solve also reaches G1-G3's errors)"
+                     if bsum.get("beaten_by_replicates_only") else ""))
         res_b = _pool(bjobs, args.workers, log, fn=_anchored_job) if bjobs else []
         devs = [r["deviation"] for r in res_b if r.get("deviation")]
         if devs:
             agents.update_manifest(lambda mm: mm.deviations.extend(devs))
         targets: list[tuple[str, object, str]] = []        # (agent, snapshot entry, which)
-        targets += [(a, finals[a], "P0") for a in gen]
+        targets += [(a, finals[a], "P0") for a in gen + reps]
         if args.priority in ("P1", "P2"):
-            targets += [(a, finals[a], "P1") for a in spec + gen]
+            targets += [(a, finals[a], "P1") for a in spec + gen + reps]
         p6_note = ""
         if args.priority == "P2":
             keys = A.CachedKeys(bank, cells, cache, tables=tables)
@@ -2922,7 +3113,7 @@ def stage_anchored_keys(args: argparse.Namespace) -> None:
         keys = A.CachedKeys(bank, cells, cache, tables=tables)
         kt = A.key_table(cells, bank, keys)
         final_rt: dict[str, dict] = {}
-        for agent in gen:
+        for agent in gen + reps:
             f = io.rollout_path(agent, finals[agent].timesteps)
             if f.exists():
                 groups, _ = rollout.load_rollouts(f)
@@ -2940,13 +3131,16 @@ def stage_anchored_keys(args: argparse.Namespace) -> None:
                        if prio == "P0" and agent in final_rt else None)
             # R17a: one key per deterministic phase of each cell, anchored on that run.
             jobs += anchored_jobs(anchored_cells(cells, bank, sup.regimes, agent, prio,
-                                                 agent in gen, clipped),
+                                                 agents.is_generalist(agent), clipped),
                                   str(f), groups["det"], agent, e.timesteps, prio, force)
-        # Viability solves on the generalist finals' crashed u = 0 runs (9.1), within the cap.
-        vt_rows = list(final_rt.values())
-        if vt_rows:
+        # Viability solves on the generalist finals' crashed u = 0 runs (9.1), within the cap:
+        # G1-G3's as before, R18's replicates apart under their own cap.
+        by = {c.cell_id: c for c in cells}
+        for family in (gen, reps):
+            vt_rows = [final_rt[a] for a in family if a in final_rt]
+            if not vt_rows:
+                continue
             vt = A.viability_targets(io.concat_tables(vt_rows), kt)
-            by = {c.cell_id: c for c in cells}
             for i in range(A._n(vt)):
                 agent, ts = str(vt["agent"][i]), int(vt["timesteps"][i])
                 f = io.rollout_path(agent, ts)
@@ -3181,20 +3375,48 @@ def _run_table_cached(agent: str, ts: int, bank, cells, keys, tables, force: boo
     return rt
 
 
+def _history_entries(m, agent: str) -> list:
+    """The manifest's two snapshots before ``agent``'s final (protocol 8's stability rule;
+    protocol 4's 'last 3 checkpoints' rows), in timestep order."""
+    snaps = sorted((e for e in m.snapshots if e.agent == agent and not e.error),
+                   key=lambda e: e.timesteps)
+    fin = [i for i, e in enumerate(snaps) if e.is_final]
+    return snaps[max(0, fin[-1] - 2):fin[-1]] if fin else []
+
+
 def confirmatory_problems(m, finals: dict, have_groups: dict[str, set[str]],
-                          agent_arg) -> list[str]:
+                          agent_arg, history_groups: dict[str, list[set[str]]]) -> list[str]:
     """Why the one-shot confirmatory analysis may not run yet (protocol 8, 10 step 8): it
-    is spent on complete inputs only."""
+    is spent on complete inputs only, which since ruling R18 include the six replicates'
+    finals (their replication family is written by the same one run). ``history_groups``:
+    per generalist final, the rollout groups of each of the manifest's two snapshots before
+    it (``_history_entries``); protocol 8's 2-of-last-3 stability rule reads them, so each
+    needs its det group, and its nat group unless budget rule 3 dropped the checkpoint
+    stochastic runs. Without them every claim would stand unchecked."""
+    from apexzero.interp import agents
+
     out = []
     if agent_arg:
         out.append("--agent is not allowed with --confirmatory (it reads every final)")
-    six = ("S1", "S2", "S3", "G1", "G2", "G3")
-    missing = [a for a in six if a not in finals]
+    every = tuple(agents.AGENTS)      # S1-S3, G1-G3 and R18's G1s1 .. G3s2
+    missing = [a for a in every if a not in finals]
     if missing:
         out.append(f"finals missing from the manifest: {missing}")
-    for a in six:
+    for a in every:
         if a in finals and not {"det", "nat", "mat"} <= have_groups.get(a, set()):
             out.append(f"{a}: rollout groups {sorted(have_groups.get(a, set()))}, need det, nat, mat")
+    rule3 = any(str(c).startswith("rule 3") for c in m.budget.get("cuts", []))
+    need = {"det"} if rule3 else {"det", "nat"}
+    for a in [x for x in agents.generalists() if x in finals]:
+        hist = history_groups.get(a, [])
+        if len(hist) < 2:
+            out.append(f"{a}: {len(hist)} of the 2 snapshots before the final in the manifest "
+                       "(protocol 8's stability rule needs both)")
+        for i, g in enumerate(hist):
+            if not need <= g:
+                out.append(f"{a}: snapshot {i - len(hist)} before the final has rollout groups "
+                           f"{sorted(g)}, need {', '.join(sorted(need))} (rollouts --snapshots "
+                           "last3; protocol 8's stability rule)")
     if m.band is None:
         out.append("no band b from V8 in the manifest")
     for k in ("step2", "step3", "dry_run"):
@@ -3325,15 +3547,18 @@ def stage_analyse(args: argparse.Namespace) -> None:
     _require_tag("analysis")
     m = _manifest()
     finals = _finals(m)
+    sup = support.load_support(io.SUPPORT_DIR)
     if args.confirmatory:
         have = {a: _groups_in(io.rollout_path(a, e.timesteps)) for a, e in finals.items()}
-        probs = confirmatory_problems(m, finals, have, args.agent)
+        hist = {a: [_groups_in(io.rollout_path(a, h.timesteps)) for h in _history_entries(m, a)]
+                for a in finals if agents.is_generalist(a)}
+        probs = confirmatory_problems(m, finals, have, args.agent, hist)
+        probs += [f"{p} (support stage)" for p in _replicate_regime_problems(sup, finals)]
         if probs:
             raise SystemExit("the confirmatory analysis runs once, on complete inputs: "
                              + "; ".join(probs))
     bank, cells = _design(laid_out=True)
     tables = measures.model_tables()
-    sup = support.load_support(io.SUPPORT_DIR)
     b = float(m.band) if m.band is not None else BAND_EXPECTED
     cache = ak.KeyCache()
     sel = args.agent or sorted(finals)
@@ -3364,6 +3589,10 @@ def stage_analyse(args: argparse.Namespace) -> None:
                                      speed_at_phase)
 
         runs, history, ckpts, gates, log_std, vtop, conds = {}, {}, {}, {}, {}, {}, {}
+        for p in _replicate_regime_problems(sup, sel):
+            _say(log, f"{p} (run the support stage): without regimes its pairs get none and "
+                      "its P1-P2 decisions are not testable; without R_clip no pair is "
+                      "'clip' and P1b / P2 read clip-saturated pairs as below support")
         for a in sel:
             fb = io.CONTROLS_DIR / f"knn_{a}.npz"
             buffer = controls.KnnBuffer.load(fb) if fb.exists() else None
@@ -3382,7 +3611,7 @@ def stage_analyse(args: argparse.Namespace) -> None:
                     _say(log, f"{a}: no kNN buffer (controls --knn-buffer --agent {a}): d_OOD "
                               "missing, P4 not testable where it needs it")
                 conds[a] = A.cond_table(rt, kt, _d_ood(a, rt, bank, cells, buffer))
-            if a in ("G1", "G2", "G3"):
+            if a in agents.seed0_generalists():          # P6 stays on seed 0 (R18)
                 ckpts[a], gates[a], log_std[a], vtop[a] = {}, {}, {}, {}
                 for snap in [x for x in m.snapshots if x.agent == a]:
                     t = rt_of(a, snap.timesteps)
@@ -3396,7 +3625,8 @@ def stage_analyse(args: argparse.Namespace) -> None:
             log.step(note=f"{a}: {A._n(rt)} runs")
         units, corners = _p8_units(bank, cells)
         ladder = []
-        for a in [x for x in ("G1", "G2", "G3") if x in runs]:
+        # P8's units are the seed-0 crash pairs (R18: no new crash units from replicates).
+        for a in [x for x in agents.seed0_generalists() if x in runs]:
             mine = [u for u in units if u["agent"] == a]
             fid = _fidelity(bank, cells, runs[a], mine)
             unevaluated = sorted(k for k, v in fid.items() if v is None)
@@ -3405,7 +3635,7 @@ def stage_analyse(args: argparse.Namespace) -> None:
                           f"{unevaluated}: kept in P8 as unreproduced")
             ladder.append(A.ladder_table(runs[a], kt, mine, fid))
         twins = [A.twin_table(runs[a], kt, A.pair_values(runs[a], kt, sup.regimes, b), corners)
-                 for a in ("G1", "G2", "G3") if a in runs]
+                 for a in agents.seed0_generalists() if a in runs]
         log.step(note="P8 tables")
         cs = io.load_table(io.STIMULI_DIR / "cell_support.npz")
         train = {g: support.table_features(sup.table(g)) for g in support.GRAMMARS}
@@ -3436,10 +3666,23 @@ def stage_analyse(args: argparse.Namespace) -> None:
                                ladder=io.concat_tables(ladder) if ladder else None,
                                twins=io.concat_tables(twins) if twins else None, density=dens,
                                demote_p3=bool(sep.get("demote_p3", False)), knife_edge=knife)
+        hprobs = A.history_gate_problems(inp)
+        if hprobs and args.confirmatory:
+            raise SystemExit("the confirmatory analysis runs once, and protocol 8's stability "
+                             "rule cannot be applied: " + "; ".join(hprobs))
+        for p in hprobs:
+            _say(log, f"stability rule: {p}")
         dt = A.decision_table(inp, confirmatory=args.confirmatory)
         for i in range(A._n(dt)):
             _say(log, f"{dt['prediction'][i]} {dt['agent'][i]}: {dt['verdict'][i]} "
                       f"({dt['family'][i]}, stable {dt['stable'][i]})")
+        rstem = "replication" if args.confirmatory else "replication_all"
+        vf = io.ANALYSIS_DIR / f"{rstem}_variants.npz"
+        if any(a in runs for a in agents.replicates()) and vf.exists():
+            vt = io.load_table(vf)
+            for i in range(A._n(vt)):
+                _say(log, f"R18 {vt['variant'][i]} {vt['prediction'][i]}: {vt['verdict'][i]} "
+                          f"(seeds {vt['seed_verdicts'][i]})")
         log.step(note="decision table")
 
 

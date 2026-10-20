@@ -77,23 +77,63 @@ def test_post_tag_checks_against_the_tagged_record(ps):
 
 
 def test_confirmatory_analysis_needs_complete_inputs(ps):
-    """Hygiene M5: the one-shot run is refused on partial inputs."""
-    six = ("S1", "S2", "S3", "G1", "G2", "G3")
-    finals = {a: SimpleNamespace(timesteps=1) for a in six}
-    groups = {a: {"det", "nat", "mat"} for a in six}
+    """Hygiene M5: the one-shot run is refused on partial inputs. Ruling R18: the six
+    replicates' finals (with det, nat and mat groups) are part of the complete inputs. R18
+    review finding 1: so are the rollouts of the two snapshots before every generalist final
+    (protocol 8's stability rule), det and nat (det alone once budget rule 3 cut the
+    checkpoint stochastic runs)."""
+    every = tuple(agents.AGENTS)
+    assert len(every) == 12
+    finals = {a: SimpleNamespace(timesteps=1) for a in every}
+    groups = {a: {"det", "nat", "mat"} for a in every}
+    hist = {a: [{"det", "nat"}, {"det", "nat"}] for a in agents.generalists()}
     ok = agents.Manifest(band=0.075, validation={
         "step2": {"passed": True}, "step3": {"passed": True}, "dry_run": {"passed": True},
         "controls": {"T": {"status": "pass"}}, "anchored_keys": {"P1": {"errors": 0}}})
-    assert ps.confirmatory_problems(ok, finals, groups, None) == []
-    assert ps.confirmatory_problems(ok, finals, groups, ["G1"])               # --agent
+    assert ps.confirmatory_problems(ok, finals, groups, None, hist) == []
+    assert ps.confirmatory_problems(ok, finals, groups, ["G1"], hist)               # --agent
     assert ps.confirmatory_problems(ok, {a: v for a, v in finals.items() if a != "G3"}, groups,
-                                    None)
-    assert ps.confirmatory_problems(ok, finals, {**groups, "S2": {"det"}}, None)
+                                    None, hist)
+    assert ps.confirmatory_problems(ok, finals, {**groups, "S2": {"det"}}, None, hist)
+    # the step-8 gate waits for the replicates' finals too
+    probs = ps.confirmatory_problems(ok, {a: v for a, v in finals.items() if a != "G2s1"},
+                                     groups, None, hist)
+    assert probs == ["finals missing from the manifest: ['G2s1']"]
+    assert ps.confirmatory_problems(ok, finals, {**groups, "G3s2": {"det", "nat"}}, None, hist)
     no_band = agents.Manifest(validation=ok.validation)
-    assert any("band" in p for p in ps.confirmatory_problems(no_band, finals, groups, None))
+    assert any("band" in p for p in ps.confirmatory_problems(no_band, finals, groups, None, hist))
     no_ak = agents.Manifest(band=0.075, validation={k: v for k, v in ok.validation.items()
                                                     if k != "anchored_keys"})
-    assert any("step 7" in p for p in ps.confirmatory_problems(no_ak, finals, groups, None))
+    assert any("step 7" in p for p in ps.confirmatory_problems(no_ak, finals, groups, None, hist))
+    # history rollouts: missing snapshots, a missing det group, a missing nat group; budget
+    # rule 3 drops the checkpoint stochastic runs, so det alone is then enough
+    probs = ps.confirmatory_problems(ok, finals, groups, None, {**hist, "G3": [{"det", "nat"}]})
+    assert probs == [("G3: 1 of the 2 snapshots before the final in the manifest (protocol 8's "
+                     "stability rule needs both)")]
+    probs = ps.confirmatory_problems(ok, finals, groups, None,
+                                     {**hist, "G1s2": [set(), {"det", "nat"}]})
+    assert len(probs) == 1 and probs[0].startswith("G1s2: snapshot -2 before the final")
+    no_nat = {**hist, "G2": [{"det"}, {"det"}]}
+    assert len(ps.confirmatory_problems(ok, finals, groups, None, no_nat)) == 2
+    ok.budget["cuts"] = ["rule 3: checkpoint stochastic and tier E matched-noise runs dropped"]
+    assert ps.confirmatory_problems(ok, finals, groups, None, no_nat) == []
+    # specialists have no stability rule: no history needed
+    assert ps.confirmatory_problems(ok, finals, groups, None,
+                                    {a: v for a, v in hist.items() if a != "S1"}) == []
+
+
+def test_history_entries_are_the_two_snapshots_before_the_final(ps):
+    """R18 review finding 1: the confirmatory gate reads the manifest's two snapshots before
+    each generalist final (by timesteps; errored snapshots skipped)."""
+    def e(agent, ts, final=False, error=""):
+        return SimpleNamespace(agent=agent, timesteps=ts, is_final=final, error=error)
+
+    m = SimpleNamespace(snapshots=[e("G1", 30), e("G1", 99, True), e("G1", 10), e("G1", 20),
+                                   e("G1s1", 5, error="bad"), e("G1s1", 7), e("G1s1", 9, True),
+                                   e("S1", 1, True)])
+    assert [x.timesteps for x in ps._history_entries(m, "G1")] == [20, 30]
+    assert [x.timesteps for x in ps._history_entries(m, "G1s1")] == [7]
+    assert ps._history_entries(m, "S1") == [] and ps._history_entries(m, "G2") == []
 
 
 # ------------------------------------------------------------------------- step 7 helpers

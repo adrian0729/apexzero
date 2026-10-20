@@ -838,6 +838,9 @@ def _stub_keys_stage(ps, monkeypatch, bank, cells, validation, solved: set, call
                         if c.cell_id in solved else None)
     monkeypatch.setattr(ps, "_anchored_g_count", lambda bank, cells: dict(
         n=0, source="test", r12_below_support=0, protocol=96))
+    # R18's replicate keys would otherwise be the protocol's fallback count (no regimes
+    # frozen here), which at the protocol's default timings fires budget rule 1.
+    monkeypatch.setattr(ps, "_anchored_rep_count", lambda bank, cells: {})
     monkeypatch.setattr(ps, "_frozen_regimes", lambda: None)
     monkeypatch.setattr(ps, "_pool", fake_pool)
     monkeypatch.setattr(ps, "_refuse_after_tag", lambda *a, **k: None)

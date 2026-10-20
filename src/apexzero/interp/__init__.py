@@ -8,6 +8,7 @@ docs/interp/IMPLEMENTATION.md for the map from protocol sections to functions).
 Modules, in dependency order:
 
     constants    fixed choices of protocol 1.4 and the grids of 3.5 (one place)
+    registry     the agents (protocol 8, ruling R18's seed replicates) and their grammars
     io           paths, column tables, JSON, hashes, stage logs
     support      training-support statistics, l_typ, v_typ, regimes, R_clip, kNN density
     stimuli      corner profiles, the stimulus bank, transplants, ladders, tier D conditions

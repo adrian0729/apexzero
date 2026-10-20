@@ -243,12 +243,23 @@ def test_agent_grammars_match_the_agent_registry():
 
 def test_build_and_load_support(tmp_path):
     rms = {"G1": ("dummy.pkl", {"mean": np.zeros(222), "var": np.full(222, 0.36)}),
-           "S1": ("dummy-s1.pkl", {"mean": np.zeros(222), "var": np.full(222, 0.3)})}
+           "S1": ("dummy-s1.pkl", {"mean": np.zeros(222), "var": np.full(222, 0.3)}),
+           "G1s1": ("dummy-g1s1.pkl", {"mean": np.zeros(222), "var": np.full(222, 0.25)})}
     sup = S.build_support(tmp_path, rms, n_strips=16)
     assert (tmp_path / "support.json").exists() and (tmp_path / "corners_rdev.npz").exists()
-    assert set(sup.regimes) == {"G1", "G2", "G3", "S1"}
+    # Every generalist of the registry (R18's replicates included) and the listed specialist.
+    assert set(sup.regimes) == {"G1", "G2", "G3", "S1", "G1s1", "G1s2", "G2s1", "G2s2", "G3s1",
+                                "G3s2"}
     assert sup.regimes["G1"].r_clip_max == pytest.approx(50.0 / (10.0 * math.sqrt(0.36 + 1e-8)))
     assert np.isnan(sup.regimes["G2"].r_clip_max) and sup.regimes["S1"].grammar == ""
+    # R18: a replicate's q1 / q10 are its variant's grammar's (its seed-0 agent's); its R_clip
+    # comes from its own obs_rms, and a replicate without a final has none yet.
+    r, g1 = sup.regimes["G1s1"], sup.regimes["G1"]
+    assert (r.grammar, r.q1, r.q10) == (g1.grammar, g1.q1, g1.q10) == ("base", g1.q1, g1.q10)
+    assert r.r_clip_max == pytest.approx(50.0 / (10.0 * math.sqrt(0.25 + 1e-8)))
+    assert r.snapshot == "dummy-g1s1.pkl" and sup.regimes["G3s2"].r_clip == ()
+    assert (sup.regimes["G3s2"].q1, sup.regimes["G3s2"].q10) == (sup.regimes["G3"].q1,
+                                                                  sup.regimes["G3"].q10)
     rdev = sup.table("rdev")
     assert set(np.unique(rdev["source"])) == set(S.R_DEV)
     back = S.load_support(tmp_path)

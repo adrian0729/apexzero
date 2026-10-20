@@ -71,14 +71,35 @@ def check_table(table: Table) -> int:
     return n or 0
 
 
-def save_table(path: str | Path, table: Table) -> Path:
-    """Write a column table to ``path`` (.npz, no pickle), atomically."""
+def _table_cols(table: Table) -> dict[str, np.ndarray]:
     check_table(table)
     cols = {k: np.asarray(v) for k, v in table.items()}
     for k, v in cols.items():
         if v.dtype == object:
             raise TypeError(f"column {k!r} has dtype object; use str, float, int or bool")
+    return cols
+
+
+def save_table(path: str | Path, table: Table) -> Path:
+    """Write a column table to ``path`` (.npz, no pickle), atomically."""
+    cols = _table_cols(table)
     return _atomic(Path(path), lambda fh: np.savez(fh, **cols))
+
+
+def table_bytes(table: Table) -> bytes:
+    """``save_table``'s file content in memory, with its checks (a run that writes several
+    files serialises them all before writing the first)."""
+    import io as _io
+
+    cols = _table_cols(table)
+    buf = _io.BytesIO()
+    np.savez(buf, **cols)
+    return buf.getvalue()
+
+
+def write_bytes(path: str | Path, data: bytes) -> Path:
+    """Write ``data`` to ``path`` atomically."""
+    return _atomic(Path(path), lambda fh: fh.write(data))
 
 
 def load_table(path: str | Path) -> Table:
@@ -127,8 +148,13 @@ def _jsonable(x: Any) -> Any:
 def write_json(path: str | Path, obj: Any) -> Path:
     """Atomic, sorted-key JSON (dataclasses, NamedTuples and numpy values converted;
     non-finite floats become null / "inf" / "-inf")."""
-    text = json.dumps(_jsonable(obj), indent=1, sort_keys=True)
-    return _atomic(Path(path), lambda fh: fh.write(text.encode()))
+    text = json_bytes(obj)
+    return _atomic(Path(path), lambda fh: fh.write(text))
+
+
+def json_bytes(obj: Any) -> bytes:
+    """``write_json``'s file content in memory."""
+    return json.dumps(_jsonable(obj), indent=1, sort_keys=True).encode()
 
 
 def read_json(path: str | Path) -> Any:

@@ -15,7 +15,7 @@ from scipy import optimize, stats
 from scipy.special import expit, log_expit
 
 from apexzero.interp import analysis as A
-from apexzero.interp import measures
+from apexzero.interp import measures, registry
 from apexzero.interp.constants import R_BRAKING, TIER_B_D, TIER_B_R, TIER_B_V0_KPH, kph
 from apexzero.interp.io import load_table, select
 from apexzero.interp.stimuli import (
@@ -1171,6 +1171,19 @@ def test_power_table():
     assert pt["planted_verdict"][p3].tolist() == ["refute:M_idx"] * 2
 
 
+def test_R18_power_table_keeps_the_other_agents_rows():
+    """A replicate's regime adds its rows after the others' and changes none of them (each
+    agent's simulation streams follow its place in the order)."""
+    reg = {"G1": A.Regime(11.4, 20.2), "G2": A.Regime(10.4, 16.4, 7.6)}
+    plain = A.power_table(KEYS, reg, B, None, steps=A.POWER_STEPS[:1])
+    more = A.power_table(KEYS, {**reg, "G1s1": A.Regime(11.4, 20.2, 9.0)}, B, None,
+                         steps=A.POWER_STEPS[:1])
+    n = A._n(plain)
+    assert A._n(more) == n + 5 and set(more["agent"][n:]) == {"G1s1"}
+    for c in A.POWER_COLUMNS:
+        np.testing.assert_array_equal(more[c][:n], plain[c][:n], err_msg=c)
+
+
 # ------------------------------------------------------------------------- decision table
 
 
@@ -1210,6 +1223,132 @@ def test_decision_table_confirmatory(sims, tmp_path):
     assert (tmp_path / "decisions.npz").exists() and (tmp_path / "decisions.json").exists()
     back = load_table(tmp_path / "decisions.npz")
     assert back["verdict"].tolist() == t["verdict"].tolist()
+    with pytest.raises(FileExistsError):
+        A.decision_table(inp, True, tmp_path)
+
+
+def _with_replicates(sims, inp):
+    """Ruling R18's six replicates on top of ``_inputs``: v1 G1s1 lawful, G1s2 a
+    time-to-corner rule; v2 G2s1 late onset, G2s2 overspeeding below 12 m; v3 G3s1
+    overspeeding below 12 m, G3s2 late onset. G1s1 has a lawful history; the others none."""
+    kinds = {"G1s1": "lawful", "G1s2": "time_to_corner", "G2s1": "late_onset",
+             "G2s2": "overspeed_below_12", "G3s1": "overspeed_below_12", "G3s2": "late_onset"}
+    for a, k in kinds.items():
+        r = sims[k][0]
+        inp.runs[a] = {**r, "agent": np.full(A._n(r), a)}
+        inp.regimes[a] = REG
+        inp.gates[a] = {0: True}
+    inp.history["G1s1"] = [inp.runs["G1s1"]] * 2
+    return inp
+
+
+def test_R18_decision_table_writes_the_replication_family(sims, tmp_path):
+    """Ruling R18: with the replicates' finals in the inputs the confirmatory table's rows
+    are the pre-registered ones, unchanged; the replicates' P1a-P3 (family 'replication'),
+    the variant-level 2-of-3 table and the seed spread go to replication_*, written once."""
+    plain = A.decision_table(_inputs(sims), True, tmp_path / "plain")
+    inp = _with_replicates(sims, _inputs(sims))
+    t = A.decision_table(inp, True, tmp_path)
+    for c in A.DECISION_COLUMNS:
+        assert t[c].tolist() == plain[c].tolist(), c
+    assert not (tmp_path / "plain" / "replication.json").exists()
+    rd = load_table(tmp_path / "replication_decisions.npz")
+    assert set(rd["agent"]) == set(registry.replicates())
+    assert set(rd["family"]) == {"replication"} and A._n(rd) == 6 * len(A.CONFIRMATORY_G)
+    got = {(p, a): (v, s) for p, a, v, s in zip(rd["prediction"], rd["agent"], rd["verdict"],
+                                                rd["stable"], strict=True)}
+    assert got[("P1a", "G1s1")] == ("confirm", "yes")          # lawful history: stable
+    assert got[("P1-tail", "G2s1")] == ("confirm", "n/a")      # no history given
+    vt = load_table(tmp_path / "replication_variants.npz")
+    row = {(v, p): i for i, (v, p) in enumerate(zip(vt["variant"], vt["prediction"],
+                                                    strict=True))}
+    assert A._n(vt) == 15
+    i = row[("v1", "P1a")]                                     # confirmed by all three seeds
+    assert (vt["verdict"][i], bool(vt["claim"][i]), int(vt["n_agree"][i])) == ("confirm", True, 3)
+    i = row[("v1", "P3")]                                      # G1s2's time-to-corner rule
+    assert (vt["verdict"][i], int(vt["n_agree"][i])) == ("confirm", 2)
+    assert json.loads(vt["seed_verdicts"][i])["G1s2"] == "refute"
+    i = row[("v2", "P1-tail")]                                 # unstable, confirm, refute
+    assert vt["verdict"][i] == A.SEED_SPECIFIC and not vt["claim"][i]
+    assert json.loads(vt["seed_verdicts"][i]) == {"G2": "unstable", "G2s1": "confirm",
+                                                  "G2s2": "refute"}
+    i = row[("v1", "P2")]                                      # a shared non-claim
+    assert (vt["verdict"][i], bool(vt["claim"][i])) == ("not applicable", False)
+    sp = load_table(tmp_path / "replication_spread.npz")
+    assert A._n(sp) == 9 and sp["agent"].tolist()[:3] == ["G1", "G1s1", "G1s2"]
+    k = sp["agent"].tolist().index("G2s1")
+    assert np.isinf(sp["r_dep_A1"][k]) and sp["P2"][k] == "confirm"
+    assert "frac_onset_late" in json.loads(sp["numbers"][k])["P2"]
+    rep = json.loads((tmp_path / "replication.json").read_text())
+    assert rep["confirmatory"] and len(rep["decisions"]) == 30
+    # one run: the replication family is spent with the confirmatory table
+    (tmp_path / "decisions.npz").unlink()
+    with pytest.raises(FileExistsError, match="replication.json"):
+        A.decision_table(inp, True, tmp_path)
+    # the exploratory set: replicate rows (replication / control families) and P1c on each
+    # variant's median R_dep over its seeds (v1 6, v2 median(inf, inf, 13.1), v3 13.1)
+    ds = A.decisions(inp, False)
+    fam = {(d.prediction, d.agent): d.family for d in ds}
+    assert fam[("P1a", "G3s2")] == "replication" and fam[("P5", "G2s1")] == "control"
+    assert fam[("P2b", "G1s1")] == "replication" and fam[("P1a", "G3")] == "primary"
+    p1c = next(d for d in ds if d.prediction == "P1c")
+    assert p1c.agent == "G1,G2,G3" and p1c.verdict == "refute"
+    assert p1c.details["r_dep_A1"] == (6.0, np.inf, 13.1)
+    assert p1c.details["r_dep_A1_seed0"] == (6.0, np.inf, 6.0)
+    assert not [d for d in ds if d.prediction.startswith("P6") or (
+        d.prediction.startswith("P8") and registry.is_replicate(d.agent))]
+
+
+def test_R18_review_history_snapshots_without_tier_g_cannot_pass_the_gate(sims):
+    """R18 review finding 1 (pre-existing; open, needs a ruling). Protocol 4's last-3 rows run
+    tiers A and B only, and protocol 8's gate needs the tier G width-12 straights, so a
+    history snapshot judged from its own runs is 'not testable' (AD24) and a claim at the
+    final becomes 'unstable' (AD21): pinned here as the current behaviour. The decisions
+    record ``history_gate_judgeable``, and ``history_gate_problems`` names every generalist
+    whose stability rule cannot be applied (the confirmatory stage refuses on it)."""
+    inp = _inputs(sims)
+    n = A._n(inp.runs["G1"])
+    # history snapshots at their own timesteps, with no gate given: computed from the runs
+    inp.history["G1"] = [{**inp.runs["G1"], "timesteps": np.full(n, t)} for t in (5, 6)]
+    ds = {(d.prediction, d.agent): d for d in A.decisions(inp, True)}
+    p1a = ds[("P1a", "G1")]
+    assert p1a.verdict == "unstable" and p1a.details["final_verdict"] == "confirm"
+    assert p1a.details["history_verdicts"] == ["not testable", "not testable"]
+    assert p1a.details["history_gate_judgeable"] == [False, False]
+    assert "history_gate_judgeable" not in ds[("P1a", "G3")].details    # no history: n/a
+    probs = A.history_gate_problems(inp)
+    assert [p.split(":")[0] for p in probs] == ["G1", "G2", "G3"]
+    assert "gate cannot judge" in probs[0] and "[5, 6]" in probs[0] and "ruling" in probs[0]
+    assert probs[2].startswith("G3: 0 of the 2 snapshots before the final")
+    # a history snapshot with gentle and tier G width-12 runs can be judged
+    pairs = dict(R_nom=np.array([87.3, 87.3, np.nan]), width=np.array([12.0] * 3),
+                 tiers=np.array(["A", "A", "G"]), approach=np.array(["A1", "A2", "G"]),
+                 excluded=np.array([""] * 3), n_runs=np.array([8] * 3),
+                 det_complete=np.array([8] * 3), osc_index=np.array([0.01] * 3))
+    assert A.checkpoint_gate(pairs)["evaluable"]
+    assert not A.checkpoint_gate({k: v[:2] for k, v in pairs.items()})["evaluable"]
+
+
+def test_R18_review_decision_table_serialises_before_writing(sims, tmp_path, monkeypatch):
+    """R18 review finding 5: every output of the confirmatory run is serialised before the
+    first is written, and the one-run markers (replication.json, then decisions.npz) are
+    written last; a failure while building the replication family leaves no file, so the
+    one-shot run can be repeated."""
+    inp = _with_replicates(sims, _inputs(sims))
+    real = A.seed_spread
+    monkeypatch.setattr(A, "seed_spread", lambda *a, **k: {"agent": np.array([object()])})
+    with pytest.raises(TypeError, match="dtype object"):
+        A.decision_table(inp, True, tmp_path)
+    assert list(tmp_path.iterdir()) == []                          # nothing written
+    monkeypatch.setattr(A, "seed_spread", real)
+    order: list[str] = []
+    real_write = A.write_bytes
+    monkeypatch.setattr(A, "write_bytes", lambda p, d: (order.append(p.name), real_write(p, d)))
+    A.decision_table(inp, True, tmp_path)                         # not refused: no marker
+    assert order[-2:] == ["replication.json", "decisions.npz"]
+    assert set(order) == {"decisions.json", "replication_decisions.npz",
+                          "replication_variants.npz", "replication_spread.npz",
+                          "replication.json", "decisions.npz"}
     with pytest.raises(FileExistsError):
         A.decision_table(inp, True, tmp_path)
 

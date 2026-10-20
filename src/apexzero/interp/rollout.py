@@ -92,6 +92,7 @@ from apexzero.interp.constants import (
     STREAM_OFFSET,
 )
 from apexzero.interp.io import Table, _atomic, assert_x64_off
+from apexzero.interp.registry import is_specialist, runs_cell
 from apexzero.interp.stimuli import Cell, Stimulus, StimulusBank
 from apexzero.vehicle.dynamics import tyre_forces
 from apexzero.vehicle.ops import JAX
@@ -368,13 +369,14 @@ def plan_runs(cells: list[Cell], bank: StimulusBank, mode: str, samples: dict[st
     ``phases_det`` of them, ``det_phase_indices``); stochastic sample j at phase j mod
     n_phases. ``samples`` per tier (REPLICATION) or one number (ignored for 'det'). ``aux``
     maps cell_id -> controller-table row (controls; default 0).
-    ``agent`` skips cells whose ``runners`` list other agents only. The mirrored member of
+    ``agent`` skips cells whose ``runners`` list other agents only (``registry.runs_cell``:
+    ruling R18's replicates run the cells of their seed-0 agent). The mirrored member of
     each pair (``Cell.mirrored``) gets steer_sign -1; a pair whose two cells share a sign is
     an error (``check_pair_signs``)."""
     if mode not in MODES:
         raise ValueError(f"mode {mode!r} not in {MODES}")
     if agent is not None:
-        cells = [c for c in cells if not getattr(c, "runners", ()) or agent in c.runners]
+        cells = [c for c in cells if runs_cell(getattr(c, "runners", ()), agent)]
     check_pair_signs(cells, bank)
     runs = []
     for c in cells:
@@ -1030,8 +1032,8 @@ CONTEXT_TOL = 1e-3
 def check_context(snapshots: dict[str, RunningMeanStd]) -> dict[str, float]:
     """S1's normalised default context within 1e-3 of 0, and default_context inside the
     generalists' CONTEXT_RANGES; returns max |normalised context| per agent. Raises
-    ValueError when a check fails. Every specialist ('S*') is held to the 1e-3 bound (all
-    three trained on the default car only)."""
+    ValueError when a check fails. Every specialist (S1, S2, S3; ``registry``) is held to the
+    1e-3 bound (all three trained on the default car only)."""
     ctx = default_ctx()
     lo = np.array([v[0] for v in CONTEXT_RANGES.values()])
     hi = np.array([v[1] for v in CONTEXT_RANGES.values()])
@@ -1044,7 +1046,7 @@ def check_context(snapshots: dict[str, RunningMeanStd]) -> dict[str, float]:
         sl = slice(OBS_PREVIEW + OBS_EGO, OBS_PREVIEW + OBS_EGO + OBS_CONTEXT)
         z = (raw - jnp.asarray(rms.mean)[sl]) / jnp.sqrt(jnp.asarray(rms.var)[sl] + 1e-8)
         out[agent] = float(jnp.max(jnp.abs(z)))
-        if agent.startswith("S") and out[agent] > CONTEXT_TOL:
+        if is_specialist(agent) and out[agent] > CONTEXT_TOL:
             raise ValueError(f"{agent}: normalised default context reaches {out[agent]:.3g} "
                              f"> {CONTEXT_TOL} (context rounding?)")
     return out

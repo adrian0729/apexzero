@@ -102,6 +102,22 @@ owner before the tag (protocol 12, ruling R13):
        tier G straights must each reach 90%.
 - AD25 A key's measures are recomputed from its cached solution (``CachedKeys``), with the
        null key's run for the catch-trial onset d_resp*.
+
+Ruling R18 (seed replicates; ``registry``): the primary and secondary decisions stay on the
+seed-0 generalists G1-G3 as pre-registered (``GENERALISTS``), and the confirmatory decision
+table's rows are unchanged. The replicates G1s1 .. G3s2 get the same rules, gate, 9.4
+sensitivity variants and 2-of-last-3 stability rule (``replication_decisions``, family
+'replication'); ``variant_table`` gives per (variant, prediction) the decision shared by at least
+2 of the variant's 3 seeds ('cautious but lawful' counting as a P1a refutation,
+``decision_class``), else 'seed-specific'; ``seed_spread`` lists each seed's verdicts and key
+numbers. P1c orders the variants by each variant's median R_dep over its 3 seeds, defined only
+when the known seeds fix it (``_seed_median``). P4's memorisation index (the mean over G
+finals), P6 (checkpoint history) and P8 (crash units) stay on G1-G3.
+
+Open (R18 review, pre-existing, needs a ruling): protocol 4's last-3 rows run tiers A and B
+only, so protocol 8's gate cannot judge the two history snapshots (no tier G width-12 runs);
+AD24 makes them 'not testable' and AD21 then turns every claim at a final 'unstable'.
+``history_gate_problems`` names it and the confirmatory stage refuses on it.
 """
 
 from __future__ import annotations
@@ -140,12 +156,24 @@ from apexzero.interp.io import (
     ANALYSIS_DIR,
     Table,
     concat_tables,
-    save_table,
+    json_bytes,
     select,
     stream_rng,
-    write_json,
+    table_bytes,
+    write_bytes,
 )
 from apexzero.interp.measures import KEY_ERROR_COLUMNS, METRIC_COLUMNS
+from apexzero.interp.registry import (
+    generalists,
+    is_replicate,
+    replicates,
+    seed0_generalists,
+    seed_of,
+    specialists,
+    variant_of,
+    variant_seeds,
+    variants,
+)
 from apexzero.interp.stimuli import COND_A, COND_ISO, D_CONDITIONS
 
 # ------------------------------------------------------------------------- schemas
@@ -309,7 +337,8 @@ P7_ALIAS_COLUMNS = {
 
 DECISION_COLUMNS = {
     "prediction": "str: P1a, P1-tail, P1b, P1c, P2, P2b, P3, P4, P5, P6a, P6c, P7, P8-tail, ...",
-    "agent": "str", "family": "str: primary | secondary | exploratory | control",
+    "agent": "str",
+    "family": "str: primary | secondary | exploratory | control | replication (R18's replicates)",
     "verdict": "str: confirm | refute | inconclusive | not testable | not applicable"
                " | cautious but lawful | not estimable | class <n> | unstable | mixed"
                " | descriptive",
@@ -381,8 +410,10 @@ BOOTSTRAP_N = 20_000
 
 EXCL_ALL = ("infeasible_bound", "unsolved")             # removed from everything (9.4)
 EXCL_KEY = EXCL_ALL + ("multi_basin", "no_key")         # removed from key-based errors
-GENERALISTS = ("G1", "G2", "G3")
-SPECIALISTS = ("S1", "S2", "S3")
+# The pre-registered agents (protocol 8): G1-G3 carry the primary / secondary decisions; ruling
+# R18's replicates (``registry.replicates()``) form the replication family.
+GENERALISTS = seed0_generalists()
+SPECIALISTS = specialists()
 CONFIRMATORY_G = ("P1a", "P1-tail", "P1b", "P2", "P3")
 EXPLORATORY = ("P2d", "P6b", "P6d", "P8-F")
 CLAIMS = ("confirm", "refute", "cautious but lawful")
@@ -411,7 +442,12 @@ class Regime(NamedTuple):
 
 def family_of(prediction: str, agent: str) -> str:
     """Protocol 8's families: G3, S2, S3 and the recipe claim are primary; G1, G2, S1 and
-    G2's P8 tail test secondary; P2d, P6b, P6d exploratory; P5 a control."""
+    G2's P8 tail test secondary; P2d, P6b, P6d exploratory; P5 a control. Ruling R18: every
+    other decision of a replicate (G1s1 .. G3s2) is in the replication family."""
+    if is_replicate(agent):
+        if prediction == "P5":
+            return "control"
+        return "exploratory" if prediction in EXPLORATORY else "replication"
     if prediction in CONFIRMATORY_G and agent in GENERALISTS:
         return "primary" if agent == "G3" else "secondary"
     if prediction == "P4":
@@ -1895,11 +1931,35 @@ def _order_ok(v: tuple[float, ...]) -> bool:
         any(v[i] > v[i + 1] for i in range(len(v) - 1))
 
 
+def _seed_median(values: list[float], n_seeds: int) -> float:
+    """The median of a variant's ``n_seeds`` per-seed R_dep values (odd; +inf counts: the
+    largest braking R already fails), of which ``values`` are the known ones (a seed that is
+    absent from the inputs or has an undefined R_dep is unknown). Defined only when the known
+    values fix the median whatever the unknown seeds hold: every seed known, or (3 seeds) two
+    known and equal; NaN otherwise. Never a mean of two grid values (the median of {18.3,
+    +inf, unknown} is not +inf)."""
+    x = sorted(float(v) for v in values if not np.isnan(v))
+    unknown = n_seeds - len(x)
+    k = (n_seeds - 1) // 2                 # the median's rank among the n_seeds values
+    lo = k - unknown                       # its rank among the known ones when every unknown
+    if not x or unknown < 0 or lo < 0 or k >= len(x):   # lies below them; k when above
+        return float("nan")
+    return x[k] if x[lo] == x[k] else float("nan")
+
+
 def p1c(r_deps: dict[str, dict[str, float]]) -> list[Decision]:
-    """Order of departure with the exact null over the 6 label permutations: R_dep(G1) >=
-    R_dep(G2) >= R_dep(G3) at A1 with one strict inequality and no reversal (all equal:
-    inconclusive), plus R_dep(A1) >= R_dep(A2) per agent. ``r_deps``: agent -> approach ->
-    R_dep."""
+    """Order of departure with the exact null over the 6 label permutations: R_dep(v1) >=
+    R_dep(v2) >= R_dep(v3) at A1 with one strict inequality and no reversal (all equal:
+    inconclusive), plus R_dep(A1) >= R_dep(A2) per seed-0 agent. ``r_deps``: agent ->
+    approach -> R_dep.
+
+    Ruling R18: a variant's R_dep is the median over its 3 seeds (G1, G1s1, G1s2 for v1), and
+    the null permutes the 3 medians. A seed absent from ``r_deps`` or with an undefined R_dep
+    is unknown, and a variant's median is defined only when its known seeds fix it
+    (``_seed_median``: all 3 known, or 2 known and equal); otherwise P1c is 'not testable'.
+    With no replicate in ``r_deps`` (seed 0 alone) each variant's value is G1's, G2's and
+    G3's own R_dep, the pre-registered test. The row keeps the label 'G1,G2,G3' and lists the
+    medians (r_dep_A1), each seed's value, the seed-0 values and the median rule used."""
     out = []
     for a in GENERALISTS:
         d = r_deps.get(a, {})
@@ -1908,17 +1968,32 @@ def p1c(r_deps: dict[str, dict[str, float]]) -> list[Decision]:
             out.append(_d("P1c-approach", a, "not testable", A1=a1, A2=a2))
         else:
             out.append(_d("P1c-approach", a, "confirm" if a1 >= a2 else "refute", A1=a1, A2=a2))
-    vals = tuple(float(r_deps.get(a, {}).get("A1", np.nan)) for a in GENERALISTS)
+    seed0_only = not any(is_replicate(a) for a in r_deps)
+    seeds = {v: tuple(a for a in variant_seeds(v) if not seed0_only or not is_replicate(a))
+             for v in variants()}
+    by_seed = {v: {a: float(r_deps[a].get("A1", np.nan)) for a in seeds[v] if a in r_deps}
+               for v in variants()}
+    vals = tuple(_seed_median(list(by_seed[v].values()), len(seeds[v])) for v in variants())
     agent = ",".join(GENERALISTS)
+    known = {v: int(sum(not np.isnan(x) for x in by_seed[v].values())) for v in variants()}
+    info = dict(r_dep_A1=vals, variants=variants(), r_dep_A1_by_seed=by_seed, n_seeds=known,
+                r_dep_A1_seed0=tuple(float(r_deps.get(a, {}).get("A1", np.nan))
+                                     for a in GENERALISTS),
+                undetermined=[v for v, x in zip(variants(), vals, strict=True)
+                              if np.isnan(x) and known[v]],
+                rule=("seed 0 only: each variant's seed-0 R_dep (the pre-registered test)"
+                      if seed0_only else
+                      "R18: each variant's median R_dep over its 3 seeds, defined when the "
+                      "known seeds fix it"))
     if any(np.isnan(v) for v in vals):
-        out.insert(0, _d("P1c", agent, "not testable", r_dep_A1=vals))
+        out.insert(0, _d("P1c", agent, "not testable", **info))
         return out
     p_null = sum(_order_ok(p) for p in permutations(vals)) / 6.0
     if len(set(vals)) == 1:
         verdict = "inconclusive"
     else:
         verdict = "confirm" if _order_ok(vals) else "refute"
-    out.insert(0, _d("P1c", agent, verdict, r_dep_A1=vals, p_null=p_null))
+    out.insert(0, _d("P1c", agent, verdict, p_null=p_null, **info))
     return out
 
 
@@ -3246,6 +3321,39 @@ def _gate_of(runs: Table, inp: AnalysisInputs, agent: str) -> dict:
     return checkpoint_gate(_variants(runs, inp)["all"][0])
 
 
+def history_judgeable(inp: AnalysisInputs, agent: str) -> list[bool]:
+    """Per snapshot of ``inp.history[agent]`` (the two before the final): whether protocol
+    8's gate can judge it from its own runs (``checkpoint_gate``'s ``evaluable``: gentle
+    tier A cells and tier G width-12 straights with runs, a defined oscillation index)."""
+    return [bool(checkpoint_gate(_variants(r, inp)["all"][0])["evaluable"])
+            for r in inp.history.get(agent, [])]
+
+
+def history_gate_problems(inp: AnalysisInputs) -> list[str]:
+    """Why the 2-of-last-3 stability rule (protocol 8, AD21) cannot be applied as intended
+    on these inputs: a generalist final (seed 0 or R18 replicate) whose history snapshots
+    are missing, or which protocol 8's gate cannot judge (``history_judgeable``; AD24 would
+    make their P1-P3 'not testable' and so every claim at the final 'unstable'). The
+    confirmatory run refuses on any (its one shot must not be spent on a stability rule that
+    cannot hold); exploratory runs log them."""
+    out = []
+    for a in [x for x in generalists() if x in inp.runs]:
+        n = len(inp.history.get(a, []))
+        if n < 2:
+            out.append(f"{a}: {n} of the 2 snapshots before the final have run tables "
+                       "(protocol 8's stability rule needs both)")
+        bad = [i for i, ok in enumerate(history_judgeable(inp, a)) if not ok]
+        if bad:
+            ts = [int(_it(inp.history[a][i], "timesteps", 0)[0]) if _n(inp.history[a][i])
+                  else -1 for i in bad]
+            out.append(f"{a}: protocol 8's gate cannot judge the snapshots before the final at "
+                       f"{ts} (no gentle tier A or tier G width-12 runs: protocol 4's last-3 "
+                       "rows run tiers A and B only), so every claim at the final would be "
+                       "'unstable'; this needs a ruling (e.g. tier G on the last-3 rollouts, or "
+                       "a history gate on the gentle cells)")
+    return out
+
+
 def _gated(d: Decision, gate: dict) -> Decision:
     """A snapshot that fails the gate is not read for P1-P3 (protocol 8; 9.4: crash curves
     only)."""
@@ -3281,34 +3389,55 @@ def _decision_rows(decisions: list[Decision]) -> Table:
     return _to_table(rows, DECISION_COLUMNS)
 
 
+def _generalist_decisions(inp: AnalysisInputs, agent: str,
+                          rules: dict[str, Callable[[Table, Table], Decision]]) -> list[Decision]:
+    """P1a, P1-tail, P1b, P2 and P3 of one generalist's final: each rule with 9.4's
+    sensitivity variants, protocol 8's gate and the 2-of-last-3 stability rule (AD21, AD24)
+    over the two snapshots before the final in ``inp.history``. The same code for G1-G3 and,
+    in the replication family, for ruling R18's replicates."""
+    out = []
+    runs = inp.runs[agent]
+    hist = inp.history.get(agent, [])
+    gate = _gate_of(runs, inp, agent)
+    hist_gates = [_gate_of(r, inp, agent) for r in hist]
+    judgeable = history_judgeable(inp, agent)
+    for name, rule in rules.items():
+        d = _gated(_with_sensitivity(rule, runs, inp), gate)
+        past_d = [_gated(_with_sensitivity(rule, r, inp), g)
+                  for r, g in zip(hist, hist_gates, strict=True)]
+        d = _stabilise(d, [p.verdict for p in past_d])
+        if hist:
+            # Whether protocol 8's gate can judge each history snapshot from its own runs
+            # (gentle tier A cells and tier G width-12 straights): protocol 4's last-3 rows run
+            # tiers A and B only, so it cannot, and AD24 + AD21 then turn every claim at the
+            # final 'unstable' (open, needs a ruling; ``history_gate_problems``).
+            d.details["history_gate_judgeable"] = judgeable
+        if name == "P1b" and past_d:
+            # R12 re-anchors the below-support A1 cells at P0 (the finals) only; a
+            # history snapshot that is also a P6c checkpoint has re-anchored tail and
+            # bulk keys but nominal below-support ones, so its Kendall tau mixes keys.
+            # Reported per history snapshot, not acted on (ruling R12's scope).
+            d.details["history_ra_fallback_pairs"] = [
+                p.details.get("ra_fallback_pairs") for p in past_d]
+        if name == "P3" and inp.demote_p3 and d.family == "primary":
+            d.family = "secondary"
+            d.details["demoted"] = "pre-tag P3 separation check failed (protocol 2.4 P3)"
+        out.append(d)
+    return out
+
+
 def decisions(inp: AnalysisInputs, confirmatory: bool = True) -> list[Decision]:
     """Every decision of the protocol that the inputs allow (confirmatory: P1a, P1-tail,
-    P1b, P2, P3 per generalist, P4 per specialist and the recipe claim, and G2's P8 tail
-    test; otherwise also the secondary, exploratory and control analyses)."""
+    P1b, P2, P3 per seed-0 generalist, P4 per specialist and the recipe claim, and G2's P8
+    tail test; otherwise also the secondary, exploratory and control analyses, and ruling
+    R18's replication family: the same five rules per replicate). The confirmatory rows are
+    those of the pre-registration; the replicates' are written apart by ``decision_table``
+    (``replication_tables``)."""
     out: list[Decision] = []
     rules = _g_rules(inp)
     finals = {a: _variants(r, inp)["all"][0] for a, r in inp.runs.items()}
     for agent in [a for a in GENERALISTS if a in inp.runs]:
-        runs = inp.runs[agent]
-        hist = inp.history.get(agent, [])
-        gate = _gate_of(runs, inp, agent)
-        hist_gates = [_gate_of(r, inp, agent) for r in hist]
-        for name, rule in rules.items():
-            d = _gated(_with_sensitivity(rule, runs, inp), gate)
-            past_d = [_gated(_with_sensitivity(rule, r, inp), g)
-                      for r, g in zip(hist, hist_gates, strict=True)]
-            d = _stabilise(d, [p.verdict for p in past_d])
-            if name == "P1b" and past_d:
-                # R12 re-anchors the below-support A1 cells at P0 (the finals) only; a
-                # history snapshot that is also a P6c checkpoint has re-anchored tail and
-                # bulk keys but nominal below-support ones, so its Kendall tau mixes keys.
-                # Reported per history snapshot, not acted on (ruling R12's scope).
-                d.details["history_ra_fallback_pairs"] = [
-                    p.details.get("ra_fallback_pairs") for p in past_d]
-            if name == "P3" and inp.demote_p3 and d.family == "primary":
-                d.family = "secondary"
-                d.details["demoted"] = "pre-tag P3 separation check failed (protocol 2.4 P3)"
-            out.append(d)
+        out += _generalist_decisions(inp, agent, rules)
     gen_conds = [inp.conds[a] for a in GENERALISTS if a in inp.conds]
     gen_table = concat_tables(gen_conds) if gen_conds else None
     p4res = []
@@ -3335,12 +3464,14 @@ def decisions(inp: AnalysisInputs, confirmatory: bool = True) -> list[Decision]:
             out += [d for d in p8d if d.prediction != "P8-tail"]
     if confirmatory:
         return out
+    out += replication_decisions(inp, rules)
+    # P1c (R18): each variant's median R_dep over its seeds in the inputs.
     rd = {a: {ap: r_dep(finals[a], ap, inp.b) for ap in ("A1", "A2")}
-          for a in GENERALISTS if a in finals}
+          for a in generalists() if a in finals}
     out += p1c(rd)
     for agent, pairs in finals.items():
         runs = inp.runs[agent]
-        if agent in GENERALISTS:
+        if agent in generalists():
             out += [p2b(pairs, inp.b), p2d(pairs, inp.b), *p3_beta(runs, inp.keys)]
             if inp.tables is not None:
                 out.append(p3_ratio(runs, inp.keys, inp.tables))
@@ -3357,26 +3488,223 @@ def decisions(inp: AnalysisInputs, confirmatory: bool = True) -> list[Decision]:
     return out
 
 
+# ------------------------------------------------------------------------- R18 replication
+
+VARIANT_COLUMNS = {
+    "variant": "str: v1 | v2 | v3 (registry.variants())",
+    "prediction": "str: P1a, P1-tail, P1b, P2, P3",
+    "verdict": "str: the verdict shared by >= 2 of the variant's 3 seeds, else the decision "
+               "shared by >= 2 ('cautious but lawful' counts as 'refute', 2.4 P1a); "
+               "'seed-specific' when all 3 seeds decided and no 2 agree; 'not testable' when a "
+               "seed has no decision and no 2 of the others agree",
+    "claim": "bool: the shared decision is a claim (confirm, refute, cautious but lawful): a "
+             "variant-level claim (R18)",
+    "n_agree": "int: seeds whose verdict (or, for a shared decision, decision) is the shared "
+               "one (0 without one)",
+    "seeds": "str: the variant's agents in seed order, comma-joined",
+    "seed_verdicts": "str: JSON {agent: verdict}, 'missing' where a seed has no decision",
+}
+SPREAD_COLUMNS = {
+    "variant": "str", "agent": "str", "seed": "int",
+    **{p: "str: verdict ('missing' without a decision)" for p in CONFIRMATORY_G},
+    "stable": "str: JSON {prediction: yes | no | n/a} (2-of-last-3 stability, AD21)",
+    "r_dep_A1": "m: R_dep at A1 of the final (P1c's input)", "r_dep_A2": "m",
+    "numbers": "str: JSON {prediction: key numbers of the decision}",
+}
+SEED_SPECIFIC = "seed-specific"
+VARIANT_MIN_SEEDS = 2          # R18: a variant-level claim needs one decision in >= 2 of 3 seeds
+REFUTE_LABELS = ("cautious but lawful",)   # verdicts that label a refutation (2.4 P1a)
+# Key numbers of each decision for the seed-spread report: name -> path into its details.
+KEY_NUMBERS = {
+    "P1a": {"frac_in": ("tracking", "frac_in"), "S_bulk": ("slope", "S"),
+            "det_crash_pairs": ("tracking", "crash_pairs"),
+            "p_crash_hi": ("tracking", "p_crash", "hi"), "n_pairs": ("tracking", "n_pairs")},
+    "P1-tail": {"a2_frac_in": ("a2", "frac_in"), "a1_frac_overspeed": ("a1_frac_overspeed",),
+                "contrast_frac_positive": ("contrast_frac_positive",),
+                "a1_frac_in": ("a1_tracking", "frac_in")},
+    "P1b": {"n_pairs": ("n_pairs",), "frac_departure": ("frac_departure",),
+            "frac_lawful": ("frac_lawful",), "kendall_tau": ("kendall_tau",)},
+    "P2": {"n_O": ("n_O",), "frac_onset_late": ("frac_onset_late",),
+           "frac_resp_late": ("frac_resp_late",),
+           "median_overspeed_share": ("median_overspeed_share",)},
+    "P3": {"b": ("b",), "winner": ("winner",), "brake_share": ("brake_share",),
+           "n_runs": ("n_runs",)},
+}
+
+
+def replication_decisions(inp: AnalysisInputs,
+                          rules: dict[str, Callable[[Table, Table], Decision]] | None = None
+                          ) -> list[Decision]:
+    """Ruling R18's replication family: P1a, P1-tail, P1b, P2 and P3 of every replicate
+    final in the inputs (G1s1 .. G3s2), by the seed-0 agents' code (``_generalist_decisions``:
+    gate, sensitivity variants, stability over each replicate's own two snapshots before its
+    final), family 'replication'."""
+    rules = _g_rules(inp) if rules is None else rules
+    return [d for a in replicates() if a in inp.runs
+            for d in _generalist_decisions(inp, a, rules)]
+
+
+def _verdicts_by(decs: list[Decision]) -> dict[tuple[str, str], Decision]:
+    return {(d.agent, d.prediction): d for d in decs}
+
+
+def decision_class(verdict: str) -> str:
+    """The decision a verdict stands for: a labelled refutation is a refutation (protocol
+    2.4: P1a's 'cautious but lawful' labels a refutation caused only by underspeed with a
+    lawful slope); every other verdict is its own decision."""
+    return "refute" if verdict in REFUTE_LABELS else verdict
+
+
+def variant_verdict(verdicts: dict[str, str]) -> tuple[str, int]:
+    """R18's variant-level rule on one prediction: ``verdicts`` maps each of the variant's
+    seeds to its verdict ('missing' without one). A verdict shared by at least 2 seeds wins;
+    failing that, a decision shared by at least 2 (``decision_class``: 'refute' and
+    'cautious but lawful' are both P1a refutations, so {refute, cautious but lawful, confirm}
+    gives 'refute'); otherwise 'seed-specific' when every seed decided, else 'not testable'
+    (a missing seed could still have made 2). Returns (verdict, seeds agreeing)."""
+    have = [v for v in verdicts.values() if v != "missing"]
+    for labels in (have, [decision_class(v) for v in have]):
+        counts = {v: labels.count(v) for v in labels}
+        shared = sorted((v for v, n in counts.items() if n >= VARIANT_MIN_SEEDS),
+                        key=lambda v: -counts[v])
+        if shared:
+            return shared[0], counts[shared[0]]
+    return (SEED_SPECIFIC if len(have) == len(verdicts) else "not testable"), 0
+
+
+def variant_table(decs: list[Decision]) -> Table:
+    """VARIANT_COLUMNS: per (variant, prediction) of P1a, P1-tail, P1b, P2, P3, the decision
+    shared by at least 2 of the variant's 3 seeds (seed 0 and R18's s1, s2), else
+    'seed-specific' with the three listed (ruling R18, mirroring the specialists' recipe
+    rule). ``decs`` holds the seed-0 agents' and the replicates' decisions; each verdict is
+    the row's as reported (after the gate and the stability rule)."""
+    import json
+
+    by = _verdicts_by(decs)
+    rows = []
+    for v in variants():
+        seeds = variant_seeds(v)
+        for pred in CONFIRMATORY_G:
+            vs = {a: by[(a, pred)].verdict if (a, pred) in by else "missing" for a in seeds}
+            verdict, n = variant_verdict(vs)
+            rows.append(dict(variant=v, prediction=pred, verdict=verdict,
+                             claim=verdict in CLAIMS, n_agree=n, seeds=",".join(seeds),
+                             seed_verdicts=json.dumps(vs, sort_keys=True)))
+    return _to_table(rows, VARIANT_COLUMNS)
+
+
+def _dig(d: Any, path: tuple[str, ...]) -> Any:
+    for k in path:
+        if isinstance(d, dict):
+            d = d.get(k)
+        else:
+            d = getattr(d, k, None)
+        if d is None:
+            return float("nan")
+    return d
+
+
+def key_numbers(d: Decision) -> dict:
+    """The seed-spread report's key numbers of one P1a / P1-tail / P1b / P2 / P3 decision
+    (``KEY_NUMBERS``; NaN where the details lack one, e.g. a snapshot failing the gate)."""
+    return {name: _dig(d.details, path) for name, path in KEY_NUMBERS.get(d.prediction, {}).items()}
+
+
+def seed_spread(decs: list[Decision], r_deps: dict[str, dict[str, float]] | None = None) -> Table:
+    """SPREAD_COLUMNS: per variant and seed, the P1a / P1-tail / P1b / P2 / P3 verdicts, their
+    stability and key numbers (``key_numbers``), and the final's R_dep at A1 and A2 (P1c's
+    inputs): ruling R18's seed-spread report."""
+    import json
+
+    from apexzero.interp.io import _jsonable
+
+    by = _verdicts_by(decs)
+    r_deps = r_deps or {}
+    rows = []
+    for v in variants():
+        for a in variant_seeds(v):
+            row = dict(variant=v, agent=a, seed=seed_of(a))
+            stable, nums = {}, {}
+            for pred in CONFIRMATORY_G:
+                d = by.get((a, pred))
+                row[pred] = d.verdict if d is not None else "missing"
+                stable[pred] = ("n/a" if d is None or d.stable is None
+                                else ("yes" if d.stable else "no"))
+                nums[pred] = key_numbers(d) if d is not None else {}
+            rd = r_deps.get(a, {})
+            row.update(stable=json.dumps(stable, sort_keys=True),
+                       r_dep_A1=float(rd.get("A1", np.nan)), r_dep_A2=float(rd.get("A2", np.nan)),
+                       numbers=json.dumps(_jsonable(nums), sort_keys=True))
+            rows.append(row)
+    return _to_table(rows, SPREAD_COLUMNS)
+
+
+def replication_tables(inp: AnalysisInputs, ds: list[Decision] | None = None
+                       ) -> dict[str, Any] | None:
+    """Ruling R18's replication family from the inputs: the replicates' decisions (DECISION
+    rows, family 'replication'), the variant-level table and the seed-spread report. ``ds``
+    may hold decisions already made (``decisions``' output); missing seed-0 or replicate rows
+    are computed. None when no replicate final is in the inputs (nothing to replicate)."""
+    if not any(a in inp.runs for a in replicates()):
+        return None
+    ds = list(ds or [])
+    rules = _g_rules(inp)
+    if not any(is_replicate(d.agent) for d in ds):
+        ds += replication_decisions(inp, rules)
+    if not any(d.agent in GENERALISTS and d.prediction in CONFIRMATORY_G for d in ds):
+        ds += [d for a in GENERALISTS if a in inp.runs
+               for d in _generalist_decisions(inp, a, rules)]
+    rows = [d for d in ds if d.prediction in CONFIRMATORY_G and variant_of(d.agent)]
+    rd = {a: {ap: r_dep(_variants(inp.runs[a], inp)["all"][0], ap, inp.b) for ap in ("A1", "A2")}
+          for a in generalists() if a in inp.runs}
+    rep = [d for d in rows if is_replicate(d.agent)]
+    return dict(decisions=rep, decision_table=_decision_rows(rep),
+                variants=variant_table(rows), spread=seed_spread(rows, rd), r_deps=rd)
+
+
 def decision_table(inp: AnalysisInputs, confirmatory: bool = True, out_dir: Path | None = None,
                    overwrite: bool = False) -> Table:
     """Run every confirmatory test once and write analysis/decisions.npz (+ .json).
 
     With ``confirmatory`` the table is written to decisions.{npz,json} and an existing one is
     never replaced (protocol 10, step 8: one run); otherwise everything is written to
-    decisions_all.{npz,json}."""
+    decisions_all.{npz,json}. Ruling R18: when replicate finals are in the inputs, the
+    replication family goes to replication_{decisions,variants,spread}.npz and
+    replication.json (replication_all_* under exploratory runs), under the same one-run rule;
+    the decision table's rows are the pre-registered ones."""
     out_dir = ANALYSIS_DIR if out_dir is None else Path(out_dir)
     stem = "decisions" if confirmatory else "decisions_all"
+    rstem = "replication" if confirmatory else "replication_all"
     path = out_dir / f"{stem}.npz"
-    if confirmatory and path.exists() and not overwrite:
-        raise FileExistsError(f"{path} exists: the confirmatory analysis runs once")
+    if confirmatory and not overwrite:
+        for p in (path, out_dir / f"{rstem}.json"):
+            if p.exists():
+                raise FileExistsError(f"{p} exists: the confirmatory analysis runs once")
     ds = decisions(inp, confirmatory)
+    rep = replication_tables(inp, ds)
     table = _decision_rows(ds)
-    save_table(path, table)
+    # Every file is serialised (with save_table's and write_json's checks) before the first
+    # is written, and the one-run markers (replication.json, then decisions.npz) are written
+    # last: a failure while building any output leaves no marker, so the run can be repeated.
+    files: list[tuple[Path, bytes]] = []
     if not confirmatory:
-        for name, t in descriptive_tables(inp).items():
-            save_table(out_dir / f"{name}.npz", t)
-    write_json(out_dir / f"{stem}.json", {"band": inp.b, "confirmatory": confirmatory,
-                                          "decisions": ds})
+        files += [(out_dir / f"{name}.npz", table_bytes(t))
+                  for name, t in descriptive_tables(inp).items()]
+    files.append((out_dir / f"{stem}.json", json_bytes(
+        {"band": inp.b, "confirmatory": confirmatory, "decisions": ds})))
+    if rep is not None:
+        files += [(out_dir / f"{rstem}_decisions.npz", table_bytes(rep["decision_table"])),
+                  (out_dir / f"{rstem}_variants.npz", table_bytes(rep["variants"])),
+                  (out_dir / f"{rstem}_spread.npz", table_bytes(rep["spread"])),
+                  (out_dir / f"{rstem}.json", json_bytes({
+                      "band": inp.b, "confirmatory": confirmatory,
+                      "rule": "R18: a variant-level claim needs the same decision in >= 2 of "
+                              "the variant's 3 seeds; otherwise seed-specific",
+                      "decisions": rep["decisions"], "variants": rep["variants"],
+                      "spread": rep["spread"], "r_dep": rep["r_deps"]}))]
+    files.append((path, table_bytes(table)))
+    for p, data in files:
+        write_bytes(p, data)
     return table
 
 
@@ -3724,10 +4052,14 @@ def power_table(keys_table: Table, support, b: float, tables=None,
     support; P2: confirm with a late onset sized to give e at the A1 tail and below-support
     cells). P3: the verdicts on the lawful and time-to-corner agents.
 
-    ``support`` is ``support.SupportTables`` (its ``regimes``) or a dict agent -> regime."""
+    ``support`` is ``support.SupportTables`` (its ``regimes``) or a dict agent -> regime.
+    Ruling R18's replicates come after the other agents, so every other agent keeps its
+    simulation streams (``_dry_rng(100 + its index)``) and its rows."""
     regimes = support.regimes if hasattr(support, "regimes") else dict(support)
+    order = sorted(a for a in regimes if not is_replicate(a))
+    order += [a for a in replicates() if a in regimes]
     rows = []
-    for ia, (agent, rt) in enumerate(sorted(regimes.items())):
+    for ia, (agent, rt) in enumerate((a, regimes[a]) for a in order):
         counts = _regime_counts(keys_table, rt)
         clip = getattr(rt, "r_clip_max", np.nan)
         lawful_runs = simulate_runs("lawful", keys_table, _dry_rng(100 + ia, 0), phase_noise,

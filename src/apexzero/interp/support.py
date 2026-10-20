@@ -48,6 +48,7 @@ from apexzero.interp.constants import (
     V_TYP_CHOICES_KPH,
 )
 from apexzero.interp.io import Table
+from apexzero.interp.registry import GRAMMARS, GrammarSpec, agent_grammar
 from apexzero.tracks.corners import R_DEV, segment, smooth
 from apexzero.tracks.generator import (
     DS,
@@ -63,25 +64,11 @@ from apexzero.vehicle.params import F1_2025, VehicleParams
 
 # ------------------------------------------------------------------------- grammars
 
-
-@dataclass(frozen=True)
-class GrammarSpec:
-    """A training grammar as scripts/train_dr.py builds it: ``fit_grammar`` on the 12 R_DEV
-    circuits, with a per-strip mixture of ``tilted(g, alpha)`` (gap_scale 0.8) at
-    ``tilt_fraction`` (the ``generate_bank`` mixture)."""
-
-    name: str              # 'base' (v1), 'v2mix', 'v3mix'
-    tilt_fraction: float   # share of strips drawn from the tilted grammar
-    tilt_alpha: float      # tilted corner weights (1 / r_min) ** alpha
-
-
-GRAMMARS = {
-    "base": GrammarSpec("base", 0.0, 1.0),     # G1 (dr-pilot-200M); also l_typ and v_typ
-    "v2mix": GrammarSpec("v2mix", 0.3, 1.0),   # G2 (dr-pilot-v2-tilt30)
-    "v3mix": GrammarSpec("v3mix", 0.5, 2.0),   # G3 (dr-pilot-v3-tilt50a2)
-}
-# Each generalist's own training grammar (mirrors agents.AGENTS; a test checks they agree).
-AGENT_GRAMMAR = {"G1": "base", "G2": "v2mix", "G3": "v3mix"}
+# GrammarSpec and GRAMMARS live in ``registry`` (with the agents that train on them) and are
+# re-exported here. Each generalist's own training grammar, read from the agent registry:
+# G1-G3 and, by ruling R18, their replicates (a replicate trains on its variant's grammar, so
+# its q1 / q10 equal its seed-0 agent's; its R_clip comes from its own obs_rms).
+AGENT_GRAMMAR = agent_grammar()
 SPECIALIST_TRACK = "Hockenheim"
 
 
@@ -741,7 +728,8 @@ def _table_hash(t: Table) -> str:
 def build_support(out_dir: Path, agents_obs_rms: dict[str, tuple[str, RunningMeanStd | dict]],
                   n_strips: int = SUPPORT_N_STRIPS, log=None) -> SupportTables:
     """Step 1: corner tables for the three grammars and R_DEV, l_typ, v_typ, every
-    generalist's regime table (R_clip for agents whose final is in ``agents_obs_rms`` as
+    generalist's regime table (``AGENT_GRAMMAR``: G1-G3 and R18's replicates, each from its
+    variant's grammar; R_clip for agents whose final is in ``agents_obs_rms`` as
     {agent: (snapshot path, obs_rms)}; a specialist listed there gets q1 / q10 of its
     circuit's corners and its R_clip), feature SDs, R_seg quantiles and tight-and-fast rates;
     written under ``out_dir`` (support.json, corners_<set>.npz). ``log`` is an optional

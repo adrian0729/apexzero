@@ -16,7 +16,8 @@ Data contract (shared by every module):
 - ``Cell``: one stimulus at one approach (or one real initial state). A mirror pair is two
   cells (left, right) with the same ``pair_id``; ``pair_id`` is also the noise id of
   common random numbers, and ``Cell.mirrored`` marks the member whose steering noise is
-  negated (protocol 4). ``Cell.runners`` lists the agents that run a cell (empty: all).
+  negated (protocol 4). ``Cell.runners`` lists the agents that run a cell (empty: all;
+  ruling R18: a listed seed-0 generalist's replicates run it too, ``registry.runs_cell``).
 - ``Landmarks``: s_c0, s_a0, s_apex, s_a1, s_c1 in strip coordinates (m).
 
 Transplants use the Track the real-lap evaluation uses,
@@ -121,6 +122,7 @@ from apexzero.interp.constants import (
     WIDTH_CORE,
     kph,
 )
+from apexzero.interp.registry import seed0_generalists, specialists
 from apexzero.interp.support import (
     GRAMMARS,
     LTypTable,
@@ -291,7 +293,7 @@ class Cell:
     null_cell: int = -1           # tier G cell with the same v0, width and W
     flags: tuple[str, ...] = ()   # 'recovery', 'imposed', 'braking', 'flat', 'no_key', ...
     mirrored: bool = False        # the pair member whose steering noise is negated
-    runners: tuple[str, ...] = ()  # agents that run this cell; () = every agent
+    runners: tuple[str, ...] = ()  # agents that run this cell; () = every agent (runs_cell)
 
     def phase_offsets(self) -> np.ndarray:
         """u_k = (k / n_phases) P (m), k = 0..n_phases-1 (protocol 4)."""
@@ -1749,7 +1751,10 @@ def pilot_minigrid() -> tuple[StimulusBank, list[Cell]]:
 
 # ------------------------------------------------------------------------- real design
 
-RUNNERS_FROM_S1 = ("S1", "G1", "G2", "G3")   # generalists run tier D from S1's state
+# Generalists run tier D from S1's state: S1 and the seed-0 generalists (G1, G2, G3). R18's
+# replicates run those cells as their seed-0 agent does (``registry.runs_cell``), so the
+# design, and its hash, do not change.
+RUNNERS_FROM_S1 = ("S1", *seed0_generalists())
 
 
 def _strip_state(exc: Excision, st: RealState, mirrored: bool
@@ -1879,12 +1884,12 @@ def build_real_design(bank: StimulusBank, cells: list[Cell],
                 add_cell(f"{base}/{v}", st, "real", (tier,), (), fl, pid, mir, x0, pa, ac,
                          f"{agent}:lap{st.lap}@{key}")
     # Tier D.
-    if any(k.startswith("D/") for a in ("S1", "S2", "S3") for k in states.get(a, {})):
+    if any(k.startswith("D/") for a in specialists() for k in states.get(a, {})):
         track = real_track(D_TRACK)
         dcs = hockenheim_corners(track)
         for dc in dcs:
             key = f"D/{dc.index}"
-            sts = [(a, states[a][key]) for a in ("S1", "S2", "S3") if key in states.get(a, {})]
+            sts = [(a, states[a][key]) for a in specialists() if key in states.get(a, {})]
             if not sts:
                 continue
             j = None if swap is None else swap.get(dc.index)
@@ -2001,7 +2006,7 @@ def real_state_requests(reachable: dict[str, float] | None = None) -> list[dict]
         out.append(dict(key=crash_corner_key(p.track, c), agent=p.agent, track=p.track,
                         s_target=float(c.s_start - E_CUT_BEFORE), lap=p.lap))
     for dc in hockenheim_corners():
-        for agent in ("S1", "S2", "S3"):
+        for agent in specialists():
             out.append(dict(key=f"D/{dc.index}", agent=agent, track=D_TRACK,
                             s_target=float(dc.corner.s_start - dc.before), lap=2))
     if reachable is not None:

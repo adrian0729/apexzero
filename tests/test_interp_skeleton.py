@@ -55,10 +55,13 @@ def test_schemas_are_consistent():
 def test_agent_registry_matches_the_protocol():
     from apexzero.interp.agents import AGENTS
 
-    assert set(AGENTS) == {"S1", "S2", "S3", "G1", "G2", "G3"}
+    # Protocol 8's six agents and ruling R18's six seed replicates.
+    assert set(AGENTS) == {"S1", "S2", "S3", "G1", "G2", "G3",
+                           "G1s1", "G1s2", "G2s1", "G2s2", "G3s1", "G3s2"}
     assert AGENTS["G2"].grammar.tilt_fraction == 0.3
     assert AGENTS["G3"].grammar.tilt_alpha == 2.0
     assert AGENTS["S2"].prospective_after == 122.3e6
+    assert [AGENTS[a].seed for a in ("S1", "S2", "S3", "G1", "G2", "G3")] == [1, 2, 3, 0, 0, 0]
 
 
 def test_table_roundtrip(tmp_path):
