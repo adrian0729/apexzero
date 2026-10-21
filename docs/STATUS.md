@@ -1,4 +1,4 @@
-# Status (21 Oct 2026)
+# Status (21 Oct 2026, evening)
 
 Phases follow [the two-track plan](plan/two-track-plan.md): K = shared core, P = paper, D = demo.
 
@@ -65,10 +65,28 @@ with its design and analysis committed before the runs ([plan](findings/width-te
 - so about half the gain transfers (p = 0.063, suggestive) and about half was leakage;
 - one leave-out run completes 11 of 12 circuits, and one completes Yas Marina for the first time.
 
-**Next:** step 2, receptive fields ([design draft](interp/receptive-fields-design.md), under
-review). It compares the network's closed-loop sensitivity to the road ahead with the optimum's
-KKT sensitivity at the same states. Taking step 2 before step 1b departs from protocol 9.6, and
-the departure is logged. Then idea 2: does the network encode Pontryagin's costate?
+**Step 2, receptive fields: built, pre-tag** ([design v3.1](interp/receptive-fields-design.md)).
+- **The question.** When the inside edge of the road moves, does a network's line follow it?
+  The edge-tracking gain G is 1 for the optimum: its line rides the inside edge at the apex. A
+  line that ignores width has G = 0.
+- **Primary family.**
+  - H2′: the step 1 generalists under-track the inside edge.
+  - H4: real-width training raises G. This test is prospective and interventional, run on
+    agent-independent A2 states.
+- **The build.** The code is in `src/apexzero/fields/` and `scripts/fields.py`, with 124 tests.
+  - The optimum's fields come from a barrier-KKT adjoint at step 1's answer keys.
+  - The network's fields come from float64 reverse mode through its own closed loop.
+  - Gates 0–5 and planted controls with known answers must pass.
+  - It was built in stages and adversarially reviewed; 22 confirmed findings were fixed.
+- **Decisions while building.** H1-typical became descriptive, because a lawful physics reader
+  (Qp) cannot pass its planned absolute band. Outside-edge gains were dropped from the
+  hypotheses.
+- **Before the tag.** Running the pre-tag stages (key lists, re-polish, gates, controls, the
+  optimum's fields), fixing the float tolerance, writing the record, and a final review. Then
+  the `receptive-fields-prereg-v1` tag, and only then any trained network's fields.
+- **Departure from protocol 9.6.** Taking step 2 before step 1b is logged.
+- **After step 2:** idea 2, whether the networks encode Pontryagin's costate (design
+  Section 12).
 
 `scripts/dashboard.py` shows everything running: stages, agent workflows, GPU boxes.
 
