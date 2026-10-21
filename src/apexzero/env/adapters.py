@@ -93,6 +93,9 @@ def generate_bank(key: jax.Array, g: Grammar, size: int, g_alt: Grammar | None =
     With ``g_alt``, each strip comes from ``g_alt`` with probability ``alt_fraction``
     (a per-strip mixture; the grammars share array shapes, so the choice is a select).
     """
+    if g_alt is not None and (g.real_w_left is None) != (g_alt.real_w_left is None):
+        raise ValueError("g and g_alt must both have real width profiles or neither "
+                         "(derive g_alt from g, e.g. tilted(g))")
 
     def one(k):
         if g_alt is not None:

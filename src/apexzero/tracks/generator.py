@@ -13,19 +13,30 @@ drawn from the development circuits' median widths with low-frequency variation 
 left/right asymmetry, and the inside width is capped so that (w_in - 1) * kappa <= 0.6
 keeps the Frenet frame non-singular wherever the car can reach.
 
+Opt-in "real widths" (``fit_grammar(..., real_widths=True)``): the grammar also stores the
+development circuits' full per-side width profiles, and each strip's (w_left, w_right) is
+then a contiguous, wrapped segment of one of them (random circuit, random offset, sides
+swapped with probability 0.5), scaled by ``width_scale``, under the same inside cap. Real
+roads widen and narrow by metres within corners, which the low-frequency model never shows.
+The profiles are measured as every R-dev evaluation measures them, from the
+``refine_reference`` line (on 6 of the 12 circuits that line moves toward hairpin apexes,
+so one side narrows to ~3 m and the other widens to ~14 m on Norisring). Curvature
+generation is unchanged, and with the option off (the default) so is everything.
+
 Because the simulator is local in Frenet coordinates, open strips need no closure or
 self-intersection checks.
 """
 
 from __future__ import annotations
 
+import re
 from typing import NamedTuple
 
 import jax
 import jax.numpy as jnp
 import numpy as np
 
-from apexzero.tracks.corners import segment
+from apexzero.tracks.corners import R_TEST, segment
 from apexzero.tracks.spline import coeffs_open_jax, values_from_coeffs
 from apexzero.tracks.track import Track
 from apexzero.vehicle.sim import TrackArrays
@@ -50,11 +61,51 @@ class Grammar(NamedTuple):
     gap_scale: jax.Array      # calibration: sampled gaps -> gaps as the segmentation sees them
     corner_logits: jax.Array  # [Nc] sampling log-weights over the corner pool (0 = uniform)
     width_scale: jax.Array    # multiplies the sampled total width
+    # Opt-in real widths (None = off, the default): per-side width profiles of the fitting
+    # circuits (measured from their refine_reference lines, as evaluated) on the generator's
+    # DS grid, zero-padded to the longest, with their lengths.
+    real_w_left: jax.Array | None = None    # [Nt, Lmax] left width (m)
+    real_w_right: jax.Array | None = None   # [Nt, Lmax] right width (m)
+    real_len: jax.Array | None = None       # [Nt] knots per circuit (int32)
+
+
+def _refuse_lockbox(tracks: list[Track]) -> None:
+    norm = lambda name: re.sub(r"[^a-z0-9]", "", str(name).lower())
+    bad = [t.name for t in tracks if any(norm(t.name).startswith(norm(n)) for n in R_TEST)]
+    if bad:
+        raise PermissionError(f"real widths come from development circuits only, not {bad}")
+
+
+def width_profiles(tracks: list[Track], ds: float = DS):
+    """Per-side widths of closed circuits resampled on a ``ds`` grid (periodic linear
+    interpolation, round(length / ds) knots each), zero-padded to a common length.
+    Returns (w_left [Nt, Lmax], w_right [Nt, Lmax], lengths [Nt]). Refuses lockbox circuits."""
+    _refuse_lockbox(tracks)
+    prof = []
+    for tr in tracks:
+        if not tr.closed:
+            raise ValueError(f"{tr.name}: real widths need closed circuits (segments wrap)")
+        n = round(tr.length / ds)
+        s = np.arange(n) * ds
+        prof.append((np.interp(s, tr.s, tr.w_left, period=tr.length),
+                     np.interp(s, tr.s, tr.w_right, period=tr.length)))
+    lens = np.array([len(wl) for wl, _ in prof])
+    wl = np.zeros((len(prof), lens.max()))
+    wr = np.zeros_like(wl)
+    for i, (a, b) in enumerate(prof):
+        wl[i, : len(a)], wr[i, : len(b)] = a, b
+    return wl, wr, lens
 
 
 def fit_grammar(tracks: list[Track], min_angle_deg: float = 0.0, jitter: float = 0.15,
                 r_floor: float = 8.0, margin: float = 0.6, ramp_min: float = 10.0,
-                gap_scale: float = 1.0) -> Grammar:
+                gap_scale: float = 1.0, real_widths: bool = False) -> Grammar:
+    """Fit the grammar on development circuits (raw ``load_tumftm`` centrelines). With
+    ``real_widths`` it also stores their per-side width profiles, which switches ``generate``
+    to real-width strips; every other field is the same either way. The profiles are taken
+    from ``refine_reference(track)`` (a track that is already refined is used as is), the
+    geometry every R-dev evaluation drives, so training shows the lopsided widths the agent
+    meets there (the raw centreline profiles are much more symmetric on 6 of 12 circuits)."""
     ang, rmin, clen, straights, alt_s, alt_l, widths = [], [], [], [], [], [], []
     for tr in tracks:
         seg = segment(tr)
@@ -73,12 +124,20 @@ def fit_grammar(tracks: list[Track], min_angle_deg: float = 0.0, jitter: float =
         alt_l += list(alt[gaps >= 60.0])
         widths.append(float(np.median(tr.w_left + tr.w_right)))
     f = lambda a: jnp.asarray(np.asarray(a, dtype=np.float32))
-    return Grammar(
+    g = Grammar(
         corner_angle=f(ang), corner_rmin=f(rmin), corner_len=f(clen), straight_len=f(straights),
         p_alt_short=f(np.mean(alt_s)), p_alt_long=f(np.mean(alt_l)), width=f(widths),
         jitter=f(jitter), r_floor=f(r_floor), margin=f(margin), ramp_min=f(ramp_min),
         gap_scale=f(gap_scale), corner_logits=f(np.zeros(len(ang))), width_scale=f(1.0),
     )
+    if real_widths:
+        from apexzero.tracks.reference import refine_reference  # only this path needs scipy
+
+        evaluated = [t if t.meta.get("reference") == "refined" else refine_reference(t) for t in tracks]
+        wl, wr, lens = width_profiles(evaluated)
+        g = g._replace(real_w_left=f(wl), real_w_right=f(wr),
+                       real_len=jnp.asarray(lens, dtype=jnp.int32))
+    return g
 
 
 def tilted(g: Grammar, alpha: float = 1.0, gap_scale: float = 0.8) -> Grammar:
@@ -107,9 +166,30 @@ def _lowfreq(key, s, amplitude, wl_min=300.0, wl_max=1500.0, n=3):
     return amplitude * sig / jnp.sum(amp)
 
 
+def _real_width_draw(key: jax.Array, g: Grammar):
+    """(circuit index, start knot, side swap) of a real-width segment."""
+    kc, ko, ks = jax.random.split(key, 3)
+    ti = jax.random.randint(kc, (), 0, g.real_len.shape[0])
+    offset = jax.random.randint(ko, (), 0, g.real_len[ti])
+    swap = jax.random.uniform(ks, ()) < 0.5
+    return ti, offset, swap
+
+
+def real_width_segment(key: jax.Array, g: Grammar, n_points: int = N_POINTS):
+    """(w_left, w_right) [n_points] before the inside cap: a contiguous segment of a
+    uniformly drawn circuit's profile from a uniform offset, wrapping around the closed
+    circuit, sides swapped with probability 0.5, times ``width_scale``."""
+    ti, offset, swap = _real_width_draw(key, g)
+    idx = (offset + jnp.arange(n_points)) % g.real_len[ti]
+    wl, wr = g.real_w_left[ti, idx], g.real_w_right[ti, idx]
+    return g.width_scale * jnp.where(swap, wr, wl), g.width_scale * jnp.where(swap, wl, wr)
+
+
 def generate(key: jax.Array, g: Grammar, n_points: int = N_POINTS, ds: float = DS,
              max_segments: int = MAX_SEGMENTS):
-    """Return (kappa, w_left, w_right), each [n_points], for one open strip."""
+    """Return (kappa, w_left, w_right), each [n_points], for one open strip. A grammar with
+    real width profiles (``fit_grammar(..., real_widths=True)``) takes the widths from
+    ``real_width_segment`` instead of the median-width model; kappa is the same either way."""
     keys = jax.random.split(key, 10)
     m = max_segments
     jit = lambda k, shape: jnp.exp(g.jitter * jax.random.normal(k, shape))
@@ -154,14 +234,17 @@ def generate(key: jax.Array, g: Grammar, n_points: int = N_POINTS, ds: float = D
     kappa = jnp.where(is_corner, sign[c] * kp * prof, 0.0)
 
     # Widths: development-circuit median, low-frequency variation, asymmetry, Frenet cap.
-    ti = jax.random.randint(keys[9], (), 0, g.width.shape[0])
-    kw = jax.random.split(keys[9], 3)
-    w_total = g.width_scale * g.width[ti] * jnp.exp(0.08 * jax.random.normal(kw[0], ()))
-    w_total = w_total + g.width_scale * _lowfreq(kw[1], s, 1.5)
-    w_total = jnp.clip(w_total, 7.0 * g.width_scale, 18.0)
-    asym = _lowfreq(kw[2], s, 0.5)
-    wl = 0.5 * w_total + asym
-    wr = 0.5 * w_total - asym
+    if g.real_w_left is None:
+        ti = jax.random.randint(keys[9], (), 0, g.width.shape[0])
+        kw = jax.random.split(keys[9], 3)
+        w_total = g.width_scale * g.width[ti] * jnp.exp(0.08 * jax.random.normal(kw[0], ()))
+        w_total = w_total + g.width_scale * _lowfreq(kw[1], s, 1.5)
+        w_total = jnp.clip(w_total, 7.0 * g.width_scale, 18.0)
+        asym = _lowfreq(kw[2], s, 0.5)
+        wl = 0.5 * w_total + asym
+        wr = 0.5 * w_total - asym
+    else:
+        wl, wr = real_width_segment(keys[9], g, n_points)
     cap = 1.0 + g.margin / jnp.maximum(jnp.abs(kappa), 1e-6)
     wl = jnp.where(kappa > 0, jnp.minimum(wl, cap), wl)
     wr = jnp.where(kappa < 0, jnp.minimum(wr, cap), wr)

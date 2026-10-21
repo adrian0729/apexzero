@@ -3,6 +3,11 @@
     uv run python scripts/train_dr.py --steps 200e6 --name dr-pilot
 
 Tracks: a rotating on-device bank of generated strips (grammar fitted on R-dev only).
+With --real-widths each strip's per-side widths are a wrapped segment of an R-dev
+circuit's own width profile, measured from its refine_reference line as in the evaluation
+below, instead of the median-width model (curvature unchanged). Only training changes:
+the audit level sets (tracks/levels.py, pilot_audit.py, interp/) keep the default width
+model, as they already ignore --tilt-*, so they stay fixed across runs.
 Cars: context sampled per reset in the plan's ranges, plus hidden +/-2% grip.
 Checkpoints at log-spaced timesteps (snapshot = params + both normalisers).
 Evaluation: timed laps on the R-dev circuits only (the lockbox is never touched), with
@@ -46,6 +51,9 @@ def main():
                     help="share of strips from the tilted (hairpin-heavy) generator")
     ap.add_argument("--tilt-alpha", type=float, default=1.0,
                     help="tilted generator's corner weights are (1 / r_min)^alpha")
+    ap.add_argument("--real-widths", action="store_true",
+                    help="strip widths are segments of the R-dev circuits' per-side width profiles "
+                         "(measured from the refine_reference line, as evaluated)")
     ap.add_argument("--ensemble-heads", type=int, default=5)
     ap.add_argument("--seed", type=int, default=0)
     args = ap.parse_args()
@@ -53,7 +61,7 @@ def main():
     out = Path("runs") / args.name
     out.mkdir(parents=True, exist_ok=True)
     dev = [load_tumftm(f"data/tracks/tumftm/{n}.csv") for n in R_DEV]
-    g = fit_grammar(dev)
+    g = fit_grammar(dev, real_widths=args.real_widths)
     env = procedural_env(g, bank_size=args.bank, refresh_per_update=args.refresh,
                          randomize_car=not args.fixed_car, g_alt=tilted(g, alpha=args.tilt_alpha),
                          alt_fraction=args.tilt_fraction)
