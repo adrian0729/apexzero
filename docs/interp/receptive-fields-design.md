@@ -1,4 +1,4 @@
-# Step 2: receptive fields (design v3.1, not frozen)
+# Step 2: receptive fields (design v3.2, not frozen)
 
 Status: 21 Oct 2026.
 - v1 had one code review.
@@ -6,6 +6,8 @@ Status: 21 Oct 2026.
   verification. v3 adopted them; Section 13 maps each group of findings to its change.
 - v3.1 records the decisions made while implementing v3 in `src/apexzero/fields/` (Section 14).
   An adversarial code review confirmed 22 findings, all fixed.
+- v3.2 records the decisions taken after a final pre-tag review: 46 findings survived two
+  refuters each, 34 marked essential (Section 15).
 
 Nothing here has been computed on a trained agent's field.
 
@@ -210,10 +212,13 @@ changes are 10–100 times larger.
   solved step 1's keys. So every key is re-polished once on the computing machine: one
   REFINE_IPOPT solve on the rebuilt P, warm-started from the stored primal and dual, with the
   same bounds and a_0 fixed.
-  - The movement is recorded per step and over each outcome's horizon (to s_c1 + 50).
-  - A key is flagged if a state moves more than 1e-6 within that horizon. All keys are kept.
-  - On keys solved on the second machine, the movement is mostly in n late in the 400-step
-    window (up to 3.4e-3 m); within the first 100 steps it is at most 3.6e-5.
+  - The movement is recorded per step (`dx_step`). A key is flagged (informational) when any
+    state moves more than 1e-6 anywhere in its window, or J by more than 1e-9 relative. All
+    keys are kept.
+  - Result on all 10,006 keys: every re-polish succeeded; 5,384 keys are flagged; J moved by at
+    most 1.5e-8 relative. The largest movement anywhere is 2.3 cm, late in the window. Within each
+    key's outcome horizon (to s_c1 + 50 m) it is at most 2.5e-4 m (p99 2.2e-5 m; 3,247 keys
+    above 1e-6, 2 above 1e-4), about float32 resolution in s.
   - A failed re-polish is a 'numerical' exclusion.
 - **KKT system.** The condensed barrier KKT matrix at the re-polished point, keeping every bound
   and inequality:
@@ -276,27 +281,43 @@ geometries, fixed at the tag. Variant-level claims need 2 of 3 seeds (R18). Seed
   - **over-tracking** if its lower end is ≥ 1.2;
   - **inconclusive** otherwise.
 - Variant level: 2 of 3 seeds.
-- Prior: the crash ladders suggest a deficit. The width-blind reading predicts G ≈ 0.
+- Prior: the crash ladders suggest a deficit.
+- **What a confirm means.** A low inside-edge tracking gain, not by itself width-blindness. A
+  width-blind (fixed-n) line predicts G ≈ 0 and T ≈ 0. A line anchored to the outside edge, the
+  centre, or a fixed fraction of the road predicts low G with T ≈ 1. T is defined in Section 15.
 
 **H4, the width-training intervention.**
 - Networks:
-  - v1: 4 real-width seeds (`dr-realw-v1-s0..3`) against 5 baseline seeds (`dr-pilot-200M`,
+  - v1: 4 real-width seeds (`dr-realw-v1-s0..3`) against baseline seeds (`dr-pilot-200M`,
     `-s1..s4`);
-  - v3: 4 real-width seeds (`dr-realw-v3-s0..3`) against 5 baseline seeds
+  - v3: 4 real-width seeds (`dr-realw-v3-s0..3`) against baseline seeds
     (`dr-pilot-v3-tilt50a2`, `-s1..s4`).
-- Data: A2 keys, the same states for every network. The regime is each variant's frozen seed-0
-  regime.
-- Statistic: each network's median G. One-sided exact permutation test, real widths > baseline,
-  with labels exchanged within each variant (15,876 relabellings).
+- Data: the same primary, non-capped A2 keys as H2′, the same states for every network. Each
+  variant's seed-0 regime typing (G1 for v1, G3 for v3) gives only a descriptive per-regime
+  breakdown.
+- Statistic: each network's median G.
+- **Decision test.** Real-width seeds against baseline seeds 1–4 (4 vs 4 per variant). It is a
+  one-sided exact permutation test, real widths > baseline, with labels exchanged within each
+  variant: 4,900 relabellings, minimum p 2.0e-4. Baseline seed 0 is left out of the decision
+  because it is the most confounded network: older code (before R18's PPO refactor), trained on
+  the Mac CPU.
 - Decision:
   - **confirm** if p ≤ 0.05;
   - **refute** if the opposite one-sided p ≤ 0.05;
   - **inconclusive** otherwise.
+- **Sensitivity.** The same test with baseline seed 0 included (4 vs 5 per variant, 15,876
+  relabellings) is reported. If its decision differs, the H4 decision carries the label "not
+  robust to including the seed-0 baselines".
+- **Coverage.** H4 is not testable if any of its networks fails the coverage rule (Section 15).
 - No field of any of these networks has been computed. Their R-dev completion is known.
-- **Known confound** (as in the width test): the two arms differ in more than the width option.
-  The real-width runs used later code on a rented GPU. Baseline seed 0 of each variant ran on the
-  Mac CPU before R18's PPO refactor. A sensitivity analysis without the seed-0 baselines is
-  pre-registered (70 relabellings per variant).
+- **Known confound** (as in the width test). The real-width runs used later code on a rented
+  GPU, at 0.56–0.63M steps/s against the L40S's 0.42–0.45M for baseline seeds 1–4. The width
+  option itself is bit-identical when off.
+
+**Multiplicity.** The primary family is H2′ (one decision per network, then per variant) and H4
+(one decision). They answer different questions and are reported separately, each under its
+own rule, with no correction across them. Six of the 9 step 1 generalists are H4 baselines; the
+two hypotheses therefore share networks, and this is stated with the results.
 
 ### Secondary
 
@@ -311,13 +332,15 @@ geometries, fixed at the tag. Variant-level claims need 2 of 3 seeds (R18). Seed
   - g, location and the shape specificity Δρ (Section 14), against the optimum and against Qp;
   - the unlawful readers (c1, c2, c3) judged against Qp, their base law.
 
-**H1-fast.**
+**H1-fast (descriptive since v3.2).**
 - Data: the A1 and tier B anchored keys.
-- Pre-registered from step 1's direction: G1 and G3 brake early and are slow after fast
-  approaches. Predicted signs:
+- Descriptive. Its sign predictions can be computed from step 1's files before the tag, on the
+  same states that suggested them, so they are not prospective. Step 1's direction: G1 and G3
+  brake early and are slow after fast approaches. Expected signs:
   - s_b,net − s_b* < 0 (earlier) and v_apex,net − v_apex* < 0 for G1 and G3;
   - about 0 for G2.
-- The curvature gain is tested as two-sided equivalence to [0.8, 1.25].
+- The curvature gain is reported with its CI. There is no equivalence band, for the reason
+  that made H1-typical descriptive.
 
 **H2-speed.** r_in, the speed response to an inside-edge shift relative to the optimum's, on A2
 keys. It is descriptive of how width moves speed, with bands under / lawful / over at [0.5, 2].
@@ -332,8 +355,9 @@ keys. It is descriptive of how width moves speed, with bands under / lawful / ov
   - the clearance change is split into the edge's move and the line's move.
 - Reported, not decided.
 
-**H4-transfer.** H4's statistic on the 8 leave-out networks (`dr-realw-loo-*`, v3 configuration)
-against the v3 baselines. Secondary.
+**H4-transfer (secondary).** H4's statistic on the 8 leave-out networks (`dr-realw-loo-*`, v3
+configuration) against v3 baseline seeds 1–4: 495 relabellings, minimum p 0.002. With seed 0
+included (1,287 relabellings) it is the sensitivity analysis, labelled as for H4.
 
 **Descriptive.**
 - The specialists (most keys invalid, and right-turn dominated).
@@ -626,4 +650,87 @@ Each decision below is implemented and tested.
 - VJP: 75–85 ms per key.
 - Gate 1: 104 re-solves per key, 133 s for 50 keys with 5 workers.
 - Re-polish of all keys: about 15 min with 4 workers.
+
+## 15. Decisions after the final pre-tag review (v3.2)
+
+A final review ran on four lenses: design-to-code concordance, pre-registration integrity,
+inference validity, and the gate outputs. 46 findings survived two independent refuters, 34 of
+them marked essential. These decisions resolve them. Every one is implemented and tested before
+the tag.
+
+**Data and exclusions**
+- **Pair completeness.** A pair's expected keys are its keys in the frozen A2 list, not the
+  cell's phase count. Eleven non-capped pairs have only their two u = 0 nominal keys, and with
+  this rule they enter as two-key pairs.
+  - A pair is undefined when more than 3/8 of its listed keys are excluded.
+  - The two directions are weighted equally. A direction with no valid key leaves the pair to
+    the other direction only.
+- **Coverage rule, applied.** A network whose share of excluded primary non-capped A2 keys
+  exceeds 30%, counting every reason, is descriptive for H2′. H4 and H4-transfer are not
+  testable if any of their networks fails the rule.
+- **Pipeline failures count as exclusions and are listed per network:**
+  - a missing optimum row;
+  - a branch-consistency failure;
+  - a loop exhausted at one key. This fails that key only; it never aborts the network's stage.
+- **Capped stimuli** are excluded from H2-speed and H1-fast as well as from H2′ and H4.
+
+**Measures**
+- **T = G + G_out**, the line's move toward the inside when the whole corridor shifts toward the
+  inside by Δ: the inside widens by Δ and the outside narrows by Δ. Here G_out = −σ dn/dΔ_out
+  is the line's outward move per metre the outside widens. Every corridor-anchored
+  line has T = 1, a width-blind line T = 0, and the optimum T* ≈ 1. T is descriptive and is
+  reported beside G for every network.
+  - Descriptive labels: 'width-blind' if T's CI upper end is ≤ 0.5; 'corridor-anchored' if
+    the CI lies within [0.8, 1.2]; 'mixed' otherwise.
+- H1-typical's g and location are computed on the s_c0-aligned grid d ∈ [−150, 400] m
+  (descriptive).
+
+**Checks on the trained networks after the tag** (pre-registered here; they run before any
+analysis)
+- **gate2-trained.** Autodiff against finite differences on every H2′, H4 and H4-transfer
+  network, on 12 primary non-capped A2 keys drawn on the stream `gate2_trained` and listed in the
+  record.
+  - Directions: both trapezoids, plus the corner bumps of κ and w_in.
+  - Rule: Gate 2's.
+  - A network that fails is descriptive.
+- **Wiring for networks without step 1 rollouts.** For each such network, its float32 harness run
+  on every A2 key is compared with its float64 loop for branch consistency. A failing key is a
+  pipeline exclusion.
+- **A pre-tag control** puts the trained architecture inside the loop: the linear driver plus a
+  small-gain random-init actor reading G1's obs_rms, on cells 344 and 66. It runs through Gate 2,
+  and its rows join the branch-tolerance calibration.
+- **Dose-response networks** are fixed now: the 9 step 1 generalists and the 18 H4 networks, on
+  the subsample drawn on the stream `dose_sample`.
+
+**Freeze and run-once**
+- **The record** (`prereg.json`) binds:
+  - the key lists;
+  - the per-regime A2 cell sets for every agent and variant, with the hash of step 1's
+    `support.json`;
+  - the gate2-trained and dose key lists;
+  - every network's checkpoint path and sha256. Post-tag stages load the recorded path and
+    check its hash;
+  - the stamped, passing outputs of keys/Gate 0, re-polish, Gates 1–5, controls, calibration and
+    opt-fields, with the hash and exact key coverage of opt-fields' rows and arrays;
+  - BRANCH_TOL, which must equal the calibrated value.
+- **Provenance stamp.** Every stage output carries the code hash (taken at start and before
+  writing), HEAD, the changed paths, argv and times.
+- **The tag** must be annotated and present on origin with the same object. The first post-tag
+  run writes `tag.json` once, and later runs compare against it.
+- **Hashes against the tagged copy.** The record is built only from a clean tree, and its
+  design-document hash is checked against the document's blob at the tag.
+- **Pre-tag stages** refuse after the tag, unless a deviation is logged.
+- **Deviations.** `--post-tag-deviation` can waive only changed code or a changed design
+  document. It records the diff's hash, HEAD and the tag's commit in the deviation log and in
+  every output's stamp. It never waives:
+  - a missing tag or record;
+  - changed key sets;
+  - changed checkpoints;
+  - changed step 1 code.
+- **Run-once.**
+  - The confirmatory analysis refuses unless every required network × frozen key has a row, and
+    every key has an optimum row.
+  - It writes its decisions once, to a fixed path. Its sha256 is then committed to the findings.
+  - Before the confirmatory run, a non-confirmatory analysis computes coverage and plumbing only,
+    never the primary decisions.
 
