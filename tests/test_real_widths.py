@@ -304,3 +304,17 @@ def test_train_dr_real_widths_smoke(tmp_path, monkeypatch, float32):
     assert (out / "metrics.csv").read_text().count("\n") >= 2
     assert list((out / "ckpt").glob("*.pkl"))
     assert set(json.loads((out / "eval_rdev.json").read_text())) == set(R_DEV)
+
+
+def test_width_tracks_restrict_the_profiles_to_a_subset():
+    """Leave-circuits-out: ``width_tracks`` limits the stored profiles to those circuits;
+    every other grammar field still comes from all ``tracks``."""
+    names = R_DEV[:3]
+    dev = [load_tumftm(TUMFTM / f"{n}.csv") for n in names]
+    full = fit_grammar(dev, real_widths=True)
+    sub = fit_grammar(dev, real_widths=True, width_tracks=dev[:1])
+    assert sub.real_w_left.shape[0] == 1 and full.real_w_left.shape[0] == 3
+    n0 = int(sub.real_len[0])
+    assert np.array_equal(np.asarray(sub.real_w_left[0, :n0]), np.asarray(full.real_w_left[0, :n0]))
+    for f in ("corner_angle", "corner_rmin", "corner_len", "straight_len", "width"):
+        assert np.array_equal(np.asarray(getattr(sub, f)), np.asarray(getattr(full, f)))

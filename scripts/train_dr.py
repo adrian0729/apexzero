@@ -54,6 +54,9 @@ def main():
     ap.add_argument("--real-widths", action="store_true",
                     help="strip widths are segments of the R-dev circuits' per-side width profiles "
                          "(measured from the refine_reference line, as evaluated)")
+    ap.add_argument("--real-widths-from", default="",
+                    help="with --real-widths: comma-separated R-dev circuits whose width profiles "
+                         "are used (default all), for leave-circuits-out tests")
     ap.add_argument("--ensemble-heads", type=int, default=5)
     ap.add_argument("--seed", type=int, default=0)
     args = ap.parse_args()
@@ -61,7 +64,14 @@ def main():
     out = Path("runs") / args.name
     out.mkdir(parents=True, exist_ok=True)
     dev = [load_tumftm(f"data/tracks/tumftm/{n}.csv") for n in R_DEV]
-    g = fit_grammar(dev, real_widths=args.real_widths)
+    width_from = [n for n in args.real_widths_from.split(",") if n]
+    unknown = sorted(set(width_from) - set(R_DEV))
+    if unknown:
+        raise SystemExit(f"--real-widths-from: not R-dev circuits: {unknown}")
+    if width_from and not args.real_widths:
+        raise SystemExit("--real-widths-from needs --real-widths")
+    width_tracks = [d for n, d in zip(R_DEV, dev) if n in width_from] if width_from else None
+    g = fit_grammar(dev, real_widths=args.real_widths, width_tracks=width_tracks)
     env = procedural_env(g, bank_size=args.bank, refresh_per_update=args.refresh,
                          randomize_car=not args.fixed_car, g_alt=tilted(g, alpha=args.tilt_alpha),
                          alt_fraction=args.tilt_fraction)

@@ -99,13 +99,16 @@ def width_profiles(tracks: list[Track], ds: float = DS):
 
 def fit_grammar(tracks: list[Track], min_angle_deg: float = 0.0, jitter: float = 0.15,
                 r_floor: float = 8.0, margin: float = 0.6, ramp_min: float = 10.0,
-                gap_scale: float = 1.0, real_widths: bool = False) -> Grammar:
+                gap_scale: float = 1.0, real_widths: bool = False,
+                width_tracks: list[Track] | None = None) -> Grammar:
     """Fit the grammar on development circuits (raw ``load_tumftm`` centrelines). With
     ``real_widths`` it also stores their per-side width profiles, which switches ``generate``
     to real-width strips; every other field is the same either way. The profiles are taken
     from ``refine_reference(track)`` (a track that is already refined is used as is), the
     geometry every R-dev evaluation drives, so training shows the lopsided widths the agent
-    meets there (the raw centreline profiles are much more symmetric on 6 of 12 circuits)."""
+    meets there (the raw centreline profiles are much more symmetric on 6 of 12 circuits).
+    ``width_tracks`` (default: ``tracks``) restricts the profiles to a subset, so a run can be
+    evaluated on circuits whose widths it never trained on (leave-circuits-out)."""
     ang, rmin, clen, straights, alt_s, alt_l, widths = [], [], [], [], [], [], []
     for tr in tracks:
         seg = segment(tr)
@@ -133,7 +136,8 @@ def fit_grammar(tracks: list[Track], min_angle_deg: float = 0.0, jitter: float =
     if real_widths:
         from apexzero.tracks.reference import refine_reference  # only this path needs scipy
 
-        evaluated = [t if t.meta.get("reference") == "refined" else refine_reference(t) for t in tracks]
+        src = tracks if width_tracks is None else width_tracks
+        evaluated = [t if t.meta.get("reference") == "refined" else refine_reference(t) for t in src]
         wl, wr, lens = width_profiles(evaluated)
         g = g._replace(real_w_left=f(wl), real_w_right=f(wr),
                        real_len=jnp.asarray(lens, dtype=jnp.int32))
