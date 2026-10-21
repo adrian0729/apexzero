@@ -125,3 +125,12 @@ def test_stage_eta_and_remote_line():
     assert dashboard.parse_stage(text, "anchored-keys", running=False).eta_s(now) is None
     line = dashboard.remote_line("2026-10-20 10:10:00\nRUNNING\n" + text, "runs/psychophysics-anchored-keys.log")
     assert line.startswith("running") and "25/100" in line and "ETA" in line and "30 min" in line
+
+
+def test_eta_ignores_planning_time_before_the_first_progress_line():
+    text = ("2026-10-20 10:00:00 start anchored-keys: 0/1 (P2)\n"
+            "2026-10-20 10:30:00 1/100 cell 1: verified\n"          # 30 min of planning
+            "2026-10-20 10:40:00 21/100 cell 2: verified\n")        # then 20 jobs in 10 min
+    st = dashboard.parse_stage(text, "anchored-keys", running=True)
+    now = dashboard._epoch("2026-10-20 10:40:00")
+    assert abs(st.eta_s(now) - 79 / 2.0 * 60) < 1.0                 # 79 left at 2 per min

@@ -342,6 +342,8 @@ class StageState:
     summary: str = ""              # the last informative line
     t_start: float | None = None   # epoch of the run's start line (the log's clock)
     t_last: float | None = None    # epoch of its last line
+    t_first: float | None = None   # epoch of its first progress line (solving began)
+    done_first: int = 0            # jobs done at that line
 
     def eta_s(self, now: float) -> float | None:
         """Seconds left at the run's average rate so far (jobs done / time since start);
@@ -349,7 +351,12 @@ class StageState:
         it goes (keys, anchored keys), so this is a lower bound while totals grow."""
         if self.status != "running" or not self.done or self.t_start is None:
             return None
-        rate = self.done / max(now - self.t_start, 1.0)
+        if self.t_first is not None and self.done > self.done_first:
+            # the rate since work began: a stage's planning time (before its first
+            # progress line) would otherwise inflate the estimate
+            rate = (self.done - self.done_first) / max(now - self.t_first, 1.0)
+        else:
+            rate = self.done / max(now - self.t_start, 1.0)
         return max(self.total - self.done, 0) / rate
 
 
@@ -390,6 +397,8 @@ def parse_stage(text: str, stage: str, running: bool) -> StageState | None:
         if m:
             st.done, st.total, st.when = int(m.group(2)), int(m.group(3)), m.group(1)[11:16]
             st.t_last = _epoch(m.group(1))
+            if st.t_first is None and int(m.group(3)) > 1:
+                st.t_first, st.done_first = st.t_last, int(m.group(2))
         elif len(ln) > 20 and st.status != "failed":
             st.summary, st.when = ln[20:], ln[11:16]
             st.t_last = _epoch(ln) or st.t_last
