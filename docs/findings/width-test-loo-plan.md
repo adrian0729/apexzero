@@ -24,6 +24,9 @@ rather than learning to handle varying width. This test separates the two.
 - **Comparison**: the v3 baseline seeds 0–4 (`dr-pilot-v3-tilt50a2`, `-s1` to `-s4`) on the
   same held-out circuits, fold by fold (10 values: 5 seeds × 2 folds), against the 8
   leave-out runs. One-sided exact permutation test on the mean (leave-out above baseline).
+  Labels are exchanged within each fold only, since the two folds' held-out circuits
+  differ in difficulty. The analysis is `scripts/width_loo_analysis.py`, committed
+  before any leave-out run finished.
 - **Secondary**:
   - the leakage estimate: the in-sample real-width v3 runs (`dr-realw-v3-s0..3`) on the same
     held-out circuits minus the leave-out runs;
