@@ -57,9 +57,13 @@ circuit width profiles (`train_dr.py --real-widths`) complete more R-dev circuit
 - v3: from 5.8 to 8.5; the v3 seed ranges do not overlap;
 - Sochi: from 0 of 10 seeds to 4 of 8; Norisring and Yas Marina stay at 0.
 
-Caveat: the width profiles came from the evaluated circuits. **Running now:** a
-leave-circuits-out test, with its design and analysis committed before the runs
-([plan](findings/width-test-loo-plan.md), `scripts/width_loo_analysis.py`).
+The width profiles came from the evaluated circuits, so a **leave-circuits-out test** followed,
+with its design and analysis committed before the runs ([plan](findings/width-test-loo-plan.md)):
+- on circuits whose widths they never saw, the leave-out runs complete 3.6 of 6 against the
+  baseline's 2.9;
+- the in-sample runs complete 4.25 of 6;
+- so about half the gain transfers (p = 0.063, suggestive) and about half was leakage;
+- one leave-out run completes 11 of 12 circuits, and one completes Yas Marina for the first time.
 
 **Next:** step 2, receptive fields ([design draft](interp/receptive-fields-design.md), under
 review). It compares the network's closed-loop sensitivity to the road ahead with the optimum's
@@ -86,8 +90,9 @@ later task carries the lockbox rule explicitly.
 ## Next
 
 1. Idea 1 step 2 (receptive fields), then idea 2 (costate), as above.
-2. The leave-circuits-out width test decides whether real widths go into the generator by
-   default (`generator-v1`).
+2. Width in the generator: real profiles help unseen circuits by about half the in-sample gain.
+   Before a default (`generator-v1`): more leave-out seeds, or a statistical width model that
+   copies no evaluation circuit.
 3. Paused by choice: the paper's curriculum audit (maze E5 at scale, racing PLR / SFL), K2b
    production TO-OCP labels, the drivers study, the demo, and the lockbox evaluation
    (`protocol-v1`).

@@ -6,7 +6,7 @@
   - The real-width runs used post-tag code (commit `83ebe56`) on a rented GPU whose type was not recorded.
   - The baselines used older code: seed 0 ran on the Mac CPU before the PPO refactor that ruling R18 records, and seeds 1–4 ran on a rented NVIDIA L40S.
 - **Possible leakage.** The width profiles used in training come from the same 12 R-dev circuits the agents are evaluated on, so the gain reported below may partly be leakage.
-- **Next step.** A leave-circuits-out test, designed and committed before its runs, is now running (Section 6).
+- **Leave-circuits-out test: done** (Section 7). The design and analysis were committed before its runs. About half of the in-sample gain survives on circuits whose widths the agents never saw. The primary test gives p = 0.063, so the evidence is suggestive, not conclusive.
 
 Every number below was read from, or recomputed from, the file named next to it. Files under `runs/` and `outputs/` are local and not in git.
 
@@ -179,7 +179,7 @@ The test and its one-sided direction were chosen after the result was seen. Read
 - One evaluation suite.
 - The test was not pre-registered, and it was designed after step 1's results were seen.
 
-**Leave-circuits-out test (designed, committed and running).**
+**Leave-circuits-out test (designed and committed before its runs; results in Section 7).**
 - **Where it is fixed.** The design is in [width-test-loo-plan.md](width-test-loo-plan.md) (commit `2143a59`, 21 Oct 01:54). The analysis is `scripts/width_loo_analysis.py` (commit `00c1980`, 01:56). The 8 runs started at 02:04, after both commits (`runs/activity.md`). The option it uses, `--real-widths-from`, came with `2143a59`.
 - **Folds.** The folds are fixed by alternating through `R_DEV`:
   - fold 1's widths come from `R_DEV[0::2]`: Brands Hatch, Moscow Raceway, Nürburgring, Sepang, Yas Marina, Catalunya;
@@ -197,3 +197,63 @@ The test and its one-sided direction were chosen after the result was seen. Read
 - **Lockbox.** R_TEST stays sealed. No lockbox circuit is used for widths or evaluation.
 
 A possible follow-up, not part of the plan: if the gain survives, the psychophysics ladders could test whether real-width training removes the inside-edge crashes on the transplanted corners.
+
+## 7. Leave-circuits-out results (21 Oct 2026)
+
+**How it ran.**
+- The 8 runs (`runs/dr-realw-loo-f{1,2}-s{0..3}`) trained on one rented NVIDIA RTX A6000, four at a time, at about 160k steps/s each. Each ran 199,884,800 steps, and none failed (`runs/width-loo.log`).
+- `scripts/width_loo_analysis.py` was unchanged from its commit before the runs (`00c1980`), and it was run once (`outputs/width-loo/analysis.json`).
+- R_TEST was not used.
+
+**Primary outcome: completion on held-out circuits (of 6), per run.**
+
+| Arm | On fold 2's circuits (leave-out: the fold 1 runs) | On fold 1's circuits (leave-out: the fold 2 runs) | Mean |
+|---|---|---|---|
+| v3 baseline (seeds 0–4, generated widths) | 2, 2, 2, 3, 3 | 4, 3, 3, 4, 3 | 2.90 |
+| Leave-out (real widths from the other fold only) | 3, 3, 3, 2 | 6, 5, 3, 4 | 3.62 |
+| In-sample (real widths from all 12; `dr-realw-v3`) | 5, 4, 4, 3 | 4, 4, 5, 5 | 4.25 |
+
+- **Primary test.** Leave-out minus baseline is +0.73 circuits. The exact one-sided p is 0.063, from labels exchanged within each fold (15,876 relabellings).
+- **Leakage estimate.**
+  - In-sample minus leave-out is +0.62.
+  - The leave-out runs keep 0.54 of the in-sample gain over baseline without seeing the evaluated circuits' widths.
+- **Reading, by the plan's rule.** The result falls between the plan's two clean outcomes, so it is reported as the split of the effect:
+  - about half of the in-sample gain is width robustness that transfers to unseen circuits;
+  - about half needed the evaluated circuits' own width profiles.
+- **Strength of evidence.** The plan set no significance level. At p = 0.063, with 4 seeds per fold, the transferable half is suggestive, not established.
+
+**By fold.** Descriptive, and not in the plan.
+- **Fold 1's circuits** (Brands Hatch, Moscow Raceway, Nürburgring, Sepang, Yas Marina, Catalunya), judged with fold 2's widths: baseline 3.4, leave-out 4.5, in-sample 4.5. The whole gain transfers.
+- **Fold 2's circuits** (Hockenheim, Norisring, Oschersleben, Sochi, Melbourne, Zandvoort), judged with fold 1's widths: baseline 2.4, leave-out 2.75, in-sample 4.0. Little of the gain transfers.
+  - These are the circuits with the study's hardest width cases: Norisring, Sochi and Melbourne.
+- **What does not explain it.** The two folds' source profiles vary about equally. The share of 2 m knots where either side's width changes by at least 1 m within the preceding 100 m is 0.26 (fold 1) and 0.27 (fold 2). It is at least 2 m at 0.08 and 0.11 of knots (computed post hoc from the refined profiles).
+- So the difference between folds is not simply how much width variation the training saw.
+
+**Per circuit, held out** (share of runs completing it when its widths were not seen): see `analysis.json`, `per_circuit`.
+- **Brands Hatch:** 3 of 4 leave-out runs, against 0 of 5 v3 baseline seeds.
+- **Yas Marina:** 1 of 4. This is the first time any generalist in this project has completed Yas Marina: 0 of 15 in the seed study and 0 of 8 in the in-sample width runs.
+- **Sochi:** 1 of 4 (baseline 0 of 5, in-sample 2 of 4).
+- **Melbourne:** 2 of 4 (baseline 1 of 5).
+- **Norisring:** 0 of 4.
+- **Slight losses** against baseline: Hockenheim 2/4 vs 3/5, Moscow Raceway 2/4 vs 3/5, Oschersleben 3/4 vs 4/5 and Zandvoort 3/4 vs 4/5.
+
+**All 12 circuits, per run** (descriptive; own-fold circuits count, though their widths were seen):
+
+| Run | Seed 0 | Seed 1 | Seed 2 | Seed 3 |
+|---|---|---|---|---|
+| Fold 1 | 7 | 8 | 8 | 7 |
+| Fold 2 | 9 | **11** | 4 | 7 |
+
+- The mean is 7.6, against 5.8 for the v3 baseline and 8.5 for the in-sample runs.
+- Fold 2's seed 1 completes 11 of 12. Only Yas Marina is missing. Norisring is completed for the first time, at 4.1% from the optimal lap, though its widths were in that run's training fold.
+- Fold 2's seeds range from 4 to 11, so the seed spread is large.
+
+**Lap time.** The median gap on completed held-out circuits is 8.1% for the leave-out runs, against 7.3% for the baseline and 7.9% in-sample. The real-width agents finish more often but drive slightly slower, as in Section 5.3.
+
+**Consequences.**
+- Real width profiles in training help on unseen circuits, by about half the in-sample amount, so they are worth keeping. The in-sample number (5.8 → 8.5) overstates the transferable gain.
+- Making them the generator's default (`generator-v1`) should wait for one of two things:
+  - a larger leave-out run, for example more seeds or three folds;
+  - a width model that does not copy any evaluation circuit's profile, such as a statistical model fitted to the profiles.
+- Step 2 of the psychophysics study, receptive fields, asks the mechanism directly: how the networks respond to width changes ahead, against the optimum.
+
