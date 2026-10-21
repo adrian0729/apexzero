@@ -1,4 +1,4 @@
-# Status (19 Oct 2026)
+# Status (21 Oct 2026)
 
 Phases follow [the two-track plan](plan/two-track-plan.md): K = shared core, P = paper, D = demo.
 
@@ -13,7 +13,7 @@ Phases follow [the two-track plan](plan/two-track-plan.md): K = shared core, P =
 | **K4 specialist** | Training script, timed-lap evaluation | **Gate met.** Hockenheim, 200M steps on the Mac CPU, three seeds: 100% completion at **4.80%, 4.84% and 4.75%** from the optimal lap (gate: 8%) |
 | **K5 (part)** | Procedural DR env with on-device track bank; randomised cars and hidden grip; paper level sets (A_DR / A_tail / A_OOD / pool) from disjoint seed streams; tilted and OOD generators; critic ensemble heads with per-head targets; log-spaced checkpoints | Generator matches R-dev corner statistics (radius W1/median 0.07); 1,000 strips in ~2 s |
 | **P harness (part)** | Score spec extracted from pinned JaxUED / minimax / MNA / SFL source ([spec](paper/score-spec.md)); estimators; audit rollouts; maze oracle; JaxUED maze example running unmodified | Estimators reproduce every hand-computed test vector in the spec; PVL matches JaxUED's own function; MNA closed form equals a port of the reference code to 1e-10; BFS optimum matches executed optimal plans in JaxUED's env exactly |
-| **K5 DR pilots** | 200M steps each on procedural strips, ~3 h each on the Mac | v1: zero-shot it completes 4/12 R-dev circuits at **6.2-8.6% from the optimum**; every crash is a corridor exit in a corner tighter than ~90% of the generator's ([v1](findings/dr-pilot-200M-crashes.md)). v2 (30% hairpin-heavy strips): **5/12**, adding Brands Hatch 7.4% and Hockenheim 6.7%; remaining crashes are R 12-14 m hairpins ([v2](findings/dr-pilot-v2-tilt30-crashes.md)). v3 (50% of strips from a (1/r_min)^2 tilt): **6/12** at 6.4-9.1%, but not a superset of v2: it newly completes Catalunya and newly crashes at Brands Hatch. Gate is 80%; the psychophysics study (below) is diagnosing the crashes before more variants are trained |
+| **K5 DR pilots** | 200M steps each on procedural strips; seeds 0–4 per variant ([seeds](findings/generalist-seeds.md)) | Across 5 seeds the variants do not differ (5.4, 5.8, 5.8 of 12). Seed 0: v1: zero-shot it completes 4/12 R-dev circuits at **6.2-8.6% from the optimum**; every crash is a corridor exit in a corner tighter than ~90% of the generator's ([v1](findings/dr-pilot-200M-crashes.md)). v2 (30% hairpin-heavy strips): **5/12**, adding Brands Hatch 7.4% and Hockenheim 6.7%; remaining crashes are R 12-14 m hairpins ([v2](findings/dr-pilot-v2-tilt30-crashes.md)). v3 (50% of strips from a (1/r_min)^2 tilt): **6/12** at 6.4-9.1%, but not a superset of v2: it newly completes Catalunya and newly crashes at Brands Hatch. Gate is 80%; the psychophysics study (below) is diagnosing the crashes before more variants are trained |
 | **K2a TO-OCP speed** | Exact floor-indexed lookups, hand-structured derivatives compiled to C, horizon continuation | **Gate met:** a 60 s window solves in 46-232 CPU-s (mean 97 s; gate 12 CPU-min); replay stays exact (< 5e-9). Fixed a slip-limit margin bug the benchmark exposed. Local optima differ by ~1e-4-1e-3 of J* ([report](findings/to-ocp-spike.md)) |
 | **P curriculum loop** | `ued/`: racing PLR-perp on JaxUED's own LevelSampler (chunked windows, pre-drawn assignments, per-transition loss masks, writes at episode end) and SFL; `scripts/train_ued.py` | Spec tests P-1..P-9 and S-1..S-4 pass. First 200M PLR-perp (MaxMC score, 1,000-level pool, buffer 250) pilot: **2/12 R-dev circuits** (Brands Hatch 16.7%, Sepang 12.0%) against DR v1's 4/12 at the same steps; one seed, not yet a finding |
 | **P maze E5 audit** | `maze/audit.py`: audits JaxUED's own maze checkpoints against exact BFS regret | PVL / MaxMC equal JaxUED's to 2.8e-7. Pilot at 0.7% of the default run: PVL and MaxMC correlate **negatively** with exact regret (rho ~ -0.2) while the agent-only baseline is +0.26. One seed, very early: a pilot, not a finding ([report](findings/maze-audit-pilot.md)) |
@@ -26,37 +26,47 @@ Phases follow [the two-track plan](plan/two-track-plan.md): K = shared core, P =
 
 Idea 1, "where should a racer look?", step 1 is **network psychophysics**: controlled
 single-corner stimuli presented to every agent and checkpoint, scored against the exact optimum
-of the agent's own objective from the same state. The pre-registered protocol
-([protocol](interp/psychophysics-protocol.md), rulings in its Section 12) and harness
-(`src/apexzero/interp/`, `scripts/psychophysics.py`, [implementation map](interp/IMPLEMENTATION.md))
-are built and reviewed; the pilot replication matches. Pilots seen while designing: the
-generalists complete isolated synthetic hairpins (R 9-30 m) that they crash on in real
-circuits, and the specialist crashes on a plain synthetic straight. Next: answer keys and
-positive controls, the `psychophysics-prereg-v2` tag, then rollouts. Step 2 measures
-receptive fields; idea 2 asks whether the networks encode Pontryagin's costate.
+of the agent's own objective from the same state. The protocol
+([protocol](interp/psychophysics-protocol.md), rulings R1–R31 in its Section 12) was frozen at
+the tag `psychophysics-prereg-v2` before the protocol rollouts (only pre-registered pilot
+runs came earlier); harness in
+`src/apexzero/interp/` and `scripts/psychophysics.py` ([implementation map](interp/IMPLEMENTATION.md)).
 
-## Paused (20 Oct, 15:50): resume checklist
+**Step 1 is done** ([findings](findings/psychophysics-step1.md); the confirmatory
+decisions are in `outputs/psychophysics/analysis/decisions.json`, from one run):
+- **P1a confirmed** for every generalist: G3 (primary), G1 and G2 (secondary), and all 9
+  networks across seeds (replication). On typical approaches the networks brake for a corner
+  where the optimum of their own objective does.
+- **P3 confirmed** for G3, G1 and variants v1 and v3: braking distance scales like the physics.
+- **No fast-approach overspeed was seen** in any network. P1-tail is inconclusive for G3 and G1,
+  and refuted for G2 and v2. That refutation is fragile: 1 of 3 seeds without unsettled runs.
+- **G2's real tail crashes are not single-corner failures** (P8-tail refuted). In all three, the
+  constant-width rung is necessary to rescue the car. Descriptively, 159 of 160 real-road corner
+  crashes leave by the inside edge where the inside width moves by metres. Such changes almost
+  never occur in a tight training corner.
+- **The specialists' memorisation (P4) is not decided.** S1 is class 6. S2 and S3 were not
+  testable in the confirmatory run, because their buffers were built after the tag (a logged
+  deviation). The rerun puts them in class 2, but vacuously, and they crash on a null straight.
+- **The networks are not mirror-symmetric** (P5, a control). The re-run harness gate passes, so
+  the asymmetry is learned. It is mostly a 5–12 m difference in where they brake.
 
-Psychophysics step 1, pre-tag. Done:
-- harness, with rulings R1–R31 in protocol Section 12;
-- six replicate generalists as prospective agents (R18);
-- stimuli (762 rows, 2,036 cells, F6 at half amplitude per R27);
-- validation and all 2,694 keys (verified, 0 unsolved);
-- dry-run fixes R20–R30 (13/13 planted verdicts; T, T64, Q, Qp, c2 and c3 pass).
+**Width test, acting on that result** ([findings](findings/width-test.md); exploratory, not
+pre-registered). Generalists trained on strips whose per-side widths are segments of real
+circuit width profiles (`train_dr.py --real-widths`) complete more R-dev circuits:
+- v1: from 5.4 to 8.25 of 12 (5 vs 4 seeds);
+- v3: from 5.8 to 8.5; the v3 seed ranges do not overlap;
+- Sochi: from 0 of 10 seeds to 4 of 8; Norisring and Yas Marina stay at 0.
 
-No agent has been rolled out on a protocol stimulus. When the lid closed, the
-`controls` stage was running (c1 and the planted crash controls with their viability and
-counterfactual solves, about 7 CPU-h), followed by `dryrun`. To resume:
+Caveat: the width profiles came from the evaluated circuits. **Running now:** a
+leave-circuits-out test, with its design and analysis committed before the runs
+([plan](findings/width-test-loo-plan.md), `scripts/width_loo_analysis.py`).
 
-1. Check `runs/psychophysics-controls.log` and `runs/psychophysics-dryrun.log`. If either
-   stopped, rerun `psychophysics.py controls --workers 10`, then `psychophysics.py dryrun`.
-   Both resume from the caches.
-2. If the dry run reports every required verdict, tag `psychophysics-prereg-v2` and push the tag.
-   If not, diagnose before changing anything, as for R20–R30.
-3. After the tag: `rollouts`, `anchored-keys` (about 30 CPU-h; a Massed Compute box's 12 CPUs
-   can share it), `probes`, `analyse --confirmatory`, `plots`.
+**Next:** step 2, receptive fields ([design draft](interp/receptive-fields-design.md), under
+review). It compares the network's closed-loop sensitivity to the road ahead with the optimum's
+KKT sensitivity at the same states. Taking step 2 before step 1b departs from protocol 9.6, and
+the departure is logged. Then idea 2: does the network encode Pontryagin's costate?
 
-`scripts/dashboard.py` shows everything running: stages, agent workflows, GPU.
+`scripts/dashboard.py` shows everything running: stages, agent workflows, GPU boxes.
 
 ## Protocol deviation (recorded)
 
@@ -75,18 +85,19 @@ later task carries the lockbox rule explicitly.
 
 ## Next
 
-1. K4: two more specialist seeds. K5: GPU pilot, `sim-v1` / `generator-v1` tags.
-2. Paper: maze E5 audit (checkpoints of JaxUED's DR / PLR / SFL runs scored against BFS regret);
-   the racing PLR-perp / SFL curriculum loop (JaxUED's `LevelSampler`, chunked scoring).
-3. K2b: production TO-OCP labels (speed is the open question; the plan budgets a 64-vCPU box).
+1. Idea 1 step 2 (receptive fields), then idea 2 (costate), as above.
+2. The leave-circuits-out width test decides whether real widths go into the generator by
+   default (`generator-v1`).
+3. Paused by choice: the paper's curriculum audit (maze E5 at scale, racing PLR / SFL), K2b
+   production TO-OCP labels, the drivers study, the demo, and the lockbox evaluation
+   (`protocol-v1`).
 
-## Decision you will need to make
+## Compute
 
-**A rented GPU.** Everything so far runs on the Mac CPU (~45k PPO steps/s). The paper's
-training runs total roughly 30-35B steps (E0 families plus the curricula): about 9 days of
-continuous Mac time, versus roughly 10-20 h on an RTX 4090 (~$0.34/h; the plan caps spend at
-$250). Renting needs your account and payment method, so it is yours to set up when the
-pilots are done; nothing is blocked on it yet.
+GPU training runs on Brev (Massed Compute). `scripts/gpu_setup.sh` and `scripts/gpu_sync.sh`
+set a box up and move R-dev data only; the lockbox never leaves the Mac. At about 430k PPO
+steps/s per run (two runs per L40S), a 200M-step run takes minutes instead of 3 h on the Mac.
+Boxes are deleted when their results are pulled back.
 
 ## Things found along the way (all fixed, each with a test)
 

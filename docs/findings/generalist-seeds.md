@@ -36,7 +36,7 @@ Seeds completing each circuit, of 5:
    seed spread. Across five seeds the variants do not differ in how many circuits they complete. The
    tilt narrows the spread (sd 1.7 → 0.8), which is a consistency effect, not a capability effect.
 2. **Failures are structural, not random.** Norisring, Sochi and Yas Marina are completed by 0 of 15
-   generalists and Melbourne by 1 of 15. Sepang is completed by 15 of 15. Something in those circuits
+   generalists and Melbourne by 3 of 15 (one seed per variant). Sepang is completed by 15 of 15. Something in those circuits
    defeats this training recipe whatever the seed.
 3. **The tilt trades circuits.** v3 never completes Brands Hatch (0/5; v2 5/5) but completes
    Oschersleben 4/5 (v2 0/5). The circuit totals hide systematic, variant-specific effects.
