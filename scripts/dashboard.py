@@ -498,6 +498,44 @@ def remote_line(out: str, log: str) -> str:
     return head
 
 
+_REMOTE_ST: dict = {"t": 0.0, "rows": {}}
+
+
+def remote_state(out: str, log: str) -> tuple[StageState | None, float | None, str]:
+    """(stage state, seconds left, raw last line) of a remote stage from ``remote_line``'s
+    ssh output: the box's clock, a RUNNING marker and the log tail."""
+    rows = out.strip().splitlines()
+    if not rows:
+        return None, None, "(no reply)"
+    remote_now = _epoch(rows[0])
+    running = len(rows) > 1 and rows[1] == "RUNNING"
+    stage = Path(log).stem.removeprefix("psychophysics-")
+    st = parse_stage("\n".join(rows[2 if running else 1:]), stage, running)
+    left = st.eta_s(remote_now) if (st is not None and remote_now) else None
+    return st, left, rows[-1]
+
+
+def remote_states(every: float = 60.0) -> list[tuple[str, str, StageState | None, float | None, str]]:
+    """(label, host, state, seconds left, raw) per job in runs/remote_jobs.json, read over
+    ssh at most once a minute."""
+    try:
+        jobs = json.loads(REMOTE_JOBS.read_text())
+    except (OSError, ValueError):
+        return []
+    if time.time() - _REMOTE_ST["t"] > every:
+        for j in jobs:
+            out = _run(["ssh", "-o", "ConnectTimeout=5", "-o", "BatchMode=yes", j["host"],
+                        (f"date '+%Y-%m-%d %H:%M:%S'; pgrep -f 'psychophysics.py' >/dev/null && echo RUNNING; "
+                         f"tail -n 400 {j['log']}")])
+            _REMOTE_ST["rows"][j["host"] + j["log"]] = remote_state(out, j["log"])
+        _REMOTE_ST["t"] = time.time()
+    out = []
+    for j in jobs:
+        st, left, raw = _REMOTE_ST["rows"].get(j["host"] + j["log"], (None, None, "..."))
+        out.append((j.get("label", j["log"]), j["host"], st, left, raw))
+    return out
+
+
 _BREV: dict = {"t": 0.0, "rows": None}
 
 
@@ -517,169 +555,120 @@ def gpu_instances(every: float = 60.0) -> list[str] | None:
     return _BREV["rows"]
 
 
+STAGE_NAMES = {
+    "manifest": "Snapshot inventory", "support": "Training-support statistics",
+    "stimuli": "Build stimuli", "keys": "Answer keys (optimal laps)",
+    "validate": "Solver validation", "controls": "Scripted positive controls",
+    "dryrun": "Dry run (pre-registration gate)", "rollouts": "Run agents on stimuli",
+    "anchored-keys": "Answer keys from agents' driving", "probes": "Open-loop probes",
+    "analyse": "Analysis", "plots": "Plots",
+}
+RECENT_DONE_S = 12 * 3600
+
+
+def _bar_line(name: str, where: str, frac: float | None, eta: float | None,
+              extra: str = "") -> str:
+    prog = f"{bar(frac, 10)} {frac * 100:3.0f}%" if frac is not None else " " * 15
+    when = (f"done ~{clock(time.time() + eta)} ({fmt_dur(eta)})" if eta is not None
+            else extra)
+    return f"  {GREEN}●{RESET} {name[:36]:<36} {DIM}{where[:13]:<13}{RESET} {prog}  {BOLD}{when}{RESET}"
+
+
 def render(width: int) -> list[str]:
+    """Running now (one line per job, with % done and an estimated finish), then what
+    finished recently, the machines, and Claude's notes. Idle sections are hidden."""
     now = time.time()
     procs = processes()
-    lines = [f"{BOLD}ApexZero: what's running{RESET}".ljust(60) + time.strftime("%a %d %b %H:%M:%S"),
-             machine(), ""]
+    running: list[str] = []
+    done: list[tuple[float, str]] = []
 
-    # --- queue
+    # training queue
     queue_proc = next((p for p in procs if "queue_overnight.sh" in p.cmd and "bash" in p.cmd), None)
     jobs = parse_queue(QUEUE.read_text()) if QUEUE.exists() else []
-    hist = history_sps()
-    states = [job_state(j, procs, queue_proc is not None, hist) for j in jobs]
-    t, unknown = now, False
-    finish = {}
-    for st in states:
-        if st.status in ("running", "pending", "compiling", "evaluating"):
-            if st.eta_s is None:
-                unknown = True
-            else:
-                t += st.eta_s
-            finish[st.job.name] = None if unknown else t
     if queue_proc:
-        head = f"{GREEN}● running{RESET} {fmt_dur(queue_proc.elapsed)}"
-        known = [(n, f) for n, f in finish.items() if f]
-        if finish and len(known) == len(finish):
-            head += f"   est. finish {BOLD}~{clock(known[-1][1])}{RESET}"
-        elif known:
-            nxt = list(finish)[len(known)]
-            head += (f"   est. ~{clock(known[-1][1])} until {nxt} starts"
-                     f" {DIM}(no speed history for it yet){RESET}")
-    else:
-        head = f"{DIM}not running{RESET}"
-    lines.append(f"{BOLD}TRAINING QUEUE{RESET} {DIM}(scripts/queue_overnight.sh){RESET}   {head}")
-    idle = queue_proc is None and all(st.status in ("done", "failed", "stopped") for st in states)
-    if idle and states:
-        n_done = sum(st.status == "done" for st in states)
-        lines.append(f"  {DIM}last queue: {n_done} of {len(states)} jobs done "
-                     f"({', '.join(st.job.name for st in states)}){RESET}")
-    else:
-        lines.append(f"{DIM}  #  {'job':<34} {'status':<10} {'progress':<17} {'eta':<20} {'steps':>11} "
-                     f"{'speed':>9} {'return':>7} {'crash':>7} {'ckpt':>4}{RESET}")
-    for i, st in enumerate(states if not (idle and states) else [], 1):
-        col = STATUS_COLOUR.get(st.status, "")
-        frac = st.steps / st.total if st.total else 0.0
-        prog = f"{bar(frac, 12)} {frac * 100:3.0f}%" if st.steps else ""
-        steps = (f"{st.steps / 1e6:5.1f}/{st.total / 1e6:.0f}M" if st.steps
-                 else f"{st.total / 1e6:.0f}M" if st.total else "")
-        speed = (("~" if st.estimated else "") + f"{st.sps / 1e3:.1f}k/s") if st.sps else ""
-        ret = f"{st.ret:7.1f}" if st.ret is not None else ""
-        crash = f"{st.crash * 100:6.2f}%" if st.crash is not None else ""
-        if st.status in ("running", "pending", "compiling") and st.job.name in finish:
-            f_at = finish[st.job.name]
-            eta = (("~" if st.estimated else "") + clock(f_at) + f" ({fmt_dur(st.eta_s)})"
-                   if f_at else "?")
-        elif st.status == "evaluating":
-            eta = "final evaluation"
-        elif st.status == "done":
-            eta = ""
-        else:
-            eta = st.status
-        lines.append(f"  {i}  {st.job.name:<34} {col}{st.status:<10}{RESET} {prog:<17} {eta:<20} {steps:>11} "
-                     f"{speed:>9} {ret:>7} {crash:>7} {st.ckpts or '':>4}")
-    lines.append("")
+        hist = history_sps()
+        for st in (job_state(j, procs, True, hist) for j in jobs):
+            if st.status in ("running", "compiling", "evaluating"):
+                frac = st.steps / st.total if st.total else None
+                extra = "final evaluation" if st.status == "evaluating" else "compiling"
+                running.append(_bar_line(f"Train {st.job.name}", "Mac", frac, st.eta_s, extra))
 
-    # --- psychophysics pipeline
-    tagged = _run(["git", "-C", str(ROOT), "tag", "-l", PREREG_TAG]).strip()
-    tag_txt = (f"{GREEN}tagged {PREREG_TAG}{RESET}" if tagged
-               else f"{YELLOW}not tagged yet{RESET} {DIM}(no agent is rolled out on stimuli before it){RESET}")
-    lines.append(f"{BOLD}PSYCHOPHYSICS PIPELINE{RESET} {DIM}(scripts/psychophysics.py){RESET}   {tag_txt}")
-    shown = 0
+    # psychophysics stages on this machine
     for stage in PIPELINE:
         log = RUNS / f"psychophysics-{stage}.log"
         if not log.exists():
             continue
-        running = any(f"psychophysics.py {stage}" in p.cmd for p in procs)
-        st = stage_state(log, running)
+        st = stage_state(log, any(f"psychophysics.py {stage}" in p.cmd for p in procs))
         if st is None:
             continue
-        col = STATUS_COLOUR.get(st.status, "")
-        frac = st.done / st.total if st.total else 0.0
-        prog = f"{bar(frac, 12)} {st.done}/{st.total}" if st.total else ""
-        tail = eta_text(st, now) if st.status == "running" else ""
-        lines.append(f"  {stage:<14} {col}{st.status:<8}{RESET} {prog:<24} {st.when:>5}  "
-                     + (f"{BOLD}{tail}{RESET}" if tail else f"{DIM}{st.summary}{RESET}"))
-        shown += 1
-    if not shown:
-        lines.append(f"  {DIM}no stage has run{RESET}")
-    lines.append("")
+        name = STAGE_NAMES.get(stage, stage)
+        if st.status == "running":
+            planning = st.total <= 1                 # a stage's first line is a 0/1 placeholder
+            frac = None if planning else st.done / st.total
+            running.append(_bar_line(name, "Mac", frac, None if planning else st.eta_s(now),
+                                     "starting"))
+        elif st.t_last and now - st.t_last < RECENT_DONE_S:
+            mark = f"{RED}✗ failed{RESET}" if st.status == "failed" else f"{BLUE}✓{RESET}"
+            done.append((st.t_last, f"{mark} {name}"))
 
-    # --- agent workflows
-    wfs = workflows(now=now)[:4]
-    lines.append(f"{BOLD}AGENT WORKFLOWS{RESET} {DIM}(agents done/started, last activity){RESET}")
-    if wfs:
-        for w in wfs:
-            if w.running and w.last_s > STALL_S:
-                st = f"{RED}stalled?{RESET}"
-            elif w.running:
-                st = f"{GREEN}running{RESET} "
-            else:
-                st = f"{BLUE}done{RESET}    "
-            now_doing = ", ".join(w.running) if w.running else ""
-            lines.append(f"  {w.name.removeprefix('psychophysics-')[:24]:<24} {st} {w.done}/{w.started} "
-                         f"up {fmt_dur(w.age_s):>9}, last {fmt_dur(w.last_s)} ago  {DIM}{now_doing}{RESET}")
-    else:
-        lines.append(f"  {DIM}none{RESET}")
-    lines.append("")
-
-    # --- GPU instances
-    rows = gpu_instances()
-    if rows is not None:
-        lines.append(f"{BOLD}GPU (Brev){RESET} {DIM}(brev ls, refreshed each minute){RESET}")
-        if rows:
-            for f in rows:
-                col = GREEN if f[1] == "RUNNING" else YELLOW
-                lines.append(f"  {f[0]:<28} {col}{f[1]:<10}{RESET} {f[2]:<10} {f[3]:<10} "
-                             f"{' '.join(f[5:])}")
+    # jobs on rented boxes
+    for label, host, st, left, raw in remote_states():
+        if st is not None and st.status == "running":
+            planning = st.total <= 1
+            running.append(_bar_line(label, host, None if planning else st.done / st.total,
+                                     None if planning else left, "starting"))
+        elif st is not None:
+            done.append((now, f"{BLUE}✓{RESET} {label} on {host} ({st.status})"))
         else:
-            lines.append(f"  {DIM}none{RESET}")
-        for label, host, last in remote_jobs():
-            lines.append(f"  {CYAN}{label}{RESET} {DIM}on {host}:{RESET} {last}")
+            running.append(_bar_line(label, host, None, None, raw[:40]))
+
+    # Claude's agent workflows
+    for w in workflows(now=now):
+        nm = w.name.removeprefix("psychophysics-")
+        if w.running:
+            stalled = w.last_s > STALL_S
+            extra = (f"{RED}stalled? quiet {fmt_dur(w.last_s)}{RESET}" if stalled
+                     else f"running {fmt_dur(w.age_s)}")
+            running.append(_bar_line(f"Claude: {nm} ({', '.join(w.running)})",
+                                     f"{w.done}/{w.started} agents", None, None, extra))
+        elif w.age_s < RECENT_DONE_S:
+            done.append((now - w.last_s, f"{BLUE}✓{RESET} Claude: {nm}"))
+
+    # any other experiment process
+    for p in procs:
+        if ("scripts/" in p.cmd and "python" in p.cmd.lower() and not p.cmd.startswith("uv ")
+                and "dashboard.py" not in p.cmd and "psychophysics.py" not in p.cmd
+                and not any(f"--name {j.name}" in p.cmd for j in jobs)):
+            cmd = p.cmd[p.cmd.find("scripts/"):].split()[0]
+            running.append(_bar_line(cmd, f"Mac pid {p.pid}", None, None,
+                                     f"running {fmt_dur(p.elapsed)}"))
+
+    lines = [f"{BOLD}ApexZero{RESET}   {time.strftime('%a %d %b %H:%M')}", ""]
+    lines.append(f"{BOLD}RUNNING NOW{RESET}")
+    lines += running or [f"  {DIM}nothing running{RESET}"]
+    lines.append("")
+    tagged = _run(["git", "-C", str(ROOT), "tag", "-l", PREREG_TAG]).strip()
+    lines.append(f"{BOLD}STUDY{RESET}  psychophysics pre-registration: "
+                 + (f"{GREEN}tagged{RESET}" if tagged else f"{YELLOW}not tagged yet{RESET}"))
+    if done:
         lines.append("")
-
-    # --- other experiment processes
-    queue_pids = {st.proc.pid for st in states if st.proc}
-    others = [p for p in procs if "scripts/" in p.cmd and "python" in p.cmd.lower()
-              and not p.cmd.startswith("uv ") and "dashboard.py" not in p.cmd
-              and p.pid not in queue_pids]
-    lines.append(f"{BOLD}OTHER EXPERIMENTS{RESET} {DIM}(python processes running scripts/){RESET}")
-    if others:
-        lines.append(f"{DIM}  {'pid':>6} {'elapsed':>10} {'cpu':>6} {'mem':>7}  command{RESET}")
-        for p in sorted(others, key=lambda p: -p.elapsed):
-            cmd = p.cmd[p.cmd.find("scripts/"):]
-            lines.append(f"  {p.pid:>6} {fmt_dur(p.elapsed):>10} {p.cpu:5.0f}% "
-                         f"{p.rss_mb / 1024:5.1f}GB  {cmd}")
-    else:
-        lines.append(f"  {DIM}none{RESET}")
+        lines.append(f"{BOLD}DONE IN THE LAST 12 H{RESET}")
+        for t, txt in sorted(done, reverse=True)[:6]:
+            lines.append(f"  {clock(t)}  {txt}")
     lines.append("")
-
-    # --- recently updated runs outside the queue
-    queue_names = {j.name for j in jobs}
-    recent = []
-    for m in list(RUNS.glob("*/metrics.csv")) + list(RUNS.glob("*/*/metrics.csv")) + list(RUNS.glob("*.log")):
-        name = m.parent.relative_to(RUNS).as_posix() if m.name == "metrics.csv" else m.stem
-        try:
-            age = now - m.stat().st_mtime
-        except OSError:
-            continue
-        if age < RECENT_S and name not in queue_names:
-            recent.append((age, name, m.relative_to(ROOT).as_posix()))
-    lines.append(f"{BOLD}OTHER RUNS UPDATED IN THE LAST 15 MIN{RESET}")
-    if recent:
-        for age, _, path in sorted(recent):
-            lines.append(f"  {fmt_dur(age):>8} ago  {path}")
-    else:
-        lines.append(f"  {DIM}none{RESET}")
-    lines.append("")
-
-    # --- notes
+    lines.append(f"{BOLD}MACHINES{RESET}")
+    lines.append(f"  Mac  {machine()}")
+    for f in gpu_instances() or []:
+        col = GREEN if f[1] == "RUNNING" else YELLOW
+        lines.append(f"  {f[0]}  {col}{f[1].lower()}{RESET}  {DIM}{f[-2] if len(f) > 6 else ''} {f[-1]}{RESET}")
     if NOTES.exists():
-        age = now - NOTES.stat().st_mtime
-        lines.append(f"{BOLD}NOTES{RESET} {DIM}(runs/activity.md, updated {fmt_dur(age)} ago){RESET}")
-        for ln in NOTES.read_text().splitlines()[:20]:
-            if ln.strip():
-                lines.append("  " + ln)
+        alive = {str(p.pid) for p in procs}
+        notes = [ln for ln in NOTES.read_text().splitlines() if ln.strip()
+                 and not ((m := re.search(r"\[pid (\d+)\]", ln)) and m.group(1) not in alive)][:8]
+        if notes:
+            lines.append("")
+            lines.append(f"{BOLD}CLAUDE'S NOTES{RESET} {DIM}(updated {fmt_dur(now - NOTES.stat().st_mtime)} ago){RESET}")
+            lines += ["  " + ln.lstrip("- ") for ln in notes]
     return [fit(ln, width) for ln in lines]
 
 
