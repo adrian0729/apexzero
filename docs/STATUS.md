@@ -89,7 +89,15 @@ with its design and analysis committed before the runs ([plan](findings/width-te
     Section 15. Implementing them was in progress when work paused (see the resume list below).
 - **Resume list** (in order):
   1. Check the working tree: `git status` and `git diff --stat src/apexzero/fields scripts/fields.py tests`.
-     Uncommitted changes there are the partly implemented Section 15 decisions.
+     About 3,500 uncommitted lines across 12 files are the partly implemented Section 15
+     decisions. The implementing agent was stopped at 11:30 before its review and fix stages.
+     - When stopped, the tree compiled, ruff passed, and all 144 `tests/test_fields_*.py` tests
+       passed.
+     - A backup of the diff is in `outputs/fields/wip/section15-partial.patch`.
+     - Most items show code: gate2-trained, tag pinning, provenance stamps, H4's seed-0-free
+       test, T, coverage, record hashes, dose networks and deviations.
+     - Not found under the expected names: the wiring check for networks without step 1
+       rollouts, and the confirmatory completeness check. Go through Section 15 item by item.
   2. Finish implementing Section 15. Each item is listed there, with the reviewers' proposed fixes
      kept in the session scratchpad. Then run every `tests/test_fields_*.py` and step 1's rollout
      tests in one session, and commit.
