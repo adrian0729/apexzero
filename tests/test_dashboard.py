@@ -114,3 +114,14 @@ def test_workflows_reports_running_agents_progress_and_stalls(tmp_path):
     (w,) = dashboard.workflows(tmp_path, now=t + 30 * 60)
     assert w.last_s > dashboard.STALL_S
     assert dashboard.workflows(tmp_path, now=t + 13 * 3600) == []
+
+
+def test_stage_eta_and_remote_line():
+    text = ("2026-10-20 10:00:00 start anchored-keys: 0/100 (P2)\n"
+            "2026-10-20 10:10:00 25/100 G1 cell 3: verified\n")
+    st = dashboard.parse_stage(text, "anchored-keys", running=True)
+    now = dashboard._epoch("2026-10-20 10:10:00")
+    assert st.done == 25 and abs(st.eta_s(now) - 1800.0) < 1.0      # 25 per 10 min, 75 left
+    assert dashboard.parse_stage(text, "anchored-keys", running=False).eta_s(now) is None
+    line = dashboard.remote_line("2026-10-20 10:10:00\nRUNNING\n" + text, "runs/psychophysics-anchored-keys.log")
+    assert line.startswith("running") and "25/100" in line and "ETA" in line and "30 min" in line

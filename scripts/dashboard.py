@@ -340,13 +340,34 @@ class StageState:
     total: int = 0
     when: str = ""                 # time of the last line
     summary: str = ""              # the last informative line
+    t_start: float | None = None   # epoch of the run's start line (the log's clock)
+    t_last: float | None = None    # epoch of its last line
+
+    def eta_s(self, now: float) -> float | None:
+        """Seconds left at the run's average rate so far (jobs done / time since start);
+        None until a job is done. ``now`` is on the log's clock. A stage can add jobs as
+        it goes (keys, anchored keys), so this is a lower bound while totals grow."""
+        if self.status != "running" or not self.done or self.t_start is None:
+            return None
+        rate = self.done / max(now - self.t_start, 1.0)
+        return max(self.total - self.done, 0) / rate
+
+
+def _epoch(stamp: str) -> float | None:
+    try:
+        return time.mktime(time.strptime(stamp[:19], "%Y-%m-%d %H:%M:%S"))
+    except ValueError:
+        return None
 
 
 def stage_state(log: Path, running: bool) -> StageState | None:
     """The latest run of a psychophysics stage from runs/psychophysics-<stage>.log: its
     start / progress / done / failed lines (``io.StageLog``) and the last other line."""
-    stage = log.stem.removeprefix("psychophysics-")
-    lines = _tail_text(log, 32768).splitlines()
+    return parse_stage(_tail_text(log, 32768), log.stem.removeprefix("psychophysics-"), running)
+
+
+def parse_stage(text: str, stage: str, running: bool) -> StageState | None:
+    lines = text.splitlines()
     st = None
     for ln in lines:
         m = _STAGE.match(ln)
@@ -354,10 +375,12 @@ def stage_state(log: Path, running: bool) -> StageState | None:
             if m.group(2) == "start":
                 st = StageState(stage, "running" if running else "stopped", int(m.group(4)),
                                 int(m.group(5)), m.group(1)[11:16])
+                st.t_start = st.t_last = _epoch(m.group(1))
             elif st is not None or m.group(2) != "start":
                 st = st or StageState(stage, "")
                 st.status = "running" if running else m.group(2)
                 st.done, st.total, st.when = int(m.group(4)), int(m.group(5)), m.group(1)[11:16]
+                st.t_last = _epoch(m.group(1))
                 if m.group(2) == "failed":
                     st.summary = m.group(6).strip()
             continue
@@ -366,9 +389,19 @@ def stage_state(log: Path, running: bool) -> StageState | None:
         m = _PROGRESS.match(ln)
         if m:
             st.done, st.total, st.when = int(m.group(2)), int(m.group(3)), m.group(1)[11:16]
+            st.t_last = _epoch(m.group(1))
         elif len(ln) > 20 and st.status != "failed":
             st.summary, st.when = ln[20:], ln[11:16]
+            st.t_last = _epoch(ln) or st.t_last
     return st
+
+
+def eta_text(st: StageState, now: float) -> str:
+    """'ETA ~HH:MM (1 h 05 min)' on this machine's clock, or ''."""
+    left = st.eta_s(now)
+    if left is None:
+        return ""
+    return f"ETA ~{clock(time.time() + left)} ({fmt_dur(left)})"
 
 
 
@@ -385,6 +418,7 @@ class WorkflowState:
     done: int
     started: int
     last_s: float                 # seconds since any of its files changed
+    age_s: float = 0.0            # seconds since the run started
 
 
 def workflows(base: Path = CLAUDE_PROJECT, within_s: float = 12 * 3600,
@@ -413,9 +447,11 @@ def workflows(base: Path = CLAUDE_PROJECT, within_s: float = 12 * 3600,
             elif e.get("type") == "result":
                 results.add(e.get("agentId"))
         run_id = j.parent.name.removeprefix("wf_")
+        st_j = j.stat()
+        born = getattr(st_j, "st_birthtime", None) or min(f.stat().st_mtime for f in files)
         out.append(WorkflowState(names.get(run_id, j.parent.name), [
             lab for a, lab in started.items() if a not in results],
-            len(results & set(started)), len(started), now - last))
+            len(results & set(started)), len(started), now - last, now - born))
     return sorted(out, key=lambda w: w.last_s)
 
 
@@ -434,11 +470,32 @@ def remote_jobs(every: float = 60.0) -> list[tuple[str, str, str]]:
     if time.time() - _REMOTE["t"] > every:
         for j in jobs:
             out = _run(["ssh", "-o", "ConnectTimeout=5", "-o", "BatchMode=yes", j["host"],
-                        f"tail -n 1 {j['log']}"])
-            _REMOTE["lines"][j["host"] + j["log"]] = out.strip().splitlines()[-1] if out.strip() else "(no reply)"
+                        (f"date '+%Y-%m-%d %H:%M:%S'; pgrep -f 'psychophysics.py' >/dev/null && echo RUNNING; "
+                         f"tail -n 400 {j['log']}")])
+            _REMOTE["lines"][j["host"] + j["log"]] = remote_line(out, j["log"])
         _REMOTE["t"] = time.time()
     return [(j.get("label", j["log"]), j["host"], _REMOTE["lines"].get(j["host"] + j["log"], "..."))
             for j in jobs]
+
+
+def remote_line(out: str, log: str) -> str:
+    """One status line for a remote stage from its clock, a RUNNING marker and its log
+    tail: progress, and an ETA from the rate on the box's own clock."""
+    rows = out.strip().splitlines()
+    if not rows:
+        return "(no reply)"
+    remote_now = _epoch(rows[0])
+    running = len(rows) > 1 and rows[1] == "RUNNING"
+    stage = Path(log).stem.removeprefix("psychophysics-")
+    st = parse_stage("\n".join(rows[2 if running else 1:]), stage, running)
+    if st is None:
+        return rows[-1][:120]
+    frac = st.done / st.total if st.total else 0.0
+    head = f"{st.status} {bar(frac, 12)} {st.done}/{st.total}"
+    left = st.eta_s(remote_now) if remote_now else None
+    if left is not None:
+        head += f"  ETA ~{clock(time.time() + left)} ({fmt_dur(left)})"
+    return head
 
 
 _BREV: dict = {"t": 0.0, "rows": None}
@@ -540,7 +597,9 @@ def render(width: int) -> list[str]:
         col = STATUS_COLOUR.get(st.status, "")
         frac = st.done / st.total if st.total else 0.0
         prog = f"{bar(frac, 12)} {st.done}/{st.total}" if st.total else ""
-        lines.append(f"  {stage:<14} {col}{st.status:<8}{RESET} {prog:<24} {st.when:>5}  {DIM}{st.summary}{RESET}")
+        tail = eta_text(st, now) if st.status == "running" else ""
+        lines.append(f"  {stage:<14} {col}{st.status:<8}{RESET} {prog:<24} {st.when:>5}  "
+                     + (f"{BOLD}{tail}{RESET}" if tail else f"{DIM}{st.summary}{RESET}"))
         shown += 1
     if not shown:
         lines.append(f"  {DIM}no stage has run{RESET}")
@@ -559,7 +618,7 @@ def render(width: int) -> list[str]:
                 st = f"{BLUE}done{RESET}    "
             now_doing = ", ".join(w.running) if w.running else ""
             lines.append(f"  {w.name.removeprefix('psychophysics-')[:24]:<24} {st} {w.done}/{w.started} "
-                         f"{fmt_dur(w.last_s):>9} ago  {DIM}{now_doing}{RESET}")
+                         f"up {fmt_dur(w.age_s):>9}, last {fmt_dur(w.last_s)} ago  {DIM}{now_doing}{RESET}")
     else:
         lines.append(f"  {DIM}none{RESET}")
     lines.append("")
