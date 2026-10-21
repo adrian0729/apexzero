@@ -81,9 +81,25 @@ with its design and analysis committed before the runs ([plan](findings/width-te
 - **Decisions while building.** H1-typical became descriptive, because a lawful physics reader
   (Qp) cannot pass its planned absolute band. Outside-edge gains were dropped from the
   hypotheses.
-- **Before the tag.** Running the pre-tag stages (key lists, re-polish, gates, controls, the
-  optimum's fields), fixing the float tolerance, writing the record, and a final review. Then
-  the `receptive-fields-prereg-v1` tag, and only then any trained network's fields.
+- **Pre-tag state (paused 21 Oct, about 11:45).**
+  - Done: design v3.2 (`2ebc088`); the code (`46762c6`); a first full pass of the pre-tag
+    stages, all passing (Gate 0 10,006/10,006, Gates 1–5, controls, the optimum's fields for all
+    10,006 keys with no failures, calibration).
+  - The final pre-tag review: 46 findings, 34 essential. Their decisions are in design
+    Section 15. Implementing them was in progress when work paused (see the resume list below).
+- **Resume list** (in order):
+  1. Check the working tree: `git status` and `git diff --stat src/apexzero/fields scripts/fields.py tests`.
+     Uncommitted changes there are the partly implemented Section 15 decisions.
+  2. Finish implementing Section 15. Each item is listed there, with the reviewers' proposed fixes
+     kept in the session scratchpad. Then run every `tests/test_fields_*.py` and step 1's rollout
+     tests in one session, and commit.
+  3. Re-run every pre-tag stage on the final code, so the stamped outputs match it: keys,
+     repolish, gates 1–5, gate3 `--all` on all 12 agents, calibrate, controls, opt-fields
+     (about 25 min with 8 workers), phase-ceiling.
+  4. Run `prereg` on a clean tree, commit the record, then create the annotated tag
+     `receptive-fields-prereg-v1` and push it.
+  5. After the tag: gate2-trained and the wiring check on the trained networks, then the
+     fields, then the confirmatory analysis, once.
 - **Departure from protocol 9.6.** Taking step 2 before step 1b is logged.
 - **After step 2:** idea 2, whether the networks encode Pontryagin's costate (design
   Section 12).
