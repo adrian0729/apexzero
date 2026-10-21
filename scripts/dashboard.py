@@ -613,6 +613,12 @@ STAGE_NAMES = {
     "analyse": "Analysis", "plots": "Plots",
 }
 RECENT_DONE_S = 12 * 3600
+FIELDS_STAGE_NAMES = {
+    "keys": "key lists and Gate 0", "repolish": "re-polish keys", "gate1": "Gate 1 (KKT vs re-solves)",
+    "gate2": "Gate 2 (autodiff vs FD)", "gate3": "Gate 3 (wiring)", "gate4": "Gate 4 (optimum G*)",
+    "gate5": "Gate 5 (KKT replay)", "controls": "planted controls", "calibrate": "branch tolerance",
+    "opt-fields": "optimum's fields", "phase-ceiling": "phase ceiling", "prereg": "pre-registration record",
+}
 
 
 def _bar_line(name: str, where: str, frac: float | None, eta: float | None,
@@ -660,6 +666,23 @@ def render(width: int) -> list[str]:
             mark = f"{RED}✗ failed{RESET}" if st.status == "failed" else f"{BLUE}✓{RESET}"
             done.append((st.t_last, f"{mark} {name}"))
 
+    # step 2 (receptive fields) stages: runs/fields-<stage>.log, written by scripts/fields.py
+    for log in sorted(RUNS.glob("fields-*.log"), key=lambda f: f.stat().st_mtime):
+        stage = log.stem.removeprefix("fields-")
+        st = parse_stage(_tail_text(log, 32768), stage,
+                         any(f"fields.py {stage}" in p.cmd for p in procs))
+        if st is None:
+            continue
+        name = f"Step 2: {FIELDS_STAGE_NAMES.get(stage, stage)}"
+        if st.status == "running":
+            planning = st.total <= 1
+            frac = None if planning else st.done / st.total
+            running.append(_bar_line(name, "Mac", frac, None if planning else st.eta_s(now),
+                                     "starting"))
+        elif st.t_last and now - st.t_last < RECENT_DONE_S:
+            mark = f"{RED}✗ failed{RESET}" if st.status == "failed" else f"{BLUE}✓{RESET}"
+            done.append((st.t_last, f"{mark} {name}"))
+
     # jobs on rented boxes
     for label, host, st, left, raw in remote_states():
         if st is not None and st.status == "running":
@@ -687,6 +710,7 @@ def render(width: int) -> list[str]:
     for p in procs:
         if ("scripts/" in p.cmd and "python" in p.cmd.lower() and not p.cmd.startswith("uv ")
                 and "dashboard.py" not in p.cmd and "psychophysics.py" not in p.cmd
+                and "fields.py" not in p.cmd and "apexzero.fields" not in p.cmd
                 and not any(f"--name {j.name}" in p.cmd for j in jobs)):
             cmd = p.cmd[p.cmd.find("scripts/"):].split()[0]
             running.append(_bar_line(cmd, f"Mac pid {p.pid}", None, None,

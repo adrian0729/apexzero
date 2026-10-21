@@ -1,8 +1,13 @@
-# Step 2: receptive fields (design draft v3, not frozen)
+# Step 2: receptive fields (design v3.1, not frozen)
 
-Status: draft, 21 Oct 2026. v1 had one code review, and v2 a five-lens adversarial review in
-which 57 of 59 findings survived independent verification. v3 adopts them; Section 13 maps each
-group of findings to its change. Nothing here has been computed on an agent.
+Status: 21 Oct 2026.
+- v1 had one code review.
+- v2 had a five-lens adversarial review in which 57 of 59 findings survived independent
+  verification. v3 adopted them; Section 13 maps each group of findings to its change.
+- v3.1 records the decisions made while implementing v3 in `src/apexzero/fields/` (Section 14).
+  An adversarial code review confirmed 22 findings, all fixed.
+
+Nothing here has been computed on a trained agent's field.
 
 The rules of step 1 carry over:
 - design, review, a dry run on controls with known answers, then a tag
@@ -61,9 +66,18 @@ moves one-for-one with the edge.
   computed with their own snapshot's network and are descriptive.
 
 **Width within the stimuli.**
-- Widths are 6/6 m and constant on 52 of the 60 keyed stimuli (W 12).
-- The 8 stimuli at R 6.0 and 7.5 m (`cap_binds`) carry the generator's inside cap, which narrows
-  the inside to 4.60–5.59 m over 1–7 apex knots. They are a separate stratum, and descriptive.
+- The anchored keys' 60 stimuli are all W 12. They are constant-width except the 8 at R 6.0 and
+  7.5 m, where the generator's inside cap narrows the inside to 4.60–5.59 m over 1–7 apex knots.
+- The A2 keys also include tier C stimuli at W 9 and W 15. At R 9.4 / W 15 the cap narrows the
+  inside to 6.64 m.
+- Every stimulus whose geometry has the cap binding (`Geometry.cap_binds`) is a separate,
+  descriptive stratum.
+
+**Horizon twins.** 6 tier V cells (the V2 horizon check) have both a W 400 and a W 800 nominal
+key.
+- The per-pair summaries use the 475 primary A2 keys, those whose W equals the cell's W
+  (`keys.a2_primary_refs`).
+- Gate 4 runs on all 481.
 
 **Where the pedal is saturated.**
 - The optimum's pedal at the anchored decision is full throttle in about 99% of keys.
@@ -136,7 +150,10 @@ up to max_k (s_k + clip(6 vx_k, 150, 500)) + spline support.
   - A width-blind line has G = 0.
   - The network's buffer B = c_min(0) is reported with G. To first order, a narrowing of Δ
     crashes the car when (1 − G) Δ > B.
-- The outside edge gets the same trapezoid perturbation, giving G_out.
+- The outside edge gets the same trapezoid perturbation. Its field is reported descriptively as
+  the line's outward move at the inside contact, dc_min/dΔ_out (the optimum's is about 0). No
+  outside-edge gain enters a hypothesis. A true one would need an outside-clearance outcome in
+  both pipelines, and step 1's crashes are on the inside.
 
 **Distance-resolved fields (secondary).**
 - Gaussian bumps of σ_b = 8 m (also 4 and 16 m), centred at s_1 + d. The grid is d = −20 m to the
@@ -181,8 +198,10 @@ changes are 10–100 times larger.
   - the optimum's problem is exactly the stored one (x_0 and a_0 fixed).
   - So near-car curvature bumps move x_1 identically on both sides, and frozen
     `AnchoredSolver` re-solves are valid finite differences.
-- **The loop.** A fixed-length `lax.scan` of 150 steps (horizons are 72–142), run to
-  s_c1 + 50 m. State is frozen after termination or the horizon with a safe double-`where`.
+- **The loop.** A fixed-length `lax.scan` of 256 steps, run to s_c1 + 50 m. Stored runs need
+  up to 210 (A2) and 180 (anchored finals); H3's units need up to 439, so H3 uses 512. State is
+  frozen after termination or the horizon with a safe double-`where`. A run still alive at the
+  last step is a pipeline failure, never an exclusion.
 - **Derivatives.** One `jax.vjp` of the outcome vector with respect to the three sample arrays,
   about 40 ms per key.
 
@@ -190,8 +209,12 @@ changes are 10–100 times larger.
 - **Re-polish.** The float32 track arrays are not bit-identical across the two machines that
   solved step 1's keys. So every key is re-polished once on the computing machine: one
   REFINE_IPOPT solve on the rebuilt P, warm-started from the stored primal and dual, with the
-  same bounds and a_0 fixed. The movement is recorded (states and J). A key is flagged if any
-  state moves more than 1e-6 or J changes by more than 1e-9 relative. All keys are kept.
+  same bounds and a_0 fixed.
+  - The movement is recorded per step and over each outcome's horizon (to s_c1 + 50).
+  - A key is flagged if a state moves more than 1e-6 within that horizon. All keys are kept.
+  - On keys solved on the second machine, the movement is mostly in n late in the 400-step
+    window (up to 3.4e-3 m); within the first 100 steps it is at most 3.6e-5.
+  - A failed re-polish is a 'numerical' exclusion.
 - **KKT system.** The condensed barrier KKT matrix at the re-polished point, keeping every bound
   and inequality:
   - Sigma = z_L/s_L + z_U/s_U;
@@ -203,7 +226,8 @@ changes are 10–100 times larger.
   - **Curvature:** per step, the step function's derivative with respect to its coefficient
     block, by CasADi AD.
   - **Widths:** both terms. These are the corridor-row block −b_k, and the stationarity term on
-    s_{t+1}, −ν_side · b_k′/ds. Omitting the second biases the width fields by about 4–5%.
+    s_{t+1}, −ν_side · b_k′/ds. Omitting the second changes width-bump fields by 0.5–25% on
+    real A2 keys (Gate 1's planted bug); the trapezoid shift and G* are unaffected.
 - **Adjoint.** K μ = [∇_w y; 0] for each scalar outcome y, then dy/dp = −μᵀ F_p.
 - **Exclusion.** By inertia of the condensed matrix, (n_free, m, 0), never by the raw condition
   number (about 1e21 on every key because mu = 1e-11).
@@ -224,7 +248,7 @@ geometries (R, θ). Approaches are reported separately and pooled.
 
 | Measure | Definition |
 |---|---|
-| G, G_out, B | Edge-tracking gains and buffer (Section 4) |
+| G, B | Edge-tracking gain and buffer (Section 4); outside-shift field descriptive |
 | r_in | Δv_apex,net / Δv_apex,opt for the inside-edge shift (speed response to width) |
 | Gain g | Signed projection ⟨net, opt⟩ / ⟨opt, opt⟩ of a distance-resolved field |
 | Shape ρ | Cosine similarity of the net and opt fields over d |
@@ -276,15 +300,16 @@ geometries, fixed at the tag. Variant-level claims need 2 of 3 seeds (R18). Seed
 
 ### Secondary
 
-**H1-typical, lawful curvature reading.**
+**H1-typical, curvature reading (descriptive since v3.1).**
 - Data: A2 keys, in each agent's bulk regime (as P1a). Outcome s_b first, then v_apex.
-- Pass requires all of the following:
-  - gain g in [0.8, 1.25];
-  - location within ± the local preview spacing (12–14 m at the corner);
-  - ρ above the cross-geometry null band (Section 8).
-- Each criterion is also paired by key against the **blind-pedal control**: the same network
-  with its pedal replaced by its recorded pedal tape. The criterion must exceed the control's
-  CI.
+- **Why descriptive.** The dry run showed the planned absolute bands cannot be calibrated. Step
+  1's Qp is a lawful QSS reader of preview curvature, yet against the TO-OCP it has a gain of
+  only 0.19–0.37 and ρ of 0.50–0.69. A band of [0.8, 1.25] would call a lawful physics reader
+  unlawful.
+- **What is reported**, each paired by key against the blind-pedal control (the same network with
+  its pedal replaced by its recorded pedal tape):
+  - g, location and the shape specificity Δρ (Section 14), against the optimum and against Qp;
+  - the unlawful readers (c1, c2, c3) judged against Qp, their base law.
 
 **H1-fast.**
 - Data: the A1 and tier B anchored keys.
@@ -380,15 +405,21 @@ reference; they are expected to be rare.
 | RF-C5 | Planted edge tracker: a scripted line keeper that holds n = w_in − 1 − B0 through the corner (G = 1 by construction), and one that holds a fixed n (G = 0) | G within 0.02 of 1 and of 0 |
 
 **Nulls and ceilings.**
-- **Cross-geometry null.** ρ, g and location between the optimum's fields at keys of different
-  geometry, aligned at s_c0. This is how much any corner-shaped field earns.
+- **Shape specificity** replaces the cross-geometry band. The band's top was the maximum ρ over
+  pairs of different geometry, which is about 0.995, so it could never be passed. The
+  specificity is Δρ = ρ(net, own key's optimum) − median ρ(net, optimum at far geometries), on
+  turn-recoded fields aligned at s_c0. Positive control: another phase of the same cell gives
+  Δρ > 0. Negative control: a far geometry's field gives Δρ < 0.
 - **Phase ceiling.** The optimum's fields across the phases of one cell.
 - **Unlawful readers through the network pipeline,** on the A2 keys:
   - Qp, which reads preview curvature from the observation;
   - c1 (15 m late);
   - c2 (curvature-saturating);
   - c3 (time-to-corner).
-  Each must land outside H1-typical's pass band on the criterion it violates.
+  Each is judged against Qp, its base law, on the criterion it violates:
+  - c1 by its s_b offset;
+  - c3 by its s_b gain ratio;
+  - c2 by its v_apex gain ratio on a capped corner.
 - **RF-C3,** a random actor. Used only for the instantaneous steer field, since it does not
   survive to s_c1.
 
@@ -476,3 +507,123 @@ The plan:
 
 Refuted by both verifiers: "dropping the pedal-state bounds leaves the stored multipliers
 non-stationary" and "mirror pooling cancels every curvature field".
+
+## 14. Implementation decisions (v3.1; fixed at the tag)
+
+Code: `src/apexzero/fields/` and `scripts/fields.py`, with 124 tests in `tests/test_fields_*.py`.
+Each decision below is implemented and tested.
+
+**Conventions**
+- Bumps have unit peak, G_d(s) = exp(−((s − s_1 − d)/σ_b)²/2).
+- Steer fields are in the raw sign until the measures stage recodes them toward the turn.
+- **Validity** is stricter than step 1's `reached`: an outcome needs the run alive at some
+  s ≥ s_c1 + 50, and s_b also needs an onset before s_apex.
+- The optimum's c_min includes the corridor's 3 cm safety margin, so it is 0.03 at the contact.
+  The network's c_min is measured against the termination boundary. So B carries a 3 cm offset
+  between the two sides; G, a derivative, does not.
+- **G's plateau rule.** G = σ dn/dΔ holds only where the trapezoid is flat. A key whose c_min
+  argmin has e(s*) < 0.99 is excluded as 'argmin off plateau'. On all 481 A2 optimum keys,
+  e(s*) ≥ 0.9999999999.
+- **Near-tie flags** follow the literal rule of Section 3. On the optimum they flag c_min on about
+  26% of A2 keys, mostly 1e-9-level minima along an active contact arc. This is immaterial
+  there, because the optimum's c_min field is zero. Flags are reported and keys kept.
+- **κ clipping** is decided per outcome, over the observations that outcome reads. Step 1's
+  "before s_c1" window is also recorded. Raw-observation policies never count as clipped.
+
+**Optimum**
+- The fixed-active-set map has kinks, so LICQ fails structurally wherever full throttle holds:
+  the pedal-state bound is implied by the pedal-command bound. The barrier K stays nonsingular.
+- Inertia is certified: rounding-level pivots are recounted from eigenvalues with
+  |λ| > n·eps·‖M‖. On all 481 A2 keys no pivot was at rounding level (462 by LDL, 19 by
+  Cholesky).
+- The adjoint residual must be ≤ 1e-10. On all 481 A2 keys it was at most 1.6e-13, with no
+  barrier fallback.
+
+**Gate 1**
+- **Directions.** Gates 1, 2 and 5 share one direction set (`perturb.gate_directions`), 26 per
+  key:
+  - each feature near the car (s_1 − 10, s_1, s_1 + 10) and at the corner (s_c0 − 20, s_c0,
+    s_apex, s_c1, s_c1 + 20);
+  - plus both trapezoids;
+  - near and corner bumps are separate vectors.
+  - Every stratum must have scored corner vectors of v_apex and s_b, for curvature and the
+    inside width.
+- **Re-solve tolerance.** Re-solves use the key solver's own frozen functions and REFINE_IPOPT
+  options with tol = 1e-10 (`fd_solver`). The frozen refine tolerance, 1e-7, stops after 0
+  iterations on small perturbations.
+- **Steps and zero fields.**
+  - FD steps per unit-peak direction are 1e-6 for curvature and 1e-4 for widths. A width step of
+    1e-3 crosses mm-scale active-set kinks.
+  - A vector that both KKT and FD put below 1e-6 is a zero field. It is left out of the pool and
+    counted.
+  - c_min is scored against its explicit edge term. c_line, the line's own move with the edge
+    held, is a separate quantity.
+  - The rule applies pooled and within each quantity.
+- **Strata.** 50 keys (A2/W400 14, A2/W800 6, v1/v2/v3 anchored 8 each, specialists 6), drawn on
+  the seed stream `gate1_sample`.
+- **Result** (pre-tag): 1,121 scored vectors and 879 zero fields.
+  - Median error 1.4e-7, p95 1.8e-4, max 0.055. The tail is re-solve resolution at
+    weakly-active kinks.
+  - Planted bugs fail: drop_width_mixed p95 0.38, flip_lam_g median 0.77, swap_widths
+    median 1.0.
+
+**Gate 2**
+- FD steps are capped at 1e-5 per unit κ and 1e-3 per unit width, with RICH_RTOL 1e-4.
+- The zero-field rule applies.
+- A valid outcome with no counted comparison fails its row.
+
+**Gate 3 and branch consistency**
+- Teacher-forced on every key with a det row.
+- STEP_TOL and ACCEL_TOL are about 10× the spreads seen.
+- BRANCH_TOL is derived before the tag without running any trained network's free loop
+  (`network.branch_tolerance`). Per outcome, it is 5 × the largest float32/float64 outcome
+  spread per unit of teacher-forced action error, measured on the controls, times the trained
+  agents' largest teacher-forced action error over every key (Gate 3 on all agents).
+- Planted wiring errors (wrong obs_rms, prev_action zeroed, accel zeroed) must fail on trained
+  agents' rows, where they fail by more than 1000×.
+
+**Gates 4 and 5**
+- Gate 4: on all 481 A2 keys, |G* − 1| ≤ 1.7e-9.
+- Gate 5 is compared at the optimum's picks:
+  - the replay's own plan values must agree to 1e-8;
+  - a different pick counts as a tie;
+  - δa* ≈ 0 is checked at active bounds to 1e-3 of max |δa*|;
+  - the env's action clip is kept.
+- The decision steer is reported as a decision check (identity 1e-15), not as cross-pipeline
+  evidence.
+- Result on 50 keys: v_apex at most 2.2e-10, s_b 1.1e-13, c_line 6.2e-9. A planted 10 m road
+  misalignment fails on all 50.
+
+**Controls**
+- **AD-safe Q family.** Step 1's Q family is not AD-correct: sign(κ)·us(|κ|) has zero derivative
+  at κ = 0, the bisection in `law_a` has none, and `grip_profile` gives NaN. `fields/controls.py`
+  holds value-identical AD-safe replacements; the Qp adapter reproduces the frozen Qp bit for
+  bit.
+- RF-C5's keeper corners at 6 m/s². It reaches s_c1 + 50 within the loop only on the 45° A2
+  cells 340, 342, 344 and 345.
+- The blind-pedal control reproduces its base run bit for bit.
+- **Phase ceiling** (median ρ over 113 cells): s_b 0.984, v_apex 0.978, steer 0.993. v_apex's
+  minimum is −0.91, so on some cells the optimum's own v_apex field changes shape across phases.
+
+**Statistics**
+- Weighted median: the mean of the lower and upper weighted medians.
+- P7 cells: the median over phases within each direction, then the mean of the two directions.
+- The H1 location band is 12 m.
+- H1-fast's "about 0" for G2 means the CI contains 0 (descriptive).
+
+**Freeze**
+- `fields/prereg.py` writes the record:
+  - the key lists with content hashes;
+  - each key's re-polish movement;
+  - the design hash, the design-document hash and the code hash.
+- After `receptive-fields-prereg-v1` (and `psychophysics-prereg-v2`) both exist:
+  - nothing under `src/apexzero` or `scripts/fields.py` may change;
+  - docs-only commits are allowed;
+  - the record must match the disk.
+- `--post-tag-deviation` logs a deviation instead of refusing.
+
+**Budget updates**
+- VJP: 75–85 ms per key.
+- Gate 1: 104 re-solves per key, 133 s for 50 keys with 5 workers.
+- Re-polish of all keys: about 15 min with 4 workers.
+
