@@ -533,6 +533,9 @@ def remote_states(every: float = 60.0) -> list[tuple[str, str, StageState | None
         return []
     if time.time() - _REMOTE_ST["t"] > every:
         for j in jobs:
+            if j.get("kind") == "train":
+                _REMOTE_ST["rows"][j["host"] + j["dir"]] = remote_training(j)
+                continue
             out = _run(["ssh", "-o", "ConnectTimeout=5", "-o", "BatchMode=yes", j["host"],
                         (f"date '+%Y-%m-%d %H:%M:%S'; pgrep -f 'psychophysics.py' >/dev/null && echo RUNNING; "
                          f"tail -n 400 {j['log']}")])
@@ -540,9 +543,46 @@ def remote_states(every: float = 60.0) -> list[tuple[str, str, StageState | None
         _REMOTE_ST["t"] = time.time()
     out = []
     for j in jobs:
-        st, left, raw = _REMOTE_ST["rows"].get(j["host"] + j["log"], (None, None, "..."))
-        out.append((j.get("label", j["log"]), j["host"], st, left, raw))
+        key = j["host"] + (j["dir"] if j.get("kind") == "train" else j["log"])
+        st, left, raw = _REMOTE_ST["rows"].get(key, (None, None, "..."))
+        out.append((j.get("label", key), j["host"], st, left, raw))
     return out
+
+
+def remote_training(j: dict) -> tuple[StageState | None, float | None, str]:
+    """Training runs on a box ({"kind": "train", "dir", "names", "steps"}): their
+    metrics.csv (timesteps, sps) combined into one state, done = runs' mean progress in
+    percent, ETA = the slowest run's remaining steps over its speed."""
+    names = j.get("names", [])
+    cmd = "; ".join(f"echo @{n}; head -1 {j['dir']}/{n}/metrics.csv 2>/dev/null; "
+                    f"tail -1 {j['dir']}/{n}/metrics.csv 2>/dev/null; "
+                    f"test -f {j['dir']}/{n}/eval_rdev.json && echo EVALDONE" for n in names)
+    out = _run(["ssh", "-o", "ConnectTimeout=5", "-o", "BatchMode=yes", j["host"], cmd])
+    total = float(j.get("steps", 200e6))
+    fracs, lefts, done_runs = [], [], 0
+    for block in out.split("@")[1:]:
+        rows = block.strip().splitlines()[1:]
+        if rows and rows[-1] == "EVALDONE":
+            done_runs += 1
+            fracs.append(1.0)
+            continue
+        if len(rows) >= 2 and "timesteps" in rows[0]:
+            hdr, last = rows[0].split(","), rows[1].split(",")
+            try:
+                ts, sps = float(last[hdr.index("timesteps")]), float(last[hdr.index("sps")])
+            except (ValueError, IndexError):
+                fracs.append(0.0)
+                continue
+            fracs.append(min(ts / total, 1.0))
+            lefts.append(max(total - ts, 0.0) / max(sps, 1.0))
+        else:
+            fracs.append(0.0)
+    if not names:
+        return None, None, "(no runs listed)"
+    st = StageState("train", "running" if done_runs < len(names) else "done",
+                    done=round(100 * sum(fracs) / len(names)), total=100)
+    left = max(lefts) if lefts else None
+    return st, left, f"{done_runs}/{len(names)} runs evaluated"
 
 
 _BREV: dict = {"t": 0.0, "rows": None}
