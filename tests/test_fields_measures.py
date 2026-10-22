@@ -63,6 +63,33 @@ def test_edge_gains_of_planted_lines():
     assert np.isnan(MS.edge_gain(nan, LM, 1))
 
 
+def test_corridor_translation_gain_T():
+    """Design Section 15: T = G + G_out is the line's inward move when the whole corridor
+    translates inward (inside widened, outside narrowed). A line held at a fixed fraction f
+    of the road from the inside (inside, centre or outside anchored) reads dc/dDelta_in = f
+    and dc/dDelta_out = f, so G = 1 - f, G_out = f and T = 1; a width-blind (fixed-n) line has
+    G = G_out = T = 0; and T equals the directional derivative of the line's move along the
+    translation (Delta_in = +1, Delta_out = -1)."""
+    j_star = int(LM.s_apex / 2.0)
+    for sigma in (1, -1):
+        inside = PT.side_feature(sigma, "inside")
+        outside = PT.side_feature(sigma, "outside")
+        for f in (0.0, 0.3, 0.5, 1.0):
+            imp = _impulse(**{inside: f * _point(j_star), outside: f * _point(j_star)})
+            em = MS.edge_measures(imp, imp, 1.0, LM, sigma)
+            assert em.G == pytest.approx(1 - f) and em.G_out == pytest.approx(f)
+            assert em.T == pytest.approx(1.0)
+            shift = PT.edge_shift(N, LM, sigma, "inside", 1.0)
+            back = PT.edge_shift(N, LM, sigma, "outside", -1.0)
+            corridor = PT.Samples(*(np.asarray(a) + np.asarray(b) for a, b in zip(shift, back,
+                                                                                    strict=True)))
+            # the line's move sigma dn = e(s*) - dc/dDelta along the translation (e = 1 here)
+            assert em.T == pytest.approx(1.0 - MS.along(imp, corridor))
+        blind = MS.edge_measures(_impulse(**{inside: _point(j_star)}), _impulse(), 1.0, LM, sigma)
+        assert blind.G == pytest.approx(0.0) and blind.G_out == pytest.approx(0.0)
+        assert blind.T == pytest.approx(0.0)
+
+
 def test_bump_field_of_a_point_impulse_is_the_bump():
     s1, sb = 300.0, 8.0
     d = PT.d_grid(80.0)
@@ -178,12 +205,61 @@ def test_pair_values_and_exclusions():
         MS.pair_value(rows + _rows([1] * 4, [1] * 4, pair=8))
 
 
+def test_pair_completeness_counts_the_listed_keys():
+    """Design Section 15: a pair's expected keys are its keys in the frozen list (the rows
+    passed), not 2 x n_phases; undefined above 3/8 of them excluded; directions weighted
+    equally; a direction with no valid key leaves the pair to the other."""
+    nominal = _rows([1.0], [3.0])                          # a nominal-only pair: 2 keys
+    pv = MS.pair_value(nominal)
+    assert pv.defined and pv.n_keys == 2 and pv.n_excluded == 0 and pv.value == 2.0
+    one = MS.pair_value(_rows([1.0], [np.nan]))            # 1 of 2 excluded: undefined
+    assert not one.defined and np.isnan(one.value)
+    assert MS.pair_value(nominal, (1,)).defined and MS.pair_value(nominal, (1,)).n_keys == 1
+    assert not MS.pair_value(_rows([np.nan], [3.0]), (1,)).defined
+    assert [MS.max_excluded(n) for n in (1, 2, 4, 5, 8, 32)] == [0, 0, 1, 1, 3, 12]
+    # pair 189's shape: 4 left keys and 1 right key
+    five = _rows([0.0, 0.0, 0.0, 0.0], [10.0])
+    pv5 = MS.pair_value(five)
+    assert pv5.n_keys == 5 and pv5.defined
+    assert pv5.value == pytest.approx(MS.weighted_median([0, 0, 0, 0, 10], [1 / 8] * 4 + [1 / 2]))
+    assert pv5.value == pytest.approx(5.0)                 # the lone right key carries half
+    lost_right = MS.pair_value(_rows([0.0, 1.0, 2.0, 3.0], [np.nan]))
+    assert lost_right.defined and lost_right.value == pytest.approx(1.5)   # left alone
+    assert not MS.pair_value(_rows([0.0, np.nan, 2.0, 3.0], [np.nan])).defined
+    # a full 8-key pair is unchanged: 3 exclusions defined, 4 undefined
+    assert MS.pair_value(_rows([1, 2, 3, 4], [np.nan, np.nan, np.nan, 20])).defined
+
+
 def test_asymmetry_index():
     rows = _rows([1.0, 2.0, np.nan, 4.0], [0.5, 1.0, 1.0, 1.0])
     asym = MS.asymmetry(rows)
     assert [a["phase"] for a in asym] == [0, 1, 3]
     assert [a["delta"] for a in asym] == [0.5, 1.0, 3.0]
     assert MS.asymmetry_pairs(rows) == {(7, "A2"): 1.0}
+    # a duplicate partner (two keys claiming one pair, approach, phase and direction) raises
+    with pytest.raises(ValueError, match="duplicate mirror partner"):
+        MS.asymmetry(rows + rows[:1])
+
+
+def test_asymmetry_summary_over_pairs():
+    """The index every summary carries (analysis.asymmetry_summary): per pair the median delta
+    over its partnered phases, then the median over pairs with a cluster bootstrap over
+    geometries; a duplicate partner leaves it undefined with the reason, never silently."""
+    from apexzero.fields import analysis as A
+
+    rows = (_rows([1.0, 2.0, np.nan, 4.0], [0.5, 1.0, 1.0, 1.0], pair=7, R=20.0)
+            + _rows([0.0] * 4, [2.0] * 4, pair=8, R=40.0)
+            + _rows([3.0] * 4, [0.0] * 4, pair=9, R=80.0))
+    a = A.asymmetry_summary(rows, n=500)
+    assert a["n_pairs"] == 3 and a["n_phases"] == 11
+    assert a["est"] == pytest.approx(1.0)                 # median of {1, -2, 3}
+    assert a["lo"] <= a["est"] <= a["hi"]
+    assert A.summarise(rows, None, 500)["asymmetry"] == a
+    assert "asymmetry" not in A.summarise(rows, None, 500, asym=False)
+    one_side = [r for r in rows if r.direction == 1]
+    assert A.asymmetry_summary(one_side, n=500)["n_pairs"] == 0
+    bad = A.asymmetry_summary(rows + rows[:1], n=500)
+    assert bad["n_pairs"] == 0 and "duplicate" in bad["error"] and np.isnan(bad["est"])
 
 
 def test_cluster_bootstrap_resamples_whole_clusters():
@@ -325,11 +401,23 @@ def test_exclusion_reasons_in_order_and_pipeline_failures():
     assert MS.exclusion_reason(False, off_plateau=True) == "argmin off plateau"
     assert MS.exclusion_reason(False, False, True, numerical=True) == "numerical"
     assert MS.exclusion_reason(False, True, numerical=True) == "gate 3"
-    with pytest.raises(ValueError, match="pipeline failure"):
-        MS.exclusion_reason(True, why_invalid=MS.LOOP_EXHAUSTED)
-    with pytest.raises(ValueError, match="pipeline failure"):
-        MS.coverage([{"agent": "G1", "snapshot": "1", "outcome": "c_min",
-                      "reason": MS.LOOP_EXHAUSTED}])
+    # Gate 4 is its own reason, after inertia and before kappa clipping
+    assert MS.exclusion_reason(False, gate4_failed=True) == "gate 4"
+    assert MS.exclusion_reason(False, False, True, gate4_failed=True) == "inertia"
+    assert MS.exclusion_reason(False, kappa_clipped=True, gate4_failed=True) == "gate 4"
+    # design Section 15: a pipeline failure is an exclusion of that key, counted first
+    assert MS.exclusion_reason(True, why_invalid=MS.LOOP_EXHAUSTED) == MS.PIPELINE_LOOP
+    assert MS.exclusion_reason(False, loop_exhausted=True) == MS.PIPELINE_LOOP
+    assert MS.exclusion_reason(True, True, no_optimum=True) == MS.PIPELINE_NO_OPT
+    assert MS.exclusion_reason(True, True, branch_failed=True) == MS.PIPELINE_BRANCH
+    assert MS.exclusion_reason(False, no_optimum=True, branch_failed=True) == MS.PIPELINE_NO_OPT
+    assert MS.EXCLUSION_REASONS[:3] == MS.PIPELINE_REASONS
+    cov = MS.coverage([{"agent": "G1", "snapshot": "1", "outcome": "c_min",
+                        "reason": MS.PIPELINE_LOOP, "key_id": "k1"},
+                       {"agent": "G1", "snapshot": "1", "outcome": "c_min", "reason": "",
+                        "key_id": "k2"}])["G1@1"]["c_min"]
+    assert cov["excluded"] == {MS.PIPELINE_LOOP: 1} and cov["pipeline_keys"] == ["k1"]
+    assert cov["share_excluded"] == 0.5 and cov["descriptive"]
 
 
 def test_coverage_counts_and_the_30_percent_rule():
@@ -341,3 +429,9 @@ def test_coverage_counts_and_the_30_percent_rule():
     s1, g1 = cov["S1@1"]["c_min"], cov["G1@2"]["c_min"]
     assert s1["n"] == 10 and s1["excluded"] == {"invalid outcome": 7} and s1["descriptive"]
     assert g1["share_excluded"] == pytest.approx(0.1) and not g1["descriptive"]
+    # the boundary: exactly 30% excluded is not descriptive ('exceeds 30%'), 40% is
+    for k, want in ((3, False), (4, True)):
+        rr = ([{"agent": "A", "snapshot": "1", "outcome": "G", "reason": "gate 3"}] * k
+              + [{"agent": "A", "snapshot": "1", "outcome": "G", "reason": ""}] * (10 - k))
+        c = MS.coverage(rr)["A@1"]["G"]
+        assert c["share_excluded"] == k / 10 and c["descriptive"] is want

@@ -18,15 +18,25 @@ width (``perturb.edge_shift``, perturb.py:113; +1 widens that side):
   [s_c0 - 20, s_c1 + 20], and a width-blind line at an argmin with e(s*) < 1 would score
   G = 1 - e(s*) instead of 0, biasing H2' toward 'lawful'. Rule fixed at the tag (option (b)
   of the review): G = 1 - dc_min/dDelta is kept, and a key with e(s*) < ``EDGE_PLATEAU`` = 0.99
-  is excluded for the reason 'argmin off plateau' (``EdgeMeasures.on_plateau``), on both sides.
+  is excluded for the reason 'argmin off plateau' (``EdgeMeasures.on_plateau``). The rule is
+  applied to the network's argmin; the optimum's e(s*) is recorded per key (opt-fields'
+  'on_plateau') and is >= 1 - 1.5e-10 on every A2 key, so it excludes nothing there.
   G* = 1 on an active inside contact; G = 0 for a width-blind line on the plateau.
 - G_out = dc_min/dDelta_out = -sigma dn(s*)/dDelta_out (``outside_gain``): how far the line
-  moves outward at the inside argmin s* per metre the outside edge moves outward. c_min does
-  not read the outside width, so this is the line's move alone. The design leaves G_out
-  undefined beyond "the same trapezoid on the outside edge"; ``1 - dc_min/dDelta_out``
+  moves outward at the inside argmin s* per metre the outside edge moves outward (+1 widens
+  the outside). c_min = w_in - 1 - sigma n does not read the outside width, so this is the
+  line's move alone, with the sign of design Section 15's G_out. ``1 - dc_min/dDelta_out``
   (``kkt.edge_gain(side='outside')``) is 1 for every line that ignores the outside edge, the
-  optimum included, so it is not used. An outside-clearance outcome would need a fifth
-  outcome in both pipelines (open issue of this stage).
+  optimum included, so it is not used.
+- T = G + G_out (design Section 15; ``EdgeMeasures.T``): the line's move toward the inside
+  when the whole corridor translates toward the inside by Delta (Delta_in = +Delta,
+  Delta_out = -Delta): sigma dn/dDelta = sigma dn/dDelta_in - sigma dn/dDelta_out, which is
+  G + G_out wherever G = sigma dn/dDelta_in, i.e. on the trapezoid's plateau (the plateau rule
+  below excludes the other keys, so T and G share their exclusions). A corridor-anchored line
+  (inside, outside or centre, or a fixed fraction of the road) has T = 1, a width-blind
+  (fixed-n) line T = 0, the optimum T* ~ 1. Descriptive labels (``analysis.t_label``):
+  'width-blind' if T's CI upper end is <= 0.5, 'corridor-anchored' if the CI lies within
+  [0.8, 1.2], else 'mixed'.
 - B = c_min at the base point (the buffer); to first order an inside narrowing Delta crashes
   the car when (1 - G) Delta > B. An invalid c_min (B NaN) makes every edge measure NaN.
 - r_in = (dv_apex/dDelta_in)_net / (dv_apex/dDelta_in)_opt (``speed_ratio``).
@@ -62,14 +72,17 @@ outside (``perturb.recode``, perturb.py:148), and for the steer outcome the outc
 flipped on right-hand corners (``perturb.turn_steer``).
 
 **Mirror pairs** (protocol 9.1, docs/interp/psychophysics-protocol.md:858-866, and design
-Section 6). The unit is the mirror pair (geometry x approach): 2 directions x 4 phases = 8
-keys. ``pair_value`` is the median over the pair's keys with both directions weighted
-equally (``weighted_median``: weight 1 / (2 n_dir) per key, the mean of the lower and upper
-weighted medians, so equal weights give ``np.median``); a pair is undefined if more than 3
-of its 8 keys are excluded (more than floor(3/8 n) of n in general, so 1 of 4 when one
-direction is reported alone). P7's 16-phase
-cells first take the median over phases within each direction; the pair value is then the
-mean of the two direction medians. Excluded keys are NaN. The asymmetry index is
+Sections 6 and 15). The unit is the mirror pair (geometry x approach). Its expected keys are
+its keys in the frozen list (design Section 15, 'Pair completeness'), i.e. the rows passed:
+every listed key has a row (NaN when excluded), so the 11 nominal-only A2 pairs are two-key
+pairs and pair 189 a five-key pair. ``pair_value`` is the median over the pair's keys with
+both directions weighted equally (``weighted_median``: weight 1 / (2 n_dir) per valid key,
+the mean of the lower and upper weighted medians, so equal weights give ``np.median``); a
+direction with no valid key leaves the pair to the other direction alone. A pair is
+undefined when more than 3/8 of its n listed keys are excluded (more than floor(3 n / 8):
+3 of 8, 1 of 5, 0 of 2, 1 of 4 when one direction of a full pair is reported alone). P7's
+16-phase cells first take the median over phases within each direction; the pair value is
+then the mean of the two direction medians. Excluded keys are NaN. The asymmetry index is
 m_L - m_R over mirror partners (same pair, approach and phase; ``asymmetry``).
 
 **Agents** (``agent_summary``): the median over geometries (R, theta) of the pair values (a
@@ -79,12 +92,17 @@ median), with a 95% percentile interval from a bootstrap that resamples geometri
 ``FIELDS_STREAMS``). Reported for left keys, right keys and pooled (``by_direction``).
 ``h2_decision`` applies H2''s bands (design Section 7) to such an interval.
 
-**Coverage** (``coverage``, design Section 8): exclusions per (agent, snapshot), outcome and
-reason (``EXCLUSION_REASONS``, assigned in that order by ``exclusion_reason``: invalid outcome,
-then gate 3, then numerical (the optimum's key did not re-polish or failed its adjoint check),
-then inertia, then kappa clipping, then argmin off plateau); above 30% excluded,
-the agent is descriptive for that outcome. A pipeline failure (``PIPELINE_FAILURES``: the loop
-exhausted) is never an exclusion: ``coverage`` refuses it, so the stage that produced it fails.
+**Coverage** (``coverage``, design Sections 8 and 15): exclusions per (agent, snapshot),
+outcome and reason (``EXCLUSION_REASONS``, assigned in that order by ``exclusion_reason``):
+first the pipeline failures (``PIPELINE_REASONS``: the loop exhausted at the key, no optimum
+row for the key, a branch-consistency failure of the float64 loop against the float32 run),
+then invalid outcome, gate 3 (the teacher-forced wiring check), numerical (the optimum's key
+did not re-polish or failed its adjoint check), inertia (the optimum's certified inertia),
+gate 4 (G* outside [0.98, 1.02]), kappa clipping and argmin off plateau. The order decides
+only which reason a key is counted under, never whether it is excluded. Since v3.2 a
+pipeline failure fails that key only and counts as an exclusion (listed per network,
+``pipeline_keys``); every reason counts toward the share, and above 30% excluded the agent is
+descriptive for that outcome.
 """
 
 from __future__ import annotations
@@ -109,18 +127,24 @@ SPLINE_REACH = 2 * DS       # m: the cubic B-spline's support beyond the last sa
 BOOTSTRAP_N = 20_000        # as step 1's descriptive bands (analysis.py:488)
 LEVEL = 0.95
 FIELDS_STREAMS = {"bootstrap": 101, "gate1_sample": 102, "dose_sample": 103,
-                  "permutation": 104}   # seed streams of step 2
+                  "permutation": 104, "gate2_trained": 105}   # seed streams of step 2
 H2_DEFICIT_HI = 0.5         # H2': confirm (deficit) if the CI's upper end is <= 0.5
 H2_LAWFUL = (0.8, 1.2)      # H2': lawful if the CI lies within
 H2_OVER_LO = 1.2            # H2': over-tracking if the CI's lower end is >= 1.2
-H1_GAIN = (0.8, 1.25)       # H1-typical: gain band (design Section 7)
-H1_LOCATION = 12.0          # m, H1-typical: location within +- the preview spacing (12-14 m)
+H1_GAIN = (0.8, 1.25)       # descriptive reference only (``h1_criteria``): H1 is descriptive
+H1_LOCATION = 12.0          # m, descriptive reference only: the preview spacing (12-14 m)
 R_IN_BAND = (0.5, 2.0)      # H2-speed: under / lawful / over
 COVERAGE_MAX = 0.30         # excluded share above which an agent is descriptive for an outcome
-EXCLUSION_REASONS = ("invalid outcome", "gate 3", "numerical", "inertia", "kappa clipping",
-                     "argmin off plateau")   # assigned in this order (``exclusion_reason``)
-LOOP_EXHAUSTED = "loop length exhausted"     # network.EXHAUSTED: a pipeline failure
-PIPELINE_FAILURES = (LOOP_EXHAUSTED,)
+T_BLIND_HI = 0.5            # T (= G + G_out): 'width-blind' if the CI's upper end is <= this
+T_ANCHORED = (0.8, 1.2)     # T: 'corridor-anchored' if the CI lies within (else 'mixed')
+LOOP_EXHAUSTED = "loop length exhausted"     # network.EXHAUSTED: the plans' reason
+PIPELINE_LOOP = "pipeline: loop exhausted"   # the network's loop exhausted at this key
+PIPELINE_NO_OPT = "pipeline: no optimum row"  # opt-fields has no row for this key
+PIPELINE_BRANCH = "pipeline: branch"         # branch consistency failed (float64 vs float32)
+PIPELINE_REASONS = (PIPELINE_LOOP, PIPELINE_NO_OPT, PIPELINE_BRANCH)
+PIPELINE_FAILURES = (LOOP_EXHAUSTED,)         # plan reasons that are pipeline failures
+EXCLUSION_REASONS = (*PIPELINE_REASONS, "invalid outcome", "gate 3", "numerical", "inertia",
+                     "gate 4", "kappa clipping", "argmin off plateau")   # in this order
 EDGE_PLATEAU = 0.99         # e(s*) below this: 'argmin off plateau' (G is not sigma dn/dDelta)
 FAR_LOG_R = 0.4             # shape specificity: far geometry if |ln(R_j / R_k)| >= this ...
 FAR_THETA = 45.0            # ... or |theta_j - theta_k| >= this (deg)
@@ -206,6 +230,11 @@ class EdgeMeasures:
         """e(s*) >= EDGE_PLATEAU: G is the line's move sigma dn/dDelta (False: the key is
         excluded, 'argmin off plateau')."""
         return bool(np.isfinite(self.e_star) and self.e_star >= EDGE_PLATEAU)
+
+    @property
+    def T(self) -> float:
+        """T = G + G_out, the corridor-translation gain (module docstring)."""
+        return float(self.G + self.G_out)
 
 
 def edge_measures(impulse_c_min: Samples, impulse_v_apex: Samples, c_min: float,
@@ -369,10 +398,11 @@ def compare(net, opt, d) -> dict[str, float]:
 
 def h1_criteria(cmp: dict[str, float], rho_far: float, spacing: float = H1_LOCATION
                 ) -> dict[str, bool]:
-    """H1-typical's three criteria on one key's comparison (design Section 7): gain within
-    [0.8, 1.25], location within +- the preview spacing, and shape: the matched rho above
-    ``rho_far``, the median rho of the same network field against the optimum's fields at
-    far geometries (``shape_specificity``; delta_rho > SHAPE_DELTA_MIN)."""
+    """Descriptive per-key flags of one comparison (used by the controls' readers; H1-typical
+    and H1-fast are descriptive since v3.1 / v3.2 and decide nothing on them): gain within
+    the reference band [0.8, 1.25], location within +- the preview spacing, and shape: the
+    matched rho above ``rho_far``, the median rho of the same network field against the
+    optimum's fields at far geometries (``shape_specificity``; delta_rho > SHAPE_DELTA_MIN)."""
     g, loc, rho = cmp["g"], cmp["location"], cmp["rho"]
     return {"gain": bool(np.isfinite(g) and H1_GAIN[0] <= g <= H1_GAIN[1]),
             "location": bool(np.isfinite(loc) and abs(loc) <= spacing),
@@ -527,7 +557,7 @@ class PairValue:
     R: float
     theta_deg: float
     value: float              # NaN when undefined
-    n_keys: int               # keys expected (2 directions x n_phases, or one direction's)
+    n_keys: int               # the pair's listed keys in these directions (design Section 15)
     n_excluded: int
     defined: bool
     directions: tuple[int, ...]
@@ -538,13 +568,16 @@ class PairValue:
 
 
 def max_excluded(n_keys: int) -> int:
-    """Exclusions a pair of n_keys keys may have and stay defined: 3 of 8, floor(3 n / 8)."""
+    """Exclusions a pair of n_keys listed keys may have and stay defined (design Section 15:
+    undefined when more than 3/8 are excluded): floor(3 n / 8), so 3 of 8, 1 of 5, 0 of 2."""
     return (PAIR_MAX_EXCLUDED * int(n_keys)) // PAIR_KEYS
 
 
 def pair_value(rows: Sequence[KeyMeasure], directions: Iterable[int] = (1, -1)) -> PairValue:
     """The pair value of one mirror pair's keys (all one pair and approach), over the given
-    directions (both: pooled; one: that direction's report)."""
+    directions (both: pooled; one: that direction's report). ``rows`` are the pair's listed
+    keys (one row per frozen key, NaN when excluded): their number is the pair's expected
+    count, never the cell's phase count (module docstring)."""
     dirs = tuple(int(s) for s in directions)
     rows = [r for r in rows if int(r.direction) in dirs]
     if not rows:
@@ -556,7 +589,7 @@ def pair_value(rows: Sequence[KeyMeasure], directions: Iterable[int] = (1, -1)) 
     if len(seen) != len(rows):
         raise ValueError(f"pair {first.pair_id}: two keys share (direction, phase) (a W twin?)")
     n_ph = max(int(r.n_phases) for r in rows)
-    n_keys = len(dirs) * n_ph
+    n_keys = len(rows)
     vals = np.array([r.value for r in rows], float)
     n_excl = n_keys - int(np.isfinite(vals).sum())
     defined = n_excl <= max_excluded(n_keys)
@@ -597,11 +630,15 @@ def pair_values(rows: Iterable[KeyMeasure], directions: Iterable[int] = (1, -1)
 
 def asymmetry(rows: Iterable[KeyMeasure]) -> list[dict]:
     """Delta m = m_L - m_R over mirror partners (same pair, approach and phase), one row per
-    partnered phase with both values defined."""
+    partnered phase with both values defined. Raises ValueError on a duplicate (pair,
+    approach, phase, direction): two keys may not claim the same partner."""
     by: dict[tuple, dict[int, float]] = {}
     for r in rows:
-        by.setdefault((int(r.pair_id), str(r.approach), int(r.phase)), {})[int(r.direction)] = \
-            float(r.value)
+        side = by.setdefault((int(r.pair_id), str(r.approach), int(r.phase)), {})
+        if int(r.direction) in side:
+            raise ValueError(f"duplicate mirror partner: pair {r.pair_id}, approach "
+                             f"{r.approach}, phase {r.phase}, direction {r.direction}")
+        side[int(r.direction)] = float(r.value)
     out = []
     for (pid, app, ph), v in sorted(by.items()):
         if 1 in v and -1 in v and np.isfinite(v[1]) and np.isfinite(v[-1]):
@@ -717,15 +754,19 @@ def h2_decision(lo: float, hi: float) -> str:
 
 def exclusion_reason(invalid: bool, gate3_failed: bool = False, inertia_failed: bool = False,
                      kappa_clipped: bool = False, off_plateau: bool = False,
-                     why_invalid: str = "", numerical: bool = False) -> str:
+                     why_invalid: str = "", numerical: bool = False, *,
+                     loop_exhausted: bool = False, no_optimum: bool = False,
+                     branch_failed: bool = False, gate4_failed: bool = False) -> str:
     """The one reason a key is excluded for an outcome, the first that applies in
-    ``EXCLUSION_REASONS``' order ('' when kept). ``numerical``: the optimum's key failed to
-    re-polish or its adjoint check (decided before the tag: excluded as a numerical failure,
-    never computed at the stored point). ``why_invalid`` is the plan's reason: a pipeline
-    failure (``PIPELINE_FAILURES``) raises instead of becoming an exclusion."""
-    if invalid and why_invalid in PIPELINE_FAILURES:
-        raise ValueError(f"pipeline failure, not an exclusion: {why_invalid}")
-    flags = (invalid, gate3_failed, numerical, inertia_failed, kappa_clipped, off_plateau)
+    ``EXCLUSION_REASONS``' order ('' when kept). The pipeline failures come first (design
+    Section 15): ``loop_exhausted`` (also an invalid outcome whose ``why_invalid`` is the
+    plans' LOOP_EXHAUSTED), ``no_optimum`` (opt-fields has no row for the key) and
+    ``branch_failed`` (the free float64 loop left the float32 run's branch). ``numerical``:
+    the optimum's key failed to re-polish or its adjoint check (decided before the tag);
+    ``inertia_failed``: the optimum's inertia; ``gate4_failed``: G* outside Gate 4's band."""
+    loop = bool(loop_exhausted or (invalid and why_invalid in PIPELINE_FAILURES))
+    flags = (loop, no_optimum, branch_failed, invalid, gate3_failed, numerical, inertia_failed,
+             gate4_failed, kappa_clipped, off_plateau)
     for flag, reason in zip(flags, EXCLUSION_REASONS, strict=True):
         if flag:
             return reason
@@ -734,23 +775,24 @@ def exclusion_reason(invalid: bool, gate3_failed: bool = False, inertia_failed: 
 
 def coverage(records: Iterable[dict]) -> dict:
     """Exclusions per (agent, snapshot) and outcome: ``records`` are dicts with agent,
-    snapshot, outcome and reason ('' for a kept key). Returns, per 'agent@snapshot' and
-    outcome, n, the excluded count per reason, the excluded share and whether it exceeds 30%
-    (the agent is then descriptive for that outcome). A record whose reason is a pipeline
-    failure (``PIPELINE_FAILURES``) raises: it is never counted as the network's exclusion."""
+    snapshot, outcome, reason ('' for a kept key) and optionally key_id. Returns, per
+    'agent@snapshot' and outcome, n, the excluded count per reason, the excluded share
+    (every reason counts, design Section 15), whether it exceeds 30% (the agent is then
+    descriptive for that outcome), and the keys of its pipeline failures (listed per
+    network)."""
     out: dict[str, dict[str, dict]] = {}
     for r in records:
-        if r.get("reason") in PIPELINE_FAILURES:
-            raise ValueError(f"{r.get('agent')}@{r.get('snapshot')} {r.get('outcome')}: "
-                             f"{r['reason']} is a pipeline failure, not an exclusion")
         who = f"{r['agent']}@{r['snapshot']}"
-        c = out.setdefault(who, {}).setdefault(str(r["outcome"]), {"n": 0, "excluded": {}})
+        c = out.setdefault(who, {}).setdefault(str(r["outcome"]),
+                                               {"n": 0, "excluded": {}, "pipeline_keys": []})
         c["n"] += 1
         if r.get("reason"):
             c["excluded"][r["reason"]] = c["excluded"].get(r["reason"], 0) + 1
+            if r["reason"] in PIPELINE_REASONS:
+                c["pipeline_keys"].append(str(r.get("key_id", "")))
     for per in out.values():
         for c in per.values():
             k = sum(c["excluded"].values())
             c["share_excluded"] = k / c["n"] if c["n"] else float("nan")
-            c["descriptive"] = bool(c["share_excluded"] > COVERAGE_MAX)
+            c["descriptive"] = bool(not c["n"] or c["share_excluded"] > COVERAGE_MAX)
     return out

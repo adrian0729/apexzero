@@ -19,11 +19,15 @@
   re-solves and must fail the pooled rule.
 - **Gate 2** (``gate2_row``, ``gate2``): AD against FD through the float64 closed loop
   (``network.gate2``) for policies that are not trained networks: the random actor (steer
-  only), the planted edge keeper and the linear driver (plan-level outcomes), along the same
-  directions. The rule is ``network.Gate2.ok``: per valid outcome a field-vector relative error
-  < 1e-3 over the comparisons that count (a field that both sides put below 1e-6 on every
-  counted direction is a zero field and scores 0; a valid outcome with nothing counted, or an
-  infinite or NaN error, fails); at least one outcome valid. The share counted is reported.
+  only), the planted edge keeper, the linear driver and the hybrid control (the linear driver
+  plus a small-gain random-init MLP through G1's obs_rms; plan-level outcomes), along the same
+  directions. After the tag the same rule runs on every H2', H4 and H4-transfer network
+  ('gate2-trained', ``stages.gate2_trained_network``). The rule is ``network.Gate2.ok``: per
+  valid outcome a field-vector relative error < 1e-3 over the comparisons that count (a field
+  that both sides put below 1e-6 on every counted direction is a zero field and scores 0; a
+  valid outcome with nothing counted, or an infinite or NaN error, fails); at least one
+  outcome valid. The share counted is reported. Gate 2's rows are fixed (``GATE2_CELLS``,
+  ``gate2_labels``): the record binds a Gate 2 only with exactly those rows, each passing.
 - **Gate 3** (``gate3_key``, ``gate3_agent``): teacher-forced wiring of a trained snapshot on
   its stored rows (``network.wiring_check``; no derivative, no perturbation): anchored finals
   from x_{L-1} and A2 rows from x0 to the outcome horizon. Each planted wiring error (another
@@ -32,7 +36,10 @@
   failures are the per-key 'gate 3' exclusion list.
 - **Gate 4** (``gate4_key``, ``gate4``): G* = 1 - dc_min/dDelta_in from the KKT field on every A2
   key (all 481, the tier V horizon twins included) within [0.98, 1.02] (``kkt.edge_gain``,
-  ``kkt.gate4``), with the certified inertia and the adjoint check; keys outside are listed.
+  ``kkt.gate4``), with the certified inertia and the adjoint check; keys outside (and keys
+  that failed to re-polish) are listed and excluded (design Sections 5 and 8). Gate 4 passes
+  when every key was processed without a crash (an exception other than ``RepolishFailed``,
+  listed as 'crashed').
 - **Gate 5** (``gate5_key``, ``gate5``; float64 process): the KKT replay. The KKT forward
   sensitivity (dw, dlam) along each of Gate 1's directions (``kkt.forward``) gives the plan's
   action tangent da*; the tape a* + eps da* is driven through the network side's closed loop
@@ -99,9 +106,15 @@ GATE0_TOL = K.GATE0_TOL
 GATE1_STRATA = {"A2/400": 14, "A2/800": 6, "v1": 8, "v2": 8, "v3": 8, "S": 6}   # 50 keys
 GATE2_TOL = N.GATE2_TOL
 GATE2_ZERO = KK.ZERO_ATOL
+# Gate 2's fixed rows (design Sections 8 and 15): the policies' A2 cells, the defaults of
+# gate2_policies and of scripts/fields.py's gate2 stage; a run on other cells is partial.
+GATE2_CELLS = {"random": (62, 345), "keeper": (344,), "linear": (344, 345, 66),
+               "hybrid": N.HYBRID_CELLS}
+GATE3_N_ANCHORED = 3       # Gate 3's planted sample: anchored finals and A2 keys per agent
+GATE3_N_A2 = 2
 GATE5_TOL = 1e-3           # relative L2 of the replayed fields against the KKT fields
 GATE5_STATE_TOL = 1e-8     # CasADi against JAX state tangents (relative)
-GATE5_BOUND_TOL = 1e-3     # |da*| where |a*| = 1, relative to max |da*| (seen: <= 1.7e-5)
+GATE5_BOUND_TOL = 1e-3     # |da*| where |a*| = 1, relative to max |da*| (seen: <= 3.1e-5)
 GATE5_TIE = 1e-8          # m, m/s: the replay's outcome values against the optimum's
 REPLAY_OUTCOMES = ("c_min", "v_apex", "s_b", "steer", "c_line")   # the replay JVP's order
 GATE5_OUTCOMES = ("c_min", "v_apex", "s_b", "c_line")    # the cross-pipeline comparisons
@@ -433,12 +446,22 @@ def gate2_row(net: N.NetPolicy, rd: N.Road, st: N.Start, steps: int = N.STEPS,
             "seconds": time.perf_counter() - t0}
 
 
-def gate2_policies(cells_random=(62, 345), cells_keeper=(344,), cells_linear=(344, 345),
-                   seed: int = 0, agent=None
+def gate2_labels(cells: dict = GATE2_CELLS) -> set[str]:
+    """The labels of Gate 2's rows (``gate2_policies``) for ``cells``."""
+    return ({f"random@{c}" for c in cells["random"]} | {f"edge-keeper@{c}" for c in cells["keeper"]}
+            | {f"linear@{c}" for c in cells["linear"]} | {f"hybrid@{c}" for c in cells["hybrid"]})
+
+
+def gate2_policies(cells_random=GATE2_CELLS["random"], cells_keeper=GATE2_CELLS["keeper"],
+                   cells_linear=GATE2_CELLS["linear"], seed: int = 0, agent=None,
+                   cells_hybrid=GATE2_CELLS["hybrid"]
                    ) -> list[tuple[str, N.NetPolicy, N.Road, N.Start, int]]:
     """Gate 2's (label, policy, road, start, steps) rows before the tag: a random-init actor
     (G1's architecture and obs_rms, read only; the instantaneous steer), the planted edge
-    keeper (plan-level c_min, v_apex and s_b) and the planted linear driver."""
+    keeper (plan-level c_min, v_apex and s_b), the planted linear driver (345 is 344's
+    mirror; 66 another geometry), and the hybrid control (``network.hybrid_net``: the linear
+    driver plus a small-gain random-init actor through G1's obs_rms, the trained
+    architecture inside the loop on plan-level outcomes; design Section 15)."""
     from apexzero.fields import controls as C
 
     g1 = C.g1_reference() if agent is None else agent
@@ -453,6 +476,10 @@ def gate2_policies(cells_random=(62, 345), cells_keeper=(344,), cells_linear=(34
         st, rd = C.start(cid)
         W, b = N.linear_driver(st.sigma)
         rows.append((f"linear@{cid}", N.linear_net(W, b, "linear_driver"), rd, st, 200))
+    for cid in cells_hybrid:
+        st, rd = C.start(cid)
+        rows.append((f"hybrid@{cid}", N.hybrid_net(st.sigma, g1.cfg, g1.obs_rms, seed), rd, st,
+                     N.HYBRID_STEPS))
     return rows
 
 
@@ -506,7 +533,8 @@ def gate3_refs(agent_id: str) -> list[K.KeyRef]:
     return list(K.anchored_finals().get(agent_id, ())) + list(K.a2_refs())
 
 
-def gate3_agent(agent_id: str, n_anchored: int = 3, n_a2: int = 2, wrong_from: str | None = None,
+def gate3_agent(agent_id: str, n_anchored: int = GATE3_N_ANCHORED, n_a2: int = GATE3_N_A2,
+                wrong_from: str | None = None,
                 all_keys: bool = False, limit: int | None = None) -> dict:
     """Gate 3 on one trained snapshot's stored rows (teacher-forced; module docstring). The
     planted wiring errors run on a spread sample (n_anchored anchored finals, n_a2 A2 keys);
@@ -572,28 +600,37 @@ def _gate4_chunk(refs: list[K.KeyRef]) -> list[dict]:
     for r in refs:
         try:
             out.append(gate4_key(r, bank))
-        except Exception as e:  # noqa: BLE001  (listed as outside the band)
+        except RepolishFailed as e:      # a numerical exclusion (design Section 5), listed
             out.append({**_failed_row(r, e), "in_band": False, "inertia_ok": False,
-                        "ok": False})
+                        "ok": False, "repolish_failed": True})
+        except Exception as e:  # noqa: BLE001  (a crash: listed, and Gate 4 does not pass)
+            out.append({**_failed_row(r, e), "in_band": False, "inertia_ok": False,
+                        "ok": False, "crashed": True})
     return out
 
 
 def gate4(refs: list[K.KeyRef], workers: int = 1, progress=None) -> dict:
     """Gate 4 on every key of ``refs`` (the stage passes all 481 A2 keys, horizon twins
-    included); keys not ``ok`` are listed."""
-    rows = map_keys(_gate4_chunk, list(refs), workers, chunk=10, progress=progress)
+    included). Keys not ``ok`` (G* outside the band, inertia or adjoint failing, or no
+    re-polish) are listed in 'outside' as exclusions (design Sections 5 and 8); Gate 4 passes
+    when every key was processed and none crashed ('crashed': any other exception)."""
+    refs = list(refs)
+    rows = map_keys(_gate4_chunk, refs, workers, chunk=10, progress=progress)
     g = np.array([r.get("G_star", np.nan) for r in rows], float)
     outside = [r for r in rows if not r.get("ok")]
+    crashed = [r["key_id"] for r in rows if r.get("crashed")]
     return {"band": list(KK.GATE4_BAND), "adjoint_rtol": KK.ADJOINT_RTOL, "n": len(rows),
             "n_outside": len(outside),
             "n_undetermined": sum(r.get("inertia_determined") is False for r in rows),
             "outside": [{k: r.get(k) for k in ("key_id", "G_star", "inertia_ok",
-                                               "inertia_determined", "adjoint_ok", "error")}
+                                               "inertia_determined", "adjoint_ok", "error",
+                                               "repolish_failed")}
                         for r in outside],
+            "crashed": crashed,
             "G_star_min": float(np.nanmin(g)) if np.isfinite(g).any() else np.nan,
             "G_star_max": float(np.nanmax(g)) if np.isfinite(g).any() else np.nan,
             "max_abs_dev": float(np.nanmax(np.abs(g - 1.0))) if np.isfinite(g).any() else np.nan,
-            "rows": rows, "pass": not outside}
+            "rows": rows, "pass": bool(len(rows) == len(refs) and not crashed)}
 
 
 # ------------------------------------------------------------------------- Gate 5

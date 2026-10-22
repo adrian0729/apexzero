@@ -1,6 +1,6 @@
 """Step 2, receptive fields: how a network's corner behaviour responds to the road ahead.
 
-Design: ``docs/interp/receptive-fields-design.md`` (draft v3; not frozen until the tag
+Design: ``docs/interp/receptive-fields-design.md`` (v3.2; not frozen until the tag
 ``receptive-fields-prereg-v1``). Step 1's code (``src/apexzero/interp``,
 ``scripts/psychophysics.py``) is frozen at ``psychophysics-prereg-v2`` and is only imported
 here, read-only.
@@ -45,11 +45,15 @@ Module map:
 - ``stages``: the batch stages' bodies (optimum fields, phase ceiling, network fields, dose,
   H3, analysis assembly), as functions tested before the tag.
 - ``prereg``: the pre-registration record ``prereg.json`` the tag fixes (key lists and their
-  hashes, re-polish movement, design and code hashes) and its verification.
+  hashes, re-polish movement, the per-regime A2 cell sets with support.json's hash, the
+  gate2-trained and dose keys, every network's checkpoint, the stamped passing pre-tag
+  outputs, the calibrated branch tolerance, design and code hashes) and its verification.
 
 ``scripts/fields.py`` runs the stages (pre-tag: keys, repolish, gate1..gate5, controls,
-opt-fields, phase-ceiling, prereg; post-tag stages refuse unless the freeze check passes:
-the tag ``receptive-fields-prereg-v1``, no code change since it, and the record matching).
+opt-fields, qp-fields, phase-ceiling, calibrate, prereg; post-tag: harness-f32, gate2-trained,
+fields-a2, fields-anchored, dose, h3-keys, h3-lambda, analyse, refused unless the freeze
+check passes: the annotated, pushed tag ``receptive-fields-prereg-v1``, no code change since
+it, and the record matching the disk).
 
 Pre-registration rule (design Section 8, Section 10): before the tag no field of a trained
 network is computed; network-side code runs on random-init actors, planted policies and

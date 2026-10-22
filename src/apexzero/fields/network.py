@@ -34,10 +34,12 @@ the frozen one, and its result is discarded, so its derivatives stay finite. ``T
 follows the harness convention (rollout.py:46-51): state k + 1 is valid iff step k was taken;
 frozen copies are invalid, so ``measures._View`` (measures.py:829) cuts the run there. A run
 still alive at its last step without reaching s_stop has **exhausted the loop** (``Run.exhausted``):
-its plans carry the reason 'loop length exhausted' (never 'window end not reached'), which
-``measures.coverage`` treats as a pipeline failure, not as the network's exclusion; ``fields``
+its plans carry the reason 'loop length exhausted' (never 'window end not reached'); ``fields``
 and ``branch_consistency`` refuse such a run (``LoopExhausted``) unless the caller reads only
-the decision step's steer (``allow_exhausted``: the instantaneous fields' 1-step loops).
+the decision step's steer (``allow_exhausted``: the instantaneous fields' 1-step loops). Since
+design v3.2 a loop exhausted at one key is a pipeline failure of that key only, counted as its
+exclusion ('pipeline: loop exhausted'; ``stages.network_fields`` writes its failure row and
+goes on).
 
 **Two road arrays** (``closed_loop(..., tr_obs=...)``): the observation (and a scripted
 policy's own reads of the road) uses ``tr_obs``, the dynamics, termination and the outcome
@@ -84,18 +86,26 @@ per run, each tiny), and the O(h^2) check catches any that matter.
 **Gate 3** (``wiring_check``, teacher-forced): at every step of a stored float32 run, the
 float64 actor mean on the stored state (with the stored prev_action and accel) must match
 det_a_mean to 1e-4, and one float64 env step from (det_x[t], det_a[t]) must match det_x[t+1]:
-s within substeps x ulp32(s) / 2, the other states within ``STEP_TOL`` (provisional bounds
-from the float32/float64 spread of random-actor and linear-readout runs, to be recalibrated
-in the dry run). The next state's prev_action must be clip(det_a[t]) exactly.
+s within substeps x ulp32(s) / 2, the other states within ``STEP_TOL`` (about 10x the
+float32/float64 spread of the dry run's random-actor, linear-readout and G2 rows, kept after
+Gate 3 on every key). The next state's prev_action must be clip(det_a[t]) exactly.
 ``branch_consistency`` compares a free-running float64 run with the float32 file's run in
 what the design allows: the end before the window (termination step), the saturation set,
 the outcome events (validity, argmin pick, onset run) and the outcome values within a
-tolerance. s is never compared step by step.
+tolerance. s is never compared step by step. ``Branch.ok_by`` gives the verdict per outcome
+(design Section 15: a branch-consistency failure is a pipeline exclusion of that key): a
+different end or saturation set fails every outcome; an outcome's own event (validity and
+pick) or value fails that outcome only. After the tag the value tolerance is the calibrated
+one the pre-registration record binds (calibration/branch_tol.json); ``BRANCH_TOL`` is only
+the pre-tag provisional default.
 
 **Policies** (``NetPolicy``): a LoadedAgent's actor (``agent_net``), a random-init actor of
 the same architecture (``random_net``; step 1's ``_random_actor`` recipe,
-scripts/psychophysics.py:537), a linear readout of the raw observation (``linear_net``), or
-any callable with the harness's Policy signature (rollout.py:107; ``callable_net``).
+scripts/psychophysics.py:537), a linear readout of the raw observation (``linear_net``), the
+pre-tag control that puts the trained architecture inside the loop (``hybrid_net``: the
+planted linear driver plus a small-gain random-init actor of G1's architecture reading the
+observation through G1's obs_rms, design Section 15), or any callable with the harness's
+Policy signature (rollout.py:107; ``callable_net``).
 
 **Exclusion flags.** ``kappa_clipped`` (H2''s confirmatory set and the coverage reason
 'kappa clipping'): any preview kappa channel z[:, 5k + 4] at the obs clip |z| >= 10 over the
@@ -114,9 +124,12 @@ exists for every network); the steer stays the network's.
 finite difference of a trained network is computed. Trained snapshots enter only Gate 3's
 teacher-forced wiring check (no derivatives, no perturbations). ``agent_net`` marks its
 policy ``trained``; ``fields``, ``path_fields``, ``kink_radius``, ``gate2``,
-``tangent_consistency`` and a perturbed ``run`` refuse a trained policy (PermissionError) until
-``unlock_trained`` is called, which scripts/fields.py does only after its freeze check. The
-base run (delta None) and ``wiring_check`` stay open (Gate 3, branch consistency).
+``tangent_consistency`` and ``run`` (base or perturbed: no trained network's free loop before
+the tag, design Section 14, so the calibrated branch tolerance is blind to trained float32 /
+float64 spreads) refuse a trained policy (PermissionError) until ``unlock_trained`` is
+called, which scripts/fields.py does only after its freeze check. Only the teacher-forced
+``wiring_check`` / ``policy_means`` stay open (Gate 3); branch consistency of a trained
+network compares its float64 run, so it is post-tag only.
 
 **Lockbox**: ``road`` applies step 1's guard to the stimulus (``answer_key._guard``,
 answer_key.py:297), as ``keys.rebuild`` and ``kkt.problem`` do; R_TEST circuits never reach the
@@ -173,15 +186,19 @@ H_MIN = 1e-9                       # Gate 2: below this, round-off: the comparis
 H_MAX = {"kappa": 1e-5, "width": 1e-3}   # Gate 2: cap on h per unit max |direction| (1/m, m)
 # Gate 3: one float64 step from a stored float32 state against the stored next state, per
 # state: |dx| <= STEP_TOL for n, xi, vx, vy, r, delta, pedal (s has its own rule, see
-# ``wiring_check``). Provisional: about 10x the largest spread on 4 random-actor, 4
-# linear-readout and 5 G2 rows (n 9e-7 m, xi 9e-7, vx 1.9e-5 m/s, vy 6e-7 m/s, r 2.3e-7 1/s,
-# delta 3.9e-8 rad, pedal 1.9e-7, accel 3.7e-4 m/s^2), to be recalibrated on the gate keys.
+# ``wiring_check``). Set at about 10x the largest spread on 4 random-actor, 4 linear-readout
+# and 5 G2 rows (n 9e-7 m, xi 9e-7, vx 1.9e-5 m/s, vy 6e-7 m/s, r 2.3e-7 1/s, delta 3.9e-8
+# rad, pedal 1.9e-7, accel 3.7e-4 m/s^2) and kept after Gate 3 on every key of the 12 finals
+# (largest step excess xi 0.78 and n 0.73 of the tolerance, on specialists; the others at
+# most 0.20; accel 7.2e-4; mean error 4.9e-5, half of MEAN_TOL).
 STEP_TOL = np.array([np.nan, 1e-5, 1e-5, 2e-4, 1e-5, 3e-6, 5e-7, 2e-6])
 ACCEL_TOL = 5e-3                   # m/s^2, the trailing-step acceleration (dt = 0.05 amplifies)
-# Branch consistency: outcome values within this of the float32 file's (provisional; the
-# design's rule is 5x the float32/float64 spread on the gate keys. Seen so far: the linear
-# driver 1e-5 m (c_min), 9e-6 m/s (v_apex), 7e-4 m (s_b); the lane keeper 1.6e-6 m, 7e-5 m/s,
-# 3.4e-3 m over 114-190 steps).
+# Branch consistency's value tolerance before the tag only (the pre-tag default of
+# ``branch_consistency`` callers: the dry runs and the controls). After the tag the
+# tolerance is read from the pre-registration record, which binds calibration/branch_tol.json
+# (``branch_tolerance``: 5 x the controls' largest float32/float64 spread per unit of
+# teacher-forced action error x the trained agents' largest teacher-forced error over every
+# key), so a re-calibration never changes the code hash; a post-tag stage refuses without it.
 BRANCH_TOL = {"c_min": 1e-3, "v_apex": 1e-3, "s_b": 1e-2}
 BRANCH_FACTOR = 5.0                # design Section 8: 5 x the float32/float64 spread
 DET_FIELDS = ("cell", "stim", "phase", "sample", "W", "x", "prev_action", "accel", "a_mean", "a",
@@ -250,11 +267,13 @@ class NetPolicy:
     obs_rms: RunningMeanStd | None
     name: str = ""
     trained: bool = False
+    checkpoint: str = ""      # sha256 of the snapshot's .pkl (``stages.load_network``)
 
 
 class LoopExhausted(RuntimeError):
-    """A run alive at the loop's last step that never reached s_stop: a pipeline failure (the
-    loop is too short), never the network's own exclusion."""
+    """A run alive at the loop's last step that never reached s_stop: a pipeline failure of
+    that key (the loop is too short), excluded as 'pipeline: loop exhausted' (design Section
+    15)."""
 
 
 _TRAINED_OK = False
@@ -262,7 +281,8 @@ _TRAINED_OK = False
 
 def unlock_trained() -> None:
     """Allow fields of trained networks in this process. scripts/fields.py calls it only after
-    its freeze check (the tag ``receptive-fields-prereg-v1`` at HEAD, the code unchanged)."""
+    its freeze check (the annotated, pushed tag ``receptive-fields-prereg-v1``; the code the
+    tagged commit's, later commits touching only docs; the record matching the disk)."""
     global _TRAINED_OK
     _TRAINED_OK = True
 
@@ -274,12 +294,13 @@ def _refuse_trained(net: NetPolicy, what: str) -> None:
                               "finite difference before it)")
 
 
-def agent_net(agent, obs_rms: RunningMeanStd | None = None) -> NetPolicy:
+def agent_net(agent, obs_rms: RunningMeanStd | None = None, checkpoint: str = "") -> NetPolicy:
     """A ``agents.LoadedAgent``'s actor (``rollout.agent_policy``) with its own obs_rms, or
-    ``obs_rms`` (Gate 3's planted wrong normaliser). Marked ``trained``."""
+    ``obs_rms`` (Gate 3's planted wrong normaliser). Marked ``trained``; ``checkpoint`` is the
+    sha256 of the loaded .pkl (recorded in every row of its fields)."""
     rms = agent.obs_rms if obs_rms is None else obs_rms
     return NetPolicy(agent_policy(agent.cfg), upcast32(agent.actor_params), upcast32(rms),
-                     f"{agent.agent_id}@{agent.timesteps}", trained=True)
+                     f"{agent.agent_id}@{agent.timesteps}", trained=True, checkpoint=checkpoint)
 
 
 def random_actor_params(cfg: PPOConfig, seed: int = 0):
@@ -349,7 +370,7 @@ def blind_pedal_net(net: NetPolicy, tape: np.ndarray) -> NetPolicy:
     the base road the run reproduces the network's own base run bit for bit."""
     tape = np.asarray(tape, np.float64)
     return NetPolicy(blind_pedal_policy(net.fn), (net.params, tape), net.obs_rms,
-                     f"{net.name}+pedal-tape", trained=net.trained)
+                     f"{net.name}+pedal-tape", trained=net.trained, checkpoint=net.checkpoint)
 
 
 def steer_tape_policy(params, o, state, tr, aux):
@@ -386,6 +407,52 @@ def linear_driver(sigma: int, steer_k: int = 7, steer_gain: float = 1.3, ff_k: i
     for k in ks:
         W[1, _preview(k, 4)] -= int(sigma) * kappa_gain / len(ks)
     return W.astype(np.float32), np.array([0.0, pedal0], np.float32)
+
+
+HYBRID_GAIN = 0.1                  # the hybrid control's MLP share (design Section 15: small)
+
+
+@functools.lru_cache(maxsize=8)
+def hybrid_policy(cfg: PPOConfig) -> Policy:
+    """The pre-tag control that puts the trained architecture inside the loop (design
+    Section 15): mean = W_n o + b_n + eps actor(o), with o the normalised, clipped observation
+    the harness feeds (obs_rms = G1's, read only), W_n = W diag(sqrt(var + 1e-8)) and
+    b_n = b + W mean the planted linear driver re-expressed on o (exact where no channel is at
+    the obs clip), and actor a random-init actor of ``cfg``'s architecture. params =
+    (W_n [2, 222], b_n [2], actor params, eps), or W_n [R, 2, 222] and b_n [R, 2] row-stacked
+    with the run's ``aux`` picking the row (as ``linear_policy``). One Policy object per cfg,
+    so the float32 harness and the float64 loop each compile it once."""
+    actor = agent_policy(cfg)
+
+    def policy(params, o, state, tr, aux):
+        Wn, bn, mlp, eps = params
+        if Wn.ndim == 3:
+            Wn, bn = Wn[aux], bn[aux]
+        mean, _ = actor(mlp, o, state, tr, aux)
+        return Wn @ o + bn + eps * mean, jnp.full(2, -jnp.inf, o.dtype)
+
+    return policy
+
+
+def hybrid_params(sigma: int, cfg: PPOConfig, obs_rms: RunningMeanStd, seed: int = 0,
+                  eps: float = HYBRID_GAIN):
+    """Float32 params of ``hybrid_policy`` for a corner of direction ``sigma``: the linear
+    driver (``linear_driver``) folded through ``obs_rms``, a random-init actor
+    (``random_actor_params``) and the gain eps."""
+    W, b = linear_driver(sigma)
+    mean = np.asarray(obs_rms.mean, np.float64)
+    sd = np.sqrt(np.asarray(obs_rms.var, np.float64) + 1e-8)
+    Wn = (W.astype(np.float64) * sd[None, :]).astype(np.float32)
+    bn = (b.astype(np.float64) + W.astype(np.float64) @ mean).astype(np.float32)
+    return Wn, bn, random_actor_params(cfg, seed), np.float32(eps)
+
+
+def hybrid_net(sigma: int, cfg: PPOConfig, obs_rms: RunningMeanStd, seed: int = 0,
+               eps: float = HYBRID_GAIN) -> NetPolicy:
+    """``hybrid_policy`` as a NetPolicy (not a trained network: its actor is random-init and
+    only G1's cfg and obs_rms are read)."""
+    return NetPolicy(hybrid_policy(cfg), upcast32(hybrid_params(sigma, cfg, obs_rms, seed, eps)),
+                     upcast32(obs_rms), f"hybrid-{seed}")
 
 
 # ------------------------------------------------------------------------- restarts
@@ -704,11 +771,11 @@ def road(bank: StimulusBank, stim_id: int) -> Road:
 
 def run(net: NetPolicy, rd: Road, start: Start, delta: PT.Samples | None = None,
         steps: int = STEPS, mode: str = "tangent") -> Run:
-    """One closed-loop run on the road plus ``delta`` (tangent by default), analysed. A
-    perturbed run of a trained network waits for the tag (``unlock_trained``)."""
+    """One closed-loop run on the road plus ``delta`` (tangent by default), analysed. A run of
+    a trained network, base or perturbed, waits for the tag (``unlock_trained``; design
+    Section 14: no trained network's free loop before it)."""
     require_x64()
-    if delta is not None:
-        _refuse_trained(net, "a perturbed run")
+    _refuse_trained(net, "a run" if delta is None else "a perturbed run")
     d = PT.zeros(rd.n) if delta is None else delta
     tr, trc = _run_jit(net.fn, int(steps), mode)(net.params, net.obs_rms, rd.base, rd.samples,
                                                   loop_inputs(start, steps), d)
@@ -1441,6 +1508,19 @@ class Branch:
     def ok(self) -> bool:
         return self.end_ok and self.saturation_ok and self.events_ok and self.values_ok
 
+    def ok_by(self) -> dict[str, bool]:
+        """Per outcome (module docstring): end and saturation set for every outcome, then
+        the outcome's own event and value; steer (the decision step's mean) is covered by the
+        teacher-forced wiring check and is always True here."""
+        both = self.end_ok and self.saturation_ok
+        out = {}
+        for k, o in enumerate(O.OUTCOMES):
+            a, b = self.values[o]
+            val = not (np.isfinite(a) or np.isfinite(b)) or abs(a - b) <= self.tol[o]
+            out[o] = bool(both and self.events64[k] == self.events32[k] and val)
+        out["steer"] = True
+        return out
+
 
 def branch_tolerance(control_rows: list[dict], trained_mean_err: float,
                      factor: float = BRANCH_FACTOR, floor: dict | None = None) -> dict:
@@ -1499,7 +1579,8 @@ def branch_consistency(r64: Run, det: dict[str, np.ndarray], i: int, tol: dict[s
     from the same start: termination before the window end, the saturation set over the
     steps both took, the outcome events and the outcome values within ``tol`` (per
     outcome). Pure NumPy. Refuses an exhausted float64 run (``LoopExhausted``): a loop too
-    short for the run is a pipeline failure, not a branch difference."""
+    short for the run is a pipeline failure, not a branch difference. For a trained network
+    it runs only after the tag, since its float64 run (``run``) does."""
     if r64.exhausted:
         raise LoopExhausted(f"branch consistency: the float64 run from {r64.start.source} "
                             "exhausted the loop")
@@ -1658,7 +1739,7 @@ def _diag(r64: Run, det: dict[str, np.ndarray], i: int) -> dict:
 
 
 def _branch_record(b: Branch) -> dict:
-    return {"ok": b.ok, "end_ok": b.end_ok, "saturation_ok": b.saturation_ok,
+    return {"ok": b.ok, "ok_by": b.ok_by(), "end_ok": b.end_ok, "saturation_ok": b.saturation_ok,
             "events_ok": b.events_ok, "values_ok": b.values_ok, "end64": list(b.end64),
             "end32": list(b.end32), "n_saturated": [len(b.saturated64), len(b.saturated32)],
             "events64": repr(b.events64), "events32": repr(b.events32),
@@ -1908,6 +1989,62 @@ def dry_run_linear(f32_path: Path, gate2_rows: int = 2) -> tuple[dict, dict]:
             "readout_start": {"cell": int(det["cell"][0]), "phase": int(det["phase"][0])}}, arrays
 
 
+HYBRID_CELLS = (344, 66)            # the hybrid control's cells (design Section 15)
+HYBRID_STEPS = 200
+
+
+def hybrid_reference_params(sigmas, cfg: PPOConfig, obs_rms: RunningMeanStd, seed: int = 0,
+                            eps: float = HYBRID_GAIN):
+    """Row-stacked float32 ``hybrid_params`` for the float32 harness (one row per start, the
+    run's aux picking it)."""
+    rows = [hybrid_params(int(sg), cfg, obs_rms, seed, eps) for sg in sigmas]
+    return (np.stack([r[0] for r in rows]), np.stack([r[1] for r in rows]), rows[0][2],
+            np.float32(eps))
+
+
+def dry_run_hybrid(f32_path: Path, seed: int = 0) -> tuple[dict, dict]:
+    """The hybrid control (``hybrid_net``: the linear driver plus a small-gain random-init
+    actor of G1's architecture through G1's obs_rms, read only) against its float32
+    reference: branch consistency and Gate 3's teacher-forced check (the calibration's
+    control rows), the VJP of all four outcomes, and the MLP's share of each field (the
+    relative difference from the same driver with eps = 0)."""
+    require_x64()
+    bank, cells = _design()
+    det, meta = load_reference(f32_path)
+    g1 = _final_agent("G1")
+    steps = int(meta.get("loop_steps", HYBRID_STEPS))
+    rows, arrays = [], {}
+    for i, start in enumerate(_row_starts(det, bank, cells)):
+        net = hybrid_net(start.sigma, g1.cfg, g1.obs_rms, seed)
+        if not np.array_equal(np.asarray(net.params[0]),
+                              _f64(det["hyb_Wn"][i])):
+            raise ValueError(f"row {i}: the file's hybrid weights are not hybrid_params")
+        flat = hybrid_net(start.sigma, g1.cfg, g1.obs_rms, seed, eps=0.0)
+        rd = road(bank, start.stim_id)
+        r = run(net, rd, start, steps=steps)
+        b = branch_consistency(r, det, i, BRANCH_TOL)
+        w = wiring_check(net, det, i, rd.base, s_stop=start.s_stop)
+        fl = fields(net, rd, r, steps)
+        rf = run(flat, rd, start, steps=steps)
+        share = {}
+        if not rf.exhausted:
+            ff = fields(flat, rd, rf, steps)
+            for o in OUTCOMES:
+                a, c = np.stack(fl.of(o)), np.stack(ff.of(o))
+                den = float(np.linalg.norm(a))
+                share[o] = (float(np.linalg.norm(a - c) / den)
+                            if np.isfinite(a).all() and np.isfinite(c).all() and den > 0
+                            else float("nan"))
+        rows.append({"source": start.source, "sigma": start.sigma, "n_steps": r.n_steps,
+                     "term_step": r.term_step, "valid": r.valid_outcomes().tolist(),
+                     "values": r.values().tolist(), "branch": _branch_record(b),
+                     "diag": _diag(r, det, i), "wiring": _wiring_record(w),
+                     "vjp_seconds": fl.seconds, "mlp_share": share})
+        for o in OUTCOMES:
+            arrays[f"{o}_{i}"] = np.stack(fl.of(o))
+    return {"policy": "hybrid", "eps": HYBRID_GAIN, "steps": steps, "rows": rows}, arrays
+
+
 def _anchored_refs(agent_id: str, snapshot: int, n: int) -> list:
     """The first n verified anchored keys of an agent's snapshot (key id order; JSON only)."""
     from apexzero.fields import keys as K
@@ -2001,12 +2138,13 @@ def _jsonable(o):
 
 
 def main(argv: list[str] | None = None) -> int:
-    """``python -m apexzero.fields.network dry-run {random,linear,gate3} --out PREFIX``: a dry
-    run in a float64 process (x64 switched on here), writing PREFIX.json and PREFIX.npz."""
+    """``python -m apexzero.fields.network dry-run {random,linear,hybrid,gate3} --out PREFIX``:
+    a dry run in a float64 process (x64 switched on here), writing PREFIX.json and
+    PREFIX.npz."""
     ap = argparse.ArgumentParser(prog="python -m apexzero.fields.network")
     sub = ap.add_subparsers(dest="cmd", required=True)
     d = sub.add_parser("dry-run")
-    d.add_argument("what", choices=("random", "linear", "gate3"))
+    d.add_argument("what", choices=("random", "linear", "hybrid", "gate3"))
     d.add_argument("--f32", type=Path, help="float32 reference (save_det) for random / linear")
     d.add_argument("--keeper", type=Path, help="the lane keeper's float32 reference (random)")
     d.add_argument("--agent", default="G2")
@@ -2018,6 +2156,8 @@ def main(argv: list[str] | None = None) -> int:
         rep, arrays = dry_run_random(args.f32, keeper_path=args.keeper)
     elif args.what == "linear":
         rep, arrays = dry_run_linear(args.f32)
+    elif args.what == "hybrid":
+        rep, arrays = dry_run_hybrid(args.f32)
     else:
         rep, arrays = dry_run_gate3(args.agent)
     rep["seconds"] = time.perf_counter() - t0

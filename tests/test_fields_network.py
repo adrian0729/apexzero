@@ -143,6 +143,13 @@ def _references(out: Path) -> None:
     starts = [(cells[c], k) for c, k in KEEPER_STARTS]
     det = N.float32_reference(rollout._lane_keeper, N.KEEPER_PARAMS, None, bank, starts, 300)
     N.save_det(out / "keeper.npz", det, {"policy": "lane_keeper", "loop_steps": 300})
+    starts = [(cells[c], 0) for c in N.HYBRID_CELLS]
+    prm = N.hybrid_reference_params([bank.stimuli[c.stim_id].direction for c, _ in starts],
+                                    g1.cfg, g1.obs_rms)
+    det = N.float32_reference(N.hybrid_policy(g1.cfg), prm, g1.obs_rms, bank, starts,
+                              N.HYBRID_STEPS, aux=list(range(len(starts))))
+    det["hyb_Wn"] = prm[0]
+    N.save_det(out / "hybrid.npz", det, {"policy": "hybrid", "loop_steps": N.HYBRID_STEPS})
 
 
 @pytest.fixture(scope="module")
@@ -154,7 +161,8 @@ def dry(tmp_path_factory):
     env = dict(os.environ, PYTHONPATH=os.pathsep.join(
         [str(SRC), *filter(None, [os.environ.get("PYTHONPATH")])]))
     cmds = {"random": ["--f32", str(out / "random.npz"), "--keeper", str(out / "keeper.npz")],
-            "linear": ["--f32", str(out / "linear.npz")], "gate3": ["--agent", "G2"]}
+            "linear": ["--f32", str(out / "linear.npz")], "gate3": ["--agent", "G2"],
+            "hybrid": ["--f32", str(out / "hybrid.npz")]}
     procs = {k: subprocess.Popen([sys.executable, "-m", "apexzero.fields.network", "dry-run", k,
                                   *a, "--out", str(out / k)], env=env, stdout=subprocess.PIPE,
                                  stderr=subprocess.STDOUT, text=True)
@@ -200,6 +208,31 @@ def test_random_actor_matches_float32_harness(dry):
     g = rows[0]["gate2"]
     assert g["rel_err"][3] < N.GATE2_TOL and g["share_counted"][3] >= 0.5
     assert g["ok"] and g["outcome_ok"] == [True] * 4
+
+
+def test_hybrid_control_matches_float32_harness(dry):
+    """The pre-tag control with the trained architecture inside the loop (design Section 15):
+    the linear driver plus a small-gain random-init actor through G1's obs_rms drives cells 344
+    and 66 through the corner in float64 as the float32 harness does (branch consistency per
+    outcome, the teacher-forced check), and the MLP takes a small, nonzero share of the
+    plan-level fields."""
+    rows = dry["hybrid"]["rows"]
+    assert len(rows) == len(N.HYBRID_CELLS) and dry["hybrid"]["eps"] == N.HYBRID_GAIN
+    for r in rows:
+        assert all(r["valid"]), r["source"]
+        b = r["branch"]
+        assert b["ok"] and all(b["ok_by"].values()), (r["source"], b)
+        assert r["wiring"]["ok"], r["wiring"]
+        share = r["mlp_share"]
+        assert 0.0 < share["c_min"] < 0.5 and 0.0 < share["v_apex"] < 0.5, share
+    # the per-outcome verdict: a value outside the tolerance fails that outcome only
+    b = N.Branch((False, -1), (False, -1), frozenset(), frozenset(), ((True, (1,)),) * 3,
+                 ((True, (1,)),) * 3, {"c_min": (1.0, 1.0), "v_apex": (2.0, 2.5),
+                                       "s_b": (3.0, 3.0)}, {"c_min": 1e-3, "v_apex": 1e-3,
+                                                            "s_b": 1e-2})
+    assert b.ok_by() == {"c_min": True, "v_apex": False, "s_b": True, "steer": True}
+    b.saturated64 = frozenset({(3, 1)})
+    assert b.ok_by() == {"c_min": False, "v_apex": False, "s_b": False, "steer": True}
 
 
 def test_generic_callable_matches_float32_harness(dry):
@@ -464,8 +497,9 @@ def test_normaliser_scale_and_clip_enter_the_policy_input():
 
 def test_trained_networks_refused_before_the_tag_and_the_lockbox():
     """A policy marked trained (as agent_net marks every snapshot) cannot have fields, path
-    fields, kink radii, Gate 2, tangents or a perturbed run before ``unlock_trained``; the
-    base run and the teacher-forced check stay open. ``road`` applies step 1's lockbox."""
+    fields, kink radii, Gate 2, tangents or any closed-loop run (base or perturbed: no trained
+    network's free loop before the tag) before ``unlock_trained``; the teacher-forced check
+    (``policy_means`` / ``wiring_check``) stays open. ``road`` applies step 1's lockbox."""
     from types import SimpleNamespace
 
     W, b = N.linear_driver(1)
@@ -477,7 +511,8 @@ def test_trained_networks_refused_before_the_tag_and_the_lockbox():
                      lambda: N.kink_radius(net, None, None, None),
                      lambda: N.gate2(net, None, None, {}),
                      lambda: N.tangent_consistency(net, None, None, None, 1e-3),
-                     lambda: N.run(net, None, None, PT.zeros(3))):
+                     lambda: N.run(net, None, None, PT.zeros(3)),
+                     lambda: N.run(net, None, None)):
             with pytest.raises(PermissionError, match="waits for the tag"):
                 call()
     bank = SimpleNamespace(stimuli=[SimpleNamespace(name="E1/Monza/1200/real",
