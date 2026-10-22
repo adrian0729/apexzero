@@ -142,3 +142,46 @@ with real-width above baseline.
    - the analysis, once;
    - the decisions committed.
 5. **The findings** are written and verified as for steps 1 and 2.
+
+## 7. Clarifications before the tag (22 Oct 2026)
+
+These were written after `scripts/h4r.py` was built and reviewed, and before any H4R run was pulled
+back or any of its results (fields or `eval_rdev.json`) was seen. None of them changes a
+computation: each item is what step 2's frozen code or `scripts/h4r.py` already does. Section 3 is
+not edited in place.
+
+**The per-network statistic.**
+- It is step 2's `stages.median_statistic`: the median over geometries (R, θ) of the per-geometry
+  medians of the network's mirror-pair values (`measures.agent_summary`), as in step 2's design
+  Section 6.
+- "Design Section 15" in Section 3 means step 2's design.
+
+**Holm and refute.**
+- Holm always uses m = 2. A test that is not testable enters as p = 1, so the other test is held
+  to 0.025.
+- Refute uses the unadjusted opposite one-sided p.
+
+**gate2-trained exclusions.** A failing key is labelled 'pipeline: gate2-trained'. It comes after
+step 2's three pipeline reasons and before 'invalid outcome'.
+
+**S1.** S1 uses every present network. Field exclusions do not apply.
+
+**S2.**
+- Its statistic is the mean of the within-pair differences, pooled over both variants.
+- It is not testable with fewer than 3 complete pairs in either variant.
+- It is decided at 0.05, unadjusted.
+
+**S3.**
+- It pools both variants within an arm, on the networks kept for H4R-B. Per-variant results are
+  also reported.
+- Its CI uses 20,000 bootstrap draws on seed stream 201.
+
+**Missing runs.** A run that the queue log does not show failing twice enters only when named with
+`--accept-missing RUN=REASON`. It is recorded as a Section 2 deviation, with its queue events and
+whether it finished on the box.
+
+**A crash after the tag.** A pipeline crash after the tag voids `h4r-prereg-v1`. The fix is
+re-registered as `h4r-prereg-v2`, with its own tag pin, before any decision is computed. In that
+re-registration, a network whose own run raises deterministically is listed as missing, with the
+error as its reason.
+
