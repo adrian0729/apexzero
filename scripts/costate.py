@@ -1,0 +1,1755 @@
+"""Idea 2, the costate: the stages of the design (docs/interp/costate-design.md, v2.1).
+
+    uv run --no-sync python scripts/costate.py <stage> [options]
+
+Pre-tag stages (design Sections 1 and 7; no trained network's activation, value or gradient
+is computed; refused once the tag exists):
+
+    inputs      T's rows over the A2 keys with their targets (re-polished), tail values and
+                the network-independent observation maps (inputs/world.npz), the frozen
+                values (winsorisation bounds, residual shares, power floor, folds) and, per
+                --network (default G1), the observability and kappa flags (inputs/summary.json).
+                The 4 multi-basin keys are left out of T (design Section 3.2) and listed;
+                run it after k2 (its t_H is bound) and again before prereg
+    k0          K0 on the A2 keys (--kinds a2 n adds N's anchored finals)
+    k1          K1 on step 2's Gate 1 sample (50 keys; --n fewer, a partial run), with the
+                planted bugs and pi on the anchored keys
+    k2          K2 on the horizon twins, and --n-extend W = 800 insurance solves
+    k2b         K2b on --n keys (default 30) stratified by R and theta
+    k3          K3: the critic's pullback dry runs on 200 T states (--n fewer keys: a
+                partial run) and the extractor's self-consistency (float64 subprocesses)
+    k3b         K3b: the policy's own costate loop on step 2's linear driver, its accel-reading
+                plant and the hybrid, with the on-manifold check
+    k4          K4's planted representations through the probe pipeline on T (G1's obs_rms)
+    k5          K5: the permuted-target wiring check and the control task
+    k6          K6: coverage per component and reason
+    nulls       C1's input-side nulls per network obs_rms (default: the 9 decision networks;
+                fewer is partial): value-fit ridge and MLP on the horizon-corrected value, the
+                window value's ridge, QSS, barrier, far-geometry lambda (nulls/<run>.npz named
+                by run directory, nulls/summary.json with each array's sha256)
+    prereg      the pre-registration record src/apexzero/costate/prereg.json, from a clean
+                tree, binding the stamped passing outputs above: the last step before the tag
+
+Post-tag stages (refused unless the freeze check passes: ``freeze_problems``):
+
+    activations the actors' h1-h3 and m and the critics' layers and heads at T, with the
+                random-init actors' h3 and m on each network's z
+    critic      the trained critics' pullbacks (V and heads) and uniform inside-widening
+                derivatives at T, and the 20 random-init critics' pullbacks
+    own         the policy's own costate (C1-own) at T's interior restarts, every 20th step
+    probes      C2 and C2-sw per decision network, with the pre-registered sensitivity and
+                robustness variants (partitions 1-10, geometry and state weights, the small
+                geometries and the kappa set dropped, braking and non-braking sub-scores)
+    analyse     the analysis: --confirmatory runs once, into outputs/costate/analyse/
+                decisions.json, only on complete inputs stamped by this code under this tag;
+                a non-confirmatory run computes no decision at all (coverage and plumbing
+                only) until a stamped confirmatory decisions file is committed
+                (``unlocked_by``)
+
+Each stage writes under outputs/costate/<stage group>/ (``--out`` moves the root; any root
+other than outputs/costate, a --limit or --n or a --network makes the run partial) and logs to
+outputs/costate/logs/costate-<stage>.log (never under runs/, which is the main checkout's).
+Every output carries a provenance stamp (``F.Provenance``'s fields on idea 2's code paths:
+the code hash at the start and just before writing, HEAD, the changed paths, argv, the
+partial options, times, any deviation and the tag), embedded in a JSON object or as a
+<file>.provenance.json sidecar.
+
+**Freeze rule** (design Section 7 'Freeze'; ``freeze_problems``, step 2's rule simplified):
+the tag costate-prereg-v1 must exist as an annotated tag, be on origin as the same object and
+be an ancestor of HEAD; the write-once outputs/costate/tag.json the first post-tag run writes
+must be committed before the next post-tag stage and stay its first committed version;
+nothing under src/ (all of it), scripts/costate.py or scripts/_bootstrap.py may differ from
+the tag (git diff, untracked files, and byte by byte); step 1's and step 2's frozen code must
+be their own tags'; the record at the tag must exist, register the design document's blob at
+the tag, hash the code the tag holds (``prereg.tree_code_hash``), come from a base commit that
+differs from the tag by the record alone; package versions must be the record's; and the disk
+must match the record (key files and lists, T's list, design document, code hash, bound
+outputs, checkpoints). Only then are ``critic.unlock_trained``, ``probes.unlock_trained`` and
+``network.unlock_trained`` called. A logged ``--post-tag-deviation REASON`` waives only a
+changed-code or changed-design-document problem.
+
+**Run-once** (Section 7: the analysis runs once): ``analyse --confirmatory`` refuses when its
+decisions file exists or was ever committed, refuses unless every input is present and
+stamped by this code under this tag (``confirmatory_input_problems``), and prints the
+``git add -f`` that commits it. Before that file is committed, a non-confirmatory analyse
+writes coverage and plumbing only (``unlocked_by``, as step 2's).
+
+**Order with step 2 and H4R** (step 2's and H4R's freeze checks also cover all of src): until
+H4R's outputs/h4r/analyse/decisions.json is committed on main, no file under src/ may appear in
+the main checkout's working tree (no merge, cherry-pick, checkout of these paths or untracked
+copy; a file appearing mid-run makes a running ``h4r.py fields`` refuse to write). Idea 2 is
+tagged on the costate-dev branch (``git push origin costate-dev costate-prereg-v1``) and every
+post-tag stage runs in that worktree, where tag.json and decisions.json are committed. Merge
+costate-dev into main only after both H4R's and idea 2's confirmatory decisions are
+committed; never merge main into costate-dev between idea 2's tag and its analyse.
+"""
+
+import argparse
+import json
+import os
+import subprocess
+import sys
+import time
+from pathlib import Path
+
+
+def _threads(argv: list[str]) -> int | None:
+    for i, a in enumerate(argv):
+        if a == "--threads" and i + 1 < len(argv):
+            return int(argv[i + 1])
+        if a.startswith("--threads="):
+            return int(a.split("=", 1)[1])
+    return None
+
+
+_T = _threads(sys.argv)
+if _T is not None or "XLA_FLAGS" not in os.environ:
+    os.environ["XLA_FLAGS"] = ("--xla_cpu_multi_thread_eigen=false "
+                               f"intra_op_parallelism_threads={_T or 2}")
+
+import _bootstrap  # noqa: F401  (makes src/ importable)
+import fields as F
+
+ROOT = Path(__file__).resolve().parents[1]
+TAG = "costate-prereg-v1"
+REMOTE = F.REMOTE
+STEP1_TAG, STEP1_FROZEN = F.STEP1_TAG, F.STEP1_FROZEN
+STEP2_TAG = F.TAG
+STEP2_FROZEN = ("src/apexzero/fields", "scripts/fields.py")
+CODE_PATHS = ("src", "scripts/costate.py", "scripts/_bootstrap.py")
+DESIGN_DOC = "docs/interp/costate-design.md"
+PREREG_REL = "src/apexzero/costate/prereg.json"
+OUT_REL = "outputs/costate"
+OUT = ROOT / OUT_REL
+DECISIONS_REL = f"{OUT_REL}/analyse/decisions.json"
+PRE_TAG = ("inputs", "k0", "k1", "k2", "k2b", "k3", "k3b", "k4", "k5", "k6", "nulls", "prereg")
+POST_TAG = ("activations", "critic", "own", "probes", "analyse")
+STAGES = PRE_TAG + POST_TAG
+X64_OFF = ("k3",)               # its float64 work runs in subprocesses
+GROUP = {"inputs": "inputs", "nulls": "nulls", "prereg": "prereg", "activations": "post",
+         "critic": "post", "own": "post", "probes": "post", "analyse": "analyse"}
+K3B_CELLS = (("linear", 344), ("linear", 345), ("linear", 66), ("accel", 344), ("hybrid", 344),
+             ("hybrid", 66))
+K3B_TRAINED_CELLS = (344, 66)   # the trained analogue of K3b (C1-own's validity), per network
+OWN_EVERY = 20                  # Section 3.3: T's interior restarts every 20th step
+
+
+# ------------------------------------------------------------------------- the freeze
+
+
+def _P(code: str, msg: str):
+    from apexzero.fields.prereg import Problem
+
+    return Problem(code, msg)
+
+
+def tagged_record(tag: str = TAG, root: Path = ROOT) -> dict | None:
+    r = F._git("show", f"{tag}:{PREREG_REL}", root=root)
+    if r.returncode != 0 or not r.stdout.strip():
+        return None
+    return json.loads(r.stdout)
+
+
+def tagged_doc_sha256(tag: str = TAG, root: Path = ROOT) -> str | None:
+    import hashlib
+
+    r = F._git_bytes("cat-file", "blob", f"{tag}:{DESIGN_DOC}", root=root)
+    return hashlib.sha256(r.stdout).hexdigest() if r.returncode == 0 else None
+
+
+def pin_path_of(root: Path = ROOT) -> Path:
+    return Path(root) / OUT_REL / "tag.json"
+
+
+def frozen_steps_problems(root: Path = ROOT) -> list:
+    """Step 1's and step 2's frozen code against their own tags (git and byte by byte)."""
+    out = []
+    for tag, paths, label in ((STEP1_TAG, STEP1_FROZEN, "step 1"),
+                              (STEP2_TAG, STEP2_FROZEN, "step 2")):
+        if F._tag_object(tag, root) is None:
+            out.append(_P("frozen", f"{label}'s tag {tag} is missing"))
+            continue
+        ch = F.changed_since(tag, paths, root)
+        if ch:
+            out.append(_P("frozen", f"{label}'s frozen code differs from {tag}: {ch[:6]}"))
+        try:
+            hidden = sorted(set(F.byte_changes(tag, paths, root)) - {c.split(" ")[0] for c in ch})
+        except RuntimeError as e:
+            out.append(_P("git", f"git failed reading {tag}: {e}"))
+            continue
+        if hidden:
+            out.append(_P("frozen", f"{label}'s frozen code differs from {tag} byte by byte: "
+                          f"{hidden[:6]}"))
+    return out
+
+
+def _verify_on_disk(rec: dict, root: Path) -> list:
+    from apexzero.costate import keys_root
+    from apexzero.costate import prereg as PR
+
+    return PR.verify_record(rec, root, keys_root(), lambda: PR.key_sets(), Path(root) / OUT_REL,
+                            lambda pins: PR.pins_problems(pins, root),
+                            design_hash=PR.stimulus_design_hash())
+
+
+def freeze_problems(tag: str = TAG, root: Path = ROOT, verify=_verify_on_disk,
+                    remote: str | None = REMOTE, pin_path: Path | None = None) -> list:
+    """Why a post-tag stage may not run (module docstring 'Freeze rule'), as
+    ``fields.prereg.Problem`` strings with a code."""
+    from apexzero.costate import prereg as PR
+
+    t = F._tag_object(tag, root)
+    if t is None:
+        return [_P("tag", f"the git tag {tag} does not exist yet (design Section 7: no trained "
+                   "network's activation or gradient before it)")]
+    out = []
+    if t[1] != "tag":
+        out.append(_P("tag", f"{tag} is a lightweight tag: it must be annotated"))
+    if remote is not None:
+        try:
+            on = F.remote_tag_object(tag, root, remote)
+            if on != t[0]:
+                out.append(_P("tag", f"{tag} is not on {remote} as {t[0][:12]} (there: {on})"))
+        except RuntimeError as e:
+            out.append(_P("tag", f"cannot confirm {tag} on {remote}: {e}"))
+    commit = F._tag_commit(tag, root)
+    if F._git("merge-base", "--is-ancestor", commit or tag, "HEAD", root=root).returncode != 0:
+        out.append(_P("tag", f"the tag {tag} is not an ancestor of HEAD"))
+    pin_path = Path(pin_path) if pin_path is not None else pin_path_of(root)
+    if pin_path.exists():
+        pin = json.loads(pin_path.read_text())
+        if pin.get("object") != t[0] or pin.get("commit") != commit:
+            out.append(_P("tag", f"the tag moved since the first post-tag run ({pin_path})"))
+    out += list(F._pin_committed_problems(pin_path, root, t[0], commit))
+    ch = F.changed_since(tag, CODE_PATHS, root)
+    if any(c.startswith("<git error") for c in ch):
+        out.append(_P("git", f"git failed on the code paths: {ch[:2]}"))
+    elif ch:
+        out.append(_P("code_changed", f"code differs from the tag {tag}: {ch[:8]}"))
+    try:
+        hidden = sorted(set(F.byte_changes(tag, CODE_PATHS, root)) - {c.split(" ")[0] for c in ch})
+        if hidden:
+            out.append(_P("code_changed", f"code differs from the tag {tag} byte by byte: "
+                          f"{hidden[:8]}"))
+    except RuntimeError as e:
+        out.append(_P("git", f"git failed reading the tag's code: {e}"))
+    out += frozen_steps_problems(root)
+    rec = tagged_record(tag, root)
+    if rec is None:
+        out.append(_P("record", f"no pre-registration record {PREREG_REL} at the tag {tag}"))
+        return out
+    if not rec.get("design_doc_sha256") or tagged_doc_sha256(tag, root) != rec["design_doc_sha256"]:
+        out.append(_P("record", "the design document at the tag is not the one the record "
+                      "registers"))
+    try:
+        if PR.tree_code_hash(Path(root), tag) != rec.get("code_hash"):
+            out.append(_P("record", "the code at the tag is not the code the record was built "
+                          "from"))
+    except RuntimeError as e:
+        out.append(_P("git", f"git failed hashing the code at the tag: {e}"))
+    base = rec.get("prereg_base_commit")
+    if not base or F._git("cat-file", "-e", f"{base}^{{commit}}", root=root).returncode != 0:
+        out.append(_P("record", f"the record's base commit {base!r} is missing or unknown"))
+    else:
+        d = F._git("diff", "--name-only", base, tag, "--", *CODE_PATHS, DESIGN_DOC, root=root)
+        extra = [ln for ln in d.stdout.splitlines() if ln.strip() and ln != PREREG_REL]
+        if d.returncode != 0 or extra:
+            out.append(_P("record", f"the tag differs from the record's base commit by more "
+                          f"than the record: {extra[:6]}"))
+    env = F.env_problems(rec.get("environment"), F.environment(root))
+    if env:
+        out.append(_P("code_changed", f"package versions differ from the record's: {env[:6]}"))
+    if verify is not None:
+        out.extend(p if hasattr(p, "code") else _P("", str(p)) for p in verify(rec, root))
+    return out
+
+
+def log_deviation(what: str, reason: str, problems: list, category: str, root: Path = ROOT,
+                  log_root: Path | None = None) -> dict:
+    from apexzero.fields import prereg as FP
+
+    rec = {"date": time.strftime("%Y-%m-%d"), "time": time.strftime("%H:%M:%S"),
+           "stage": what, "category": category, "reason": reason,
+           "problems": [{"code": FP.problem_code(p), "message": str(p)} for p in problems],
+           "head": F._head(root)}
+    path = Path(log_root or (Path(root) / OUT_REL)) / "deviations.jsonl"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with open(path, "a") as fh:
+        fh.write(json.dumps(rec) + "\n")
+    return rec
+
+
+def pin_tag(root: Path = ROOT, pin_path: Path | None = None) -> Path:
+    """The write-once tag.json (the tag's identity at the first post-tag run)."""
+    pin_path = Path(pin_path) if pin_path is not None else pin_path_of(root)
+    ident = F.tag_identity(TAG, root)
+    if ident is not None and not pin_path.exists():
+        pin_path.parent.mkdir(parents=True, exist_ok=True)
+        with open(pin_path, "x") as fh:
+            fh.write(json.dumps({**ident, "pinned_at": F._now()}, indent=1) + "\n")
+        print(f"pinned the tag in {pin_path}: commit it (git add -f) before the next post-tag "
+              "stage", flush=True)
+    return pin_path
+
+
+def require_tag(what: str, deviation: str | None = None, root: Path = ROOT, problems=None,
+                pin_path: Path | None = None) -> dict | None:
+    """Refuse a post-tag stage unless ``freeze_problems`` is empty; a deviation waives only
+    the waivable codes."""
+    from apexzero.fields import prereg as FP
+
+    probs = freeze_problems(root=root, pin_path=pin_path) if problems is None else problems
+    if not probs:
+        pin_tag(root, pin_path)
+        return None
+    if deviation and FP.waivable(probs):
+        dev = log_deviation(what, deviation, probs, "post-tag deviation", root)
+        pin_tag(root, pin_path)
+        return dev
+    raise SystemExit(f"refusing to run {what}: " + "; ".join(str(p) for p in probs))
+
+
+def refuse_after_tag(what: str, deviation: str | None = None, always: bool = False,
+                     root: Path = ROOT, out_root: Path | None = None) -> dict | None:
+    """Pre-tag stages refuse once the tag exists; with a deviation only into a root outside
+    outputs/costate (never for 'prereg')."""
+    if F._tag_object(TAG, root) is None:
+        return None
+    if always or not deviation:
+        raise SystemExit(f"refusing to run {what} after the tag {TAG}: it would change a "
+                         "pre-registered output")
+    canon = (Path(root) / OUT_REL).resolve()
+    out = Path(out_root).resolve() if out_root is not None else canon
+    if out == canon or canon in out.parents or out in canon.parents:
+        raise SystemExit(f"refusing to run {what} after the tag into {out}: give --out outside "
+                         f"{OUT_REL}")
+    return log_deviation(what, deviation, [], "pre-tag stage after the tag", root)
+
+
+def import_problems(root: Path = ROOT, modules: dict | None = None) -> list[str]:
+    """Every module loaded from inside the repository must be frozen code: under
+    src/apexzero, or scripts/costate.py, scripts/fields.py (step 2's helpers, frozen at its
+    tag) or scripts/_bootstrap.py; apexzero itself must be this checkout's."""
+    import apexzero
+
+    root = Path(root).resolve()
+    want = (root / "src" / "apexzero").resolve()
+    got = Path(apexzero.__file__).resolve().parent
+    out = [] if got == want else [f"apexzero is imported from {got}, not {want}"]
+    prefixes = {Path(p).resolve() for p in (sys.prefix, sys.base_prefix, sys.exec_prefix)}
+    allowed = {(root / "scripts" / n).resolve() for n in ("costate.py", "fields.py",
+                                                          "_bootstrap.py")}
+    for name, mod in sorted((modules if modules is not None else dict(sys.modules)).items()):
+        f = getattr(mod, "__file__", None)
+        if not f:
+            continue
+        fp = Path(f).resolve()
+        if root not in fp.parents or any(p == fp or p in fp.parents for p in prefixes):
+            continue
+        if want in fp.parents or fp in allowed:
+            continue
+        out.append(f"{name} imported from {fp}, outside the frozen code")
+    return out
+
+
+# ------------------------------------------------------------------------- provenance
+
+
+def _partial(args) -> list[str]:
+    """The options that make a run partial: another --out, --limit, --n, --n-extend, and
+    --network except on the nulls stage when the networks given cover the decision networks
+    (named by run directory: G1 and runs/dr-pilot-200M are the same)."""
+    out = []
+    if Path(getattr(args, "out", OUT)).resolve() != OUT.resolve():
+        out.append("--out")
+    for name in ("limit", "n", "network", "n_extend"):
+        v = getattr(args, name, None)
+        if v in (None, [], False):
+            continue
+        if name == "network" and getattr(args, "stage", None) == "nulls":
+            from apexzero.costate import prereg as PR
+
+            if {PR.net_file(n) for n in PR.null_networks()} <= {PR.net_file(n) for n in v}:
+                continue
+        out.append(f"--{name.replace('_', '-')}")
+    return out
+
+
+class Provenance(F.Provenance):
+    """step 2's ``Provenance`` on idea 2's code paths (module docstring)."""
+
+    def __init__(self, args=None, stage: str = "", root: Path = ROOT):
+        from apexzero.costate import prereg as PR
+
+        self.root = Path(root)
+        self.stage = stage
+        self.code_hash = PR.code_hash(self.root)
+        self.head = F._head(self.root)
+        self.changed = F.changed_since("HEAD", CODE_PATHS + (DESIGN_DOC,), self.root)
+        self.argv = list(sys.argv)
+        self.partial = _partial(args) if args is not None else []
+        self.start = F._now()
+        self.deviation = None
+        self.tag = None
+        self.environment = F.environment(self.root)
+        self.check_imports = False
+
+    def stamp(self, files: dict | None = None, content_sha256: str | None = None) -> dict:
+        from apexzero.costate import prereg as PR
+
+        now = PR.code_hash(self.root)
+        if now != self.code_hash:
+            raise SystemExit(f"refusing to write the {self.stage} output: the code changed "
+                             "while the stage ran")
+        bad = import_problems(self.root) if self.check_imports else []
+        if bad:
+            raise SystemExit(f"refusing to write the {self.stage} output: {'; '.join(bad[:4])}")
+        out = {"stage": self.stage, "code_hash": self.code_hash, "head": self.head,
+               "changed_vs_head": self.changed, "argv": self.argv, "partial": self.partial,
+               "start": self.start, "end": F._now(), "deviation": self.deviation,
+               "tag": self.tag, "environment": self.environment, "files": dict(files or {})}
+        if content_sha256 is not None:
+            out["content_sha256"] = content_sha256
+        return out
+
+
+def _use_provenance(p: Provenance) -> None:
+    """Our provenance for this run, in step 2's helpers too (``F._write`` stamps through
+    ``F._prov``)."""
+    F._PROV[:] = [p]
+
+
+def _write(path: Path, obj) -> Path:
+    return F._write(Path(path), obj)
+
+
+def _write_npz(path: Path, arrays: dict) -> Path:
+    import numpy as np
+
+    return F._stamped_write(Path(path), lambda q: np.savez_compressed(q, **arrays))
+
+
+def _out(args, group: str) -> Path:
+    d = Path(args.out) / group
+    d.mkdir(parents=True, exist_ok=True)
+    return d
+
+
+def _x64() -> None:
+    import jax
+
+    jax.config.update("jax_enable_x64", True)
+
+
+def _log(args, stage: str, msg: str) -> None:
+    d = Path(args.log_dir)
+    d.mkdir(parents=True, exist_ok=True)
+    with open(d / f"costate-{stage}.log", "a") as fh:
+        fh.write(f"{time.strftime('%Y-%m-%d %H:%M:%S')} {msg}\n")
+
+
+def _pre_tag(args, what: str) -> None:
+    dev = refuse_after_tag(what, getattr(args, "post_tag_deviation", None),
+                           always=args.stage == "prereg", out_root=Path(args.out))
+    if dev is not None:
+        F._prov().deviation = dev
+
+
+# ------------------------------------------------------------------------- inputs
+
+
+def _spread(items: list, n: int | None) -> list:
+    return F._limit(items, n)
+
+
+def _a2(args):
+    from apexzero.costate import states as ST
+
+    return _spread(sorted(ST.a2_refs(), key=lambda r: r.key_id), getattr(args, "limit", None))
+
+
+def multi_basin(ref, root=None) -> bool:
+    """A key flagged multi-basin in its file (design Section 3.2: excluded)."""
+    from apexzero.costate import keys_root
+    from apexzero.fields import keys as K
+
+    return bool(getattr(K.load_key(ref, root=keys_root(root)), "multi_basin", False))
+
+
+def _analysable(refs) -> tuple[list, list]:
+    """(refs without the multi-basin keys, the left-out refs)."""
+    keep, out = [], []
+    for r in refs:
+        (out if multi_basin(r) else keep).append(r)
+    return keep, out
+
+
+def _world_path(args) -> Path:
+    return Path(args.out) / "inputs" / "world.npz"
+
+
+def _load_world(args):
+    from apexzero.costate import inputs as IN
+
+    p = _world_path(args)
+    if not p.exists():
+        raise SystemExit(f"no {p}: run the inputs stage first")
+    return IN.load_world(p)
+
+
+def _t_H(args) -> int | None:
+    p = Path(args.out) / "gates" / "k2.json"
+    if p.exists():
+        return int(json.loads(p.read_text())["horizon"]["t_H"])
+    return None
+
+
+def stage_inputs(args) -> None:
+    """T's world, the frozen values and the per-network flags (module docstring)."""
+    import numpy as np
+
+    from apexzero.costate import inputs as IN
+    from apexzero.costate import keys_root
+    from apexzero.costate import prereg as PR
+    from apexzero.costate import states as ST
+    from apexzero.costate import targets as TG
+    from apexzero.fields import keys as K
+    from apexzero.fields.prereg import sha256_file
+
+    bank, _ = IN.design()
+    refs, mb = _analysable(_a2(args))
+    t_H = _t_H(args)
+    if t_H is None:
+        print("warning: no gates/k2.json yet: T is uncut and inputs/summary.json will not "
+              "bind (rerun inputs after k2)", flush=True)
+    excluded = {"multi_basin": []}
+    for r in mb:
+        rec = K.load_key(r, root=keys_root())
+        lm = bank.stimuli[r.stim_id].landmarks
+        n_t = len(ST.t_steps(rec.x, lm, int(r.W), t_H))
+        excluded["multi_basin"].append({"key_id": r.key_id, "rows": int(n_t)})
+    kds, failed = [], []
+    for i, r in enumerate(refs):
+        try:
+            kds.append(IN.key_data(r, bank, True, t_H))
+        except (TG.RepolishFailed, ValueError) as e:   # a listed exclusion
+            failed.append({"key_id": r.key_id, "error": f"{type(e).__name__}: {e}"})
+        if i % 25 == 0:
+            _log(args, "inputs", f"{i + 1}/{len(refs)}")
+    world = IN.build_world(kds)
+    path = _world_path(args)
+    F._stamped_write(path, lambda q: IN.save_world(q, world))
+    flags = {}
+    for name in args.network or ["G1"]:
+        rms, _ = IN.obs_rms_of(name)
+        fl = IN.flags(world, rms)
+        ob = fl["observability"]
+        flags[name] = {"s_unobservable": int(ob.s_unobservable.sum()),
+                       "kappa_clipped": int(fl["kappa_clipped"].sum()),
+                       "clipped_any": int(fl["clipped_any"].sum()),
+                       "s_ratio_exit_max": float(np.max(ob.s_ratio[np.asarray(
+                           world.tab["ds_c1"]) > 25], initial=0.0))}
+    frozen = PR.frozen_values(world.tab, t_H, partitions=getattr(args, "partitions", None))
+    _write(Path(args.out) / "inputs" / "summary.json",
+           {"n": world.n, "keys": len(kds), "failed": failed, "t_H": t_H, "frozen": frozen,
+            "flags": flags, "excluded": excluded, "world_sha256": sha256_file(path)})
+
+
+# ------------------------------------------------------------------------- gates
+
+
+def stage_k0(args) -> None:
+    from apexzero.costate import gates as GT
+    from apexzero.costate import states as ST
+
+    refs = _a2(args)
+    if "n" in (args.kinds or []):
+        refs += [r for v in ST.n_refs().values() for r in v]
+    res = GT.k0(refs, progress=lambda k: _log(args, "k0", k))
+    _write(_out(args, "gates") / "k0.json", res)
+
+
+def stage_k1(args) -> None:
+    from apexzero.costate import gates as GT
+
+    refs = GT.k1_sample()
+    if args.n is not None:
+        refs = F._limit(refs, args.n)
+    rows, pi_rows = [], []
+    anchored = [r for r in refs if r.kind == "anchored"][:GT.K1_N_PI]
+    for r in refs:
+        rows += GT.k1_key(r)
+        _log(args, "k1", r.key_id)
+    for r in anchored:
+        pi_rows += GT.k1_pi(r)
+    _write(_out(args, "gates") / "k1.json", {"rows": rows, "pi": pi_rows,
+                                             "decision": GT.k1_decision(rows, pi_rows)})
+
+
+def _sd(args):
+    from apexzero.costate import gates as GT
+
+    return GT.lam_sd(_load_world(args).tab)
+
+
+def stage_k2(args) -> None:
+    import numpy as np
+
+    from apexzero.costate import gates as GT
+    from apexzero.costate import states as ST
+    from apexzero.costate import stream_rng
+
+    world = _load_world(args)
+    sd = GT.lam_sd(world.tab)
+    res = GT.k2_twins(GT.twin_pairs(), sd, tab=world.tab)
+    ext = []
+    n = 30 if args.n_extend is None else int(args.n_extend)
+    if n:
+        pool, _ = _analysable([r for r in ST.a2_refs()
+                               if r.W == 400 and ST.strata(r).w_is_cell])
+        R = np.array([ST.strata(r).R for r in pool])
+        order = np.argsort(R, kind="mergesort")
+        rng = stream_rng("costate_horizon")
+        bins = np.array_split(order, max(n, 1))
+        for b in bins[:n]:
+            ref = pool[int(b[rng.integers(len(b))])]
+            r = GT.k2_extend(ref)
+            if r.get("success"):
+                d = GT.k2_compare(r.pop("cs400"), r.pop("cs800"), sd, r.pop("t"))
+                r["T_max"] = d.max(0).tolist()
+            ext.append(r)
+            _log(args, "k2", ref.key_id)
+    res["extend"] = ext
+    res["extend_ok"] = bool(all(e.get("success") and not e.get("different_basin")
+                                and max(e.get("T_max", [0])) <= GT.K2_TOL for e in ext))
+    _write(_out(args, "gates") / "k2.json", res)
+
+
+def stage_k2b(args) -> None:
+    import numpy as np
+
+    from apexzero.costate import gates as GT
+    from apexzero.costate import states as ST
+    from apexzero.costate import stream_rng
+
+    sd = _sd(args)
+    pool, _ = _analysable([r for r in ST.a2_refs() if ST.strata(r).w_is_cell
+                           and r.kind == "nominal"])
+    geo = np.array([(ST.strata(r).R, ST.strata(r).theta_deg) for r in pool])
+    uniq, inv = np.unique(geo, axis=0, return_inverse=True)
+    stratum = ST.r_tercile(uniq[:, 0], uniq[:, 1]) * 10 + ST.theta_class(uniq[:, 1])
+    key = stratum[inv.ravel()]
+    rng = stream_rng("costate_horizon", 1)
+    n = 30 if args.n is None else int(args.n)
+    pick = []
+    for i in range(n):
+        groups = sorted(set(key.tolist()))
+        g = groups[i % len(groups)]
+        idx = np.flatnonzero(key == g)
+        pick.append(pool[int(idx[rng.integers(len(idx))])])
+    keys = []
+    for r in dict.fromkeys(pick):
+        keys.append(GT.k2b_key(r, sd))
+        _log(args, "k2b", r.key_id)
+    rule = GT.k2b_rule(keys)
+    ok = all(all(v.get("ok") for v in k["severities"].values()) for k in keys)
+    _write(_out(args, "gates") / "k2b.json", {"keys": keys, "rule": rule, "pass": bool(ok)})
+
+
+def _subprocess(args, module: str, argv: list[str]) -> dict:
+    env = dict(os.environ, PYTHONPATH=str(ROOT / "src"))
+    r = subprocess.run([sys.executable, "-m", module, *argv], cwd=ROOT, env=env,
+                       capture_output=True, text=True, check=False)
+    if r.returncode not in (0, 1):
+        raise SystemExit(f"{module} {argv[:2]} failed: {r.stderr[-1500:]}")
+    return {"returncode": r.returncode}
+
+
+def stage_k3(args) -> None:
+    from apexzero.costate import critic as CR
+    from apexzero.costate import gates as GT
+
+    d = _out(args, "gates") / "k3"
+    d.mkdir(parents=True, exist_ok=True)
+    _subprocess(args, "apexzero.costate.critic", ["dry-run", "plants", "--out", str(d / "plants")])
+    size = (["--keys", str(args.n)] if args.n is not None
+            else ["--min-states", str(CR.K3_MIN_STATES)])
+    _subprocess(args, "apexzero.costate.critic", ["dry-run", "random", "--out",
+                                                  str(d / "random"), *size])
+    ext = []
+    for heads in ("5", "0"):
+        p = d / f"extractor_{heads}.json"
+        _subprocess(args, "apexzero.costate.probes", ["extractor-check", "--out", str(p),
+                                                      "--heads", heads])
+        ext.append(json.loads(p.read_text()))
+    plants = json.loads((d / "plants.json").read_text())
+    random = json.loads((d / "random.json").read_text())
+    res = GT.k3_judge(plants, random, ext,
+                      min_states=CR.K3_MIN_STATES if args.n is None else 0)
+    res["reports"] = {"plants": plants, "random": random, "extractor": ext}
+    _write(_out(args, "gates") / "k3.json", res)
+
+
+def stage_k3b(args) -> None:
+    from apexzero.costate import gates as GT
+    from apexzero.costate import inputs as IN
+
+    rms, cfg = IN.obs_rms_of("G1")
+    cells = K3B_CELLS if args.n is None else K3B_CELLS[: int(args.n)]
+    res = GT.k3b(cells, cfg, rms, steps=args.steps)
+    res["pass"] = res["decision"]["pass"]
+    _write(_out(args, "gates") / "k3b.json", res)
+
+
+def _probe_world(args):
+    from apexzero.costate import gates as GT
+    from apexzero.costate import inputs as IN
+
+    world = _load_world(args)
+    rms, cfg = IN.obs_rms_of("G1")
+    z, _, _ = IN.z_and_jz(world, rms)
+    return GT.probe_world(world.tab, z, cfg), cfg
+
+
+def stage_k4(args) -> None:
+    from apexzero.costate import gates as GT
+
+    pw, cfg = _probe_world(args)
+    res = GT.k4(pw, which=args.which, readout_net=GT.pr4(cfg, pw) if (
+        not args.which or "PR-4" in args.which) else None)
+    _write(_out(args, "gates") / "k4.json", res)
+
+
+def stage_k5(args) -> None:
+    from apexzero.costate import gates as GT
+
+    pw, _ = _probe_world(args)
+    _write(_out(args, "gates") / "k5.json", GT.k5(pw, ceiling=args.ceiling))
+
+
+def stage_k6(args) -> None:
+    from apexzero.costate import gates as GT
+    from apexzero.costate import inputs as IN
+
+    world = _load_world(args)
+    rms, _ = IN.obs_rms_of("G1")
+    fl = IN.flags(world, rms)
+    k2b = Path(args.out) / "gates" / "k2b.json"
+    exc = json.loads(k2b.read_text())["rule"]["excluded"] if k2b.exists() else None
+    summ = Path(args.out) / "inputs" / "summary.json"
+    mb = json.loads(summ.read_text()).get("excluded", {}).get("multi_basin") if \
+        summ.exists() else None
+    _write(_out(args, "gates") / "k6.json",
+           GT.k6(world.tab, ~fl["observability"].s_unobservable, fl["kappa_clipped"], exc, mb))
+
+
+def stage_nulls(args) -> None:
+    """C1's input-side nulls per network obs_rms (no network evaluated)."""
+    import numpy as np
+
+    from apexzero.costate import analysis as AN
+    from apexzero.costate import inputs as IN
+    from apexzero.costate import nulls as NL
+    from apexzero.costate import prereg as PR
+    from apexzero.costate import probes as PB
+    from apexzero.costate import states as ST
+    from apexzero.fields.prereg import read_stamp, sha256_file
+
+    world = _load_world(args)
+    tab = world.tab
+    fo = PB.folds(tab)
+    w = ST.weights(tab, "key")
+    summ = {"networks": {}, "failed": []}
+    names = list(dict.fromkeys(AN.network_of(n) for n in (args.network or PR.null_networks())))
+    for name in names:
+        rms, _ = IN.obs_rms_of(name)
+        alphas = PB.MLP_ALPHAS if args.mlp_alphas is None else tuple(args.mlp_alphas)
+        res = NL.null_gradients(world.keys, tab, world.v_star, fo, w, rms, world.lam,
+                                mlp_alphas=alphas, mlp_maxiter=args.mlp_maxiter,
+                                v_star_inf=world.v_star_inf)
+        arrays = {k: np.asarray(v) for k, v in res.items() if k != "fits"}
+        path = _write_npz(_out(args, "nulls") / f"{PR.net_file(name)}.npz", arrays)
+        summ["networks"][name] = {"fits": res["fits"], "sha256": sha256_file(path),
+                                  "code_hash": (read_stamp(path) or {}).get("code_hash"),
+                                  "finite": {k: bool(np.isfinite(v).all()) for k, v in
+                                             arrays.items() if k != "far_geometry"}}
+    _write(_out(args, "nulls") / "summary.json", summ)
+
+
+def dirty_paths(root: Path = ROOT) -> list[str]:
+    r = F._git("status", "--porcelain", "--untracked-files=all", "--", *CODE_PATHS, DESIGN_DOC,
+               root=root)
+    if r.returncode != 0:
+        return [f"<git error: {r.stderr.strip()[:200]}>"]
+    return [ln[3:].strip() for ln in r.stdout.splitlines() if ln[3:].strip() != PREREG_REL]
+
+
+def all_networks() -> list[str]:
+    from apexzero.costate import analysis as AN
+
+    return list(AN.GENERALISTS) + list(AN.SPECIALISTS)
+
+
+def _json(path: Path) -> dict:
+    return json.loads(Path(path).read_text())
+
+
+def prereg_frozen(out_root: Path, frozen: dict) -> dict:
+    """The record's frozen values: the inputs stage's, plus K2b's exclusion rule (and its
+    hash) and K2's horizon and insurance verdicts, read from the bound gate outputs."""
+    from apexzero.costate import prereg as PR
+
+    out = dict(frozen)
+    k2b = _json(Path(out_root) / "gates" / "k2b.json")["rule"]
+    out["k2b_excluded"] = {p: list(v) for p, v in k2b["excluded"].items()}
+    out["k2b_excluded_sha256"] = PR._canon(out["k2b_excluded"])
+    k2 = _json(Path(out_root) / "gates" / "k2.json")
+    out["k2"] = {"t_H": k2["horizon"]["t_H"], "drops_T": k2.get("drops_T"),
+                 "fallback_keys": k2.get("fallback_keys"), "extend_ok": k2.get("extend_ok"),
+                 "different_basin": [e["key_id"] for e in k2.get("extend", [])
+                                     if e.get("different_basin")],
+                 "extend_T_max": max((max(e.get("T_max", [0.0])) for e in k2.get("extend", [])),
+                                     default=None)}
+    return out
+
+
+def stage_prereg(args) -> None:
+    """The record (``costate.prereg``), from a clean tree with every bound output passing."""
+    from apexzero.costate import analysis as AN
+    from apexzero.costate import keys_root
+    from apexzero.costate import prereg as PR
+
+    dirty = dirty_paths()
+    if dirty:
+        raise SystemExit(f"prereg refuses a dirty tree: {dirty[:8]}")
+    probs = [str(p) for p in frozen_steps_problems()]
+    code = PR.code_hash(ROOT)
+    try:
+        if code != PR.tree_code_hash(ROOT, "HEAD"):
+            probs.append("the code on disk is not HEAD's")
+    except RuntimeError as e:
+        probs.append(f"git: {e}")
+    outputs, p2 = PR.bind_outputs(Path(args.out), code)
+    arrays, p2b = PR.bind_arrays(Path(args.out), code)
+    pins, p3 = PR.network_pins(all_networks(), ROOT)
+    snaps, p4 = {}, []
+    for n in AN.DECISION_NETWORKS:
+        snaps[n], q = PR.snapshot_pins(n, ROOT)
+        p4 += q
+    c3w, p5 = PR.c3w_inputs(AN.GENERALISTS, ROOT, completion, competence)
+    for n, v in c3w.items():
+        try:
+            v["overlap"], v["overlap_file"], v["overlap_sha256"] = overlap(n)
+        except (OSError, ValueError, KeyError) as e:
+            v["overlap"] = None
+            v["overlap_error"] = str(e)
+    probs += p2 + p2b + p3 + p4 + p5
+    world = _load_world(args)
+    summ = _json(Path(args.out) / "inputs" / "summary.json")
+    if probs:
+        raise SystemExit("prereg refuses: " + "; ".join(probs))
+    t_pairs = list(zip(world.tab["key_id"].tolist(), world.tab["t"].tolist(), strict=True))
+    extra = {"prereg_base_commit": F._head(), "networks": pins, "snapshots": snaps,
+             "outputs": {**outputs, **arrays}, "environment": F.environment(),
+             "c3w_inputs": c3w, "design_hash": PR.stimulus_design_hash(),
+             "excluded": summ.get("excluded"),
+             "steps": {"step1": {"tag": STEP1_TAG, "object": F.STEP1_TAG_OBJECT},
+                       "step2": {"tag": STEP2_TAG,
+                                 "object": (F._tag_object(STEP2_TAG) or [None])[0]}}}
+    rec = PR.build_record(ROOT, PR.key_sets(), keys_root(), t_pairs,
+                          prereg_frozen(Path(args.out), summ["frozen"]), extra)
+    path = PR.save(rec)
+    print(f"wrote {path}; next: git add {PREREG_REL} && git commit; git tag -a {TAG}; "
+          f"git push {REMOTE} costate-dev {TAG} (the branch and the tag, never main: module "
+          "docstring 'Order with step 2 and H4R')")
+
+
+# ------------------------------------------------------------------------- post-tag
+
+
+def _post_tag(args, what: str) -> dict:
+    """The freeze check, then trained networks allowed in this process (module docstring)."""
+    from apexzero.costate import critic as CR
+    from apexzero.costate import probes as PB
+    from apexzero.fields import network as NW
+
+    if getattr(args, "limit", None) is not None and Path(args.out).resolve() == OUT.resolve():
+        raise SystemExit("--limit writes a partial run: give --out outside outputs/costate")
+    bad = import_problems()
+    if bad:
+        raise SystemExit(f"refusing to run {what}: {'; '.join(bad)}")
+    dev = require_tag(what, getattr(args, "post_tag_deviation", None))
+    rec = tagged_record()
+    if rec is None or not rec.get("networks"):
+        raise SystemExit("refusing: no record at the tag, or it pins no network")
+    p = F._prov()
+    p.deviation, p.tag, p.check_imports = dev, F.tag_identity(TAG), True
+    _x64()
+    CR.unlock_trained()
+    PB.unlock_trained()
+    NW.unlock_trained()
+    return rec
+
+
+def load_agent(name: str, pin: dict, root: Path = ROOT):
+    """A network's snapshot from its recorded checkpoint (sha256 checked before loading)."""
+    from apexzero.fields import prereg as FP
+    from apexzero.fields import stages as S
+    from apexzero.interp import agents
+
+    path = Path(root) / pin["path"]
+    if FP.sha256_file(path) != pin["sha256"]:
+        raise SystemExit(f"{name}: {pin['path']} is not the recorded checkpoint")
+    ag = agents.load_agent(path, S.network_agent_id(name))
+    if int(ag.timesteps) != int(pin["timesteps"]):
+        raise SystemExit(f"{name}: timesteps {ag.timesteps}, recorded {pin['timesteps']}")
+    return ag
+
+
+def _load_world_frozen(args, rec: dict):
+    """T's world for a post-tag stage: the bound inputs/world.npz (its sha256 against the
+    record), T's (key id, t) list against the record's (``prereg.frozen_t``), and T's
+    geometries and partition 0's folds against the frozen ones."""
+    import numpy as np
+
+    from apexzero.costate import prereg as PR
+    from apexzero.costate import states as ST
+    from apexzero.fields.prereg import sha256_file
+
+    p = _world_path(args)
+    if not p.exists():
+        raise SystemExit(f"no {p}: the record binds T's world")
+    want = (rec.get("outputs") or {}).get("inputs/world.npz", {}).get("sha256")
+    if not want or sha256_file(p) != want:
+        raise SystemExit(f"refusing: {p} is not the world the record binds")
+    world = _load_world(args)
+    pairs = sorted(zip(map(str, world.tab["key_id"]), map(int, world.tab["t"]), strict=True))
+    if pairs != sorted(PR.frozen_t(rec)):
+        raise SystemExit("refusing: T's (key, t) list differs from the record's")
+    uniq = np.unique(ST.geometry_keys(world.tab), axis=0)
+    fr = rec.get("frozen") or {}
+    if (uniq.tolist() != fr.get("geometries")
+            or ST.geometry_folds(uniq[:, 0], uniq[:, 1], 0).tolist() != fr.get("fold_partition0")):
+        raise SystemExit("refusing: T's geometries or partition 0's folds differ from the frozen "
+                         "ones")
+    return world
+
+
+def activations_of(agent, world, n_random: int = 5) -> dict:
+    """The actor's h1-h3 and m, the critic's h1-h3, V and heads at T (z under the agent's own
+    obs_rms), and the random-init actors' h3 and m on the same z."""
+    import numpy as np
+
+    from apexzero.costate import inputs as IN
+    from apexzero.costate import probes as PB
+    from apexzero.fields import network as NW
+
+    rms = NW.upcast32(agent.obs_rms)
+    z, cl, _ = IN.z_and_jz(world, rms)
+    o = np.clip(z, -10.0, 10.0)
+    actor, critic = PB.agent_nets(agent)
+    ha, hc = PB.hidden(actor, o), PB.hidden(critic, o)
+    out = {"z": z, "clipped": cl, "m": ha["m"], "V": hc["V"]}
+    for k in ("h1", "h2", "h3"):
+        out[f"actor_{k}"], out[f"critic_{k}"] = ha[k], hc[k]
+    if hc.heads is not None:
+        out["heads"], out["head_units"] = hc.heads, hc.u
+    for s in range(n_random):
+        hr = PB.hidden(PB.random_actor(agent.cfg, s), o)
+        out[f"random{s}_h3"], out[f"random{s}_m"] = hr["h3"], hr["m"]
+    return out
+
+
+def critic_of(agent, world, seeds=None, bank=None) -> dict:
+    """The trained critic's pullbacks (V and heads) at T, its uniform inside-widening
+    derivative (``inputs.width_derivative``: C3-w's x, with ``bank``) and the random-init
+    critics' main-V pullbacks (Section 5's 20 seeds, the agent's obs_rms and sigma_R)."""
+    import numpy as np
+
+    from apexzero.costate import critic as CR
+    from apexzero.costate import inputs as IN
+    from apexzero.costate import nulls as NL
+    from apexzero.fields import network as NW
+
+    net = CR.trained_critic(agent, getattr(agent, "checkpoint", ""))
+    n = world.n
+    E = net.n_heads
+    g = np.full((n, 1 + E, 8), np.nan)
+    pi = np.full((n, 1 + E, 2), np.nan)
+    gh = np.full((n, 1 + E, 8), np.nan)
+    y = np.full((n, 1 + E), np.nan)
+    acc = np.full((n, 1 + E, 2), np.nan)
+    for k in world.keys:
+        pb = CR.pullback(net, None, k.inp, k.oj)
+        g[k.rows], pi[k.rows], gh[k.rows] = pb.g, pb.pi, pb.g_held
+        y[k.rows], acc[k.rows] = pb.value, pb.accel_sens
+    seeds = CR.RANDOM_SEEDS if seeds is None else seeds
+    rg = np.stack([NL.gradients(c, world.keys, np.zeros(n, int), n).g for c in
+                   CR.random_critics(agent.cfg, net.obs_rms, net.sigma, seeds)])
+    out = {"g": g, "pi": pi, "g_held": gh, "value": y, "accel_sens": acc, "random_g": rg,
+           "sigma": np.float64(net.sigma)}
+    if bank is not None:
+        dw = np.full(n, np.nan)
+        tab = world.tab
+        for k in world.keys:
+            i0 = int(k.rows[0])
+            rd = NW.road(bank, int(tab["stim_id"][i0]))
+            dw[k.rows] = IN.width_derivative(net, rd, k.inp, int(tab["direction"][i0]))
+        out["dV_dwin"] = dw
+    return out
+
+
+def stage_activations(args) -> None:
+    from apexzero.costate import prereg as PR
+
+    rec = _post_tag(args, "activations")
+    world = _load_world_frozen(args, rec)
+    for name in args.network or list(rec["networks"]):
+        ag = load_agent(name, rec["networks"][name])
+        _write_npz(_out(args, "post") / "activations" / f"{PR.net_file(name)}.npz",
+                   activations_of(ag, world))
+
+
+def stage_critic(args) -> None:
+    from apexzero.costate import inputs as IN
+    from apexzero.costate import prereg as PR
+
+    rec = _post_tag(args, "critic gradients")
+    world = _load_world_frozen(args, rec)
+    bank, _ = IN.design()
+    for name in args.network or list(rec["networks"]):
+        ag = load_agent(name, rec["networks"][name])
+        _write_npz(_out(args, "post") / "critic" / f"{PR.net_file(name)}.npz",
+                   critic_of(ag, world, bank=bank))
+
+
+def own_of(agent, world, every: int = OWN_EVERY, bank=None) -> dict:
+    """lambda^own and pi^own at T's interior states every ``every``-th plan step (restarts
+    from x_t with prev_action a*_{t-1}, H = W - t; Section 3.3): on the manifold, with the
+    key row's own M_x and M_a (``own.own_costate``'s maps0), the held forms beside them."""
+    import numpy as np
+
+    from apexzero.costate import inputs as IN
+    from apexzero.costate import own as OW
+    from apexzero.fields import network as NW
+
+    if bank is None:
+        bank, _ = IN.design()
+    net = NW.agent_net(agent)
+    tab = world.tab
+    rows = np.flatnonzero(np.asarray(tab["interior"], bool) & (np.asarray(tab["t"]) % every == 0)
+                          & (np.asarray(tab["t"]) > 0))
+    lam, lam_h = np.full((world.n, 8), np.nan), np.full((world.n, 8), np.nan)
+    pi, pi_h = np.full((world.n, 2), np.nan), np.full((world.n, 2), np.nan)
+    valid = np.zeros(world.n, bool)
+    by_key = {k.key_id: k for k in world.keys}
+    for i in rows:
+        k = by_key[str(tab["key_id"][i])]
+        j = int(np.flatnonzero(k.rows == i)[0])
+        inp = k.inp.take([j])
+        W, t = int(tab["W"][i]), int(tab["t"][i])
+        li = NW.LoopIn(inp.x[0], inp.prev_action[0], inp.accel[0], np.zeros((W - t, 2)),
+                       np.int32(0), np.float64(np.inf), NW.ctx64(), NW.context_channels())
+        rd = NW.road(bank, int(tab["stim_id"][i]))
+        oc = OW.own_costate(net, rd.base, li, W - t, W - t, reset=bool(k.oj.reset[j]),
+                            maps0=(k.oj.Mx[j], k.oj.Ma[j]))
+        lam[i], pi[i], valid[i] = oc.lam[0], oc.pi, oc.valid_all
+        lam_h[i], pi_h[i] = oc.lam_held[0], oc.pi_held
+    return {"lam_own": lam, "pi_own": pi, "lam_own_held": lam_h, "pi_own_held": pi_h,
+            "valid": valid, "rows": rows}
+
+
+def k3b_trained(agent, bank=None, cells=K3B_TRAINED_CELLS, steps: int = 160) -> dict:
+    """K3b's trained analogue (Section 7: after the tag each network runs one; a network
+    that fails has descriptive C1-own): ``own.k3b_start`` on the network's own policy from
+    A2 cell starts, with the on-manifold check, pooled by ``own.k3b_decision``."""
+    from apexzero.costate import inputs as IN
+    from apexzero.costate import own as OW
+    from apexzero.fields import network as NW
+
+    bank_, cells_ = IN.design()
+    bank = bank_ if bank is None else bank
+    net = NW.agent_net(agent)
+    starts = []
+    for cid in cells:
+        st = NW.cell_start(cells_[int(cid)], 0, bank)
+        rd = NW.road(bank, st.stim_id)
+        starts.append(OW.k3b_start(net, rd.base, NW.loop_inputs(st, steps), steps,
+                                   name=f"trained@{cid}"))
+    return {"starts": [s.record() for s in starts], "decision": OW.k3b_decision(starts)}
+
+
+def stage_own(args) -> None:
+    import numpy as np
+
+    from apexzero.costate import analysis as AN
+    from apexzero.costate import prereg as PR
+
+    rec = _post_tag(args, "own costate")
+    world = _load_world_frozen(args, rec)
+    for name in args.network or [AN.network_of(a) for a in AN.DECISION_NETWORKS]:
+        ag = load_agent(name, rec["networks"][name])
+        k3 = k3b_trained(ag)
+        _write(_out(args, "post") / "own" / f"{PR.net_file(name)}.k3b.json", k3)
+        out = own_of(ag, world)
+        out["k3b_pass"] = np.bool_(k3["decision"]["pass"])
+        _write_npz(_out(args, "post") / "own" / f"{PR.net_file(name)}.npz", out)
+
+
+# ------------------------------------------------------------------------- variants
+
+
+VARIANT_SCHEMES = ("geometry", "state")    # Section 4 'Weights' sensitivities (i), (ii)
+
+
+def variant_specs(tab, frozen: dict, names=None) -> dict[str, dict]:
+    """The pre-registered sensitivity and robustness variants of the decision statistics
+    (Sections 4 and 6): 'primary' (partition 0, key weights, every row); partitions 1-10;
+    geometry and state weights; the 11 geometries with 3 keys or fewer dropped; the kappa
+    sensitivity set dropped (frozen 'kappa_set'); the braking and non-braking keys'
+    sub-scores. Each: {partition, scheme, keep [n] or None}."""
+    import numpy as np
+
+    from apexzero.costate import states as ST
+
+    specs = {"primary": {"partition": 0, "scheme": "key", "keep": None}}
+    for p in range(1, ST.N_PARTITIONS):
+        specs[f"partition{p}"] = {"partition": p, "scheme": "key", "keep": None}
+    for sc in VARIANT_SCHEMES:
+        specs[f"weights:{sc}"] = {"partition": 0, "scheme": sc, "keep": None}
+    specs["drop_small"] = {"partition": 0, "scheme": "key", "keep": ~ST.small_geometry(tab)}
+    kappa = {tuple(map(float, g)) for g in frozen.get("kappa_set", [])}
+    G = ST.geometry_keys(tab)
+    specs["drop_kappa_set"] = {"partition": 0, "scheme": "key",
+                               "keep": np.array([tuple(g) not in kappa for g in G.tolist()])}
+    brk = np.asarray(tab["braking_key"], bool)
+    specs["braking_keys"] = {"partition": 0, "scheme": "key", "keep": brk}
+    specs["non_braking_keys"] = {"partition": 0, "scheme": "key", "keep": ~brk}
+    if names is not None:
+        specs = {k: v for k, v in specs.items() if k in set(names) | {"primary"}}
+    return specs
+
+
+def _subclusters(tab, rows, seed: int = 0):
+    """(cluster index [n] re-indexed over the geometries present in ``rows``, their number,
+    bootstrap counts over them): a subset's bootstrap resamples its own geometries only."""
+    import numpy as np
+
+    from apexzero.costate import probes as PB
+    from apexzero.costate import states as ST
+
+    g = ST.geometry_index(tab)
+    present = np.unique(g[np.asarray(rows, bool)])
+    remap = np.full(int(g.max()) + 1, -1)
+    remap[present] = np.arange(len(present))
+    cl = np.where(remap[g] >= 0, remap[g], 0)
+    G = max(len(present), 1)
+    return cl, G, PB.cluster_counts(G, rng=PB.boot_rng(900 + int(seed)))
+
+
+def _winsorised(tab, frozen: dict, names):
+    import numpy as np
+
+    from apexzero.costate import states as ST
+
+    return np.stack([ST.winsorise(np.asarray(tab[f"lam_{c}"], float),
+                                  frozen["winsor_bounds"][f"lam_{c}"]) for c in names], 1)
+
+
+def _bounds(frozen: dict, names):
+    import numpy as np
+
+    return np.array([frozen["winsor_bounds"][f"lam_{c}"] for c in names], float)
+
+
+def probes_of(acts: dict, world, frozen: dict, rows_c2, rows_sw, valid=None,
+              variants=None) -> dict:
+    """C2 and C2-sw of one network from its activations (``costate.analysis``), with
+    ``valid`` [n, 4] each K_P component's decision rows (``states.decision_mask``), and the
+    pre-registered variants (``variant_specs``; the decoy residuals re-cross-fitted on each
+    partition's folds; weights renormalised on each variant's stratum)."""
+    import numpy as np
+
+    from apexzero.costate import analysis as AN
+    from apexzero.costate import probes as PB
+    from apexzero.costate import states as ST
+    from apexzero.costate import targets as TG
+
+    tab = world.tab
+    lam = _winsorised(tab, frozen, TG.K_P)
+    rnd = [acts[f"random{s}_h3"] for s in range(PB.N_RANDOM_ACTORS)]
+    z = np.clip(acts["z"], -10, 10)
+    sig = ST.winsorise(np.asarray(tab["sigma_pedal"], float),
+                       frozen["winsor_bounds"]["sigma_pedal"])
+    specs = variant_specs(tab, frozen, variants)
+    out: dict = {"sensitivity": {}}
+    res_by_p: dict = {}
+    for vname, sp in specs.items():
+        fo = PB.folds(tab, sp["partition"])
+        if sp["partition"] not in res_by_p:
+            res_by_p[sp["partition"]] = ST.cross_fit(ST.decoy_d1(tab), lam, fo.outer,
+                                                     ST.weights(tab, "key"))
+        res = res_by_p[sp["partition"]]
+        keep = np.ones(world.n, bool) if sp["keep"] is None else np.asarray(sp["keep"], bool)
+        r2, rs = np.asarray(rows_c2, bool) & keep, np.asarray(rows_sw, bool) & keep
+        rec: dict = {}
+        try:
+            w2 = ST.stratum_weights(tab, r2, sp["scheme"])
+            rec["C2"] = AN.c2_network(acts["actor_h3"], rnd, z, acts["m"], res.by_fold, fo,
+                                      None, tab["direction"], TG.K_P, frozen["power_floor"],
+                                      r2, weights=w2[r2], mask=valid)
+        except ValueError as e:
+            rec["C2"] = {"decision": "not testable", "reason": str(e)}
+        try:
+            ws = ST.stratum_weights(tab, rs, sp["scheme"])
+            rec["C2-sw"] = AN.c2_sw_network(acts["actor_h3"], rnd, z, sig, acts["m"][:, 1], fo,
+                                            ws[rs], rs)
+        except ValueError as e:
+            rec["C2-sw"] = {"decision": "not testable", "reason": str(e)}
+        if vname == "primary":
+            out.update(rec)
+        else:
+            out["sensitivity"][vname] = rec
+    parts = [out["sensitivity"][k]["C2"].get("stat") for k in out["sensitivity"]
+             if k.startswith("partition")]
+    parts = [v for v in parts if v is not None]
+    if parts:
+        out["robustness_C2"] = {"stat": parts, "min": min(parts), "max": max(parts),
+                                "sd": float(np.std(parts))}
+    return out
+
+
+def stage_probes(args) -> None:
+    import numpy as np
+
+    from apexzero.costate import analysis as AN
+    from apexzero.costate import inputs as IN
+    from apexzero.costate import prereg as PR
+    from apexzero.costate import states as ST
+    from apexzero.fields import network as NW
+
+    rec = _post_tag(args, "probes")
+    world = _load_world_frozen(args, rec)
+    tab = world.tab
+    inner = np.asarray(tab["interior"], bool)
+    sw = np.asarray(tab[ST.SW_STRATUM], bool)
+    for name in args.network or [AN.network_of(a) for a in AN.DECISION_NETWORKS]:
+        p = Path(args.out) / "post" / "activations" / f"{PR.net_file(name)}.npz"
+        with np.load(p) as d:
+            acts = {k: d[k] for k in d.files}
+        ag = load_agent(name, rec["networks"][name])
+        fl = IN.flags(world, NW.upcast32(ag.obs_rms))
+        valid = ST.decision_mask(tab, ~fl["observability"].s_unobservable,
+                                 rec["frozen"].get("k2b_excluded"))
+        _write(_out(args, "post") / "probes" / f"{PR.net_file(name)}.json",
+               probes_of(acts, world, rec["frozen"], inner, sw, valid))
+
+
+def analyse_network(name: str, world, frozen: dict, crit: dict, nulls: dict, flags: dict,
+                    counts, own: dict | None = None, k3b_trained: bool = False,
+                    variants=None) -> dict:
+    """C1 and its secondaries of one network (``costate.analysis``): every statistic on a
+    stratum with the key weights renormalised there (``states.stratum_weights``), each K_P
+    component on its decision rows (``states.decision_mask``: s's observability, K2b's
+    frozen exclusions), the calibrated predictions clipped to the frozen winsorisation
+    bounds; C1's pre-registered variants (``variant_specs``; on partitions 1-10 the
+    fold-dependent nulls, fitted on partition 0, are left out and said so), C1-braking and
+    its non-braking counterpart bootstrapped over their own geometries."""
+    import hashlib
+
+    import numpy as np
+
+    from apexzero.costate import analysis as AN
+    from apexzero.costate import probes as PB
+    from apexzero.costate import states as ST
+    from apexzero.costate import targets as TG
+
+    tab = world.tab
+    fo = PB.folds(tab)
+    cl, G = AN.geometry_clusters(tab)
+    idx = [TG.STATE_NAMES.index(c) for c in TG.K_P]
+    lam = _winsorised(tab, frozen, TG.K_P)
+    bnd = _bounds(frozen, TG.K_P)
+    inner = np.asarray(tab["interior"], bool)
+    w_in = ST.stratum_weights(tab, inner)
+    valid = ST.decision_mask(tab, ~flags["observability"].s_unobservable,
+                             frozen.get("k2b_excluded"))
+    g = crit["g"][:, 0, idx]
+    nl = {k: np.asarray(v)[:, idx] for k, v in nulls.items() if k != "fits"}
+    nl["random_critics"] = [r[:, idx] for r in crit["random_g"]]
+    c1 = AN.c1(g, lam, fo.outer, w_in, cl, G, tab["direction"], inner, nl, valid, TG.K_P,
+               counts, bounds=bnd)
+    out = {"C1": c1.record(), "decision_rows": {c: int((inner & valid[:, k]).sum())
+                                                for k, c in enumerate(TG.K_P)},
+           "decision_mask_sha256": hashlib.sha256(
+               np.ascontiguousarray(valid).tobytes()).hexdigest()}
+    # C1-pattern: all 8 components, delta and pedal where their bounds are inactive
+    lam8 = _winsorised(tab, frozen, TG.STATE_NAMES)
+    valid8 = np.ones((len(w_in), 8), bool)
+    valid8[:, idx] = valid
+    valid8[:, 6] &= ~np.asarray(tab["delta_bound"], bool)
+    valid8[:, 7] &= ~np.asarray(tab["pedal_saturated"], bool)
+    out["C1-pattern"] = AN.c1_pattern(crit["g"][:, 0], lam8, fo.outer, w_in, cl, G,
+                                      tab["direction"], inner, valid8, TG.STATE_NAMES,
+                                      counts=counts, bounds=_bounds(frozen, TG.STATE_NAMES))
+    if crit["g"].shape[1] > 1:                       # C1-heads: the generalists' 5 heads
+        q = {"V": crit["value"][:, 1:]}
+        for i, c in enumerate(TG.STATE_NAMES):
+            q[f"g_{c}"] = crit["g"][:, 1:, i]
+        q["pi_steer"], q["pi_pedal"] = crit["pi"][:, 1:, 0], crit["pi"][:, 1:, 1]
+        out["C1-heads"] = AN.c1_heads(q, w_in, cl, G, inner, counts)
+    if own is not None:
+        lo = own["lam_own"][:, idx]
+        ok = np.isfinite(lo).all(1) & np.asarray(own["valid"], bool)
+        out["C1-own"] = AN.c1_own(g, lo, fo.outer, ST.stratum_weights(tab, ok), cl, G,
+                                  tab["direction"], ok, k3b_trained, TG.K_P, counts, valid)
+    if "dV_dwin" in crit:                           # W1: the critic's width price against Pi^in
+        w1 = inner if AN.W1_ROWS == "interior" else np.ones(world.n, bool)
+        out["W1"] = AN.calibrated_agreement(crit["dV_dwin"], np.asarray(tab["Pi_in"], float),
+                                            fo.outer, ST.stratum_weights(tab, w1), cl, G, w1,
+                                            counts, bounds=[frozen["winsor_bounds"]["Pi_in"]])
+    sd = np.array([np.sqrt(ST.wvar(lam[inner, k], w_in[inner])) for k in range(4)])
+    wall = np.asarray(tab["wall_side"])
+    out["C1-limit"] = AN.c1_limit(c1.calibrated, g, lam, fo.outer,
+                                  ST.stratum_weights(tab, wall != 0), cl, G, wall, sd, TG.K_P,
+                                  counts, direction=tab["direction"], valid=valid)
+    out["sensitivity"] = {}
+    fold_nulls = ("value_ridge", "value_mlp", "value_ridge_window", "far_geometry")
+    for i, (vname, sp) in enumerate(variant_specs(tab, frozen, variants).items()):
+        if vname == "primary":
+            continue
+        keep = np.ones(world.n, bool) if sp["keep"] is None else np.asarray(sp["keep"], bool)
+        rows = inner & keep
+        fo_v = PB.folds(tab, sp["partition"])
+        cl_v, G_v, cnt_v = _subclusters(tab, rows, i)
+        nl_v = {k: v for k, v in nl.items() if sp["partition"] == 0 or k not in fold_nulls}
+        cv = AN.c1(g, lam, fo_v.outer, ST.stratum_weights(tab, rows, sp["scheme"]), cl_v, G_v,
+                   tab["direction"], rows, nl_v, valid, TG.K_P, cnt_v, slope_boot=False,
+                   bounds=bnd)
+        r = cv.record()
+        r["nulls_omitted"] = sorted(set(nl) - set(nl_v))
+        out["sensitivity"][vname] = r
+    if "braking_keys" in out["sensitivity"]:
+        out["C1-braking"] = out["sensitivity"]["braking_keys"]
+    parts = [v["stat"] for k, v in out["sensitivity"].items() if k.startswith("partition")]
+    if parts:
+        out["robustness_C1"] = {"stat": parts, "min": float(np.nanmin(parts)),
+                                "max": float(np.nanmax(parts)), "sd": float(np.nanstd(parts))}
+    return out
+
+
+def completion(run: str, root: Path = ROOT) -> float:
+    """C3-w's y: the mean over eval_rdev.json's 12 R-dev circuits of the completion."""
+    from apexzero.costate import analysis as AN
+
+    d = json.loads((Path(root) / AN.network_of(run) / "eval_rdev.json").read_text())
+    return float(sum(float(v["completion"]) for v in d.values()) / len(d))
+
+
+def competence(run: str, root: Path = ROOT) -> float:
+    """C3-w's covariate: the final training episode_return (the last row of metrics.csv)."""
+    import csv
+
+    from apexzero.costate import analysis as AN
+
+    with open(Path(root) / AN.network_of(run) / "metrics.csv") as fh:
+        rows = list(csv.DictReader(fh))
+    return float(rows[-1]["episode_return"])
+
+
+def fields_out(root: Path = ROOT) -> Path:
+    """Step 2's outputs (outputs/fields, or through a worktree's outputs/outputs link)."""
+    d = Path(root) / "outputs" / "fields"
+    if (d / "fields-a2").exists():
+        return d
+    return Path(root) / "outputs" / "outputs" / "fields"
+
+
+def overlap(run: str, root: Path = ROOT) -> tuple[float, str, str]:
+    """C3-w's overlap covariate (Section 6): step 2's B on the A2 cells, the network's
+    median over geometries of its per-key B (``fields.stages.edge_key_measures``, H4's
+    statistic), with the rows file read and its sha256. Reads step 2's outputs only."""
+    from apexzero.costate import analysis as AN
+    from apexzero.fields import stages as S
+    from apexzero.fields.prereg import sha256_file
+    from apexzero.interp import registry
+
+    run_ = AN.network_of(run)
+    d = fields_out(root)
+    cands = [run_.replace("/", "_")] + [a for a, sp in registry.AGENTS.items() if sp.run == run_]
+    for c in cands:
+        p = d / "fields-a2" / f"{c}.jsonl"
+        if p.exists():
+            break
+    else:
+        raise FileNotFoundError(f"{run}: no step 2 fields-a2 rows")
+    opt = {r["key_id"]: r for r in S.read_rows(d / "opt-fields" / "rows.jsonl")}
+    b = S.median_statistic(S.edge_key_measures(S.read_rows(p), opt, "B"), n=1)
+    return float(b), F._rel(p, root) or str(p), sha256_file(p)
+
+
+def c3w_of(out_root: Path, world, counts, rec: dict | None = None, keep=None) -> dict:
+    """C3-w over the generalists with critic outputs: x the calibrated R2 (C1's calibration,
+    on ``analysis.C3W_ROWS``, key weights renormalised there) of sigma_R dV_c/dDelta_in
+    against Pi^in_t, y the mean completion and the covariates (competence, overlap) from the
+    record's frozen C3-w inputs (read from runs/ only without a record: a dry run);
+    ``keep`` restricts the rows (a sensitivity variant)."""
+    import numpy as np
+
+    from apexzero.costate import analysis as AN
+    from apexzero.costate import prereg as PR
+    from apexzero.costate import probes as PB
+    from apexzero.costate import states as ST
+
+    tab = world.tab
+    fo = PB.folds(tab)
+    rows = (np.asarray(tab["interior"], bool) if AN.C3W_ROWS == "interior"
+            else np.ones(world.n, bool))
+    if keep is not None:
+        rows = rows & np.asarray(keep, bool)
+    cl, G, cnt = (*AN.geometry_clusters(tab), counts) if keep is None else _subclusters(tab, rows)
+    w = ST.stratum_weights(tab, rows)
+    inputs = (rec or {}).get("c3w_inputs") or {}
+    bnd = (rec or {}).get("frozen", {}).get("winsor_bounds", {}).get("Pi_in")
+    x, y, comp, ov, missing = {}, {}, {}, {}, []
+    for name in AN.GENERALISTS:
+        p = Path(out_root) / "post" / "critic" / f"{PR.net_file(name)}.npz"
+        if not p.exists():
+            missing.append(name)
+            continue
+        with np.load(p) as d:
+            if "dV_dwin" not in d.files:
+                missing.append(name)
+                continue
+            dw = d["dV_dwin"]
+        x[name] = AN.calibrated_agreement(dw, np.asarray(tab["Pi_in"], float), fo.outer, w, cl,
+                                          G, rows, cnt, bounds=None if bnd is None
+                                          else [bnd])["r2c"]
+        if inputs:
+            v = inputs[name]
+            y[name], comp[name] = v["completion"], v["competence"]
+            if v.get("overlap") is not None:
+                ov[name] = v["overlap"]
+        else:
+            y[name], comp[name] = completion(name), competence(name)
+    cov = {"competence": comp}
+    if ov:
+        cov["overlap"] = ov
+    out = AN.c3_w(x, y, covariates=cov)
+    out["critic_missing"] = missing
+    return out
+
+
+# ------------------------------------------------------------------------- the analysis
+
+
+DECISION_FIELDS = ("per_network", "variants", "C3-w")
+
+
+def analysis_paths(root: Path) -> dict[str, list[Path]]:
+    """The files the analysis reads: per decision network its critic, activations, probes
+    and nulls (own optional), and every generalist's critic (C3-w's x)."""
+    from apexzero.costate import analysis as AN
+    from apexzero.costate import prereg as PR
+
+    root = Path(root)
+    nets = [PR.net_file(AN.network_of(a)) for a in AN.DECISION_NETWORKS]
+    out = {"post": [], "nulls": [], "own": [], "c3w": []}
+    for f in nets:
+        out["post"] += [root / "post" / "critic" / f"{f}.npz",
+                        root / "post" / "activations" / f"{f}.npz",
+                        root / "post" / "probes" / f"{f}.json"]
+        out["nulls"].append(root / "nulls" / f"{f}.npz")
+        out["own"].append(root / "post" / "own" / f"{f}.npz")
+    out["c3w"] = [root / "post" / "critic" / f"{PR.net_file(n)}.npz" for n in AN.GENERALISTS]
+    return out
+
+
+def confirmatory_input_problems(rec: dict, root: Path, prov=None) -> list[str]:
+    """Why the confirmatory analysis may not run on these inputs (as step 2's
+    ``confirmatory_input_problems`` and ``input_stamp_problems``): a decision network's
+    critic, activations, probes or nulls file missing; a generalist's critic without its
+    width derivative; a post-tag input not stamped by this code under this tag (or partial,
+    or changed since); a nulls array not the one the record binds."""
+    import numpy as np
+
+    from apexzero.fields.prereg import sha256_file
+
+    prov = F._prov() if prov is None else prov
+    root = Path(root)
+    paths = analysis_paths(root)
+    probs = [f"{p.relative_to(root)} is missing" for k in ("post", "nulls")
+             for p in paths[k] if not p.exists()]
+    for p in paths["c3w"]:
+        if not p.exists():
+            probs.append(f"{p.relative_to(root)} is missing (C3-w)")
+            continue
+        with np.load(p) as d:
+            if "dV_dwin" not in d.files:
+                probs.append(f"{p.relative_to(root)} has no width derivative (C3-w)")
+    post = [p for k in ("post", "own", "c3w") for p in paths[k] if p.exists()]
+    probs += F.input_stamp_problems(list(dict.fromkeys(post)), prov.code_hash, prov.deviation,
+                                    prov.tag, rec.get("environment"))
+    nl = [p for p in paths["nulls"] if p.exists()]
+    probs += F.input_stamp_problems(nl, prov.code_hash, prov.deviation, None,
+                                    rec.get("environment"), check_tag=False)
+    for p in nl:
+        rel = f"nulls/{p.name}"
+        want = (rec.get("outputs") or {}).get(rel, {}).get("sha256")
+        if not want or sha256_file(p) != want:
+            probs.append(f"{rel} is not the array the record binds")
+    return probs
+
+
+def input_hashes(root: Path) -> dict[str, str]:
+    from apexzero.fields.prereg import sha256_file
+
+    paths = analysis_paths(root)
+    return {str(p.relative_to(root)): sha256_file(p) for k in paths for p in paths[k]
+            if p.exists()}
+
+
+def confirmatory_done(path: Path, tag: dict | None) -> str | None:
+    """The sha256 of a genuine confirmatory decisions file, else None (as step 2's
+    ``stages.confirmatory_done``): a JSON object with 'confirmatory' and 'decided' true,
+    the decided results (``DECISION_FIELDS``), and an embedded stamp of the analyse stage,
+    not partial, with '--confirmatory' in its argv, written under ``tag``."""
+    from apexzero.fields.prereg import sha256_file
+
+    try:
+        d = json.loads(Path(path).read_text())
+    except (OSError, ValueError):
+        return None
+    if not isinstance(d, dict) or d.get("confirmatory") is not True or d.get("decided") is not True:
+        return None
+    if not set(DECISION_FIELDS) <= set(d):
+        return None
+    pv = d.get("provenance")
+    if not isinstance(pv, dict) or pv.get("stage") != "analyse" or pv.get("partial"):
+        return None
+    if "--confirmatory" not in (pv.get("argv") or []):
+        return None
+    t = pv.get("tag") or {}
+    if tag is None or t.get("object") != tag.get("object") or t.get("commit") != tag.get("commit"):
+        return None
+    return sha256_file(Path(path))
+
+
+def unlocked_by(path: Path, tag: dict | None, root: Path = ROOT) -> tuple[str | None, str]:
+    """(sha256 of the confirmatory decisions that unlock a non-confirmatory analysis's
+    decisions, or None; why not): a genuine stamped confirmatory output
+    (``confirmatory_done``) that, inside ``root``, is committed as those bytes (step 2's
+    rule, scripts/fields.py:2090-2110)."""
+    from apexzero.fields import prereg
+
+    if not Path(path).exists():
+        return None, "no confirmatory run yet"
+    sha = confirmatory_done(path, tag)
+    if sha is None:
+        return None, f"{path} is not a stamped confirmatory output"
+    rel = F._rel(path, root)
+    if rel is not None:
+        try:
+            shas = {prereg.sha256_bytes(b) for _, b in F.committed_versions(rel, root) if b}
+        except RuntimeError as e:
+            return None, f"git failed reading {rel}'s history: {e}"
+        if sha not in shas:
+            return None, f"{rel} is not committed (git add -f {rel} && git commit)"
+    return sha, ""
+
+
+def _npz(path: Path) -> dict:
+    import numpy as np
+
+    with np.load(path) as d:
+        return {k: d[k] for k in d.files}
+
+
+def coverage(out_root: Path, world, flags_of) -> dict:
+    """Coverage and plumbing only (no decision): which inputs exist, their arrays' shapes,
+    the decision rows per component and the geometries."""
+    import numpy as np
+
+    from apexzero.costate import analysis as AN
+    from apexzero.costate import prereg as PR
+    from apexzero.costate import states as ST
+
+    tab = world.tab
+    inner = np.asarray(tab["interior"], bool)
+    out = {"n": world.n, "interior": int(inner.sum()),
+           "braking_keys": len(np.unique(np.asarray(tab["key_id"])[
+               np.asarray(tab["braking_key"], bool)])),
+           "geometries": int(AN.geometry_clusters(tab)[1]), "networks": {}}
+    for a in AN.DECISION_NETWORKS:
+        name = AN.network_of(a)
+        f = PR.net_file(name)
+        rec: dict = {}
+        for kind, p in (("critic", Path(out_root) / "post" / "critic" / f"{f}.npz"),
+                        ("nulls", Path(out_root) / "nulls" / f"{f}.npz"),
+                        ("own", Path(out_root) / "post" / "own" / f"{f}.npz"),
+                        ("activations", Path(out_root) / "post" / "activations" / f"{f}.npz")):
+            rec[kind] = ({k: list(v.shape) for k, v in _npz(p).items()} if p.exists()
+                         else None)
+        rec["probes"] = (Path(out_root) / "post" / "probes" / f"{f}.json").exists()
+        fl = flags_of(name)
+        if fl is not None:
+            valid = ST.decision_mask(tab, ~fl["observability"].s_unobservable)
+            rec["decision_rows"] = {c: int((inner & valid[:, k]).sum())
+                                    for k, c in enumerate(("s", "n", "xi", "vx"))}
+        out["networks"][name] = rec
+    return out
+
+
+def stage_analyse(args) -> None:
+    """The analysis (module docstring 'Run-once'). A confirmatory run checks its inputs
+    before computing anything; a non-confirmatory run computes decisions only once a stamped
+    confirmatory decisions file is committed (``unlocked_by``), and otherwise writes coverage
+    and plumbing only."""
+
+    from apexzero.costate import analysis as AN
+    from apexzero.costate import inputs as IN
+    from apexzero.costate import prereg as PR
+    from apexzero.costate import probes as PB
+    from apexzero.fields import network as NW
+
+    rec = _post_tag(args, "the analysis")
+    fixed = ROOT / DECISIONS_REL
+    prov = F._prov()
+    if args.confirmatory:
+        if Path(args.out).resolve() != OUT.resolve():
+            raise SystemExit("--confirmatory writes to outputs/costate only: drop --out")
+        ro = F.run_once_problems(fixed)
+        if ro:
+            raise SystemExit("refusing to run the confirmatory analysis again: " + "; ".join(ro))
+        probs = confirmatory_input_problems(rec, Path(args.out), prov)
+        if probs:
+            raise SystemExit("the confirmatory analysis runs once, on complete inputs: "
+                             + "; ".join(probs[:20]))
+        path, decide, unlock = fixed, True, None
+        path.parent.mkdir(parents=True, exist_ok=True)
+    else:
+        unlock, why = unlocked_by(fixed, prov.tag)
+        if unlock is None and fixed.exists():
+            print(f"warning: {why}: coverage and plumbing only", flush=True)
+        decide = unlock is not None
+        path = _out(args, "analyse") / "decisions_dry.json"
+    world = _load_world_frozen(args, rec)
+    frozen = rec["frozen"]
+    rms_cache: dict = {}
+
+    def flags_of(name):
+        if name not in rms_cache:
+            pin = rec["networks"].get(name)
+            if pin is None:
+                return None
+            rms_cache[name] = IN.flags(world, NW.upcast32(load_agent(name, pin).obs_rms))
+        return rms_cache[name]
+
+    res: dict = {"confirmatory": bool(args.confirmatory), "decided": bool(decide),
+                 "unlocked_by": unlock, "tag_pin": prov.tag, "deviation": prov.deviation,
+                 "inputs": input_hashes(Path(args.out))}
+    if not decide:
+        res["coverage"] = coverage(Path(args.out), world, flags_of)
+        _write(path, res)
+        return
+    G = AN.geometry_clusters(world.tab)[1]
+    counts = PB.cluster_counts(G)
+    res["networks"] = {}
+    for name in [AN.network_of(a) for a in AN.DECISION_NETWORKS]:
+        f = PR.net_file(name)
+        cp = Path(args.out) / "post" / "critic" / f"{f}.npz"
+        npth = Path(args.out) / "nulls" / f"{f}.npz"
+        if not cp.exists() or not npth.exists():
+            if args.confirmatory:
+                raise SystemExit(f"{name}: an input vanished during the analysis")
+            res["networks"][name] = {"missing": True}
+            continue
+        crit, nulls = _npz(cp), _npz(npth)
+        op = Path(args.out) / "post" / "own" / f"{f}.npz"
+        own = _npz(op) if op.exists() else None
+        rec_n = analyse_network(name, world, frozen, crit, nulls, flags_of(name), counts, own,
+                                bool(own is not None and own.get("k3b_pass", False)),
+                                variants=getattr(args, "variants", None))
+        pp = Path(args.out) / "post" / "probes" / f"{f}.json"
+        if pp.exists():
+            pr = json.loads(pp.read_text())
+            pr.pop("provenance", None)
+            sens = pr.pop("sensitivity", {})
+            rec_n.update(pr)
+            for k, v in sens.items():
+                rec_n.setdefault("sensitivity", {}).setdefault(k, {}).update(
+                    {"C2": v.get("C2"), "C2-sw": v.get("C2-sw")})
+        res["networks"][name] = rec_n
+    res["C3-w"] = c3w_of(Path(args.out), world, counts, rec)
+    res["C3-w_sensitivity"] = {}
+    for vname in ("drop_small", "drop_kappa_set"):
+        sp = variant_specs(world.tab, frozen, [vname])[vname]
+        res["C3-w_sensitivity"][vname] = c3w_of(Path(args.out), world, counts, rec, sp["keep"])
+    per = {a: AN.network_decisions(res["networks"].get(AN.network_of(a), {}).get("C1"),
+                                   res["networks"].get(AN.network_of(a), {}).get("C2"),
+                                   res["networks"].get(AN.network_of(a), {}).get("C2-sw"))
+           for a in AN.DECISION_NETWORKS}
+    res["per_network"] = per
+    res["variants"] = AN.variant_decisions(per)
+    if args.confirmatory and F.run_once_problems(path):
+        raise SystemExit(f"refusing to overwrite the confirmatory decisions {path}")
+    _write(path, res)
+    if args.confirmatory:
+        print(f"commit it now: git add -f {DECISIONS_REL} && git commit", flush=True)
+
+
+# ------------------------------------------------------------------------- CLI
+
+
+def build_parser() -> argparse.ArgumentParser:
+    ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
+    ap.add_argument("--threads", type=int, default=2, help="XLA intra-op threads")
+    sub = ap.add_subparsers(dest="stage", required=True)
+    for name in STAGES:
+        p = sub.add_parser(name)
+        p.add_argument("--out", default=str(OUT), help=f"output root (default {OUT_REL})")
+        p.add_argument("--log-dir", default=str(OUT / "logs"))
+        p.add_argument("--post-tag-deviation", default=None, metavar="REASON")
+        if name in ("inputs", "k0"):
+            p.add_argument("--limit", type=int, default=None,
+                           help="this many A2 keys, spread over the list (a partial run)")
+        if name == "inputs":
+            p.add_argument("--partitions", type=int, default=None,
+                           help="robustness partitions hashed (default all 11)")
+        if name == "k0":
+            p.add_argument("--kinds", nargs="+", default=["a2"], choices=("a2", "n"))
+        if name in ("k1", "k2b", "k3", "k3b"):
+            p.add_argument("--n", type=int, default=None, help="fewer items (a partial run)")
+        if name == "k2":
+            p.add_argument("--n-extend", type=int, default=None,
+                           help="insurance solves (default 30; fewer is partial)")
+        if name == "k3b":
+            p.add_argument("--steps", type=int, default=160)
+        if name == "k4":
+            p.add_argument("--which", nargs="*", default=None)
+        if name == "k5":
+            p.add_argument("--ceiling", default="mlp", choices=("mlp", "ridge"))
+        if name in ("inputs", "nulls", "activations", "critic", "own", "probes"):
+            p.add_argument("--network", action="append", default=None)
+        if name == "nulls":
+            p.add_argument("--mlp-alphas", type=float, nargs="+", default=None)
+            p.add_argument("--mlp-maxiter", type=int, default=500)
+        if name == "analyse":
+            p.add_argument("--confirmatory", action="store_true")
+    return ap
+
+
+def main(argv: list[str] | None = None) -> None:
+    args = build_parser().parse_args(argv)
+    _use_provenance(Provenance(args, args.stage))
+    if args.stage in PRE_TAG:
+        _pre_tag(args, args.stage)
+        if args.stage not in X64_OFF:
+            _x64()
+    t0 = time.time()
+    globals()["stage_" + args.stage.replace("-", "_")](args)
+    print(f"{args.stage}: {time.time() - t0:.1f} s", flush=True)
+
+
+if __name__ == "__main__":
+    main()
