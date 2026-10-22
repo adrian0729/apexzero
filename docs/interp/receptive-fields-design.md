@@ -1,4 +1,4 @@
-# Step 2: receptive fields (design v3.2, not frozen)
+# Step 2: receptive fields (design v3.3, not frozen)
 
 Status: 21 Oct 2026.
 - v1 had one code review.
@@ -8,6 +8,9 @@ Status: 21 Oct 2026.
   An adversarial code review confirmed 22 findings, all fixed.
 - v3.2 records the decisions taken after a final pre-tag review: 46 findings survived two
   refuters each, 34 marked essential (Section 15).
+- v3.3 records the implementation of Section 15. The implementation was reviewed on three lenses
+  (concordance, freeze integrity, tests); 28 findings were confirmed, none rejected, all fixed.
+  It also records three decisions taken at that point (Section 16).
 
 Nothing here has been computed on a trained agent's field.
 
@@ -363,8 +366,9 @@ included (1,287 relabellings) it is the sensitivity analysis, labelled as for H4
 - The specialists (most keys invalid, and right-turn dominated).
 - Other σ_b values, steer_0, and earlier snapshots.
 - The capped stimuli.
-- The asymmetry indices, and the anchored-key versions of H2′ and H4. For H4 these use pooled
-  states, off-policy for most networks.
+- The asymmetry indices, on every measure.
+- The anchored-key version of H2′, each agent on its own anchored states. The anchored-key version
+  of H4 is dropped (Section 16).
 
 ## 8. Controls, nulls and gates (all before the tag; no agent touched)
 
@@ -534,7 +538,8 @@ non-stationary" and "mirror pooling cancels every curvature field".
 
 ## 14. Implementation decisions (v3.1; fixed at the tag)
 
-Code: `src/apexzero/fields/` and `scripts/fields.py`, with 124 tests in `tests/test_fields_*.py`.
+Code: `src/apexzero/fields/` and `scripts/fields.py`, tested in `tests/test_fields_*.py` (124 tests
+at v3.1; Section 16 gives the count at the tag).
 Each decision below is implemented and tested.
 
 **Conventions**
@@ -733,4 +738,46 @@ analysis)
   - It writes its decisions once, to a fixed path. Its sha256 is then committed to the findings.
   - Before the confirmatory run, a non-confirmatory analysis computes coverage and plumbing only,
     never the primary decisions.
+
+## 16. Implementation of Section 15, and the last decisions before the tag (v3.3)
+
+Every Section 15 item is implemented and tested. A three-lens review of the implementation
+(concordance, freeze integrity, tests) confirmed 28 findings, rejected none, and all are fixed.
+The suite (`tests/test_fields_*.py`, with step 1's rollout tests and the dashboard's) passes in
+one session.
+
+**Decisions**
+- **The anchored-key version of H4 is dropped.** It would run all 18 H4 networks from every
+  agent's anchored states: off-policy for most of them, about 146,000 VJPs, and not in the
+  Section 11 budget. Its stage exists in the code but is not part of the pre-registration and is
+  not run. The anchored-key version of H2′, each agent on its own states, stays descriptive.
+- **gate2-trained is strict.** A network passes only if every one of its 12 keys passes Gate 2's
+  rule. A key where the trained loop runs out of steps fails the network. No stored run comes
+  within 46 steps of the 256-step loop.
+- **H1-fast's g and steer_0** are computed on the s_1-anchored grid, to each outcome's support
+  end. H1-typical stays on the s_c0-aligned grid (Section 15).
+
+**Pass rules for complete stages.** Gate 4, re-polish and opt-fields pass when they cover every
+key. Out-of-band, inertia, adjoint and failed-re-polish keys are listed exclusions, as Sections 5
+and 8 say. Only a crash fails the stage.
+
+**Freeze scope**
+- All of `src/` and `scripts/fields.py` are frozen; `scripts/_bootstrap.py` is too.
+- Package versions are recorded and compared. A difference is a waivable problem.
+- Every stage output carries a stamp, and the per-key field arrays that the confirmatory analysis
+  reads are hashed in its input manifest.
+- The record is bound to the code in the tagged commit, not only to the working tree.
+
+**Post-tag procedure** (enforced by the code)
+1. The first post-tag stage (`harness-f32`) writes `outputs/fields/tag.json`. It is committed at
+   once (`git add -f`), or every later post-tag stage refuses.
+2. Order: harness-f32, gate2-trained, h3-keys, fields-a2, fields-anchored, fields-earlier, dose,
+   h3-lambda, analyse (coverage and plumbing only), then `analyse --confirmatory`.
+3. The confirmatory `decisions.json` is committed at once (`git add -f`), and its sha256 goes into
+   the findings. Until that commit, a non-confirmatory analysis gives coverage and plumbing only;
+   after it, a second confirmatory run is refused.
+- `qp-fields` computes Qp's fields on the A2 keys before the tag. They are the reference for the
+  descriptive H1-typical and for judging the unlawful readers.
+- Descriptive definitions fixed in code: the dose linearity and asymmetry ratios, the asymmetry
+  index on every measure, and the near-tie flags of Section 3.
 
