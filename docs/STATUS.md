@@ -1,4 +1,4 @@
-# Status (21 Oct 2026, evening)
+# Status (22 Oct 2026)
 
 Phases follow [the two-track plan](plan/two-track-plan.md): K = shared core, P = paper, D = demo.
 
@@ -65,52 +65,34 @@ with its design and analysis committed before the runs ([plan](findings/width-te
 - so about half the gain transfers (p = 0.063, suggestive) and about half was leakage;
 - one leave-out run completes 11 of 12 circuits, and one completes Yas Marina for the first time.
 
-**Step 2, receptive fields: built, pre-tag** ([design v3.1](interp/receptive-fields-design.md)).
-- **The question.** When the inside edge of the road moves, does a network's line follow it?
-  The edge-tracking gain G is 1 for the optimum: its line rides the inside edge at the apex. A
-  line that ignores width has G = 0.
-- **Primary family.**
-  - H2′: the step 1 generalists under-track the inside edge.
-  - H4: real-width training raises G. This test is prospective and interventional, run on
-    agent-independent A2 states.
-- **The build.** The code is in `src/apexzero/fields/` and `scripts/fields.py`, with 124 tests.
-  - The optimum's fields come from a barrier-KKT adjoint at step 1's answer keys.
-  - The network's fields come from float64 reverse mode through its own closed loop.
-  - Gates 0–5 and planted controls with known answers must pass.
-  - It was built in stages and adversarially reviewed; 22 confirmed findings were fixed.
-- **Decisions while building.** H1-typical became descriptive, because a lawful physics reader
-  (Qp) cannot pass its planned absolute band. Outside-edge gains were dropped from the
-  hypotheses.
-- **Pre-tag state (paused 21 Oct, about 11:45).**
-  - Done: design v3.2 (`2ebc088`); the code (`46762c6`); a first full pass of the pre-tag
-    stages, all passing (Gate 0 10,006/10,006, Gates 1–5, controls, the optimum's fields for all
-    10,006 keys with no failures, calibration).
-  - The final pre-tag review: 46 findings, 34 essential. Their decisions are in design
-    Section 15. Implementing them was in progress when work paused (see the resume list below).
-- **Resume list** (in order):
-  1. Check the working tree: `git status` and `git diff --stat src/apexzero/fields scripts/fields.py tests`.
-     About 3,500 uncommitted lines across 12 files are the partly implemented Section 15
-     decisions. The implementing agent was stopped at 11:30 before its review and fix stages.
-     - When stopped, the tree compiled, ruff passed, and all 144 `tests/test_fields_*.py` tests
-       passed.
-     - A backup of the diff is in `outputs/fields/wip/section15-partial.patch`.
-     - Most items show code: gate2-trained, tag pinning, provenance stamps, H4's seed-0-free
-       test, T, coverage, record hashes, dose networks and deviations.
-     - Not found under the expected names: the wiring check for networks without step 1
-       rollouts, and the confirmatory completeness check. Go through Section 15 item by item.
-  2. Finish implementing Section 15. Each item is listed there, with the reviewers' proposed fixes
-     kept in the session scratchpad. Then run every `tests/test_fields_*.py` and step 1's rollout
-     tests in one session, and commit.
-  3. Re-run every pre-tag stage on the final code, so the stamped outputs match it: keys,
-     repolish, gates 1–5, gate3 `--all` on all 12 agents, calibrate, controls, opt-fields
-     (about 25 min with 8 workers), phase-ceiling.
-  4. Run `prereg` on a clean tree, commit the record, then create the annotated tag
-     `receptive-fields-prereg-v1` and push it.
-  5. After the tag: gate2-trained and the wiring check on the trained networks, then the
-     fields, then the confirmatory analysis, once.
-- **Departure from protocol 9.6.** Taking step 2 before step 1b is logged.
-- **After step 2:** idea 2, whether the networks encode Pontryagin's costate (design
-  Section 12).
+**Step 2, receptive fields: done** ([findings](findings/receptive-fields-step2.md);
+[design v3.3](interp/receptive-fields-design.md)). Pre-registered at `receptive-fields-prereg-v1`;
+the confirmatory decisions ran once (`b839a57`).
+- **The question.** When the inside edge moves, does a network's line follow it? The optimum's
+  edge-tracking gain G is 1, and a width-blind line's is 0.
+- **H2′ (confirmatory): no deficit.** All 9 step 1 generalists follow about 76–85% of a
+  corner-wide inside-edge shift. G3 is lawful, the others inconclusive, and v3 is seed-specific.
+- **H4 (confirmatory): not testable.** Two networks failed the post-tag autodiff check at one key
+  each, under the strict rule fixed before the tag.
+- **Exploratory: real-width training lowered G and raised the inside buffer B.** p 2.0e-4 and
+  0.002. The width-trained agents kept more margin instead of tracking the edge more.
+- **Descriptive: on the real crash roads the line follows only a median 19% of the edge's local
+  move.** The linear crash prediction locates the crash points. This suggests the networks track
+  slow, corner-wide width changes but not short, local ones.
+
+**Next.**
+1. **The frequency and locality of edge tracking** (exploratory; plan first, findings Section 10).
+   The impulse responses already on disk give the gain for any inside-width change, with no new
+   network runs.
+2. **Idea 2: do the networks encode Pontryagin's costate?** Design v2.1, reviewed
+   ([costate-design](interp/costate-design.md)). Primary questions:
+   - C1: is the critic's gradient the costate?
+   - C2: does the actor carry costate information beyond its input?
+   - C3-w: does the fidelity of the inside-wall price go with completion?
+
+   Next: implement in `src/apexzero/costate/`, then gates, a final review and its own tag.
+   Any change to `src/` now makes step 2's post-tag stages refuse unless it is logged as a
+   deviation. Step 2's post-tag work is complete, so this does not matter.
 
 `scripts/dashboard.py` shows everything running: stages, agent workflows, GPU boxes.
 
