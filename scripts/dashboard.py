@@ -328,8 +328,10 @@ def fit(line: str, width: int) -> str:
 PIPELINE = ("manifest", "support", "stimuli", "keys", "validate", "controls", "dryrun",
             "rollouts", "anchored-keys", "probes", "analyse", "plots")
 PREREG_TAG = "psychophysics-prereg-v2"
+STUDY_TAGS = (("step 1", PREREG_TAG), ("step 2", "receptive-fields-prereg-v1"),
+              ("H4R", "h4r-prereg-v1"), ("idea 2", "costate-prereg-v1"))
 _STAGE = re.compile(r"^(\S+ \S+) (start|done|failed) (\S+): (\d+)/(\d+)(.*)$")
-_PROGRESS = re.compile(r"^(\S+ \S+) (\d+)/(\d+) (.*)$")
+_PROGRESS = re.compile(r"^(\S+ \S+) (\d+)/(\d+)(?: (.*))?$")   # the note after the count is optional
 
 
 @dataclass
@@ -613,6 +615,11 @@ STAGE_NAMES = {
     "analyse": "Analysis", "plots": "Plots",
 }
 RECENT_DONE_S = 12 * 3600
+H4R_STAGE_NAMES = {
+    "manifest": "checkpoint manifest", "prereg": "pre-registration record",
+    "harness-f32": "wiring references", "gate2-trained": "autodiff gate",
+    "fields": "networks' fields (A2 keys)", "analyse": "analysis (once)",
+}
 FIELDS_STAGE_NAMES = {
     "keys": "key lists and Gate 0", "repolish": "re-polish keys", "gate1": "Gate 1 (KKT vs re-solves)",
     "gate2": "Gate 2 (autodiff vs FD)", "gate3": "Gate 3 (wiring)", "gate4": "Gate 4 (optimum G*)",
@@ -683,6 +690,24 @@ def render(width: int) -> list[str]:
             mark = f"{RED}✗ failed{RESET}" if st.status == "failed" else f"{BLUE}✓{RESET}"
             done.append((st.t_last, f"{mark} {name}"))
 
+    # H4R stages: runs/h4r-<stage>.log, written by scripts/h4r.py (run logs of the same prefix
+    # have no stage lines, so parse_stage skips them)
+    for log in sorted(RUNS.glob("h4r-*.log"), key=lambda f: f.stat().st_mtime):
+        stage = log.stem.removeprefix("h4r-")
+        st = parse_stage(_tail_text(log, 32768), stage,
+                         any(f"h4r.py {stage}" in p.cmd for p in procs))
+        if st is None:
+            continue
+        name = f"H4R: {H4R_STAGE_NAMES.get(stage, stage)}"
+        if st.status == "running":
+            planning = st.total <= 1
+            frac = None if planning else st.done / st.total
+            running.append(_bar_line(name, "Mac", frac, None if planning else st.eta_s(now),
+                                     "starting"))
+        elif st.t_last and now - st.t_last < RECENT_DONE_S:
+            mark = f"{RED}✗ failed{RESET}" if st.status == "failed" else f"{BLUE}✓{RESET}"
+            done.append((st.t_last, f"{mark} {name}"))
+
     # jobs on rented boxes
     for label, host, st, left, raw in remote_states():
         if st is not None and st.status == "running":
@@ -711,6 +736,7 @@ def render(width: int) -> list[str]:
         if ("scripts/" in p.cmd and "python" in p.cmd.lower() and not p.cmd.startswith("uv ")
                 and "dashboard.py" not in p.cmd and "psychophysics.py" not in p.cmd
                 and "fields.py" not in p.cmd and "apexzero.fields" not in p.cmd
+                and "h4r.py" not in p.cmd
                 and not any(f"--name {j.name}" in p.cmd for j in jobs)):
             cmd = p.cmd[p.cmd.find("scripts/"):].split()[0]
             running.append(_bar_line(cmd, f"Mac pid {p.pid}", None, None,
@@ -720,9 +746,11 @@ def render(width: int) -> list[str]:
     lines.append(f"{BOLD}RUNNING NOW{RESET}")
     lines += running or [f"  {DIM}nothing running{RESET}"]
     lines.append("")
-    tagged = _run(["git", "-C", str(ROOT), "tag", "-l", PREREG_TAG]).strip()
-    lines.append(f"{BOLD}STUDY{RESET}  psychophysics pre-registration: "
-                 + (f"{GREEN}tagged{RESET}" if tagged else f"{YELLOW}not tagged yet{RESET}"))
+    tags = set(_run(["git", "-C", str(ROOT), "tag", "-l"]).split())
+    studies = "   ".join(f"{label} " + (f"{GREEN}tagged{RESET}" if tag in tags
+                                         else f"{YELLOW}not tagged{RESET}")
+                         for label, tag in STUDY_TAGS)
+    lines.append(f"{BOLD}STUDIES{RESET}  {studies}")
     if done:
         lines.append("")
         lines.append(f"{BOLD}DONE IN THE LAST 12 H{RESET}")
