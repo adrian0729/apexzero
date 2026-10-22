@@ -765,7 +765,8 @@ def render(width: int) -> list[str]:
     if NOTES.exists():
         alive = {str(p.pid) for p in procs}
         notes = [ln for ln in NOTES.read_text().splitlines() if ln.strip()
-                 and not ((m := re.search(r"\[pid (\d+)\]", ln)) and m.group(1) not in alive)][:8]
+                 and not ((m := re.search(r"\[pid (\d+)\]", ln)) and m.group(1) not in alive)][-8:]
+        # the newest notes (the file is appended to)
         if notes:
             lines.append("")
             lines.append(f"{BOLD}CLAUDE'S NOTES{RESET} {DIM}(updated {fmt_dur(now - NOTES.stat().st_mtime)} ago){RESET}")
