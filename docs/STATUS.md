@@ -80,19 +80,26 @@ the confirmatory decisions ran once (`b839a57`).
   move.** The linear crash prediction locates the crash points. This suggests the networks track
   slow, corner-wide width changes but not short, local ones.
 
-**Next.**
-1. **The frequency and locality of edge tracking** (exploratory; plan first, findings Section 10).
-   The impulse responses already on disk give the gain for any inside-width change, with no new
-   network runs.
-2. **Idea 2: do the networks encode Pontryagin's costate?** Design v2.1, reviewed
-   ([costate-design](interp/costate-design.md)). Primary questions:
-   - C1: is the critic's gradient the costate?
-   - C2: does the actor carry costate information beyond its input?
-   - C3-w: does the fidelity of the inside-wall price go with completion?
+**Locality follow-up (exploratory, done; [locality](findings/locality.md)).** The lines follow
+corner-wide inside-edge changes at about 0.8, but 8 m bumps at about 0.3 and 2 m bumps at about
+0.1. That is the range seen on the real crash roads. The line trails the edge by about 10 m.
 
-   Next: implement in `src/apexzero/costate/`, then gates, a final review and its own tag.
-   Any change to `src/` now makes step 2's post-tag stages refuse unless it is logged as a
-   deviation. Step 2's post-tag work is complete, so this does not matter.
+**H4R (confirmatory, done; [findings](findings/h4r.md)).** A fresh, pre-registered test on 20
+new networks, trained on one machine with one commit. It answers step 2's untestable H4:
+- real-width training **lowers** inside-edge tracking G (p 7.6e-4);
+- it **raises** the inside margin B (p 1.3e-3);
+- it raises R-dev completion (S1, p 0.026);
+- whether the margin explains the completion is not established (S3).
+
+**Idea 2: does the network encode the costate?** Design v2.2
+([costate-design](interp/costate-design.md)); code merged (`src/apexzero/costate`, 117 tests).
+- Primary questions:
+  - C1: is the critic's gradient the costate?
+  - C2: does the actor carry costate information beyond its input?
+  - C3-w: does the fidelity of the inside-wall price go with completion?
+- **In progress:** the last pre-tag items (value accuracy, per-stratum reports, K3's rule).
+- **Then:** the stamped pre-tag stages, a final review and the tag `costate-prereg-v1`. Only
+  after that are the trained networks' activations and gradients computed.
 
 `scripts/dashboard.py` shows everything running: stages, agent workflows, GPU boxes.
 
