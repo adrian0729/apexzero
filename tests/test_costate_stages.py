@@ -1,0 +1,777 @@
+"""scripts/costate.py: the freeze, the stamps, the run-once rule and the post-tag stage
+bodies (design v2.1, Section 7 'Freeze'), before the tag.
+
+- The freeze check on a scratch repository built as the real one will be (the code, the
+  design document and step 1's and step 2's tags; the record built on that commit and
+  committed alone; the annotated tag pushed to a bare origin): it passes, then fails for a
+  code change (committed or not, untracked, byte by byte), step 1's or step 2's frozen code
+  changed, a lightweight or unpushed tag, a changed key file, design document or record.
+- Pre-tag stages refuse after the tag (a deviation only into a root outside
+  outputs/costate); post-tag stages refuse without it; stamps refuse a mid-run code change;
+  the confirmatory analysis runs once; partial options are stamped.
+- The post-tag stage bodies (activations, critic gradients, C1 with its nulls, C2 and C2-sw)
+  end to end in a float64 subprocess on a few stored keys, with random-init stand-ins for a
+  trained snapshot (G1's config and obs_rms; no trained parameter is evaluated)."""
+
+import importlib.util
+import json
+import os
+import subprocess
+import sys
+from pathlib import Path
+from types import SimpleNamespace
+
+import numpy as np
+import pytest
+
+from apexzero.costate import data_dirs
+from apexzero.costate import prereg as PR
+from apexzero.interp import agents
+
+REPO = Path(__file__).resolve().parents[1]
+SCRIPT = REPO / "scripts" / "costate.py"
+KEYS, STIM = data_dirs()
+HAVE_KEYS = (KEYS / "nominal").exists() and (STIM / "cells.json").exists()
+
+
+def _have_g1() -> bool:
+    try:
+        return agents.final_snapshot(agents.AGENTS["G1"]) is not None
+    except (KeyError, OSError):
+        return False
+
+
+def _script():
+    spec = importlib.util.spec_from_file_location("costate_script", SCRIPT)
+    mod = importlib.util.module_from_spec(spec)
+    sys.path.insert(0, str(SCRIPT.parent))
+    try:
+        spec.loader.exec_module(mod)
+    finally:
+        sys.path.remove(str(SCRIPT.parent))
+    return mod
+
+
+def _git(root: Path, *args: str) -> str:
+    r = subprocess.run(["git", *args], cwd=root, check=True, capture_output=True, text=True,
+                       env=dict(os.environ, GIT_AUTHOR_NAME="t", GIT_AUTHOR_EMAIL="t@t",
+                                GIT_COMMITTER_NAME="t", GIT_COMMITTER_EMAIL="t@t"))
+    return r.stdout
+
+
+def _scratch(tmp_path, cs, push: bool = True):
+    """A scratch repository (module docstring) with fake key files."""
+    root = tmp_path / "repo"
+    for d in ("src/apexzero/costate", "src/apexzero/fields", "src/apexzero/interp", "scripts",
+              "docs/interp"):
+        (root / d).mkdir(parents=True)
+    (root / "src/apexzero/costate/a.py").write_text("x = 1\n")
+    (root / "src/apexzero/fields/f.py").write_text("f = 1\n")
+    (root / "src/apexzero/interp/m.py").write_text("m = 1\n")
+    for n in ("costate.py", "fields.py", "_bootstrap.py", "psychophysics.py"):
+        (root / "scripts" / n).write_text(f"# {n}\n")
+    (root / PR.DESIGN_DOC).write_text("design v2.1 — λ\n")
+    (root / "notes.txt").write_text("n\n")
+    (root / ".gitignore").write_text("outputs/\n__pycache__/\n")
+    keys = tmp_path / "keys"
+    (keys / "nominal").mkdir(parents=True)
+    for k in ("k1", "k2"):
+        (keys / "nominal" / f"{k}.json").write_text(f'{{"key_id": "{k}"}}')
+        np.savez(keys / "nominal" / f"{k}.npz", x=np.arange(3.0))
+    sets = {"a2": [("nominal", "k1"), ("nominal", "k2")]}
+    _git(root, "init", "-q")
+    _git(root, "add", "-A")
+    _git(root, "commit", "-q", "-m", "c0")
+    _git(root, "tag", "-a", cs.STEP1_TAG, "-m", "s1")
+    _git(root, "tag", "-a", cs.STEP2_TAG, "-m", "s2")
+    base = _git(root, "rev-parse", "HEAD").strip()
+    rec = PR.build_record(root, sets, keys, [("k1", 0), ("k1", 5), ("k2", 0)], {"t_H": 270},
+                          {"prereg_base_commit": base, "networks": {}})
+    PR.save(rec, root / PR.PREREG_REL)
+    _git(root, "add", PR.PREREG_REL)
+    _git(root, "commit", "-q", "-m", "record")
+    _git(root, "tag", "-a", cs.TAG, "-m", "tag")
+    origin = tmp_path / "origin.git"
+    _git(tmp_path, "init", "-q", "--bare", str(origin))
+    _git(root, "remote", "add", "origin", f"file://{origin}")
+    if push:
+        _git(root, "push", "-q", "origin", cs.TAG)
+
+    def verify(rec_, root_, current=lambda: sets):
+        return PR.verify_record(rec_, root_, keys, current)
+
+    return root, keys, sets, verify
+
+
+def test_freeze_check_on_a_scratch_repository(tmp_path):
+    cs = _script()
+    root, keys, sets, verify = _scratch(tmp_path, cs)
+    pin = tmp_path / "tag.json"
+
+    def probs(**kw):
+        return cs.freeze_problems(root=root, verify=kw.pop("verify", verify), pin_path=pin, **kw)
+
+    assert probs() == []
+    rec = cs.tagged_record(root=root)
+    assert rec["key_counts"] == {"a2": 2} and rec["version"] == PR.VERSION
+    assert rec["tag"] == cs.TAG and len(rec["t_pairs"]) == 3 and "constants" in rec
+    # docs-only commits after the tag are fine
+    (root / "notes.txt").write_text("findings\n")
+    _git(root, "commit", "-q", "-am", "findings")
+    assert probs() == []
+    # code under src (uncommitted, committed, untracked) or the script blocks
+    (root / "src/apexzero/costate/a.py").write_text("x = 2\n")
+    assert any(p.code == "code_changed" for p in probs())
+    _git(root, "checkout", "-q", "--", "src")
+    (root / "src/apexzero/costate/b.py").write_text("")
+    assert any("untracked" in p for p in probs())
+    (root / "src/apexzero/costate/b.py").unlink()
+    (root / "scripts/costate.py").write_text("# changed\n")
+    assert any("code differs" in p for p in probs())
+    _git(root, "checkout", "-q", "--", "scripts")
+    assert probs() == []
+    # an edit git does not see (assume-unchanged) is caught byte by byte
+    _git(root, "update-index", "--assume-unchanged", "src/apexzero/costate/a.py")
+    (root / "src/apexzero/costate/a.py").write_text("x = 3\n")
+    assert any("byte by byte" in p for p in probs())
+    (root / "src/apexzero/costate/a.py").write_text("x = 1\n")
+    _git(root, "update-index", "--no-assume-unchanged", "src/apexzero/costate/a.py")
+    assert probs() == []
+    # step 2's frozen code against its own tag (it is under src too)
+    (root / "src/apexzero/fields/f.py").write_text("f = 2\n")
+    assert any(p.code == "frozen" and "step 2" in p for p in probs())
+    _git(root, "checkout", "-q", "--", "src")
+    # the record against the disk: key files, design document
+    np.savez(keys / "nominal" / "k2.npz", x=np.arange(4.0))
+    assert any(p.code == "keys" for p in probs())
+    np.savez(keys / "nominal" / "k2.npz", x=np.arange(3.0))
+    assert any("no longer gives" in p for p in probs(
+        verify=lambda r, rt: verify(r, rt, current=lambda: {"a2": sets["a2"][:1]})))
+    (root / PR.DESIGN_DOC).write_text("design v3\n")
+    assert any(p.code == "design_doc_changed" for p in probs())
+    (root / PR.DESIGN_DOC).write_text("design v2.1 — λ\n")
+    assert probs() == []
+    # the write-once pin: written by the first post-tag run, then it must be committed
+    cs.pin_tag(root, pin_path=root / cs.OUT_REL / "tag.json")
+    assert any("not committed" in p for p in cs.freeze_problems(
+        root=root, verify=verify, pin_path=root / cs.OUT_REL / "tag.json"))
+
+
+def test_the_tag_must_be_annotated_pushed_and_hold_the_record(tmp_path):
+    cs = _script()
+    root, _, _, verify = _scratch(tmp_path, cs, push=False)
+    probs = cs.freeze_problems(root=root, verify=verify, pin_path=tmp_path / "p.json")
+    assert any("is not on origin" in p for p in probs)
+    _git(root, "tag", "-d", cs.TAG)
+    _git(root, "tag", cs.TAG)                        # lightweight
+    probs = cs.freeze_problems(root=root, verify=verify, remote=None,
+                               pin_path=tmp_path / "p.json")
+    assert any("lightweight" in p for p in probs)
+    _git(root, "tag", "-d", cs.TAG)
+    assert any("does not exist" in p for p in cs.freeze_problems(root=root, verify=verify))
+    # a record built on other code than the tag's
+    _git(root, "tag", "-a", cs.TAG, "-m", "t", "HEAD~1")
+    probs = cs.freeze_problems(root=root, verify=None, remote=None, pin_path=tmp_path / "p.json")
+    assert any("no pre-registration record" in p for p in probs)
+
+
+def test_pre_tag_stages_refuse_after_the_tag_and_post_tag_ones_before(tmp_path, monkeypatch):
+    cs = _script()
+    root, _, _, _ = _scratch(tmp_path, cs)
+    with pytest.raises(SystemExit, match="refusing to run k1 after the tag"):
+        cs.refuse_after_tag("k1", root=root)
+    with pytest.raises(SystemExit, match="after the tag"):
+        cs.refuse_after_tag("prereg", "reason", always=True, root=root)
+    with pytest.raises(SystemExit, match="give --out outside"):
+        cs.refuse_after_tag("k1", "reason", root=root, out_root=root / cs.OUT_REL / "x")
+    dev = cs.refuse_after_tag("k1", "a rerun", root=root, out_root=tmp_path / "elsewhere")
+    assert dev["reason"] == "a rerun"
+    assert (root / cs.OUT_REL / "deviations.jsonl").exists()
+    # this repository has no costate tag: every post-tag stage refuses
+    monkeypatch.setattr(cs, "import_problems", lambda *a, **k: [])
+    cs._use_provenance(cs.Provenance(None, "analyse"))
+    from apexzero.costate import critic as CR
+    from apexzero.costate import probes as PB
+    from apexzero.fields import network as NW
+
+    for stage in cs.POST_TAG:
+        with pytest.raises(SystemExit, match="does not exist yet"):
+            cs.main([stage, "--out", str(tmp_path / "o")])
+        # no trained network was unlocked on the way (review finding: an unlock moved
+        # before the freeze check went unnoticed)
+        assert not CR._TRAINED_OK and not PB._TRAINED_OK and not NW._TRAINED_OK, stage
+    # a waivable problem with a deviation proceeds; a hard one never
+    from apexzero.fields.prereg import Problem
+
+    soft = [Problem("code_changed", "x")]
+    assert cs.require_tag("s", "why", root=root, problems=soft,
+                          pin_path=tmp_path / "pin.json")["category"] == "post-tag deviation"
+    with pytest.raises(SystemExit):
+        cs.require_tag("s", "why", root=root, problems=[Problem("tag", "y")])
+
+
+def test_stamps_run_once_and_partial_options(tmp_path, monkeypatch):
+    cs = _script()
+    args = cs.build_parser().parse_args(["k0", "--limit", "3", "--out", str(tmp_path)])
+    assert cs._partial(args) == ["--out", "--limit"]
+    p = cs.Provenance(args, "k0")
+    cs._use_provenance(p)
+    out = cs._write(tmp_path / "a.json", {"x": 1})
+    d = json.loads(out.read_text())
+    assert d["provenance"]["code_hash"] == PR.code_hash(REPO)
+    assert d["provenance"]["partial"] == ["--out", "--limit"]
+    cs._write_npz(tmp_path / "b.npz", {"y": np.arange(3)})
+    assert PR.read_stamp(tmp_path / "b.npz")["files"]["b.npz"]
+    monkeypatch.setattr(PR, "code_hash", lambda repo: "other")
+    with pytest.raises(SystemExit, match="code changed"):
+        cs._write(tmp_path / "c.json", {"x": 2})
+    assert not (tmp_path / "c.json").exists()
+    monkeypatch.undo()
+    assert cs.F.run_once_problems(tmp_path / "a.json")              # exists: refused
+    assert cs.F.run_once_problems(tmp_path / "none.json") == []
+    # the bound outputs: stamped by this code, passing, not partial
+    gates = tmp_path / "root" / "gates"
+    gates.mkdir(parents=True)
+    cs._use_provenance(cs.Provenance(None, "k0"))
+    cs._write(gates / "k0.json", {"summary": {"pass": True}})
+    b, probs = PR.bind_outputs(tmp_path / "root", PR.code_hash(REPO))
+    assert "gates/k0.json" in b and not any("k0.json" in q for q in probs)
+    assert any("k1.json is missing" in q for q in probs)
+    cs._write(gates / "k1.json", {"decision": {"pass": False}})
+    _, probs = PR.bind_outputs(tmp_path / "root", PR.code_hash(REPO))
+    assert any("k1.json does not pass" in q for q in probs)
+
+
+def test_import_rule_and_record_pieces():
+    cs = _script()
+    mods = {"ok": SimpleNamespace(__file__=str(REPO / "src/apexzero/costate/gates.py")),
+            "script": SimpleNamespace(__file__=str(REPO / "scripts/fields.py")),
+            "bad": SimpleNamespace(__file__=str(REPO / "scripts/other.py"))}
+    probs = cs.import_problems(REPO, mods)
+    assert len(probs) == 1 and "bad" in probs[0]
+    c = PR.constants()
+    assert c["states"]["interior_k"] == 10 and c["analysis"]["huber_c"] == 1.345
+    assert c["analysis"]["c3"][0] == 100_000 and len(c["analysis"]["c3_strata"]) == 31
+    assert PR.t_hash([("a", 1), ("b", 0)]) == PR.t_hash([("b", 0), ("a", 1)])
+    assert set(cs.POST_TAG).isdisjoint(cs.PRE_TAG)
+    assert len(cs.all_networks()) == 34
+
+
+_SUBPROCESS = r"""
+import json, sys
+import importlib.util
+import jax
+jax.config.update("jax_enable_x64", True)
+import numpy as np
+from types import SimpleNamespace
+from apexzero.agents.ppo import RunningMeanStd
+from apexzero.costate import critic as CR, probes as PB, inputs as IN, states as ST
+from apexzero.costate import nulls as NL, analysis as AN, prereg as PR
+from apexzero.fields import network as NW
+spec = importlib.util.spec_from_file_location("costate_script", sys.argv[1])
+cs = importlib.util.module_from_spec(spec)
+sys.path.insert(0, str(spec.origin.rsplit("/", 1)[0]))
+spec.loader.exec_module(cs)
+bank, _ = IN.design()
+refs = sorted(ST.a2_refs(), key=lambda r: r.key_id)
+by = {}
+for r in refs:
+    st = ST.strata(r)
+    if st.w_is_cell:
+        by.setdefault((st.R, st.theta_deg), r)
+pick = [by[g] for g in sorted(by)][::4][:12]
+world = IN.build_world([IN.key_data(r, bank) for r in pick])
+rms, cfg = IN.obs_rms_of("G1")
+# a random-init stand-in for a trained snapshot: G1's config and obs_rms, random params
+snap = SimpleNamespace(actor=NW.random_actor_params(cfg, 3), critic=CR.random_critic_params(cfg, 3),
+                       ret_rms=RunningMeanStd(np.zeros(()), np.float32(4.0), np.float32(1.0)))
+agent = SimpleNamespace(agent_id="stand-in", timesteps=0, cfg=cfg, obs_rms=rms, snapshot=snap)
+PB.unlock_trained(); CR.unlock_trained()
+acts = cs.activations_of(agent, world, n_random=5)
+crit = cs.critic_of(agent, world, seeds=(0, 1, 2), bank=bank)
+# the width derivative against a central difference of V_c on the tangent-perturbed road
+from apexzero.fields import perturb as PT
+net = CR.trained_critic(agent)
+k0 = world.keys[0]
+i0 = int(k0.rows[0])
+rd = NW.road(bank, int(world.tab["stim_id"][i0]))
+sig = int(world.tab["direction"][i0])
+dl = IN.inside_widening(rd.n, sig)
+h = 1e-4
+def v_at(e):
+    tr = PT.perturbed_arrays(rd.base, rd.samples, PT.Samples(*(e * a for a in dl)))
+    return CR.values(net, tr, k0.inp.x, k0.inp.prev_action, k0.inp.accel)[:, 0]
+fd = net.sigma * (v_at(h) - v_at(-h)) / (2 * h)
+ad = crit["dV_dwin"][k0.rows]
+width_err = float(np.max(np.abs(ad - fd)) / max(np.max(np.abs(fd)), 1e-12))
+fo = PB.folds(world.tab)
+w = ST.weights(world.tab, "key")
+nl = NL.null_gradients(world.keys, world.tab, world.v_star, fo, w, rms, world.lam,
+                       which=("value_ridge", "qss", "barrier", "far_geometry"))
+frozen = PR.frozen_values(world.tab, None, partitions=1)
+fl = IN.flags(world, rms)
+counts = PB.cluster_counts(AN.geometry_clusters(world.tab)[1], 200)
+frozen["power_floor"] = {c: True for c in ("s", "n", "xi", "vx")}
+an = cs.analyse_network("stand-in", world, frozen, crit, {k: v for k, v in nl.items()}, fl, counts,
+                        variants=["braking_keys"])
+inner = np.asarray(world.tab["interior"], bool)
+sw = np.asarray(world.tab[ST.SW_STRATUM], bool)
+pr = cs.probes_of(acts, world, frozen, np.ones(world.n, bool), sw, variants=["primary"])
+print(json.dumps({"n": world.n, "keys": len(pick),
+  "acts": {k: list(v.shape) for k, v in acts.items()},
+  "crit_g": list(crit["g"].shape), "random_g": list(crit["random_g"].shape),
+  "finite": bool(np.isfinite(crit["g"]).all() and np.isfinite(acts["actor_h3"]).all()),
+  "nulls": {k: bool(np.isfinite(v).all()) for k, v in nl.items() if k != "fits"},
+  "c1": an["C1"]["decision"], "c1_nulls": sorted(an["C1"]["null_diff"]),
+  "c1_limit": an["C1-limit"].get("decision"), "c2": pr["C2"], "c2sw": pr["C2-sw"],
+  "sw_rows": int(sw.sum()), "sigma": float(crit["sigma"]),
+  "c1_braking": an["C1-braking"]["decision"], "sens": sorted(an["sensitivity"]),
+  "width_err": width_err, "width_finite": bool(np.isfinite(crit["dV_dwin"]).all()),
+  "pattern": an["C1-pattern"]["decision"], "heads": sorted(an["C1-heads"]),
+  "w1": an["W1"]["r2c"]}))
+"""
+
+
+@pytest.mark.skipif(not (HAVE_KEYS and _have_g1()), reason="step 1's keys or G1 are missing")
+def test_post_tag_bodies_end_to_end_on_random_stand_ins(tmp_path):
+    env = dict(os.environ, PYTHONPATH=str(REPO / "src"))
+    r = subprocess.run([sys.executable, "-c", _SUBPROCESS, str(SCRIPT)], cwd=REPO, env=env,
+                       capture_output=True, text=True, timeout=600, check=False)
+    assert r.returncode == 0, r.stderr[-3000:]
+    out = json.loads(r.stdout.strip().splitlines()[-1])
+    assert out["keys"] == 12 and out["finite"]
+    n = out["n"]
+    assert out["acts"]["actor_h3"] == [n, 256] and out["acts"]["heads"] == [n, 5]
+    assert out["acts"]["head_units"] == [5, n, 64] and out["acts"]["random4_h3"] == [n, 256]
+    assert out["crit_g"] == [n, 6, 8] and out["random_g"] == [3, n, 8]
+    assert out["sigma"] == pytest.approx(2.0, rel=1e-6)
+    assert all(out["nulls"][k] for k in ("value_ridge", "qss", "barrier"))
+    assert out["c1_nulls"] == ["barrier", "far_geometry", "qss", "random_critics", "value_ridge"]
+    assert out["c1"] in ("refute", "inconclusive")       # a random critic never confirms
+    # the stand-in actor is seed 3, which is also random control 3: its full probe is that
+    # control's exactly, the gain is raw minus the controls' median, and it never confirms
+    for key in ("c2", "c2sw"):
+        g = out[key]
+        assert g["decision"] not in ("confirm", "not testable"), (key, g["decision"])
+        assert all(g["passing"]), key
+        assert np.array_equal(g["r2_full"], np.asarray(g["r2_random"])[3]), key
+        want = np.subtract(g["r2_full"], g["r2_base"]) - np.median(
+            np.subtract(g["r2_random"], g["r2_base"]), axis=0)
+        assert np.allclose(g["gain"], want, rtol=0, atol=1e-12), key
+    assert out["sw_rows"] > 0 and out["sens"] == ["braking_keys"]
+    assert out["c1_braking"] in ("refute", "inconclusive", "not testable")
+    assert out["width_finite"] and out["width_err"] < 1e-6
+    assert out["heads"] == ["D", "grad_KP_minus_V", "grad_secondary_minus_KP"]
+
+
+# ------------------------------------------------------------------------- integrity (review)
+
+
+def _retag(root: Path, cs, change=None, files: dict | None = None) -> None:
+    """Rewrite the scratch repository's record (``change(rec)``), commit it with ``files``,
+    and move the annotated tag onto that commit."""
+    rec = json.loads((root / PR.PREREG_REL).read_text())
+    rec["retagged"] = int(rec.get("retagged", 0)) + 1      # always a new record commit
+    if change is not None:
+        change(rec)
+    PR.save(rec, root / PR.PREREG_REL)
+    for rel, text in (files or {}).items():
+        (root / rel).write_text(text)
+    _git(root, "add", "-A")
+    _git(root, "commit", "-q", "-m", "record again")
+    _git(root, "tag", "-d", cs.TAG)
+    _git(root, "tag", "-a", cs.TAG, "-m", "tag")
+
+
+def test_each_freeze_rule_names_its_problem(tmp_path):
+    """Review finding: five freeze rules could be deleted with the tests still passing."""
+    cs = _script()
+
+    def probs(root, verify):
+        return [str(p) for p in cs.freeze_problems(root=root, verify=verify, remote=None,
+                                                   pin_path=root.parent / "pin.json")]
+
+    root, _, _, verify = _scratch(tmp_path / "a", cs)
+    base = _git(root, "rev-parse", "HEAD~1").strip()
+    _git(root, "checkout", "-q", "--detach", base)
+    (root / "notes.txt").write_text("elsewhere\n")
+    _git(root, "commit", "-q", "-am", "off the tag")
+    assert any("not an ancestor of HEAD" in p for p in probs(root, verify))
+
+    root, _, _, verify = _scratch(tmp_path / "b", cs)
+    _retag(root, cs, lambda r: r.update(code_hash="0" * 64))
+    assert any("not the code the record was built from" in p for p in probs(root, verify))
+
+    root, _, _, verify = _scratch(tmp_path / "c", cs)
+    (root / "src/apexzero/costate/a.py").write_text("x = 5\n")
+    _git(root, "commit", "-q", "-am", "code after the base")
+    _retag(root, cs)
+    assert any("differs from the record's base commit" in p for p in probs(root, verify))
+
+    root, _, _, verify = _scratch(tmp_path / "d", cs)
+    _retag(root, cs, files={PR.DESIGN_DOC: "design v2.2\n"})
+    assert any("design document at the tag" in p for p in probs(root, verify))
+
+    root, _, _, verify = _scratch(tmp_path / "e", cs)
+    _retag(root, cs, lambda r: r.update(environment={"python": "0", "packages": {}}))
+    assert any("package versions differ" in p for p in probs(root, verify))
+
+
+def test_pre_tag_stages_refuse_through_main_once_the_tag_exists(tmp_path, monkeypatch):
+    """Review finding: deleting the pre-tag refusal from main went unnoticed."""
+    cs = _script()
+    monkeypatch.setattr(cs.F, "_tag_object", lambda *a, **k: ("0" * 40, "tag"))
+    for stage in cs.PRE_TAG:
+        monkeypatch.setattr(cs, f"stage_{stage}", lambda args: (_ for _ in ()).throw(
+            AssertionError("the stage ran")))
+        with pytest.raises(SystemExit, match="after the tag"):
+            cs.main([stage, "--out", str(tmp_path / "o")])
+
+
+def test_confirmatory_run_once_is_checked_before_any_work(monkeypatch):
+    """Review finding: the run-once check in stage_analyse could be deleted unnoticed. The
+    stubs keep this process locked and write nothing under outputs/costate."""
+    cs = _script()
+
+    def boom(*a, **k):
+        raise AssertionError("the analysis started")
+
+    monkeypatch.setattr(cs, "_post_tag", lambda a, w: {"frozen": {}})
+    monkeypatch.setattr(cs.F, "run_once_problems", lambda p, *a, **k: [f"{p} exists"])
+    monkeypatch.setattr(cs, "_load_world", boom)
+    monkeypatch.setattr(cs, "_load_world_frozen", boom)
+    with pytest.raises(SystemExit, match="confirmatory analysis again"):
+        cs.main(["analyse", "--confirmatory"])
+    # incomplete inputs: refused before any computation or write
+    monkeypatch.setattr(cs.F, "run_once_problems", lambda p, *a, **k: [])
+    monkeypatch.setattr(cs, "confirmatory_input_problems",
+                        lambda rec, root, prov=None: ["post/critic/x.npz is missing"])
+    with pytest.raises(SystemExit, match="on complete inputs"):
+        cs.main(["analyse", "--confirmatory"])
+
+
+def test_nulls_are_named_as_the_analysis_reads_them():
+    """Review finding: stage_nulls wrote nulls/G1.npz, the analysis read
+    nulls/runs_dr-pilot-200M.npz, and a full --network run was always partial."""
+    cs = _script()
+    from apexzero.costate import analysis as AN
+
+    assert PR.net_file("G1") == PR.net_file("runs/dr-pilot-200M") == "runs_dr-pilot-200M"
+    stems = [p.stem for p in cs.analysis_paths(Path("/x"))["nulls"]]
+    assert stems == [PR.net_file(n) for n in PR.null_networks()] and len(stems) == 9
+    full = cs.build_parser().parse_args(
+        ["nulls", *[a for n in AN.DECISION_NETWORKS for a in ("--network", n)]])
+    assert cs._partial(full) == []
+    assert cs._partial(cs.build_parser().parse_args(["nulls", "--network", "G1"])) == \
+        ["--network"]
+    assert cs._partial(cs.build_parser().parse_args(["inputs", "--network", "G1"])) == \
+        ["--network"]
+    good = {"networks": {n: {"finite": {"qss": True}, "sha256": "x"}
+                         for n in PR.null_networks()}, "failed": []}
+    assert PR._passes("nulls/summary.json", good)
+    assert not PR._passes("nulls/summary.json", {"networks": {"G1": good["networks"][
+        "runs/dr-pilot-200M"]}})
+    for bad in ({"sha256": None}, {"finite": {"qss": False}}):
+        d = json.loads(json.dumps(good))
+        d["networks"]["runs/dr-pilot-200M"].update(bad)
+        assert not PR._passes("nulls/summary.json", d)
+    # K1 binds on its planted bugs too, inputs only with K2's t_H
+    assert not PR._passes("gates/k1.json", {"decision": {"pass": True, "plants_fail": False,
+                                                         "pass_with_plants": False}})
+    assert PR._passes("gates/k1.json", {"decision": {"pass": True, "pass_with_plants": True}})
+    assert not PR._passes("inputs/summary.json", {"n": 3, "failed": [], "t_H": None})
+
+
+def test_bound_arrays_and_cross_checks(tmp_path):
+    """Review finding: world.npz and the nulls arrays were not bound; t_H was not tied to
+    K2's."""
+    cs = _script()
+    root = tmp_path / "root"
+    cs._use_provenance(cs.Provenance(None, "inputs"))
+    cs._write_npz(root / "inputs" / "world.npz", {"a": np.arange(3)})
+    for n in PR.null_networks():
+        cs._write_npz(root / "nulls" / f"{PR.net_file(n)}.npz", {"qss": np.ones((2, 8))})
+    code = PR.code_hash(REPO)
+    arrays, probs = PR.bind_arrays(root, code)
+    assert not probs and len(arrays) == 10
+    np.savez(root / "nulls" / "runs_dr-pilot-200M.npz", qss=np.zeros((2, 8)))
+    _, probs = PR.bind_arrays(root, code)
+    assert any("changed after it was stamped" in p for p in probs)
+    cs._write(root / "inputs" / "summary.json", {"n": 3, "failed": [], "t_H": 267})
+    cs._write(root / "gates" / "k2.json", {"horizon": {"t_H": 260}, "pass": True})
+    cs._write(root / "nulls" / "summary.json",
+              {"networks": {n: {"sha256": "0" * 64, "finite": {"qss": True}}
+                            for n in PR.null_networks()}, "failed": []})
+    _, probs = PR.bind_outputs(root, code)
+    assert any("is not K2's" in p for p in probs)
+    assert any("is not the array its summary hashed" in p for p in probs)
+
+
+def test_verify_record_binds_outputs_checkpoints_and_c3w(tmp_path):
+    cs = _script()
+    root, keys, sets, _ = _scratch(tmp_path, cs)
+    rec = cs.tagged_record(root=root)
+    out = tmp_path / "out"
+    (out / "gates").mkdir(parents=True)
+    (out / "gates" / "k0.json").write_text("{}")
+    ck = root / "ck.pkl"
+    ck.write_bytes(b"weights")
+    rec["outputs"] = {"gates/k0.json": {"sha256": PR.sha256_file(out / "gates" / "k0.json")}}
+    rec["networks"] = {"n": {"path": "ck.pkl", "sha256": PR.sha256_file(ck), "timesteps": 1}}
+    (root / "runs" / "x").mkdir(parents=True)
+    for f in ("eval_rdev.json", "metrics.csv"):
+        (root / "runs" / "x" / f).write_text("0\n")
+    c3w, p = PR.c3w_inputs(["runs/x"], root, lambda n: 0.5, lambda n: 1.0)
+    assert not p and c3w["runs/x"]["completion"] == 0.5
+    rec["c3w_inputs"] = c3w
+    rec["design_hash"] = "d"
+
+    def v(r):
+        return PR.verify_record(r, root, keys, None, out, lambda pins: PR.pins_problems(pins, root),
+                                design_hash="d")
+
+    assert v(rec) == []
+    (out / "gates" / "k0.json").write_text('{"x": 1}')
+    assert any(q.code == "outputs" for q in v(rec))
+    assert any(q.code == "record" for q in v({**rec, "outputs": {}}))
+    (out / "gates" / "k0.json").write_text("{}")
+    ck.write_bytes(b"other")
+    assert any(q.code == "checkpoints" for q in v(rec))
+    assert any(q.code == "record" for q in v({**rec, "networks": {}}))
+    ck.write_bytes(b"weights")
+    (root / "runs" / "x" / "metrics.csv").write_text("1\n")
+    assert any(q.code == "c3w" for q in v(rec))
+    (root / "runs" / "x" / "metrics.csv").write_text("0\n")
+    assert any(q.code == "design" for q in PR.verify_record(rec, root, keys, None, out, None,
+                                                           design_hash="other"))
+
+
+def test_network_pins_survive_a_symlinked_runs_directory(tmp_path, monkeypatch):
+    """Review finding: in a worktree whose runs/ links to the main checkout, step 2's
+    network_pin resolved the link and crashed with ValueError."""
+    from apexzero.fields import stages as S
+
+    repo, real = tmp_path / "repo", tmp_path / "real_runs"
+    (real / "x" / "ckpt").mkdir(parents=True)
+    (real / "x" / "ckpt" / "000000000001.pkl").write_bytes(b"ckpt")
+    repo.mkdir()
+    (repo / "runs").symlink_to(real)
+    monkeypatch.setattr(S, "checkpoint_path",
+                        lambda n: repo / "runs" / "x" / "ckpt" / "000000000001.pkl")
+    monkeypatch.setattr(agents, "load_agent", lambda path, aid: SimpleNamespace(timesteps=7))
+    pins, probs = PR.network_pins(["runs/x"], repo)
+    assert not probs and pins["runs/x"]["path"] == "runs/x/ckpt/000000000001.pkl"
+    assert pins["runs/x"]["timesteps"] == 7
+    monkeypatch.setattr(S, "checkpoint_path", lambda n: tmp_path / "elsewhere.pkl")
+    pins, probs = PR.network_pins(["runs/x"], repo)
+    assert not pins and probs and "not under the repository" in probs[0]
+    snaps, probs = PR.snapshot_pins("runs/x", repo)
+    assert list(snaps) == ["runs/x@7"] and snaps["runs/x@7"]["path"].startswith("runs/x/")
+
+
+def test_load_agent_checks_the_pin(tmp_path, monkeypatch):
+    cs = _script()
+    (tmp_path / "ck.pkl").write_bytes(b"w")
+    pin = {"path": "ck.pkl", "sha256": PR.sha256_file(tmp_path / "ck.pkl"), "timesteps": 6}
+    with pytest.raises(SystemExit, match="not the recorded checkpoint"):
+        cs.load_agent("G1", {**pin, "sha256": "0" * 64}, root=tmp_path)
+    monkeypatch.setattr(agents, "load_agent", lambda path, aid: SimpleNamespace(timesteps=5))
+    with pytest.raises(SystemExit, match="timesteps 5"):
+        cs.load_agent("G1", pin, root=tmp_path)
+
+
+def test_trained_networks_are_refused_everywhere_before_the_tag():
+    """Review finding: the trained marks of agent_nets, the own-costate loop, K3b and the
+    width derivative were untested."""
+    from apexzero.costate import critic as CR
+    from apexzero.costate import inputs as IN
+    from apexzero.costate import own as OW
+    from apexzero.costate import probes as PB
+    from apexzero.fields import network as NW
+
+    cfg = PB.g1_config()
+    snap = SimpleNamespace(actor=NW.random_actor_params(cfg, 0),
+                           critic=CR.random_critic_params(cfg, 0))
+    actor, critic = PB.agent_nets(SimpleNamespace(agent_id="x", timesteps=1, cfg=cfg,
+                                                  snapshot=snap))
+    assert actor.trained and critic.trained
+    with pytest.raises(PermissionError):
+        PB.hidden(actor, np.zeros((2, 222)))
+    pol = NW.NetPolicy(lambda *a: None, None, None, "trained", trained=True)
+    with pytest.raises(PermissionError):
+        OW.own_costate(pol, None, None, 1, 1)
+    with pytest.raises(PermissionError):
+        OW.k3b_start(pol, None, None, 1)
+    net = CR.CriticNet(lambda p, o: o, None, None, trained=True, name="trained")
+    with pytest.raises(PermissionError):
+        IN.width_values(net, None, None, 1)
+
+
+def _toy_world(n_geo: int = 12, keys: int = 4, steps: int = 12, seed: int = 0):
+    """A toy T for the analysis plumbing: every column the analysis reads."""
+    from apexzero.costate import targets as TG
+
+    rng = np.random.default_rng(seed)
+    rows = []
+    for g in range(n_geo):
+        R, th = 8.0 + 6.0 * g, (90.0, 180.0, 45.0)[g % 3]
+        for k in range(keys):
+            for t in range(steps):
+                rows.append((g, R, th, f"g{g}k{k}", 1 if k % 2 == 0 else -1, 5 * t, k < 3))
+    n = len(rows)
+    tab = {"R": np.array([r[1] for r in rows]), "theta": np.array([r[2] for r in rows]),
+           "key_id": np.array([r[3] for r in rows]), "direction": np.array([r[4] for r in rows]),
+           "pair_id": np.array([r[0] for r in rows]), "t": np.array([r[5] for r in rows]),
+           "braking_key": np.array([r[6] for r in rows]),
+           "interior": rng.random(n) < 0.7, "delta_bound": rng.random(n) < 0.1,
+           "pedal_saturated": rng.random(n) < 0.2, "wall_side": rng.choice([-1, 0, 0, 1], n),
+           "phase": rng.choice(["approach", "braking", "corner", "exit"], n),
+           "multi_basin": np.zeros(n, bool), "ds_apex": rng.normal(size=n) * 30,
+           "vx": 40 + 5 * rng.normal(size=n), "width": np.full(n, 12.0),
+           "Pi_in": np.abs(rng.normal(size=n))}
+    for c in TG.STATE_NAMES:
+        tab[f"lam_{c}"] = rng.normal(size=n)
+    tab["sigma_pedal"] = np.abs(rng.normal(size=n))
+    tab["pedal_switching"] = rng.random(n) < 0.3
+    lams = {c: tab[c] for c in tab if c.startswith("lam_")}
+    frozen = {"winsor_bounds": {**{c: [float(v.min()), float(v.max())] for c, v in lams.items()},
+                                "Pi_in": [0.0, 10.0], "sigma_pedal": [0.0, 10.0]},
+              "power_floor": dict.fromkeys(("s", "n", "xi", "vx"), True),
+              "kappa_set": [[8.0, 90.0]], "k2b_excluded": {"exit": ["vx"]}}
+    return SimpleNamespace(tab=tab, n=n), frozen
+
+
+def test_every_pre_registered_variant_is_reported(tmp_path):
+    """Review finding: only partition 0 under key weights was computed. analyse_network and
+    probes_of report partitions 1-10, geometry and state weights, the small geometries and
+    the kappa set dropped, and the braking / non-braking sub-scores; C3-w carries both
+    covariates."""
+    cs = _script()
+    from apexzero.costate import analysis as AN
+    from apexzero.costate import probes as PB
+
+    world, frozen = _toy_world()
+    n = world.n
+    rng = np.random.default_rng(3)
+    lam8 = np.stack([world.tab[f"lam_{c}"] for c in ("s", "n", "xi", "vx", "vy", "r", "delta",
+                                                     "pedal")], 1)
+    crit = {"g": np.repeat((lam8 + rng.normal(size=lam8.shape))[:, None], 6, 1),
+            "value": rng.normal(size=(n, 6)), "pi": rng.normal(size=(n, 6, 2)),
+            "random_g": rng.normal(size=(2, n, 8)), "dV_dwin": rng.normal(size=n)}
+    nulls = {"qss": rng.normal(size=(n, 8)), "value_ridge": rng.normal(size=(n, 8))}
+    flags = {"observability": SimpleNamespace(s_unobservable=np.zeros(n, bool))}
+    G = AN.geometry_clusters(world.tab)[1]
+    out = cs.analyse_network("toy", world, frozen, crit, nulls, flags,
+                             PB.cluster_counts(G, 50))
+    want = {f"partition{p}" for p in range(1, 11)} | {
+        "weights:geometry", "weights:state", "drop_small", "drop_kappa_set", "braking_keys",
+        "non_braking_keys"}
+    assert set(out["sensitivity"]) == want
+    assert out["sensitivity"]["partition3"]["nulls_omitted"] == ["value_ridge"]
+    assert out["sensitivity"]["drop_small"]["nulls_omitted"] == []
+    assert len(out["robustness_C1"]["stat"]) == 10 and "C1-braking" in out
+    assert out["decision_rows"]["vx"] < out["decision_rows"]["s"]      # K2b's frozen rule
+    acts = {"z": rng.normal(size=(n, 6)), "m": rng.normal(size=(n, 2)),
+            "actor_h3": rng.normal(size=(n, 5)),
+            **{f"random{s}_h3": rng.normal(size=(n, 5)) for s in range(5)}}
+    pr = cs.probes_of(acts, world, frozen, world.tab["interior"], world.tab["pedal_switching"],
+                      np.ones((n, 4), bool))
+    assert set(pr["sensitivity"]) == want and "C2" in pr and "C2-sw" in pr
+    assert all({"C2", "C2-sw"} <= set(v) for v in pr["sensitivity"].values())
+    assert len(pr["robustness_C2"]["stat"]) == 10
+    # C3-w: x from every generalist's width derivative, y and both covariates from the record
+    for name in AN.GENERALISTS:
+        p = tmp_path / "post" / "critic" / f"{PR.net_file(name)}.npz"
+        p.parent.mkdir(parents=True, exist_ok=True)
+        np.savez(p, dV_dwin=world.tab["Pi_in"] + rng.normal(size=n))
+    rec = {"frozen": frozen,
+           "c3w_inputs": {nm: {"completion": float(rng.random()), "competence": float(i),
+                               "overlap": float(-i)} for i, nm in enumerate(AN.GENERALISTS)}}
+    c3 = cs.c3w_of(tmp_path, world, PB.cluster_counts(G, 50), rec)
+    assert c3["n"] == 31 and set(c3["partial"]) == {"competence", "overlap"}
+    assert not c3["critic_missing"]
+
+
+def _walk_keys(d):
+    if isinstance(d, dict):
+        for k, v in d.items():
+            yield k
+            yield from _walk_keys(v)
+    elif isinstance(d, list):
+        for v in d:
+            yield from _walk_keys(v)
+
+
+def test_a_dry_analyse_withholds_every_decision(tmp_path, monkeypatch):
+    """Review finding: a non-confirmatory analyse computed and wrote every decision, so the
+    analysis could be read many times before the run-once confirmatory one. Until a stamped
+    confirmatory decisions file is committed (``unlocked_by``) it writes coverage only."""
+    cs = _script()
+    world, frozen = _toy_world()
+    rec = {"frozen": frozen, "networks": {}}
+    monkeypatch.setattr(cs, "_post_tag", lambda a, w: rec)
+    monkeypatch.setattr(cs, "_load_world_frozen", lambda a, r: world)
+    monkeypatch.setattr(cs, "ROOT", tmp_path / "repo")
+    out = tmp_path / "o"
+    cs.main(["analyse", "--out", str(out)])
+    d = json.loads((out / "analyse" / "decisions_dry.json").read_text())
+    assert d["decided"] is False and d["unlocked_by"] is None and "coverage" in d
+    banned = {"per_network", "variants", "C3-w", "decision", "label_at_scale", "verdict"}
+    assert not banned & set(_walk_keys({k: v for k, v in d.items() if k != "provenance"}))
+    monkeypatch.setattr(cs, "unlocked_by", lambda path, tag, root=None: ("ab" * 32, ""))
+    cs.main(["analyse", "--out", str(out)])
+    d = json.loads((out / "analyse" / "decisions_dry.json").read_text())
+    assert d["decided"] is True and d["unlocked_by"] == "ab" * 32
+    assert {"per_network", "variants", "C3-w"} <= set(d)
+
+
+def test_unlocked_by_needs_a_committed_stamped_confirmatory_file(tmp_path):
+    cs = _script()
+    root = tmp_path / "repo"
+    root.mkdir()
+    _git(root, "init", "-q")
+    path = root / "outputs" / "costate" / "analyse" / "decisions.json"
+    path.parent.mkdir(parents=True)
+    tag = {"object": "o" * 40, "commit": "c" * 40}
+    prov = cs.Provenance(None, "analyse")
+    prov.tag, prov.argv = tag, ["costate.py", "analyse", "--confirmatory"]
+    cs._use_provenance(prov)
+    cs._write(path, {"confirmatory": True, "decided": True, "per_network": {}, "variants": {},
+                     "C3-w": {}})
+    sha = cs.confirmatory_done(path, tag)
+    assert sha and cs.confirmatory_done(path, {**tag, "commit": "d" * 40}) is None
+    got, why = cs.unlocked_by(path, tag, root)
+    assert got is None and "not committed" in why
+    _git(root, "add", "-f", str(path.relative_to(root)))
+    _git(root, "commit", "-q", "-m", "decisions")
+    assert cs.unlocked_by(path, tag, root)[0] == sha
+    prov.argv = ["costate.py", "analyse"]
+    cs._write(path, {"confirmatory": True, "decided": True, "per_network": {}, "variants": {},
+                     "C3-w": {}})
+    assert cs.confirmatory_done(path, tag) is None          # not a --confirmatory run
+
+
+def test_load_world_frozen_checks_the_record(tmp_path):
+    """Review finding: the post-tag stages loaded world.npz unbound and never compared T's
+    list or the folds with the record."""
+    cs = _script()
+    from apexzero.costate import inputs as IN
+    from apexzero.costate import states as ST
+
+    world, _ = _toy_world()
+    tab = {k: world.tab[k] for k in ("key_id", "t", "R", "theta")}
+    p = IN.save_world(tmp_path / "inputs" / "world.npz", IN.World(tab, []))
+    uniq = np.unique(ST.geometry_keys(tab), axis=0)
+    rec = {"outputs": {"inputs/world.npz": {"sha256": PR.sha256_file(p)}},
+           "t_pairs": [[str(k), int(t)] for k, t in zip(tab["key_id"], tab["t"], strict=True)],
+           "frozen": {"geometries": uniq.tolist(),
+                      "fold_partition0": ST.geometry_folds(uniq[:, 0], uniq[:, 1], 0).tolist()}}
+    args = SimpleNamespace(out=str(tmp_path))
+    assert cs._load_world_frozen(args, rec).n == len(tab["t"])
+    with pytest.raises(SystemExit, match="not the world the record binds"):
+        cs._load_world_frozen(args, {**rec, "outputs": {"inputs/world.npz": {"sha256": "0"}}})
+    with pytest.raises(SystemExit, match="list differs"):
+        cs._load_world_frozen(args, {**rec, "t_pairs": rec["t_pairs"][1:]})
+    bad = {**rec["frozen"], "fold_partition0": [0] * len(uniq)}
+    with pytest.raises(SystemExit, match="folds differ"):
+        cs._load_world_frozen(args, {**rec, "frozen": bad})
