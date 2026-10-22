@@ -65,6 +65,14 @@ def _script():
     return mod
 
 
+def _post_tag_args() -> list[str]:
+    """After step 2's tag the pre-tag stages refuse to rewrite pre-registered outputs; a test run
+    into a tmp --out is a logged deviation there and touches nothing under outputs/fields."""
+    tagged = subprocess.run(["git", "tag", "-l", "receptive-fields-prereg-v1"], cwd=REPO,
+                            capture_output=True, text=True, check=False).stdout.strip()
+    return ["--post-tag-deviation", "test run after the tag (tmp --out)"] if tagged else []
+
+
 @pytest.fixture(autouse=True)
 def _restore_x64():
     prev = jax.config.jax_enable_x64
@@ -81,6 +89,9 @@ def stages(tmp_path_factory):
         pytest.skip("step 1's keys, G1 / G2's finals or G2's rollouts are not here")
     out = tmp_path_factory.mktemp("fields")
     common = ["--out", str(out / "out"), "--log-dir", str(out / "logs")]
+    # After step 2's tag the pre-tag stages refuse to rewrite pre-registered outputs; a run into
+    # a tmp --out is a logged test deviation there and touches nothing under outputs/fields.
+    common += _post_tag_args()
     cmds = {"gate5": ["gate5", "--n", "3"],
             "gate2": ["gate2", "--random", "62", "--keeper", "344", "--linear", "--hybrid",
                       "344"],
@@ -137,7 +148,8 @@ def test_opt_fields_and_phase_ceiling_stages(stages):
     assert st["files"]["rows.jsonl"] == prereg.sha256_file(root / "opt-fields" / "rows.jsonl")
     assert s["rows_sha256"] == st["files"]["rows.jsonl"] and s["n_arrays"] == 3
     fs = _script()
-    fs.main(["phase-ceiling", "--out", str(root), "--log-dir", str(stages["root"] / "logs")])
+    fs.main(["phase-ceiling", "--out", str(root), "--log-dir", str(stages["root"] / "logs"),
+             *_post_tag_args()])
     pc = root / "phase-ceiling" / "phase_ceiling.json"
     assert isinstance(json.loads(pc.read_text()), list)
     assert prereg.read_stamp(pc)["stage"] == "phase-ceiling"

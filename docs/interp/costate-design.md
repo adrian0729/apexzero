@@ -1,4 +1,4 @@
-# Idea 2: does the network encode the costate? (design draft v2.1, not frozen)
+# Idea 2: does the network encode the costate? (design v2.2, not frozen)
 
 Status: 22 Oct 2026.
 - **v1** was reviewed on four lenses (math, probing, feasibility, science): 42 findings were
@@ -6,6 +6,9 @@ Status: 22 Oct 2026.
 - **v2** applies the confirmed findings; Section 11 maps each one to its change.
 - **v2.1** records the lead's decisions on the open questions (Section 12). They were taken before
   step 2's confirmatory decisions existed.
+- **v2.2** records the implementation in `src/apexzero/costate/` (merged 22 Oct) and the decisions
+  it required (Section 13). The implementation was adversarially reviewed: 25 findings were
+  confirmed and fixed.
 
 Nothing here has been computed on a trained network: no activation, gradient or probe. The
 numbers come from step 1's key files, run metadata (`runs/*/config.json`, `runs/*/eval_rdev.json`,
@@ -1039,4 +1042,88 @@ outputs, so fixing it before seeing them keeps it prospective.
    - the interior clearance and slip margins, and the definitions of the QSS and clearance-barrier
      values, are fixed in code and checked in the dry run before the tag.
 8. **K2's 30 insurance solves** are kept (about 10–20 CPU-min).
+
+
+
+## 13. Implementation decisions (v2.2; before the tag, no trained network computed)
+
+**Code.** `src/apexzero/costate/` (targets, states, critic, probes, gates, nulls, analysis,
+prereg) and `scripts/costate.py`, with 117 tests. It was built in stages and reviewed on three
+lenses (math, probing and analysis, integrity and tests). 25 findings were confirmed, all fixed,
+including three critical ones:
+- C1's calibration gave uninformative gradients a negative floor;
+- the confirmatory analysis would have found no nulls;
+- a dry analysis computed every decision.
+
+**C1's calibration (Section 6).**
+- Odd components get direction-specific intercepts.
+- The slope is a weighted least-squares slope, clamped at ≥ 0. Its leverage weights are squared,
+  centred on the median, with K_LEV = 3; first-power weights still let a few spiked rows crush the
+  slope.
+- The intercept is the training fold's weighted mean of λ − b·g (plain weights when b = 0).
+- Out-of-fold predictions are clipped to the winsor bounds, and the clip share is recorded.
+- Huber is kept as a coded option, unused.
+- The planted control PR-5 must give SNR/(1 + SNR) within 0.02. Uninformative, zero, noise,
+  direction-only and anti-aligned gradients must score in [−0.02, 0.005] (gate PR-5e).
+
+**The "at scale" label.** A Frisch bracket: the CI lower end of the slope of λ on g must be at
+least 0.5, and the CI upper end of the inverse slope of g on λ at most 2.
+
+**K1's pedal step at saturated states.** A one-sided ladder of 1e-3, 5e-4 and 2.5e-4, with a
+noise-signature fallback, not 1e-5. Smaller steps measure re-solve noise.
+
+**C1-own.** λ^own is the on-manifold derivative, with accel moving with the state; the
+accel-held form is reported beside it. Section 3.3's "accel held fixed" applies to t = 0 only.
+
+**C2-sw's stratum.** The pedal-switching steps (σ^ped > ACTIVE_TOL), where its target is nonzero.
+The raw pedal-saturated flag is descriptive.
+
+**Value-fit nulls.** They fit the horizon-corrected V*_∞. The window-target fit is kept as an
+extra null.
+
+**Rows and weights.**
+- C3-w's x is scored on the interior stratum, as C1 is ("on T" in Section 6 means T's interior).
+- The power floor (Section 12, item 5) is computed on the interior shares; the T-wide value is
+  reported.
+
+**Exclusions.**
+- Multi-basin keys are dropped at the source, with their row counts recorded (4 keys and 80 rows
+  at the time of writing).
+- K2b's per-phase exclusions are frozen in the record.
+- The kappa-clipping set is a sensitivity variant.
+
+**Gate rules.**
+- K0's verdict now requires the action-row identity (1e-9), the straight-road identity (1e-12),
+  the end gap (1e-10), and every action-row plant failing by more than 1e-4.
+- K3's observability sub-checks (the with/without-s agreement, and the transitional rows) are
+  reported, not gated.
+- **K3's pass rule, fixed after its full-size pre-tag run** (random and planted networks only, 22 Oct;
+  before the tag and before any trained network is computed).
+  - On 221 states, 19 of K3's 20 checks pass.
+  - The finite-difference pullback check passes for the held and xprev forms, at errors of
+    4–9e-8 against 1e-6.
+  - The on-manifold form's worst error is 1.3e-6, at the one row where the stencil crosses an
+    action clip inside the manifold's Newton recovery. 98.7% of its comparisons are counted.
+  - The rule: the held and xprev forms keep FD_TOL = 1e-6. The on-manifold form uses 1e-5,
+    because its reference passes through a Newton solve over clipped actions.
+  - Every planted wrong pullback (for example the held form on the accel-reading plant) must still
+    exceed 1e-4, ten times the on-manifold tolerance, or K3 fails.
+
+**Built before the tag.**
+- **Value accuracy:** out-of-fold R² ≥ 0.8 (Section 12, item 7). It is a precondition for C1-own's
+  validity.
+- **The by-stratum reports.**
+
+**Deferred.** C3-int, C1-dev, ΔC1 and C2-pairs are not part of `costate-prereg-v1`. If run later,
+they are exploratory.
+
+**Order before the tag.**
+1. Stage inputs (with no t_H yet), then K2, then inputs again (binding t_H).
+2. K2b, then K0 on every A2 key and every anchored final, with the stricter verdict.
+3. K1, then K3 at full size, then K4.
+4. The nulls.
+5. A final pre-tag review, then prereg and the tag.
+
+**Post-tag cost.** C2 runs 17 sensitivity variants per network. The rough, unmeasured estimate is
+20–30 minutes per network on the full T set.
 
