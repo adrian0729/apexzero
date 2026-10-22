@@ -1,0 +1,1216 @@
+{
+ "config_problems": {},
+ "design_doc": "docs/interp/h4r-design.md",
+ "final_timesteps": 199884800,
+ "finished_missing": [],
+ "missing": {},
+ "networks": {
+  "runs/h4r-v1-base-s10": {
+   "args": {
+    "bank": 4096,
+    "ensemble_heads": 5,
+    "fixed_car": false,
+    "name": "h4r-v1-base-s10",
+    "network": "mlp",
+    "num_envs": 2048,
+    "num_steps": 64,
+    "real_widths": false,
+    "real_widths_from": "",
+    "refresh": 256,
+    "seed": 10,
+    "steps": 200000000.0,
+    "tilt_alpha": 1.0,
+    "tilt_fraction": 0.0
+   },
+   "arm": "base",
+   "completed": 6,
+   "completion": {
+    "BrandsHatch": 0.0,
+    "Catalunya": 1.0,
+    "Hockenheim": 1.0,
+    "Melbourne": 0.0,
+    "MoscowRaceway": 1.0,
+    "Norisring": 0.0,
+    "Nuerburgring": 1.0,
+    "Oschersleben": 0.0,
+    "Sepang": 1.0,
+    "Sochi": 0.0,
+    "YasMarina": 0.0,
+    "Zandvoort": 1.0
+   },
+   "config_path": "runs/h4r-v1-base-s10/config.json",
+   "config_sha256": "e63e4932aeff17544a9655f8b0f2389581905b563d37fce3423996724b99d9c3",
+   "eval_path": "runs/h4r-v1-base-s10/eval_rdev.json",
+   "eval_sha256": "5f417e375eef53e717f655b2583535770dafb649dd0f626076e60dac7ce6da1c",
+   "failed_twice": false,
+   "first_attempt_log": false,
+   "n_checkpoints": 16,
+   "path": "runs/h4r-v1-base-s10/ckpt/000199884800.pkl",
+   "queue": [
+    {
+     "event": "start",
+     "time": "2026-10-22 14:44:57"
+    },
+    {
+     "event": "done",
+     "time": "2026-10-22 15:11:16"
+    }
+   ],
+   "retried": false,
+   "seed": 10,
+   "sha256": "bde4e1b86445faa3d26939aa35f156a1f591bcd134c8f6c78933d85cd3efd6b0",
+   "timesteps": 199884800,
+   "variant": "v1"
+  },
+  "runs/h4r-v1-base-s11": {
+   "args": {
+    "bank": 4096,
+    "ensemble_heads": 5,
+    "fixed_car": false,
+    "name": "h4r-v1-base-s11",
+    "network": "mlp",
+    "num_envs": 2048,
+    "num_steps": 64,
+    "real_widths": false,
+    "real_widths_from": "",
+    "refresh": 256,
+    "seed": 11,
+    "steps": 200000000.0,
+    "tilt_alpha": 1.0,
+    "tilt_fraction": 0.0
+   },
+   "arm": "base",
+   "completed": 4,
+   "completion": {
+    "BrandsHatch": 0.0,
+    "Catalunya": 1.0,
+    "Hockenheim": 0.0,
+    "Melbourne": 1.0,
+    "MoscowRaceway": 0.0,
+    "Norisring": 0.0,
+    "Nuerburgring": 1.0,
+    "Oschersleben": 0.0,
+    "Sepang": 1.0,
+    "Sochi": 0.0,
+    "YasMarina": 0.0,
+    "Zandvoort": 0.0
+   },
+   "config_path": "runs/h4r-v1-base-s11/config.json",
+   "config_sha256": "7cf85449ffceb60de5707f0c8b713c8846324bd655c2ab28876621dc98780cb7",
+   "eval_path": "runs/h4r-v1-base-s11/eval_rdev.json",
+   "eval_sha256": "42bffdcf73fbb7a9301d30acb3e80ea1e738f5433798d9e871c19cff2f6a57e6",
+   "failed_twice": false,
+   "first_attempt_log": false,
+   "n_checkpoints": 16,
+   "path": "runs/h4r-v1-base-s11/ckpt/000199884800.pkl",
+   "queue": [
+    {
+     "event": "start",
+     "time": "2026-10-22 15:11:16"
+    },
+    {
+     "event": "done",
+     "time": "2026-10-22 15:36:20"
+    }
+   ],
+   "retried": false,
+   "seed": 11,
+   "sha256": "bce49f90738dc38c057fe036479d5fcfc6ad3bad97eefeb0b04c6e10a0dcdd10",
+   "timesteps": 199884800,
+   "variant": "v1"
+  },
+  "runs/h4r-v1-base-s12": {
+   "args": {
+    "bank": 4096,
+    "ensemble_heads": 5,
+    "fixed_car": false,
+    "name": "h4r-v1-base-s12",
+    "network": "mlp",
+    "num_envs": 2048,
+    "num_steps": 64,
+    "real_widths": false,
+    "real_widths_from": "",
+    "refresh": 256,
+    "seed": 12,
+    "steps": 200000000.0,
+    "tilt_alpha": 1.0,
+    "tilt_fraction": 0.0
+   },
+   "arm": "base",
+   "completed": 7,
+   "completion": {
+    "BrandsHatch": 1.0,
+    "Catalunya": 1.0,
+    "Hockenheim": 0.0,
+    "Melbourne": 0.0,
+    "MoscowRaceway": 1.0,
+    "Norisring": 0.0,
+    "Nuerburgring": 1.0,
+    "Oschersleben": 1.0,
+    "Sepang": 1.0,
+    "Sochi": 0.0,
+    "YasMarina": 0.0,
+    "Zandvoort": 1.0
+   },
+   "config_path": "runs/h4r-v1-base-s12/config.json",
+   "config_sha256": "96f22a227e2b6e37d3e7e4945bf7fe457dbef32c878d046198fd7ac4b993024a",
+   "eval_path": "runs/h4r-v1-base-s12/eval_rdev.json",
+   "eval_sha256": "842ff6a2a4744472f72dc1b1e39b6a77317179175f2e24176765ccadf381d05e",
+   "failed_twice": false,
+   "first_attempt_log": false,
+   "n_checkpoints": 16,
+   "path": "runs/h4r-v1-base-s12/ckpt/000199884800.pkl",
+   "queue": [
+    {
+     "event": "start",
+     "time": "2026-10-22 15:36:20"
+    },
+    {
+     "event": "done",
+     "time": "2026-10-22 16:01:51"
+    }
+   ],
+   "retried": false,
+   "seed": 12,
+   "sha256": "92f1c2286d15278b489de35f7977b1735171babf73371150330cff4cff86d69c",
+   "timesteps": 199884800,
+   "variant": "v1"
+  },
+  "runs/h4r-v1-base-s13": {
+   "args": {
+    "bank": 4096,
+    "ensemble_heads": 5,
+    "fixed_car": false,
+    "name": "h4r-v1-base-s13",
+    "network": "mlp",
+    "num_envs": 2048,
+    "num_steps": 64,
+    "real_widths": false,
+    "real_widths_from": "",
+    "refresh": 256,
+    "seed": 13,
+    "steps": 200000000.0,
+    "tilt_alpha": 1.0,
+    "tilt_fraction": 0.0
+   },
+   "arm": "base",
+   "completed": 5,
+   "completion": {
+    "BrandsHatch": 1.0,
+    "Catalunya": 0.0,
+    "Hockenheim": 1.0,
+    "Melbourne": 0.0,
+    "MoscowRaceway": 0.0,
+    "Norisring": 0.0,
+    "Nuerburgring": 1.0,
+    "Oschersleben": 1.0,
+    "Sepang": 1.0,
+    "Sochi": 0.0,
+    "YasMarina": 0.0,
+    "Zandvoort": 0.0
+   },
+   "config_path": "runs/h4r-v1-base-s13/config.json",
+   "config_sha256": "8c40bb73560a895e400b64dcf5f947fba3954f9133a35a593db3a658c82a6bbe",
+   "eval_path": "runs/h4r-v1-base-s13/eval_rdev.json",
+   "eval_sha256": "f29b620f8920004d58a888ee93172f1fc7e9a9f40b89dece663972c461371cfa",
+   "failed_twice": false,
+   "first_attempt_log": false,
+   "n_checkpoints": 16,
+   "path": "runs/h4r-v1-base-s13/ckpt/000199884800.pkl",
+   "queue": [
+    {
+     "event": "start",
+     "time": "2026-10-22 16:01:51"
+    },
+    {
+     "event": "done",
+     "time": "2026-10-22 16:27:03"
+    }
+   ],
+   "retried": false,
+   "seed": 13,
+   "sha256": "d346ab031b5f5f3659a1c8f993dedecc9e6510e025489060a547c6f453819ab7",
+   "timesteps": 199884800,
+   "variant": "v1"
+  },
+  "runs/h4r-v1-base-s14": {
+   "args": {
+    "bank": 4096,
+    "ensemble_heads": 5,
+    "fixed_car": false,
+    "name": "h4r-v1-base-s14",
+    "network": "mlp",
+    "num_envs": 2048,
+    "num_steps": 64,
+    "real_widths": false,
+    "real_widths_from": "",
+    "refresh": 256,
+    "seed": 14,
+    "steps": 200000000.0,
+    "tilt_alpha": 1.0,
+    "tilt_fraction": 0.0
+   },
+   "arm": "base",
+   "completed": 3,
+   "completion": {
+    "BrandsHatch": 1.0,
+    "Catalunya": 0.0,
+    "Hockenheim": 0.0,
+    "Melbourne": 0.9,
+    "MoscowRaceway": 0.0,
+    "Norisring": 0.0,
+    "Nuerburgring": 0.0,
+    "Oschersleben": 0.0,
+    "Sepang": 1.0,
+    "Sochi": 0.0,
+    "YasMarina": 0.0,
+    "Zandvoort": 0.0
+   },
+   "config_path": "runs/h4r-v1-base-s14/config.json",
+   "config_sha256": "8111c30385421833b4c7ee3260d0176307d09df7f9d7cd8a29af46a14cb997e1",
+   "eval_path": "runs/h4r-v1-base-s14/eval_rdev.json",
+   "eval_sha256": "f9402b192346220f2d7b7f95344df2d7e57df953b96b1764962883f2826aa515",
+   "failed_twice": false,
+   "first_attempt_log": true,
+   "n_checkpoints": 16,
+   "path": "runs/h4r-v1-base-s14/ckpt/000199884800.pkl",
+   "queue": [
+    {
+     "event": "start",
+     "time": "2026-10-22 16:27:03"
+    },
+    {
+     "event": "retry",
+     "time": "2026-10-22 16:47:40"
+    },
+    {
+     "event": "done",
+     "time": "2026-10-22 16:58:14"
+    }
+   ],
+   "retried": true,
+   "seed": 14,
+   "sha256": "733ceb9f0ad710cb096e7cecc128e1ae29792b37fd5f2da49d699ec587f9dc53",
+   "timesteps": 199884800,
+   "variant": "v1"
+  },
+  "runs/h4r-v1-realw-s10": {
+   "args": {
+    "bank": 4096,
+    "ensemble_heads": 5,
+    "fixed_car": false,
+    "name": "h4r-v1-realw-s10",
+    "network": "mlp",
+    "num_envs": 2048,
+    "num_steps": 64,
+    "real_widths": true,
+    "real_widths_from": "",
+    "refresh": 256,
+    "seed": 10,
+    "steps": 200000000.0,
+    "tilt_alpha": 1.0,
+    "tilt_fraction": 0.0
+   },
+   "arm": "realw",
+   "completed": 4,
+   "completion": {
+    "BrandsHatch": 0.0,
+    "Catalunya": 1.0,
+    "Hockenheim": 0.0,
+    "Melbourne": 0.0,
+    "MoscowRaceway": 0.0,
+    "Norisring": 0.0,
+    "Nuerburgring": 1.0,
+    "Oschersleben": 0.0,
+    "Sepang": 1.0,
+    "Sochi": 0.0,
+    "YasMarina": 0.0,
+    "Zandvoort": 1.0
+   },
+   "config_path": "runs/h4r-v1-realw-s10/config.json",
+   "config_sha256": "434eef8873e2b7883c6798e3c287c3c329585b49b8b2302521be155657988e19",
+   "eval_path": "runs/h4r-v1-realw-s10/eval_rdev.json",
+   "eval_sha256": "464e5af385f3454d8c37bf231b88c496c77f2e7f418e85849d2aca6774f6fd07",
+   "failed_twice": false,
+   "first_attempt_log": false,
+   "n_checkpoints": 16,
+   "path": "runs/h4r-v1-realw-s10/ckpt/000199884800.pkl",
+   "queue": [
+    {
+     "event": "start",
+     "time": "2026-10-22 14:44:57"
+    },
+    {
+     "event": "done",
+     "time": "2026-10-22 15:10:32"
+    }
+   ],
+   "retried": false,
+   "seed": 10,
+   "sha256": "1c13f4ab31e0520e0fdd91326599e85c7c856e765e31c950856d0e0e67f75f33",
+   "timesteps": 199884800,
+   "variant": "v1"
+  },
+  "runs/h4r-v1-realw-s11": {
+   "args": {
+    "bank": 4096,
+    "ensemble_heads": 5,
+    "fixed_car": false,
+    "name": "h4r-v1-realw-s11",
+    "network": "mlp",
+    "num_envs": 2048,
+    "num_steps": 64,
+    "real_widths": true,
+    "real_widths_from": "",
+    "refresh": 256,
+    "seed": 11,
+    "steps": 200000000.0,
+    "tilt_alpha": 1.0,
+    "tilt_fraction": 0.0
+   },
+   "arm": "realw",
+   "completed": 8,
+   "completion": {
+    "BrandsHatch": 0.0,
+    "Catalunya": 1.0,
+    "Hockenheim": 1.0,
+    "Melbourne": 1.0,
+    "MoscowRaceway": 1.0,
+    "Norisring": 0.1,
+    "Nuerburgring": 1.0,
+    "Oschersleben": 0.0,
+    "Sepang": 1.0,
+    "Sochi": 1.0,
+    "YasMarina": 0.0,
+    "Zandvoort": 1.0
+   },
+   "config_path": "runs/h4r-v1-realw-s11/config.json",
+   "config_sha256": "d46f04b0cee4c4bb98b175084abcd0594a91116c78907d677f8d5dce27fde443",
+   "eval_path": "runs/h4r-v1-realw-s11/eval_rdev.json",
+   "eval_sha256": "2266784a61b548f9243cb7bc84f8cdd6d2a21419bc39f683a5fee7984076389a",
+   "failed_twice": false,
+   "first_attempt_log": false,
+   "n_checkpoints": 16,
+   "path": "runs/h4r-v1-realw-s11/ckpt/000199884800.pkl",
+   "queue": [
+    {
+     "event": "start",
+     "time": "2026-10-22 15:10:32"
+    },
+    {
+     "event": "done",
+     "time": "2026-10-22 15:34:18"
+    }
+   ],
+   "retried": false,
+   "seed": 11,
+   "sha256": "392dbbf777b66b70608637d781583d78114bad19b12fa53f8d22ae3dc7b85461",
+   "timesteps": 199884800,
+   "variant": "v1"
+  },
+  "runs/h4r-v1-realw-s12": {
+   "args": {
+    "bank": 4096,
+    "ensemble_heads": 5,
+    "fixed_car": false,
+    "name": "h4r-v1-realw-s12",
+    "network": "mlp",
+    "num_envs": 2048,
+    "num_steps": 64,
+    "real_widths": true,
+    "real_widths_from": "",
+    "refresh": 256,
+    "seed": 12,
+    "steps": 200000000.0,
+    "tilt_alpha": 1.0,
+    "tilt_fraction": 0.0
+   },
+   "arm": "realw",
+   "completed": 9,
+   "completion": {
+    "BrandsHatch": 1.0,
+    "Catalunya": 1.0,
+    "Hockenheim": 1.0,
+    "Melbourne": 1.0,
+    "MoscowRaceway": 0.0,
+    "Norisring": 1.0,
+    "Nuerburgring": 1.0,
+    "Oschersleben": 1.0,
+    "Sepang": 1.0,
+    "Sochi": 0.0,
+    "YasMarina": 0.0,
+    "Zandvoort": 1.0
+   },
+   "config_path": "runs/h4r-v1-realw-s12/config.json",
+   "config_sha256": "c665a187eee30b61054593afbc1b542d4fee4be42eaf5f35bd26bf2d1ef6be9e",
+   "eval_path": "runs/h4r-v1-realw-s12/eval_rdev.json",
+   "eval_sha256": "ada1163459053fa7c0bc8bf9463c96dc62d63c712ccf182c882b1a313a61879b",
+   "failed_twice": false,
+   "first_attempt_log": false,
+   "n_checkpoints": 16,
+   "path": "runs/h4r-v1-realw-s12/ckpt/000199884800.pkl",
+   "queue": [
+    {
+     "event": "start",
+     "time": "2026-10-22 15:34:18"
+    },
+    {
+     "event": "done",
+     "time": "2026-10-22 15:58:29"
+    }
+   ],
+   "retried": false,
+   "seed": 12,
+   "sha256": "13ded5e232d740c6d018cefbbf3429e56a703440da6eb10300e84d85e533092a",
+   "timesteps": 199884800,
+   "variant": "v1"
+  },
+  "runs/h4r-v1-realw-s13": {
+   "args": {
+    "bank": 4096,
+    "ensemble_heads": 5,
+    "fixed_car": false,
+    "name": "h4r-v1-realw-s13",
+    "network": "mlp",
+    "num_envs": 2048,
+    "num_steps": 64,
+    "real_widths": true,
+    "real_widths_from": "",
+    "refresh": 256,
+    "seed": 13,
+    "steps": 200000000.0,
+    "tilt_alpha": 1.0,
+    "tilt_fraction": 0.0
+   },
+   "arm": "realw",
+   "completed": 9,
+   "completion": {
+    "BrandsHatch": 1.0,
+    "Catalunya": 1.0,
+    "Hockenheim": 0.3,
+    "Melbourne": 1.0,
+    "MoscowRaceway": 1.0,
+    "Norisring": 0.0,
+    "Nuerburgring": 1.0,
+    "Oschersleben": 0.0,
+    "Sepang": 1.0,
+    "Sochi": 1.0,
+    "YasMarina": 1.0,
+    "Zandvoort": 1.0
+   },
+   "config_path": "runs/h4r-v1-realw-s13/config.json",
+   "config_sha256": "374cfadd49e4a27823992491d05625604905af7e9d4190143019eb0ff4910518",
+   "eval_path": "runs/h4r-v1-realw-s13/eval_rdev.json",
+   "eval_sha256": "af2a67fc81947fc896f7a53e684cd8f8b70cb76577f61180454ea74cc87fa115",
+   "failed_twice": false,
+   "first_attempt_log": false,
+   "n_checkpoints": 16,
+   "path": "runs/h4r-v1-realw-s13/ckpt/000199884800.pkl",
+   "queue": [
+    {
+     "event": "start",
+     "time": "2026-10-22 15:58:29"
+    },
+    {
+     "event": "done",
+     "time": "2026-10-22 16:22:05"
+    }
+   ],
+   "retried": false,
+   "seed": 13,
+   "sha256": "f28e387bed30c319756fa17e400dbfeaa53d687b3ac138b891ca64965a6f3c12",
+   "timesteps": 199884800,
+   "variant": "v1"
+  },
+  "runs/h4r-v1-realw-s14": {
+   "args": {
+    "bank": 4096,
+    "ensemble_heads": 5,
+    "fixed_car": false,
+    "name": "h4r-v1-realw-s14",
+    "network": "mlp",
+    "num_envs": 2048,
+    "num_steps": 64,
+    "real_widths": true,
+    "real_widths_from": "",
+    "refresh": 256,
+    "seed": 14,
+    "steps": 200000000.0,
+    "tilt_alpha": 1.0,
+    "tilt_fraction": 0.0
+   },
+   "arm": "realw",
+   "completed": 8,
+   "completion": {
+    "BrandsHatch": 1.0,
+    "Catalunya": 1.0,
+    "Hockenheim": 1.0,
+    "Melbourne": 0.0,
+    "MoscowRaceway": 1.0,
+    "Norisring": 0.0,
+    "Nuerburgring": 1.0,
+    "Oschersleben": 1.0,
+    "Sepang": 1.0,
+    "Sochi": 0.0,
+    "YasMarina": 0.0,
+    "Zandvoort": 1.0
+   },
+   "config_path": "runs/h4r-v1-realw-s14/config.json",
+   "config_sha256": "00b1d4faabfcb2645e463ed3f6a696daa96e674387ac2b27a463147f4ad576b4",
+   "eval_path": "runs/h4r-v1-realw-s14/eval_rdev.json",
+   "eval_sha256": "b172b3c127d5e56c66aff728e3604b6ce6af4d3f500b2d459d7331d24694de42",
+   "failed_twice": false,
+   "first_attempt_log": false,
+   "n_checkpoints": 16,
+   "path": "runs/h4r-v1-realw-s14/ckpt/000199884800.pkl",
+   "queue": [
+    {
+     "event": "start",
+     "time": "2026-10-22 16:22:05"
+    },
+    {
+     "event": "done",
+     "time": "2026-10-22 16:45:00"
+    }
+   ],
+   "retried": false,
+   "seed": 14,
+   "sha256": "ce7658aa395ca4637782e0027cfd25f870ad147bf611389917877e77dcd3c792",
+   "timesteps": 199884800,
+   "variant": "v1"
+  },
+  "runs/h4r-v3-base-s10": {
+   "args": {
+    "bank": 4096,
+    "ensemble_heads": 5,
+    "fixed_car": false,
+    "name": "h4r-v3-base-s10",
+    "network": "mlp",
+    "num_envs": 2048,
+    "num_steps": 64,
+    "real_widths": false,
+    "real_widths_from": "",
+    "refresh": 256,
+    "seed": 10,
+    "steps": 200000000.0,
+    "tilt_alpha": 2.0,
+    "tilt_fraction": 0.5
+   },
+   "arm": "base",
+   "completed": 6,
+   "completion": {
+    "BrandsHatch": 1.0,
+    "Catalunya": 1.0,
+    "Hockenheim": 0.0,
+    "Melbourne": 0.0,
+    "MoscowRaceway": 1.0,
+    "Norisring": 0.0,
+    "Nuerburgring": 1.0,
+    "Oschersleben": 1.0,
+    "Sepang": 1.0,
+    "Sochi": 0.0,
+    "YasMarina": 0.0,
+    "Zandvoort": 0.0
+   },
+   "config_path": "runs/h4r-v3-base-s10/config.json",
+   "config_sha256": "d174ee0cc28e89691e4ebfa54e07a820421f77b4284b48d3345af7eabcb4dbb0",
+   "eval_path": "runs/h4r-v3-base-s10/eval_rdev.json",
+   "eval_sha256": "27e740db6da84fc5f9c171a60322a5428e266c388e4f7a274fa9ecc70c1d065a",
+   "failed_twice": false,
+   "first_attempt_log": false,
+   "n_checkpoints": 16,
+   "path": "runs/h4r-v3-base-s10/ckpt/000199884800.pkl",
+   "queue": [
+    {
+     "event": "start",
+     "time": "2026-10-22 14:44:57"
+    },
+    {
+     "event": "done",
+     "time": "2026-10-22 15:11:17"
+    }
+   ],
+   "retried": false,
+   "seed": 10,
+   "sha256": "2ba2621b4b64bcad79fdcb1337f6206b21be58092b7570f5680bb5cb27e28c13",
+   "timesteps": 199884800,
+   "variant": "v3"
+  },
+  "runs/h4r-v3-base-s11": {
+   "args": {
+    "bank": 4096,
+    "ensemble_heads": 5,
+    "fixed_car": false,
+    "name": "h4r-v3-base-s11",
+    "network": "mlp",
+    "num_envs": 2048,
+    "num_steps": 64,
+    "real_widths": false,
+    "real_widths_from": "",
+    "refresh": 256,
+    "seed": 11,
+    "steps": 200000000.0,
+    "tilt_alpha": 2.0,
+    "tilt_fraction": 0.5
+   },
+   "arm": "base",
+   "completed": 8,
+   "completion": {
+    "BrandsHatch": 1.0,
+    "Catalunya": 1.0,
+    "Hockenheim": 1.0,
+    "Melbourne": 0.0,
+    "MoscowRaceway": 1.0,
+    "Norisring": 0.0,
+    "Nuerburgring": 1.0,
+    "Oschersleben": 0.0,
+    "Sepang": 1.0,
+    "Sochi": 1.0,
+    "YasMarina": 0.0,
+    "Zandvoort": 1.0
+   },
+   "config_path": "runs/h4r-v3-base-s11/config.json",
+   "config_sha256": "f8766004f8e7fd232cd2b3df1d6daf59a08ba3d98a22f4223cab1403e30ed2ef",
+   "eval_path": "runs/h4r-v3-base-s11/eval_rdev.json",
+   "eval_sha256": "82130f26aef87bcfd4f998fe6b5c3321157667e030917dfc8a8f448a1176d7d4",
+   "failed_twice": false,
+   "first_attempt_log": false,
+   "n_checkpoints": 16,
+   "path": "runs/h4r-v3-base-s11/ckpt/000199884800.pkl",
+   "queue": [
+    {
+     "event": "start",
+     "time": "2026-10-22 15:11:17"
+    },
+    {
+     "event": "done",
+     "time": "2026-10-22 15:36:14"
+    }
+   ],
+   "retried": false,
+   "seed": 11,
+   "sha256": "93816e2914650d7b52406d407c371bd543a15556deb1e33c01ff6688fe9e9237",
+   "timesteps": 199884800,
+   "variant": "v3"
+  },
+  "runs/h4r-v3-base-s12": {
+   "args": {
+    "bank": 4096,
+    "ensemble_heads": 5,
+    "fixed_car": false,
+    "name": "h4r-v3-base-s12",
+    "network": "mlp",
+    "num_envs": 2048,
+    "num_steps": 64,
+    "real_widths": false,
+    "real_widths_from": "",
+    "refresh": 256,
+    "seed": 12,
+    "steps": 200000000.0,
+    "tilt_alpha": 2.0,
+    "tilt_fraction": 0.5
+   },
+   "arm": "base",
+   "completed": 8,
+   "completion": {
+    "BrandsHatch": 1.0,
+    "Catalunya": 1.0,
+    "Hockenheim": 1.0,
+    "Melbourne": 0.0,
+    "MoscowRaceway": 1.0,
+    "Norisring": 0.0,
+    "Nuerburgring": 1.0,
+    "Oschersleben": 1.0,
+    "Sepang": 1.0,
+    "Sochi": 0.0,
+    "YasMarina": 0.0,
+    "Zandvoort": 1.0
+   },
+   "config_path": "runs/h4r-v3-base-s12/config.json",
+   "config_sha256": "598c4e90f9fa0b3d51b40eea50062c5022a46df6da983c4b674e1ec3ec864ace",
+   "eval_path": "runs/h4r-v3-base-s12/eval_rdev.json",
+   "eval_sha256": "3482e20a550ac7e4b6417644b55411819036eec222c0369c5a5cee2f0f1cd9f1",
+   "failed_twice": false,
+   "first_attempt_log": false,
+   "n_checkpoints": 16,
+   "path": "runs/h4r-v3-base-s12/ckpt/000199884800.pkl",
+   "queue": [
+    {
+     "event": "start",
+     "time": "2026-10-22 15:36:14"
+    },
+    {
+     "event": "done",
+     "time": "2026-10-22 16:01:40"
+    }
+   ],
+   "retried": false,
+   "seed": 12,
+   "sha256": "caf1a0cf08a5570860d790c39b025f7c8b12b8ef3be52c8a48996105905ee4a2",
+   "timesteps": 199884800,
+   "variant": "v3"
+  },
+  "runs/h4r-v3-base-s13": {
+   "args": {
+    "bank": 4096,
+    "ensemble_heads": 5,
+    "fixed_car": false,
+    "name": "h4r-v3-base-s13",
+    "network": "mlp",
+    "num_envs": 2048,
+    "num_steps": 64,
+    "real_widths": false,
+    "real_widths_from": "",
+    "refresh": 256,
+    "seed": 13,
+    "steps": 200000000.0,
+    "tilt_alpha": 2.0,
+    "tilt_fraction": 0.5
+   },
+   "arm": "base",
+   "completed": 6,
+   "completion": {
+    "BrandsHatch": 1.0,
+    "Catalunya": 1.0,
+    "Hockenheim": 0.0,
+    "Melbourne": 0.0,
+    "MoscowRaceway": 0.0,
+    "Norisring": 0.0,
+    "Nuerburgring": 1.0,
+    "Oschersleben": 1.0,
+    "Sepang": 1.0,
+    "Sochi": 0.0,
+    "YasMarina": 0.0,
+    "Zandvoort": 1.0
+   },
+   "config_path": "runs/h4r-v3-base-s13/config.json",
+   "config_sha256": "1a89829a5f7b15728cfa68195c6b10c7a67538eb0cdda6526a9475c221ca9916",
+   "eval_path": "runs/h4r-v3-base-s13/eval_rdev.json",
+   "eval_sha256": "603668ac1f76dcfba2f241d2c35e366d50c284510e11796a845010adc69e7b82",
+   "failed_twice": false,
+   "first_attempt_log": false,
+   "n_checkpoints": 16,
+   "path": "runs/h4r-v3-base-s13/ckpt/000199884800.pkl",
+   "queue": [
+    {
+     "event": "start",
+     "time": "2026-10-22 16:01:40"
+    },
+    {
+     "event": "done",
+     "time": "2026-10-22 16:26:39"
+    }
+   ],
+   "retried": false,
+   "seed": 13,
+   "sha256": "d50c8941dabc14529fbe85ef9e67ecc5ea26de5e87771741b7fd02700a6a59b3",
+   "timesteps": 199884800,
+   "variant": "v3"
+  },
+  "runs/h4r-v3-base-s14": {
+   "args": {
+    "bank": 4096,
+    "ensemble_heads": 5,
+    "fixed_car": false,
+    "name": "h4r-v3-base-s14",
+    "network": "mlp",
+    "num_envs": 2048,
+    "num_steps": 64,
+    "real_widths": false,
+    "real_widths_from": "",
+    "refresh": 256,
+    "seed": 14,
+    "steps": 200000000.0,
+    "tilt_alpha": 2.0,
+    "tilt_fraction": 0.5
+   },
+   "arm": "base",
+   "completed": 8,
+   "completion": {
+    "BrandsHatch": 1.0,
+    "Catalunya": 1.0,
+    "Hockenheim": 1.0,
+    "Melbourne": 0.0,
+    "MoscowRaceway": 1.0,
+    "Norisring": 0.0,
+    "Nuerburgring": 1.0,
+    "Oschersleben": 1.0,
+    "Sepang": 1.0,
+    "Sochi": 0.0,
+    "YasMarina": 0.0,
+    "Zandvoort": 1.0
+   },
+   "config_path": "runs/h4r-v3-base-s14/config.json",
+   "config_sha256": "1654ea1c13f181d5fbc1d4c9870a410b3bc898864ca92143206355da3f3494f4",
+   "eval_path": "runs/h4r-v3-base-s14/eval_rdev.json",
+   "eval_sha256": "dceea505c8291479a587175ec9a73734d027736448c8ff774c5e94a1f8e9b790",
+   "failed_twice": false,
+   "first_attempt_log": false,
+   "n_checkpoints": 16,
+   "path": "runs/h4r-v3-base-s14/ckpt/000199884800.pkl",
+   "queue": [
+    {
+     "event": "start",
+     "time": "2026-10-22 16:26:39"
+    },
+    {
+     "event": "done",
+     "time": "2026-10-22 16:50:14"
+    }
+   ],
+   "retried": false,
+   "seed": 14,
+   "sha256": "d003463216c9c5217802e7c33dafa6f26e909a7a08fc762c3e71c0705a0f3969",
+   "timesteps": 199884800,
+   "variant": "v3"
+  },
+  "runs/h4r-v3-realw-s10": {
+   "args": {
+    "bank": 4096,
+    "ensemble_heads": 5,
+    "fixed_car": false,
+    "name": "h4r-v3-realw-s10",
+    "network": "mlp",
+    "num_envs": 2048,
+    "num_steps": 64,
+    "real_widths": true,
+    "real_widths_from": "",
+    "refresh": 256,
+    "seed": 10,
+    "steps": 200000000.0,
+    "tilt_alpha": 2.0,
+    "tilt_fraction": 0.5
+   },
+   "arm": "realw",
+   "completed": 8,
+   "completion": {
+    "BrandsHatch": 1.0,
+    "Catalunya": 1.0,
+    "Hockenheim": 1.0,
+    "Melbourne": 0.0,
+    "MoscowRaceway": 1.0,
+    "Norisring": 0.0,
+    "Nuerburgring": 1.0,
+    "Oschersleben": 1.0,
+    "Sepang": 1.0,
+    "Sochi": 0.0,
+    "YasMarina": 0.0,
+    "Zandvoort": 1.0
+   },
+   "config_path": "runs/h4r-v3-realw-s10/config.json",
+   "config_sha256": "f28fc5bdc49b9f95faf765ae95a41c8d57973da4e2673b1b189662cf0a08ccf2",
+   "eval_path": "runs/h4r-v3-realw-s10/eval_rdev.json",
+   "eval_sha256": "751fa55078ff5388db863bcd61c5a39eb17c236da3e467b0e10fcfc964458569",
+   "failed_twice": false,
+   "first_attempt_log": false,
+   "n_checkpoints": 16,
+   "path": "runs/h4r-v3-realw-s10/ckpt/000199884800.pkl",
+   "queue": [
+    {
+     "event": "start",
+     "time": "2026-10-22 14:44:57"
+    },
+    {
+     "event": "done",
+     "time": "2026-10-22 15:11:01"
+    }
+   ],
+   "retried": false,
+   "seed": 10,
+   "sha256": "3f12e179a961aebec930810bbde0c67d1d4b3b6114c619b6f89bb192ee8a1294",
+   "timesteps": 199884800,
+   "variant": "v3"
+  },
+  "runs/h4r-v3-realw-s11": {
+   "args": {
+    "bank": 4096,
+    "ensemble_heads": 5,
+    "fixed_car": false,
+    "name": "h4r-v3-realw-s11",
+    "network": "mlp",
+    "num_envs": 2048,
+    "num_steps": 64,
+    "real_widths": true,
+    "real_widths_from": "",
+    "refresh": 256,
+    "seed": 11,
+    "steps": 200000000.0,
+    "tilt_alpha": 2.0,
+    "tilt_fraction": 0.5
+   },
+   "arm": "realw",
+   "completed": 8,
+   "completion": {
+    "BrandsHatch": 1.0,
+    "Catalunya": 1.0,
+    "Hockenheim": 1.0,
+    "Melbourne": 1.0,
+    "MoscowRaceway": 0.0,
+    "Norisring": 0.0,
+    "Nuerburgring": 1.0,
+    "Oschersleben": 1.0,
+    "Sepang": 1.0,
+    "Sochi": 0.0,
+    "YasMarina": 0.0,
+    "Zandvoort": 1.0
+   },
+   "config_path": "runs/h4r-v3-realw-s11/config.json",
+   "config_sha256": "44db0d444c9d7791766b7a91e87ea48bf6f12d3bc9c64fbc79ab5b91e0ccc51c",
+   "eval_path": "runs/h4r-v3-realw-s11/eval_rdev.json",
+   "eval_sha256": "60755225b596eb6c056df3e011e51383938efd48106df5db1ab3df2a5f0e9ef6",
+   "failed_twice": false,
+   "first_attempt_log": false,
+   "n_checkpoints": 16,
+   "path": "runs/h4r-v3-realw-s11/ckpt/000199884800.pkl",
+   "queue": [
+    {
+     "event": "start",
+     "time": "2026-10-22 15:11:01"
+    },
+    {
+     "event": "done",
+     "time": "2026-10-22 15:35:51"
+    }
+   ],
+   "retried": false,
+   "seed": 11,
+   "sha256": "e6f6b295c3b5c7a0efdaa4f3fe971946bdf17e0dcf13a2367da7a125ca9126c7",
+   "timesteps": 199884800,
+   "variant": "v3"
+  },
+  "runs/h4r-v3-realw-s12": {
+   "args": {
+    "bank": 4096,
+    "ensemble_heads": 5,
+    "fixed_car": false,
+    "name": "h4r-v3-realw-s12",
+    "network": "mlp",
+    "num_envs": 2048,
+    "num_steps": 64,
+    "real_widths": true,
+    "real_widths_from": "",
+    "refresh": 256,
+    "seed": 12,
+    "steps": 200000000.0,
+    "tilt_alpha": 2.0,
+    "tilt_fraction": 0.5
+   },
+   "arm": "realw",
+   "completed": 6,
+   "completion": {
+    "BrandsHatch": 0.0,
+    "Catalunya": 1.0,
+    "Hockenheim": 0.0,
+    "Melbourne": 0.0,
+    "MoscowRaceway": 1.0,
+    "Norisring": 0.0,
+    "Nuerburgring": 1.0,
+    "Oschersleben": 1.0,
+    "Sepang": 1.0,
+    "Sochi": 0.0,
+    "YasMarina": 0.0,
+    "Zandvoort": 1.0
+   },
+   "config_path": "runs/h4r-v3-realw-s12/config.json",
+   "config_sha256": "307ceb0a2227e9ae6bccef7b0b03d79d53fb1785cfe80e1de127e776a0424ea0",
+   "eval_path": "runs/h4r-v3-realw-s12/eval_rdev.json",
+   "eval_sha256": "9c59636d2b7b628f521fb60635b24b60cdab4f3993384d169e0e802358a50963",
+   "failed_twice": false,
+   "first_attempt_log": false,
+   "n_checkpoints": 16,
+   "path": "runs/h4r-v3-realw-s12/ckpt/000199884800.pkl",
+   "queue": [
+    {
+     "event": "start",
+     "time": "2026-10-22 15:35:51"
+    },
+    {
+     "event": "done",
+     "time": "2026-10-22 16:01:45"
+    }
+   ],
+   "retried": false,
+   "seed": 12,
+   "sha256": "10c0456acbfc127053cfe213fb097272485bf2b026eaf391366769890c75f956",
+   "timesteps": 199884800,
+   "variant": "v3"
+  },
+  "runs/h4r-v3-realw-s13": {
+   "args": {
+    "bank": 4096,
+    "ensemble_heads": 5,
+    "fixed_car": false,
+    "name": "h4r-v3-realw-s13",
+    "network": "mlp",
+    "num_envs": 2048,
+    "num_steps": 64,
+    "real_widths": true,
+    "real_widths_from": "",
+    "refresh": 256,
+    "seed": 13,
+    "steps": 200000000.0,
+    "tilt_alpha": 2.0,
+    "tilt_fraction": 0.5
+   },
+   "arm": "realw",
+   "completed": 8,
+   "completion": {
+    "BrandsHatch": 1.0,
+    "Catalunya": 1.0,
+    "Hockenheim": 1.0,
+    "Melbourne": 1.0,
+    "MoscowRaceway": 1.0,
+    "Norisring": 0.0,
+    "Nuerburgring": 1.0,
+    "Oschersleben": 0.0,
+    "Sepang": 1.0,
+    "Sochi": 0.0,
+    "YasMarina": 0.0,
+    "Zandvoort": 1.0
+   },
+   "config_path": "runs/h4r-v3-realw-s13/config.json",
+   "config_sha256": "502429669b12e862236187cf401f0838fba7e1bbdf45d6cd0b673db674700426",
+   "eval_path": "runs/h4r-v3-realw-s13/eval_rdev.json",
+   "eval_sha256": "5c21eff9c221f749930f3058880078e118ea6abecb00c8da4bfedc1320158b69",
+   "failed_twice": false,
+   "first_attempt_log": false,
+   "n_checkpoints": 16,
+   "path": "runs/h4r-v3-realw-s13/ckpt/000199884800.pkl",
+   "queue": [
+    {
+     "event": "start",
+     "time": "2026-10-22 16:01:45"
+    },
+    {
+     "event": "done",
+     "time": "2026-10-22 16:26:46"
+    }
+   ],
+   "retried": false,
+   "seed": 13,
+   "sha256": "bccc6d7d10da3db5e6003988a15396b0f04d6835d187cb42dc053dae611379b5",
+   "timesteps": 199884800,
+   "variant": "v3"
+  },
+  "runs/h4r-v3-realw-s14": {
+   "args": {
+    "bank": 4096,
+    "ensemble_heads": 5,
+    "fixed_car": false,
+    "name": "h4r-v3-realw-s14",
+    "network": "mlp",
+    "num_envs": 2048,
+    "num_steps": 64,
+    "real_widths": true,
+    "real_widths_from": "",
+    "refresh": 256,
+    "seed": 14,
+    "steps": 200000000.0,
+    "tilt_alpha": 2.0,
+    "tilt_fraction": 0.5
+   },
+   "arm": "realw",
+   "completed": 9,
+   "completion": {
+    "BrandsHatch": 1.0,
+    "Catalunya": 1.0,
+    "Hockenheim": 1.0,
+    "Melbourne": 0.0,
+    "MoscowRaceway": 1.0,
+    "Norisring": 0.0,
+    "Nuerburgring": 1.0,
+    "Oschersleben": 1.0,
+    "Sepang": 1.0,
+    "Sochi": 1.0,
+    "YasMarina": 0.0,
+    "Zandvoort": 1.0
+   },
+   "config_path": "runs/h4r-v3-realw-s14/config.json",
+   "config_sha256": "6ea4a3ec3ffc5e4623b973961b538e2e0c575465f6210ced31bde6e305999a8f",
+   "eval_path": "runs/h4r-v3-realw-s14/eval_rdev.json",
+   "eval_sha256": "371820cb0a8bcb9e8757b9bbfca834a727f37cd33d710e1ebf335a60c2b696a7",
+   "failed_twice": false,
+   "first_attempt_log": false,
+   "n_checkpoints": 16,
+   "path": "runs/h4r-v3-realw-s14/ckpt/000199884800.pkl",
+   "queue": [
+    {
+     "event": "start",
+     "time": "2026-10-22 16:26:46"
+    },
+    {
+     "event": "done",
+     "time": "2026-10-22 16:50:24"
+    }
+   ],
+   "retried": false,
+   "seed": 14,
+   "sha256": "f6ebeffb9dde78001f4f8723d55838ddf1ec5a1035faf95924edd89beb688ae5",
+   "timesteps": 199884800,
+   "variant": "v3"
+  }
+ },
+ "present": [
+  "runs/h4r-v1-base-s10",
+  "runs/h4r-v1-base-s11",
+  "runs/h4r-v1-base-s12",
+  "runs/h4r-v1-base-s13",
+  "runs/h4r-v1-base-s14",
+  "runs/h4r-v1-realw-s10",
+  "runs/h4r-v1-realw-s11",
+  "runs/h4r-v1-realw-s12",
+  "runs/h4r-v1-realw-s13",
+  "runs/h4r-v1-realw-s14",
+  "runs/h4r-v3-base-s10",
+  "runs/h4r-v3-base-s11",
+  "runs/h4r-v3-base-s12",
+  "runs/h4r-v3-base-s13",
+  "runs/h4r-v3-base-s14",
+  "runs/h4r-v3-realw-s10",
+  "runs/h4r-v3-realw-s11",
+  "runs/h4r-v3-realw-s12",
+  "runs/h4r-v3-realw-s13",
+  "runs/h4r-v3-realw-s14"
+ ],
+ "provenance": {
+  "argv": [
+   "scripts/h4r.py",
+   "manifest"
+  ],
+  "changed_vs_head": [],
+  "code_hash": "651e7eb447dfa005d82ae6bb7e2064d13f25c485d6d185baee4f063d05f0c14f",
+  "content_sha256": "1543ccb427a2896ae2a7b2cf02189777bed8074cccf1b5b77b1d3a71e1ec28c0",
+  "deviation": null,
+  "end": "2026-10-22T12:59:45",
+  "environment": {
+   "machine": "arm64",
+   "packages": {
+    "casadi": "3.8.1",
+    "flax": "0.12.10",
+    "jax": "0.11.2",
+    "jaxlib": "0.11.2",
+    "numpy": "2.5.4",
+    "optax": "0.2.8",
+    "scipy": "1.18.1"
+   },
+   "python": "3.12.4",
+   "system": "Darwin",
+   "uv_lock_sha256": "ee7384209ddf07af796eb4c2032aba6365f0a008eea32575af389cfcc16dd679"
+  },
+  "files": {},
+  "h4r_sha256": "43233a880a21421e6735311ef9a75701c1d8f494aee72743503f017c4d402b1f",
+  "head": "5453a2e5f95cab447dd89429ec375a477843febc",
+  "partial": [],
+  "stage": "manifest",
+  "start": "2026-10-22T12:59:42",
+  "step2_tag": null,
+  "tag": null
+ },
+ "queue_log": {
+  "path": "runs/h4r.log",
+  "present": true,
+  "sha256": "e040f999a31f50f9fc0984d51da5f9060da3971fe45c2807c9ca02bf7f9a82c5",
+  "unexpected_runs": []
+ },
+ "unexplained_missing": []
+}
