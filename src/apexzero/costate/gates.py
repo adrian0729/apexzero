@@ -65,7 +65,20 @@ extractor's self-consistency (``python -m apexzero.costate.probes extractor-chec
 heads and without), judged on their stated tolerances (critic.py's and probes.py's
 constants): every closed form and zero the plants report, the composition's autodiff on the
 random critics, the sample size, and observability on the exit, before s_c1, at the apex and
-on float32-upcast key arrays.
+on float32-upcast key arrays. **K3's pass rule** (design v2.2 Section 13, fixed after its
+full-size pre-tag run, random and planted networks only): the pullbacks' finite differences
+(``pullback_fd``: main V and heads, every form present) pass for the held and x_{t-1}-held
+forms below ``critic.FD_TOL`` = 1e-6 and for the on-manifold form below
+``critic.FD_TOL_MANIFOLD`` = 1e-5 (``critic.FD_TOLS``); and every planted wrong pullback
+must exceed ``critic.WRONG_MIN`` = 1e-4, ten times the on-manifold tolerance, or K3 fails:
+the accel-reading plant's wrong closed forms g_held, pi_held and g_xprev
+(``accel_normal_held_fails``), and each AD form scored on every other form's finite
+differences on the accel-normal plants with c > 0 and the random linear critic
+(``wrong_pullbacks_fail``, none missing: ``k3_wrong_missing``), with those plants' own forms
+matching their finite differences under the same per-form tolerances (``plant_fd``; the
+planted linear critic's ``linear_fd`` too, every form present). The record
+carries the tolerances, each form's errors and the smallest planted error
+('planted_wrong').
 
 **K3b** (``k3b``): ``own.k3b_start`` on step 2's linear driver, its accel-reading plant
 (``own.accel_driver``) and its hybrid control on A2 cell starts (network.py:388-460), with the
@@ -749,8 +762,20 @@ def k2b_rule(keys: list[dict], tol: float = K2B_TOL) -> dict:
 # ------------------------------------------------------------------------- K3
 
 
+def _num(v) -> float:
+    try:
+        return float(v)
+    except (TypeError, ValueError):
+        return float("nan")
+
+
 def _le(v, tol) -> bool:
     return v is not None and np.isfinite(float(v)) and float(v) <= tol
+
+
+def _gt(v, tol) -> bool:
+    """A finite value above tol (a planted wrong pullback that the check catches)."""
+    return bool(np.isfinite(_num(v)) and _num(v) > tol)
 
 
 def k3_judge(plants: dict | None, random: dict | None, extractor: list[dict] | None,
@@ -785,15 +810,32 @@ def k3_judge(plants: dict | None, random: dict | None, extractor: list[dict] | N
         ap = lin["accel_prev"]
         lin_vals += [ap[k] for k in ("accel_sens", "pi_held", "g", "pi", "g_held", "g_reset")]
         checks["linear_closed_forms"] = all(_le(v, CR.LINEAR_TOL) for v in lin_vals)
-        checks["linear_fd"] = all(_le(v["max_err"], CR.FD_TOL) for v in lin["fd"].values())
+        # the planted critics' own forms against their finite differences under the same
+        # per-form rule as the random critics' (Section 13: held and x_{t-1}-held 1e-6, the
+        # on-manifold form, whose reference passes through Newton over clipped actions,
+        # 1e-5), every form present
+        checks["linear_fd"] = set(lin.get("fd") or {}) == set(CR.VARIANTS) and all(
+            _le(v["max_err"], CR.FD_TOLS[f]) for f, v in lin["fd"].items())
         pl = plants["plants"]
         checks["state_plant"] = all(_le(pl["state"][k], CR.PLANT_TOL) for k in ("g", "pi"))
         checks["accel_normal_primary"] = all(_le(v["g"], CR.PLANT_TOL) and _le(v["pi"],
                                                                                 CR.PLANT_TOL)
                                              for v in pl.values() if "accel_sens" in v)
-        checks["accel_normal_held_fails"] = all(
-            not _le(v["g_held"], CR.PLANT_TOL) for k, v in pl.items()
-            if k.startswith("c=") and float(k[2:]) != 0.0)
+        live_c = [k for k in pl if k.startswith("c=") and float(k[2:]) != 0.0]
+        # K3's pass rule (design v2.2 Section 13): every planted wrong pullback exceeds
+        # critic.WRONG_MIN = 1e-4, the wrong closed forms of the accel-reading plant ...
+        checks["accel_normal_held_fails"] = bool(live_c) and all(
+            _gt(pl[k].get(f), CR.WRONG_MIN) for k in live_c for f in CR.WRONG_CLOSED_FORMS)
+        # ... its own finite differences matching each form (the reference the wrong ones
+        # are scored on), per form as ``pullback_fd`` and ``linear_fd`` ...
+        checks["plant_fd"] = bool(live_c) and all(
+            _le((pl[k].get(f"fd_{v}") or {}).get("max_err"), CR.FD_TOLS[v])
+            for k in live_c for v in CR.VARIANTS)
+        # ... and every AD form scored on every other form's finite differences, on the
+        # accel-normal plants and the random linear critic (none may be missing)
+        checks["wrong_pullbacks_fail"] = bool(live_c) and not k3_wrong_missing(plants) and all(
+            _gt((v or {}).get("max"), CR.WRONG_MIN) for d in plants["wrong"].values()
+            for v in d.values())
     if random is not None:
         checks["random_defect"] = _le(random["defect_body"], 1e-9)
         checks["apply_gap"] = all(_le(g[k], PB.EXTRACTOR_TOL) for g in random["apply_gap"]
@@ -802,8 +844,11 @@ def k3_judge(plants: dict | None, random: dict | None, extractor: list[dict] | N
         sg = random["stop_gradient"]
         checks["stop_gradient"] = sg["flax"] == 0.0 and sg["extractor"] > 0.0
         checks["jz_fd"] = _le(random["jz"]["max_err"], CR.FD_TOL)
-        checks["pullback_fd"] = all(_le(v["main"], CR.FD_TOL) and _le(v["heads"], CR.FD_TOL)
-                                    for v in random["fd"].values())
+        # Section 13: the held and x_{t-1}-held forms below FD_TOL = 1e-6, the on-manifold
+        # form below FD_TOL_MANIFOLD = 1e-5 (main V and heads), every form present
+        checks["pullback_fd"] = set(random["fd"]) == set(CR.VARIANTS) and all(
+            _le(v["main"], CR.FD_TOLS[f]) and _le(v["heads"], CR.FD_TOLS[f])
+            for f, v in random["fd"].items())
         comp = random.get("composed") or []
         checks["composed_random"] = bool(comp) and all(_le(v, 1e-12) for c in comp
                                                        for v in c.values())
@@ -817,7 +862,35 @@ def k3_judge(plants: dict | None, random: dict | None, extractor: list[dict] | N
         checks["observability_f32"] = bool(ob.get("f32_same_flags", False))
     if extractor is not None:
         checks["extractor"] = all(bool(e.get("pass")) for e in extractor)
-    return {"checks": checks, "pass": bool(checks and all(checks.values()))}
+    out = {"checks": checks, "pass": bool(checks and all(checks.values())),
+           "tolerances": {"fd": dict(CR.FD_TOLS), "jz": CR.FD_TOL, "wrong_min": CR.WRONG_MIN}}
+    if random is not None:
+        out["pullback_fd"] = {f: {"main": v.get("main"), "heads": v.get("heads"),
+                                  "tol": CR.FD_TOLS.get(f)} for f, v in random["fd"].items()}
+    if plants is not None and plants.get("wrong"):
+        errs = [(p, k, _num((v or {}).get("max"))) for p, d in plants["wrong"].items()
+                for k, v in d.items()]
+        p, k, e = min(errs, key=lambda r: r[2] if np.isfinite(r[2]) else -np.inf)
+        out["planted_wrong"] = {"min": e, "argmin": f"{p}:{k}", "n": len(errs),
+                                "pass_rule": f"each > {CR.WRONG_MIN:g}",
+                                "missing": k3_wrong_missing(plants)}
+    return out
+
+
+def k3_wrong_missing(plants: dict) -> list[str]:
+    """The planted wrong pullbacks K3's rule needs that the plants report lacks: every
+    ordered pair of forms (``critic.WRONG_PAIRS``) on the random linear critic and on every
+    accel-normal plant with c > 0, and the latter's wrong closed forms."""
+    from apexzero.costate import critic as CR
+
+    wrong = plants.get("wrong") or {}
+    need = {"linear": CR.WRONG_PAIRS}
+    for k in plants.get("plants", {}):
+        if k.startswith("c=") and float(k[2:]) != 0.0:
+            need[k] = CR.WRONG_PAIRS + tuple(f"closed:{f}" for f in CR.WRONG_CLOSED_FORMS)
+    return [f"{p}:{k}" for p, ks in need.items() for k in ks
+            if k not in (wrong.get(p) or {})
+            or not np.isfinite(_num((wrong[p][k] or {}).get("max")))]
 
 
 # ------------------------------------------------------------------------- K3b

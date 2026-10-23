@@ -97,10 +97,20 @@ check while the difference averages the two one-sided slopes), and each head's R
 that head) and FD(h) and FD(h/2) agree to O(h^2) (step 2's Gate 2 rule, network.py:76-80).
 The gate is step 2's field-vector error (network.py:81-82): ||AD - FD|| / ||FD|| over the
 counted state directions of a row and output (and separately over the two pi directions), or
-the relative Frobenius error of J_z over its counted columns; K3 passes below ``FD_TOL`` =
-1e-6. Per-component errors, |AD - FD| / max(|FD|, ``ZERO_REL`` ||FD||), are descriptive: a
-component far below the others (g_s on an exit straight, about 1e-5 of the field) sits at the
-round-off of the large global pose coordinates.
+the relative Frobenius error of J_z over its counted columns. K3's pass rule (design v2.2
+Section 13, fixed after its full-size pre-tag run on random and planted networks only): the
+held and x_{t-1}-held forms pass below ``FD_TOL`` = 1e-6, the on-manifold form below
+``FD_TOL_MANIFOLD`` = 1e-5 (``FD_TOLS``; its reference passes through a Newton solve over
+clipped actions: the full-size run's worst row, 1.3e-6, is the one where the stencil
+crosses an action clip inside that recovery), J_z below ``FD_TOL``; and every planted wrong
+pullback must exceed ``WRONG_MIN`` = 1e-4, ten times the on-manifold tolerance
+(``wrong_pullbacks``: on the planted critics whose forms differ by construction, the
+accel-normal plants with c > 0 and the random linear critic over every channel, each AD form
+scored against every other form's finite differences by the same field-vector error, max
+over the live rows; and the accel-normal plants' wrong closed forms g_held, pi_held and
+g_xprev against grad f). Per-component errors, |AD - FD| / max(|FD|, ``ZERO_REL`` ||FD||),
+are descriptive: a component far below the others (g_s on an exit straight, about 1e-5 of
+the field) sits at the round-off of the large global pose coordinates.
 
 **Dry runs** (``python -m apexzero.costate.critic dry-run {plants,random} --out PREFIX``,
 writing PREFIX.json and PREFIX.npz). 'plants': a synthetic float32 strip (a smooth corner,
@@ -160,9 +170,17 @@ RANDOM_SEEDS = tuple(range(N_RANDOM))
 OUTPUT_NAMES = ("V",)                    # output 0; heads follow as 'head0'..'head4'
 PI_NAMES = ("pi_steer", "pi_pedal")
 VARIANTS = ("manifold", "held", "xprev")
+WRONG_PAIRS = tuple(f"{u}@{v}" for v in VARIANTS for u in VARIANTS if u != v)
+WRONG_CLOSED_FORMS = ("g_held", "pi_held", "g_xprev")   # wrong on the accel-normal plant
 PI_H = 1e-5                              # FD step on a_{t-1} (K1's pi step, Section 7)
 FD_STEPS = (-1.0, -0.5, 0.0, 0.5, 1.0)   # multiples of h: Richardson (h, h/2) and the centre
-FD_TOL = 1e-6                            # K3: AD against finite differences (field-vector)
+FD_TOL = 1e-6                            # K3: AD against finite differences (field-vector);
+                                         # the held and x_{t-1}-held forms (design v2.2 Sec. 13)
+FD_TOL_MANIFOLD = 1e-5                   # K3: the on-manifold form, whose reference passes
+                                         # through Newton over clipped actions (Section 13)
+FD_TOLS = {"manifold": FD_TOL_MANIFOLD, "held": FD_TOL, "xprev": FD_TOL}
+WRONG_MIN = 1e-4                         # K3: every planted wrong pullback must exceed this
+                                         # (10 x FD_TOL_MANIFOLD; Section 13 'K3's pass rule')
 ZERO_REL = 1e-4                          # per-component error floor, x ||FD|| of the row (tau_s)
 RICH_RTOL = NW.RICH_RTOL                 # |FD(h) - FD(h/2)| within this of the Richardson value
 ROUNDOFF = 64.0                          # x eps |Y| / h: the round-off floor of FD(h) - FD(h/2)
@@ -263,7 +281,9 @@ class Activations(NamedTuple):
 
 
 def extract(params, o, activation: str = "tanh") -> Activations:
-    """Every activation of an MLP actor or critic on o (float64 when x64 is on)."""
+    """Every activation of an MLP actor or critic on o (float64 when x64 is on). It takes raw
+    params, which carry no trained mark: for random-init and planted params only (a trained
+    critic is evaluated through ``CriticNet``, which waits for the tag)."""
     L = layers(params)
     act = jnp.tanh if activation == "tanh" else jax.nn.relu
     h, hs = o, []
@@ -301,7 +321,7 @@ def mlp_head_signs(params, o):
 def apply_gap(cfg: PPOConfig, params, o, kind: str = "critic") -> dict:
     """K3's extractor self-consistency in float64 (Section 7): max |extractor - Flax apply|
     of the critic's V and heads (``Critic.apply(..., with_heads=True)``) or the actor's mean,
-    on observations o [n, 222]."""
+    on observations o [n, 222]. Raw params carry no trained mark: random-init params only."""
     NW.require_x64()
     o = jnp.asarray(o, jnp.float64)
     act = extract(params, o, cfg.activation)
@@ -963,8 +983,9 @@ def _component_error(ad: np.ndarray, fd: np.ndarray) -> np.ndarray:
 class FDCheck:
     """AD against Richardson finite differences per (row, output, direction); directions are
     the 8 state components (g), then pi_steer and pi_pedal (pi). The gate is the field-vector
-    error of g and of pi over their counted directions (``max_err`` < ``FD_TOL``);
-    ``comp_err`` is per component, descriptive."""
+    error of g and of pi over their counted directions (``max_err`` below the variant's
+    ``FD_TOLS``); ``comp_err`` is per component, descriptive; ``against`` scores another AD
+    on these differences (a planted wrong pullback)."""
 
     variant: str
     ad: np.ndarray            # [n, K, 10]
@@ -989,7 +1010,49 @@ class FDCheck:
 
     @property
     def ok(self) -> bool:
-        return bool(self.max_err < FD_TOL)
+        return bool(self.max_err < FD_TOLS[self.variant])
+
+    def against(self, ad: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+        """([n, K] error, [n, K] anything counted): the error K3 would report for the AD
+        ``ad`` [n, K, 10] (state directions, then pi) on these finite differences and
+        counted directions, the larger of g's and pi's field-vector errors (0 where nothing
+        is counted)."""
+        ad = np.asarray(ad, float)
+        eg, sg = _field_error(ad[..., :8], self.fd[..., :8], self.counted[..., :8])
+        ep, sp = _field_error(ad[..., 8:], self.fd[..., 8:], self.counted[..., 8:])
+        return np.maximum(eg, ep), sg | sp
+
+
+def ad_forms(pb: Pullback) -> dict[str, np.ndarray]:
+    """{variant: [n, K, 10]} the AD each ``fd_pullback`` variant checks: manifold (g, pi),
+    held (g_held, pi_held), xprev (g_xprev, pi_held)."""
+    return {"manifold": np.concatenate([pb.g, pb.pi], axis=-1),
+            "held": np.concatenate([pb.g_held, pb.pi_held], axis=-1),
+            "xprev": np.concatenate([pb.g_xprev, pb.pi_held], axis=-1)}
+
+
+def wrong_pullbacks(checks: dict[str, FDCheck], pb: Pullback, rows: np.ndarray | None = None,
+                    outputs=slice(None)) -> dict[str, dict]:
+    """K3's planted wrong pullbacks on one critic (module docstring 'K3's checks'): each AD
+    form u scored against every other form v's finite differences (``checks`` [v]), as
+    'u@v' -> {'max': the error K3's check would see (max over ``rows`` and ``outputs``),
+    'row_min': its smallest row with anything counted (descriptive), 'n': those rows}."""
+    forms = ad_forms(pb)
+    keep = np.ones(len(pb.reset), bool) if rows is None else np.asarray(rows, bool)
+    out = {}
+    for v, ck in checks.items():
+        for u, ad in forms.items():
+            if u == v:
+                continue
+            e, some = ck.against(ad)
+            e, some = e[keep][:, outputs], some[keep][:, outputs]
+            e = np.where(some, e, np.nan)
+            per_row = e[np.isfinite(e).any(axis=1)]
+            per_row = np.nanmax(per_row, axis=1) if len(per_row) else np.zeros(0)
+            out[f"{u}@{v}"] = {"max": float(per_row.max(initial=0.0)),
+                               "row_min": float(per_row.min()) if len(per_row) else 0.0,
+                               "n": len(per_row)}
+    return out
 
 
 def fd_pullback(net: CriticNet, tr: TrackArrays, inp: Inputs, variant: str = "manifold",
@@ -1020,9 +1083,7 @@ def fd_pullback(net: CriticNet, tr: TrackArrays, inp: Inputs, variant: str = "ma
         hk = _batched(lambda o_: kf(net.params, o_), len(o), o).reshape(n, D, P, net.n_heads, -1)
         head_same = np.all(hk == hk[:, :, 2:3], axis=(2, 4))  # [n, D, E]
         counted[..., 1:] &= head_same
-    g = {"manifold": (pb.g, pb.pi), "held": (pb.g_held, pb.pi_held),
-         "xprev": (pb.g_xprev, pb.pi_held)}[variant]
-    ad = np.concatenate(g, axis=-1)                             # [n, K, D]
+    ad = ad_forms(pb)[variant]                                  # [n, K, D]
     fd = np.moveaxis(R, 1, 2)
     cnt = np.moveaxis(counted, 1, 2)
     eg, _ = _field_error(ad[..., :8], fd[..., :8], cnt[..., :8])
@@ -1164,7 +1225,9 @@ def plant_phi(u):
 
 def _composed(net: CriticNet, tr: TrackArrays, inp: Inputs) -> dict:
     """g_held and g_xprev by autodiff of the composition V(clip(z(observe(x, ...)))) (no
-    chain rule by hand): an independent route to two of ``pullback``'s variants."""
+    chain rule by hand): an independent route to two of ``pullback``'s variants. A trained
+    critic waits for the tag, as every other evaluation route does."""
+    _refuse_trained(net, "the composed autodiff")
     ctx, ctx_obs = _ctx()
     mean, var = (jnp.asarray(a, jnp.float64) for a in (net.obs_rms.mean, net.obs_rms.var))
     trj = jax.tree.map(jnp.asarray, tr)
@@ -1190,7 +1253,8 @@ def _rel(a, b) -> float:
 def dry_run_plants() -> tuple[dict, dict]:
     """K3 on the synthetic strip: the manifold maps, the planted linear critics' closed
     forms (V and planted heads), the state-function critic and the accel-normal plant (for
-    several c), each against its known pullback and against finite differences."""
+    several c), each against its known pullback and against finite differences; and the
+    planted wrong pullbacks ('wrong', 'wrong_min': module docstring 'K3's checks')."""
     t0 = time.perf_counter()
     wl, wr = 7.0, 5.5
     tr = _synthetic_road(wl, wr)
@@ -1261,6 +1325,9 @@ def dry_run_plants() -> tuple[dict, dict]:
     fdc = {v: fd_pullback(net, tr, inp, v, pb) for v in VARIANTS}
     lin["fd"] = {v: {"max_err": c.max_err, "share": c.share_counted} for v, c in fdc.items()}
     rep["linear"] = lin
+    # K3's planted wrong pullbacks (module docstring 'K3's checks'): this critic reads the
+    # accel channels, so its three forms differ on the live rows
+    wrong = {"linear": wrong_pullbacks(fdc, pb, ~inp.reset)}
     rep["linear_seconds"] = time.perf_counter() - t0
     # the state-function critic and the accel-normal plant
     grad_f = jax.vmap(jax.grad(plant_f, argnums=(0, 1)))
@@ -1280,13 +1347,24 @@ def dry_run_plants() -> tuple[dict, dict]:
                "pi_held": _rel(pb.pi_held[live, 0], ga[live]),
                "g_xprev": _rel(pb.g_xprev[live, 0], gx[live]),
                "accel_sens": float(np.max(np.abs(pb.accel_sens[live, 0])))}
-        if c == 20.0:
-            for v in ("manifold", "held"):
-                ck = fd_pullback(net, tr, inp, v, pb)
+        if c != 0.0:
+            cks = {v: fd_pullback(net, tr, inp, v, pb) for v in VARIANTS}
+            for v, ck in cks.items():
                 rec[f"fd_{v}"] = {"max_err": ck.max_err, "share": ck.share_counted,
                                   "newton": ck.newton}
+            wrong[f"c={c:g}"] = wrong_pullbacks(cks, pb, live)
         plants[f"c={c:g}"] = rec
     rep["plants"] = plants
+    # every planted wrong pullback and its error: the finite-difference ones above and the
+    # accel-normal plants' wrong closed forms (against grad f and df/da)
+    for k, rec in plants.items():
+        if k.startswith("c=") and float(k[2:]) != 0.0:
+            wrong[k].update({f"closed:{f}": {"max": rec[f], "row_min": None,
+                                             "n": int(live.sum())}
+                             for f in WRONG_CLOSED_FORMS})
+    rep["wrong"] = wrong
+    rep["wrong_min"] = min(v["max"] for d in wrong.values() for v in d.values())
+    rep["wrong_min_tol"] = WRONG_MIN
     rep["seconds"] = time.perf_counter() - t0
     return rep, {"x": inp.x, "Mx": oj.Mx, "Ma": oj.Ma}
 
@@ -1439,6 +1517,7 @@ def dry_run_random(agent: str = "G1", n_keys: int | None = 3, seeds=RANDOM_SEEDS
     rep["param_hash"] = {str(s): params_hash(random_critic_params(cfg, s)) for s in (0, 1)}
     # J_z and the pullbacks against finite differences
     jac, fd = [], {v: [] for v in VARIANTS}
+    cross: dict[str, list] = {}
     for (_, tr, inp, *_), oj in zip(keys, ojs, strict=True):
         jac.append(fd_jacobian(tr, inp, rms, oj))
         for s in fd_seeds:
@@ -1446,6 +1525,10 @@ def dry_run_random(agent: str = "G1", n_keys: int | None = 3, seeds=RANDOM_SEEDS
             pb = pullback(net, tr, inp, oj)
             for v in VARIANTS:
                 fd[v].append(fd_pullback(net, tr, inp, v, pb))
+            # descriptive: how far apart the forms are on a random-init critic's main V
+            for k_, e in wrong_pullbacks({v: fd[v][-1] for v in VARIANTS}, pb, ~inp.reset,
+                                         slice(0, 1)).items():
+                cross.setdefault(k_, []).append(e)
             if s == fd_seeds[0]:
                 comp_ = _composed(net, tr, inp)
                 rep.setdefault("composed", []).append(
@@ -1467,7 +1550,11 @@ def dry_run_random(agent: str = "G1", n_keys: int | None = 3, seeds=RANDOM_SEEDS
                         "share_heads": float(np.mean([c.counted[:, 1:].mean() for c in cks])),
                         "newton": max(c.newton for c in cks),
                         "component_p99": np.quantile(ce.reshape(-1, ce.shape[-1]), 0.99,
-                                                     axis=0).tolist()}
+                                                     axis=0).tolist(),
+                        "tol": FD_TOLS[v]}
+    rep["fd_cross"] = {k_: {"max": max(e["max"] for e in es),
+                            "row_min": min((e["row_min"] for e in es if e["n"]), default=0.0),
+                            "n": sum(e["n"] for e in es)} for k_, es in cross.items()}
     # the 20 random critics (V only) on every row, timed
     t1 = time.perf_counter()
     gs, ys, share = [], [], []

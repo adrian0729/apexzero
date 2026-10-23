@@ -24,6 +24,7 @@ from pathlib import Path
 import numpy as np
 import pytest
 
+from apexzero.costate import critic as CR
 from apexzero.costate import data_dirs
 from apexzero.costate import gates as GT
 from apexzero.costate import probes as PB
@@ -249,12 +250,19 @@ def _good_reports():
               "J_accel_rows": 0.0, "linear": lin,
               "plants": {"state": {"g": 1e-16, "pi": 1e-16},
                          "c=0": {"g": 1e-16, "pi": 1e-16, "g_held": 1e-16, "accel_sens": 0.0},
-                         "c=20": {"g": 2e-11, "pi": 1e-11, "g_held": 2e4, "accel_sens": 14.0}}}
+                         "c=20": {"g": 2e-11, "pi": 1e-11, "g_held": 2e4, "pi_held": 1.5e4,
+                                  "g_xprev": 2e4, "accel_sens": 14.0,
+                                  **{f"fd_{v}": {"max_err": 1e-7, "share": 1.0}
+                                     for v in CR.VARIANTS}}}}
+    plants["wrong"] = {"linear": {k: {"max": 0.03, "row_min": 0.018} for k in CR.WRONG_PAIRS},
+                       "c=20": {**{k: {"max": 1.0, "row_min": 0.02} for k in CR.WRONG_PAIRS},
+                                **{f"closed:{f}": {"max": 2e4, "row_min": None}
+                                   for f in CR.WRONG_CLOSED_FORMS}}}
     random = {"defect_body": 5e-12, "stop_gradient": {"flax": 0.0, "extractor": 0.1},
               "apply_gap": [{"v": 0.0, "heads": 0.0, "actor": 0.0, "n_heads": 5,
                              "flax_heads": 5}],
               "jz": {"max_err": 3e-10, "n_states": 205, "n": 1640},
-              "fd": {"manifold": {"main": 8e-9, "heads": 2e-8, "n_states": 205}},
+              "fd": {v: {"main": 8e-9, "heads": 2e-8, "n_states": 205} for v in CR.VARIANTS},
               "composed": [{"g_held": 1e-16, "g_xprev": 2e-16}],
               "observability": {"n_exit": 4, "exit_flagged": 4, "before_flagged": 0,
                                 "apex_flagged": 0, "f32_same_flags": True}}
@@ -301,6 +309,65 @@ def test_k3_judge_fails_on_planted_defects():
             d = d[k]
         d[key[-1]] = value
         assert not GT.k3_judge(plants, bad, ext)["pass"], key
+    # K3's pass rule (design v2.2 Section 13): held and x_{t-1}-held forms below 1e-6, the
+    # on-manifold form below 1e-5, every form present
+    for form, value, ok in (("manifold", 5e-6, True), ("manifold", 2e-5, False),
+                            ("held", 5e-6, False), ("xprev", 2e-6, False)):
+        for out in ("main", "heads"):
+            bad = copy.deepcopy(random)
+            bad["fd"][form][out] = value
+            assert GT.k3_judge(plants, bad, ext)["pass"] is ok, (form, out, value)
+    bad = copy.deepcopy(random)
+    del bad["fd"]["xprev"]
+    assert not GT.k3_judge(plants, bad, ext)["pass"]
+    # every planted wrong pullback must exceed 1e-4 (ten times the on-manifold tolerance),
+    # none may be missing, and the plant's own forms must match their differences
+    res = GT.k3_judge(plants, random, ext)
+    assert res["planted_wrong"]["min"] == 0.03 and res["planted_wrong"]["argmin"].startswith(
+        "linear:") and not res["planted_wrong"]["missing"]
+    assert res["tolerances"]["fd"] == {"manifold": 1e-5, "held": 1e-6, "xprev": 1e-6}
+    assert res["tolerances"]["wrong_min"] == 1e-4 == CR.WRONG_MIN
+    assert res["planted_wrong"]["pass_rule"] == "each > 0.0001"
+    # the floor pinned from both sides (between 9e-5 and 2e-4), on the cross-form errors and
+    # the wrong closed forms alike; the planted critics' own forms under the per-form rule
+    # (held and x_{t-1}-held 1e-6, on-manifold 1e-5), the linear critic's too
+    for path, value, ok in ((("wrong", "c=20", "held@manifold", "max"), 2e-4, True),
+                            (("wrong", "c=20", "held@manifold", "max"), 5e-5, False),
+                            (("wrong", "linear", "xprev@held", "max"), 2e-4, True),
+                            (("wrong", "linear", "xprev@held", "max"), 9e-5, False),
+                            (("wrong", "c=20", "closed:g_held", "max"), None, False),
+                            (("plants", "c=20", "pi_held"), 2e-4, True),
+                            (("plants", "c=20", "pi_held"), 5e-5, False),
+                            (("plants", "c=20", "g_xprev"), 1e-12, False),
+                            (("plants", "c=20", "fd_manifold", "max_err"), 2e-6, True),
+                            (("plants", "c=20", "fd_manifold", "max_err"), 2e-5, False),
+                            (("plants", "c=20", "fd_held", "max_err"), 2e-6, False),
+                            (("plants", "c=20", "fd_xprev", "max_err"), 2e-6, False),
+                            (("linear", "fd", "manifold", "max_err"), 5e-6, True),
+                            (("linear", "fd", "manifold", "max_err"), 2e-5, False),
+                            (("linear", "fd", "held", "max_err"), 2e-6, False),
+                            (("linear", "fd", "xprev", "max_err"), 2e-6, False)):
+        bad = copy.deepcopy(plants)
+        d = bad
+        for k in path[:-1]:
+            d = d[k]
+        d[path[-1]] = value
+        assert GT.k3_judge(bad, random, ext)["pass"] is ok, (path, value)
+    bad = copy.deepcopy(plants)
+    del bad["linear"]["fd"]["xprev"]              # every form present
+    assert not GT.k3_judge(bad, random, ext)["pass"]
+    for drop in (("wrong", "linear", "manifold@xprev"), ("wrong", "c=20"), ("wrong",),
+                 ("plants", "c=20", "fd_xprev")):
+        bad = copy.deepcopy(plants)
+        d = bad
+        for k in drop[:-1]:
+            d = d[k]
+        del d[drop[-1]]
+        r = GT.k3_judge(bad, random, ext)
+        assert not r["pass"], drop
+    bad = copy.deepcopy(plants)
+    del bad["plants"]["c=20"]                    # no accel-reading plant: vacuous, fails
+    assert not GT.k3_judge(bad, random, ext)["pass"]
     # a partial K3 (fewer keys) is judged without the sample size
     small = copy.deepcopy(random)
     small["jz"]["n_states"] = small["fd"]["manifold"]["n_states"] = 69

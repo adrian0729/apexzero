@@ -158,7 +158,23 @@ def constants() -> dict:
                      "c3": [AN.C3_PERMUTATIONS, AN.C3_ALPHA, AN.C3_STRONG],
                      "c3_int_perm": AN.C3_INT_PERMUTATIONS, "c3_strata": AN.C3_STRATA,
                      "c3_int_pairs": [list(p) for p in AN.C3_INT_PAIRS],
-                     "value_accuracy": AN.VALUE_ACCURACY_R2,
+                     "value_accuracy": {
+                         "r2_min": AN.VALUE_ACCURACY_R2, "target": AN.VALUE_TARGET,
+                         "target_is": "the deterministic policy's own discounted return "
+                                      "(own.own_return: delta = 0, s_stop = +inf)",
+                         "rows": AN.VALUE_ROWS,
+                         "rows_are": f"T's interior restarts every {OW.RESTART_EVERY}th step and D "
+                                     "(every key's t = 0); crashed runs recorded and dropped",
+                         "steps": OW.V_STEPS, "to": "the strip's end at most",
+                         "every_row_scored": True,
+                         "fit": "out of fold: C1's per-fold affine calibration (slope >= 0) "
+                                "on the frozen folds, key weights on the rows",
+                         "gates": "C1-own's validity",
+                         "descriptive": {"target": AN.VALUE_TARGET_VSTAR,
+                                         "rows": AN.VALUE_ROWS_VSTAR}},
+                     "strata": {h: list(v) for h, v in AN.STRATA.items()},
+                     "strata_per_network_columns": list(AN.PER_NETWORK_COLUMNS),
+                     "strata_seed": AN.STRATUM_SEED,
                      "decision_networks": list(AN.DECISION_NETWORKS),
                      "c3_covariates": ["final training episode_return", "step 2's B"]},
         "nulls": {"names": list(AN.NULL_NAMES), "gamma": NL.GAMMA,
@@ -168,8 +184,15 @@ def constants() -> dict:
                   "value_grid_min": NL.VALUE_GRID_MIN},
         "critic": {"fd_tol": CR.FD_TOL, "plant_tol": CR.PLANT_TOL, "linear_tol": CR.LINEAR_TOL,
                    "random_seeds": list(CR.RANDOM_SEEDS), "pi_h": CR.PI_H,
-                   "k3_min_states": CR.K3_MIN_STATES},
+                   "k3_min_states": CR.K3_MIN_STATES,
+                   # K3's pass rule (design v2.2 Section 13): per form, and the floor every
+                   # planted wrong pullback must exceed
+                   "fd_tol_manifold": CR.FD_TOL_MANIFOLD, "fd_tols": dict(CR.FD_TOLS),
+                   "jz_tol": CR.FD_TOL, "wrong_min": CR.WRONG_MIN,
+                   "wrong_pairs": list(CR.WRONG_PAIRS),
+                   "wrong_closed_forms": list(CR.WRONG_CLOSED_FORMS)},
         "own": {"k3b": [OW.K3B_MEDIAN, OW.K3B_P95], "plants": list(OW.OWN_PLANTS),
+                "v_steps": OW.V_STEPS, "restart_every": OW.RESTART_EVERY,
                 "manifold_at": OW.MANIFOLD_AT, "accel_weights": OW.ACCEL_WEIGHTS},
         "gates": {"k1_kink_share": GT.K1_KINK_SHARE, "k2_tol": GT.K2_TOL,
                   "k2b": [GT.K2B_MARGIN, GT.K2B_SEVERITIES, list(GT.K2B_RAMP), GT.K2B_TOL],

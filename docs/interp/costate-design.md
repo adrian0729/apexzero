@@ -1099,7 +1099,8 @@ extra null.
   reported, not gated.
 - **K3's pass rule, fixed after its full-size pre-tag run** (random and planted networks only, 22 Oct;
   before the tag and before any trained network is computed).
-  - On 221 states, 19 of K3's 20 checks pass.
+  - On 221 states, 19 of K3's 20 checks passed on the first run. Since then, K3 has 22 checks and
+    passes 22 of 22 (see "Built before the tag").
   - The finite-difference pullback check passes for the held and xprev forms, at errors of
     4–9e-8 against 1e-6.
   - The on-manifold form's worst error is 1.3e-6, at the one row where the stencil crosses an
@@ -1109,13 +1110,41 @@ extra null.
   - Every planted wrong pullback (for example the held form on the accel-reading plant) must still
     exceed 1e-4, ten times the on-manifold tolerance, or K3 fails.
 
-**Built before the tag.**
-- **Value accuracy:** out-of-fold R² ≥ 0.8 (Section 12, item 7). It is a precondition for C1-own's
-  validity.
-- **The by-stratum reports.**
+**Built before the tag** (implemented, reviewed on two lenses with 14 findings fixed, 123 tests).
+- **K3.**
+  - Its final form has 22 checks.
+  - Every planted wrong pullback must exceed 1e-4 (24 cases; the smallest measured is 0.030).
+  - The plants' own forms must match their finite differences.
+  - The accel-reading plant's wrong held forms (g, π, g_xprev) must each exceed 1e-4.
+  - At full size: held and xprev forms at most 9e-8 (limit 1e-6), on-manifold at most 1.3e-6
+    (limit 1e-5).
+- **Value accuracy** (Section 12, item 7), as Section 3.3 defines it.
+  - It is the out-of-fold R² of the calibrated σ_R·V_c against the network's own deterministic
+    discounted return.
+  - The return is computed by the network's own closed loop, up to 1,000 steps or the strip's
+    end, from T's interior restarts and from D.
+  - It uses the frozen folds and C1's calibration. The threshold is 0.8, and every requested row
+    must be scored.
+  - Crashed runs are dropped, and their share is reported.
+  - The same score against the optimum's V*_∞ is reported descriptively and never decides
+    anything.
+  - C1-own is a secondary only when both K3b's trained analogue and value accuracy pass;
+    otherwise it is descriptive, with the reason.
+  - Pre-tag check: the best of 20 random-init critics scores R² 0.23, and none passes.
+- **By-stratum reports.** These are descriptive tables, never decisions.
+  - **C1 and C2:** interior (k = 10, primary), k = 20, near-limit, contact, corner band, and
+    interior with each of: the four phases, braking or non-braking keys, turn direction ±1,
+    W 400 or 800, pedal-saturated, and κ-clipped. κ-clipped is a per-network column.
+  - **C2-sw:** pedal-switching (primary), its approach and exit parts, all four phases, and
+    pedal-saturated.
+  - A descriptive C1-pattern on the pedal-saturated stratum.
+  - Sensitivity variants carry the label scope "descriptive".
 
-**Deferred.** C3-int, C1-dev, ΔC1 and C2-pairs are not part of `costate-prereg-v1`. If run later,
-they are exploratory.
+**Deferred.** These are not part of `costate-prereg-v1`. If run later, they are exploratory.
+- C3-int, C1-dev, ΔC1 and C2-pairs.
+- C1-own on its other two state sets (Section 3.3 (ii) and (iii)): every state of each network's
+  own run from each D key, and N. They would need critic pullbacks at own-run states. C1-own
+  is decided on T's interior restarts only.
 
 **Order before the tag.**
 1. Stage inputs (with no t_H yet), then K2, then inputs again (binding t_H).

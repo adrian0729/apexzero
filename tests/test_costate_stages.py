@@ -255,6 +255,17 @@ def test_import_rule_and_record_pieces():
     assert PR.t_hash([("a", 1), ("b", 0)]) == PR.t_hash([("b", 0), ("a", 1)])
     assert set(cs.POST_TAG).isdisjoint(cs.PRE_TAG)
     assert len(cs.all_networks()) == 34
+    # value accuracy's frozen record (Section 3.3): the own policy's return on the own
+    # stage's rows, up to 1,000 steps; the strata lists as the analysis reads them
+    from apexzero.costate import analysis as AN
+    from apexzero.costate import own as OW
+    assert cs.OWN_EVERY == OW.RESTART_EVERY == 20 and OW.V_STEPS == 1000
+    va = c["analysis"]["value_accuracy"]
+    assert (va["r2_min"], va["target"], va["rows"], va["steps"]) == (0.8, "v_own_det", "own", 1000)
+    assert va["descriptive"] == {"target": "v_star_inf", "rows": "interior"}
+    assert c["analysis"]["strata"] == {h: list(v) for h, v in AN.STRATA.items()}
+    assert c["analysis"]["strata_per_network_columns"] == ["kappa_clipped"]
+    assert c["own"]["v_steps"] == 1000 and c["own"]["restart_every"] == 20
 
 
 _SUBPROCESS = r"""
@@ -312,11 +323,37 @@ frozen = PR.frozen_values(world.tab, None, partitions=1)
 fl = IN.flags(world, rms)
 counts = PB.cluster_counts(AN.geometry_clusters(world.tab)[1], 200)
 frozen["power_floor"] = {c: True for c in ("s", "n", "xi", "vx")}
-an = cs.analyse_network("stand-in", world, frozen, crit, {k: v for k, v in nl.items()}, fl, counts,
-                        variants=["braking_keys"])
+# the own stage's value records on its rows (T's interior restarts every 20th step, and D),
+# planted: the stand-in policy's own return replaced by V*inf (a known column of real T)
+tt = np.asarray(world.tab["t"])
 inner = np.asarray(world.tab["interior"], bool)
+asked = (inner & (tt % 20 == 0) & (tt > 0)) | (tt == 0)
+vt = np.asarray(world.tab["v_star_inf"], float)
+own = {"lam_own": world.lam + 0.1 * np.random.default_rng(0).normal(size=world.lam.shape),
+       "valid": np.ones(world.n, bool), "v_rows": asked, "v_own_det": np.where(asked, vt, np.nan),
+       "v_own_valid": asked, "v_own_terminated": np.zeros(world.n, bool),
+       "v_own_strip_end": np.zeros(world.n, bool), "v_own_H": np.where(asked, 1000, 0),
+       "v_own_tail": np.where(asked, 0.995 ** 1000, np.nan), "v_steps": np.int64(1000)}
+an = cs.analyse_network("stand-in", world, frozen, crit, {k: v for k, v in nl.items()}, fl, counts,
+                        own, True, variants=["braking_keys"],
+                        strata=("interior", "interior20", "contact", "interior&braking_key",
+                                "interior&kappa_clipped"))
 sw = np.asarray(world.tab[ST.SW_STRATUM], bool)
-pr = cs.probes_of(acts, world, frozen, np.ones(world.n, bool), sw, variants=["primary"])
+pr = cs.probes_of(acts, world, frozen, np.ones(world.n, bool), sw, variants=["primary"],
+                  strata={"C2": ("interior", "contact"), "C2-sw": ("pedal_switching",
+                                                                   "pedal_saturated")},
+                  kappa_clipped=fl["kappa_clipped"])
+# value accuracy on the real columns: the random-init critic above fails; a planted critic
+# whose value is the own return plus small noise passes on the same rows and folds
+cl, G = AN.geometry_clusters(world.tab)
+planted = vt + 0.05 * vt[asked].std() * np.random.default_rng(1).normal(size=world.n)
+va_planted = AN.value_accuracy(planted, own["v_own_det"], fo.outer,
+                               ST.stratum_weights(world.tab, asked), asked, cl, G, counts)
+# every frozen stratum resolves on real T's columns (and this network's kappa flags); C2-sw's
+# phase parts split its stratum
+tab_s = AN.strata_tab(world.tab, fl)
+resolved = {h: AN.strata_counts(tab_s, names) for h, names in AN.STRATA.items()}
+sw_parts = sum(resolved["C2-sw"][f"pedal_switching&phase:{p}"] for p in ST.PHASES)
 print(json.dumps({"n": world.n, "keys": len(pick),
   "acts": {k: list(v.shape) for k, v in acts.items()},
   "crit_g": list(crit["g"].shape), "random_g": list(crit["random_g"].shape),
@@ -328,7 +365,13 @@ print(json.dumps({"n": world.n, "keys": len(pick),
   "c1_braking": an["C1-braking"]["decision"], "sens": sorted(an["sensitivity"]),
   "width_err": width_err, "width_finite": bool(np.isfinite(crit["dV_dwin"]).all()),
   "pattern": an["C1-pattern"]["decision"], "heads": sorted(an["C1-heads"]),
-  "w1": an["W1"]["r2c"]}))
+  "w1": an["W1"]["r2c"], "va": an["value_accuracy"], "va_planted": va_planted,
+  "own_status": an["C1-own"]["status"], "strata_c1": {k: [v["n"], v["band"], v["primary"]]
+                                                      for k, v in an["by_stratum"]["C1"].items()},
+  "strata_c2": sorted(pr["by_stratum"]["C2"]), "strata_sw": sorted(pr["by_stratum"]["C2-sw"]),
+  "n_inner": int(inner.sum()), "n_asked": int(asked.sum()), "resolved": resolved,
+  "sw_parts": sw_parts, "n_kappa": int(np.asarray(fl["kappa_clipped"]).sum()),
+  "va_vstar": an["value_accuracy_vstar"]}, default=float))
 """
 
 
@@ -362,6 +405,140 @@ def test_post_tag_bodies_end_to_end_on_random_stand_ins(tmp_path):
     assert out["c1_braking"] in ("refute", "inconclusive", "not testable")
     assert out["width_finite"] and out["width_err"] < 1e-6
     assert out["heads"] == ["D", "grad_KP_minus_V", "grad_secondary_minus_KP"]
+    # value accuracy (Section 13): the random-init stand-in fails, so C1-own is descriptive
+    # even with K3b passed; the planted value passes on the same rows and folds
+    va, vp = out["va"], out["va_planted"]
+    assert not va["pass"] and va["r2"] < 0.8 and va["n"] == out["n_asked"], va
+    assert va["target"] == "v_own_det" and va["n_d"] == out["keys"]           # D: t = 0
+    assert len(va["heads"]) == 5 and max(va["heads"]) < 0.8
+    assert vp["pass"] and vp["r2"] > 0.95 and vp["n_scored"] == out["n_asked"], vp
+    assert out["own_status"] == "descriptive (value accuracy)"
+    vs = out["va_vstar"]
+    assert vs["descriptive"] and not vs["meets_threshold"] and vs["n"] == out["n_inner"]
+    # the strata tables on the real columns; every frozen stratum resolves there
+    sc = out["strata_c1"]
+    assert list(sc) == ["interior", "interior20", "contact", "interior&braking_key",
+                        "interior&kappa_clipped"]
+    assert sc["interior&kappa_clipped"][0] <= out["n_kappa"]
+    from apexzero.costate import analysis as AN
+    assert {h: list(v) for h, v in out["resolved"].items()} == {
+        h: list(v) for h, v in AN.STRATA.items()}
+    assert all(isinstance(c, int) for d in out["resolved"].values() for c in d.values())
+    assert out["resolved"]["C1"]["interior"] == out["n_inner"]
+    assert out["sw_parts"] == out["resolved"]["C2-sw"]["pedal_switching"] == out["sw_rows"]
+    assert sc["interior"][0] == out["n_inner"]
+    assert sc["interior"][2] and not any(v[2] for k, v in sc.items() if k != "interior")
+    assert all(v[1] in ("confirm", "refute", "inconclusive", "not testable") for v in sc.values())
+    assert sc["interior"][1] != "confirm"
+    assert out["strata_c2"] == ["contact", "interior"]
+    assert out["strata_sw"] == ["pedal_saturated", "pedal_switching"]
+
+
+_OWN = r"""
+import json, sys
+import importlib.util
+import jax
+jax.config.update("jax_enable_x64", True)
+import numpy as np
+from apexzero.costate import own as OW, inputs as IN, states as ST
+from apexzero.fields import network as NW
+from apexzero.interp.constants import S_TRUNC
+spec = importlib.util.spec_from_file_location("costate_script", sys.argv[1])
+cs = importlib.util.module_from_spec(spec)
+sys.path.insert(0, str(spec.origin.rsplit("/", 1)[0]))
+spec.loader.exec_module(cs)
+bank, cells = IN.design()
+# (1) own_return on step 2's linear driver (planted, untrained) from cell 344, which it drives
+# through the corner; from 150 m before the strip's end (truncation); off the road (a crash)
+st = NW.cell_start(cells[344], 0, bank)
+rd = NW.road(bank, st.stim_id)
+net = NW.linear_net(*NW.linear_driver(st.sigma))
+steps = 300
+li = NW.loop_inputs(st, steps)
+x0 = np.asarray(st.x0, float)
+late = x0.copy(); late[0] = S_TRUNC - 150.0; late[1:3] = 0.0; late[4:7] = 0.0
+off = x0.copy(); off[1] = 30.0
+x0s = np.stack([x0, late, off]); pas = np.stack([st.prev_action] * 3)
+accs = np.stack([st.accel] * 3)
+r = OW.own_return(net, rd.base, li, x0s, pas, accs, steps)
+# the reference: closed_loop's Trace, J rebuilt from Trace.x, clip(Trace.a) and the previous
+# command (Section 3.3, racing.py:174-175)
+cl = jax.jit(NW.closed_loop, static_argnums=(0, 5))
+ref = []
+for i in range(3):
+    lii = li._replace(x0=x0s[i], prev_action=pas[i], accel=accs[i], a_forced=np.zeros((steps, 2)),
+                      n_forced=np.int32(0), s_stop=np.float64(np.inf))
+    T = cl(net.fn, net.params, net.obs_rms, jax.tree.map(jax.numpy.asarray, rd.base),
+           jax.tree.map(jax.numpy.asarray, lii), steps)
+    x, a, v = np.asarray(T.x), np.asarray(T.a), np.asarray(T.valid)
+    H = int(v[1:].sum())
+    prev = np.vstack([pas[i][None], np.clip(a[:-1], -1, 1)])
+    rr = (x[1:, 0] - x[:-1, 0]) / 10.0 - 0.02 * np.sum((np.clip(a, -1, 1) - prev) ** 2, 1)
+    ref.append({"J": float(np.sum(OW.GAMMA ** np.arange(H) * rr[:H])), "H": H,
+                "term": bool(np.asarray(T.term).any()), "trunc": bool(np.asarray(T.trunc).any())})
+# (2) own_of on a two-key world with the same driver: its records are own_return's on the rows
+# it restarts from (T's interior every 20th step, and D: every key's t = 0)
+refs = sorted(ST.a2_refs(), key=lambda q: q.key_id)
+by = {}
+for q in refs:
+    s_ = ST.strata(q)
+    if s_.w_is_cell:
+        by.setdefault((s_.R, s_.theta_deg), q)
+world = IN.build_world([IN.key_data(q, bank) for q in [by[g] for g in sorted(by)][::4][:2]])
+k0 = world.keys[0]
+sig = int(world.tab["direction"][int(k0.rows[0])])
+drv = NW.linear_net(*NW.linear_driver(sig))
+own = cs.own_of(None, world, net=drv, keys=[k0.key_id], v_steps=200, bank=bank)
+tt, inner = np.asarray(world.tab["t"]), np.asarray(world.tab["interior"], bool)
+mine = np.isin(np.asarray(world.tab["key_id"]).astype(str), [k0.key_id])
+want = ((inner & (tt % 20 == 0) & (tt > 0)) | (tt == 0)) & mine
+js = np.flatnonzero(want[k0.rows])
+rr2 = OW.own_return(drv, NW.road(bank, int(world.tab["stim_id"][int(k0.rows[0])])).base,
+                    li._replace(a_forced=np.zeros((200, 2))), k0.inp.take(js).x,
+                    k0.inp.take(js).prev_action, k0.inp.take(js).accel, 200)
+idx = np.asarray(k0.rows)[js]
+print(json.dumps({"r": {k: np.asarray(v).tolist() for k, v in r.__dict__.items()}, "ref": ref,
+  "v_rows_ok": bool(np.array_equal(own["v_rows"], want)),
+  "lam_in_v": bool(np.all(want[own["rows"]]) and np.all(tt[own["rows"]] > 0)),
+  "same": bool(np.array_equal(own["v_own_det"][idx], rr2.J)
+               and np.array_equal(own["v_own_H"][idx], rr2.H)
+               and np.array_equal(own["v_own_valid"][idx], rr2.valid)
+               and np.array_equal(own["v_own_tail"][idx], rr2.tail)),
+  "outside_nan": bool(np.all(np.isnan(own["v_own_det"][~want])) and not own["v_own_valid"][~want].any()),
+  "n_d": int((want & (tt == 0)).sum()), "v_steps": int(own["v_steps"]),
+  "keys": sorted(own) }))
+"""
+
+
+@pytest.mark.skipif(not HAVE_KEYS, reason="step 1's keys or stimuli are missing")
+def test_own_returns_on_a_planted_driver():
+    """Section 3.3 'Value accuracy': value accuracy's target is the deterministic policy's own
+    discounted return, J over up to 1,000 steps or to the strip's end, gamma^H reported, a
+    crashed run recorded and dropped (``own.own_return``). On step 2's linear driver
+    (untrained): J, H and the end (strip end, crash) equal closed_loop's Trace with J rebuilt
+    in NumPy; own_of's records are own_return's on exactly the rows it restarts from (T's
+    interior every 20th step and D)."""
+    env = dict(os.environ, PYTHONPATH=str(REPO / "src"))
+    r = subprocess.run([sys.executable, "-c", _OWN, str(SCRIPT)], cwd=REPO, env=env,
+                       capture_output=True, text=True, timeout=600, check=False)
+    assert r.returncode == 0, r.stderr[-3000:]
+    out = json.loads(r.stdout.strip().splitlines()[-1])
+    got, ref = out["r"], out["ref"]
+    for i in range(3):
+        assert got["J"][i] == pytest.approx(ref[i]["J"], rel=1e-12, abs=1e-12), i
+        assert got["H"][i] == ref[i]["H"] and got["terminated"][i] == ref[i]["term"], i
+        assert got["strip_end"][i] == ref[i]["trunc"], i
+        assert got["tail"][i] == pytest.approx(0.995 ** ref[i]["H"], rel=1e-12)
+    assert got["valid"] == [True, True, False]                 # the crash is dropped
+    assert got["H"][0] == 300 and not got["strip_end"][0]      # the whole loop
+    assert got["strip_end"][1] and got["H"][1] < 300           # ... or to the strip's end
+    assert got["terminated"][2] and got["H"][2] == 1
+    assert got["J"][1] == pytest.approx(got["J_env"][1], rel=1e-12)    # no penalty on a valid run
+    assert got["J_env"][2] < got["J"][2]                       # the env's crash penalty
+    assert out["v_rows_ok"] and out["lam_in_v"] and out["same"] and out["outside_nan"]
+    assert out["n_d"] == 1 and out["v_steps"] == 200
+    assert {"v_own_det", "v_own_valid", "v_own_tail", "v_own_H", "v_own_terminated",
+            "v_own_strip_end", "v_own_inf", "v_rows", "lam_own", "valid"} <= set(out["keys"])
 
 
 # ------------------------------------------------------------------------- integrity (review)
@@ -597,14 +774,20 @@ def test_trained_networks_are_refused_everywhere_before_the_tag():
     assert actor.trained and critic.trained
     with pytest.raises(PermissionError):
         PB.hidden(actor, np.zeros((2, 222)))
+    with pytest.raises(PermissionError):           # before the Critic.apply gradient
+        PB._grad_record(critic, None)
     pol = NW.NetPolicy(lambda *a: None, None, None, "trained", trained=True)
     with pytest.raises(PermissionError):
         OW.own_costate(pol, None, None, 1, 1)
     with pytest.raises(PermissionError):
         OW.k3b_start(pol, None, None, 1)
+    with pytest.raises(PermissionError):           # value accuracy's own returns
+        OW.own_return(pol, None, None, np.zeros((1, 8)), np.zeros((1, 2)), np.zeros((1, 2)), 1)
     net = CR.CriticNet(lambda p, o: o, None, None, trained=True, name="trained")
     with pytest.raises(PermissionError):
         IN.width_values(net, None, None, 1)
+    with pytest.raises(PermissionError):           # the composition's own autodiff
+        CR._composed(net, None, None)
 
 
 def _toy_world(n_geo: int = 12, keys: int = 4, steps: int = 12, seed: int = 0):
@@ -628,11 +811,17 @@ def _toy_world(n_geo: int = 12, keys: int = 4, steps: int = 12, seed: int = 0):
            "phase": rng.choice(["approach", "braking", "corner", "exit"], n),
            "multi_basin": np.zeros(n, bool), "ds_apex": rng.normal(size=n) * 30,
            "vx": 40 + 5 * rng.normal(size=n), "width": np.full(n, 12.0),
-           "Pi_in": np.abs(rng.normal(size=n))}
+           "Pi_in": np.abs(rng.normal(size=n)), "W": np.full(n, 400)}
+    tab["interior20"] = tab["interior"] & (rng.random(n) < 0.6)
+    tab["near_limit"] = ~tab["interior"]
+    tab["contact"] = tab["near_limit"] & (rng.random(n) < 0.4)
+    tab["corner_band"] = rng.random(n) < 0.4
     for c in TG.STATE_NAMES:
         tab[f"lam_{c}"] = rng.normal(size=n)
     tab["sigma_pedal"] = np.abs(rng.normal(size=n))
     tab["pedal_switching"] = rng.random(n) < 0.3
+    tab["v_star_inf"] = (60.0 + 0.5 * tab["vx"] + 4.0 * tab["lam_vx"] + 0.1 * tab["t"]
+                         + 0.2 * rng.normal(size=n))
     lams = {c: tab[c] for c in tab if c.startswith("lam_")}
     frozen = {"winsor_bounds": {**{c: [float(v.min()), float(v.max())] for c, v in lams.items()},
                                 "Pi_in": [0.0, 10.0], "sigma_pedal": [0.0, 10.0]},
@@ -692,6 +881,177 @@ def test_every_pre_registered_variant_is_reported(tmp_path):
     assert not c3["critic_missing"]
 
 
+def _own_returns(tab, v, rng, crash_share: float = 0.1) -> dict:
+    """A planted own stage's value records (``own_of``'s v_* fields) on the toy T: the rows
+    the stage restarts from (T's interior every 20th step, and D at t = 0), the policy's own
+    return ``v`` there, a share of runs crashed (their J garbage, never counted)."""
+    t = np.asarray(tab["t"])
+    asked = (np.asarray(tab["interior"], bool) & (t % 20 == 0) & (t > 0)) | (t == 0)
+    crashed = asked & (rng.random(len(t)) < crash_share)
+    det = np.where(asked, v, np.nan)
+    det[crashed] = 1e6
+    H = np.where(asked, 1000, 0)
+    return {"v_rows": asked, "v_own_det": det, "v_own_valid": asked & ~crashed,
+            "v_own_terminated": crashed, "v_own_strip_end": np.zeros(len(t), bool),
+            "v_own_H": H, "v_own_tail": np.where(asked, 0.995 ** H, np.nan),
+            "v_own_inf": det, "v_steps": np.int64(1000)}
+
+
+def test_value_accuracy_decides_c1_own_and_every_strata_table_is_reported():
+    """Section 3.3 'Value accuracy', Section 13 'Built before the tag'. The critic's value
+    accuracy is the out-of-fold R2 of sigma_R V_c against its deterministic policy's own
+    discounted return (``own_of``'s v_own_det) on the own stage's rows (T's interior restarts
+    and D), crashed runs dropped, the frozen folds; with K3b's trained analogue it decides
+    C1-own's standing. A critic that fits its own policy's value passes even where that value
+    departs nonlinearly from the optimum's V*inf (C1-own a secondary); one that fits V*inf
+    instead fails it; the V*inf score is reported beside it and never decides; a random
+    critic fails both; without the own stage's returns it does not pass. analyse_network and
+    probes_of report each hypothesis' strata table; a stratum a variant already scored reuses
+    that record (C1-braking and its strata row carry one CI, with slope CIs); a recomputed C2
+    or C2-sw row is computed on its own rows; a non-confirm row carries its slope CIs; a
+    kappa-clipped stratum on few geometries is a row, never an exception; merge_probes puts
+    C2's and C2-sw's tables beside C1's."""
+    cs = _script()
+    from apexzero.costate import analysis as AN
+    from apexzero.costate import probes as PB
+
+    world, frozen = _toy_world()
+    tab, n = world.tab, world.n
+    rng = np.random.default_rng(4)
+    lam8 = np.stack([tab[f"lam_{c}"] for c in ("s", "n", "xi", "vx", "vy", "r", "delta",
+                                                "pedal")], 1)
+    base = {"g": np.repeat((lam8 + 0.3 * rng.normal(size=lam8.shape))[:, None], 6, 1),
+            "pi": rng.normal(size=(n, 6, 2)), "random_g": rng.normal(size=(2, n, 8)),
+            "dV_dwin": rng.normal(size=n)}
+    vstar = tab["v_star_inf"]
+    # the policy's own return departs nonlinearly from V*inf: an affine map of V*inf
+    # explains little of it
+    u = (vstar - vstar.mean()) / vstar.std()
+    v_pi = 40.0 + 6.0 * u ** 2 + 0.5 * rng.normal(size=n)
+
+    def critic(v, noise=0.05):
+        return {**base, "value": np.stack([v + noise * v.std() * rng.normal(size=n)
+                                           for _ in range(6)], 1)}
+
+    fits_own, fits_vstar = critic(v_pi), critic(vstar)
+    random_ = {**base, "value": rng.normal(size=(n, 6))}
+    own = {"lam_own": lam8 + 0.1 * rng.normal(size=lam8.shape), "valid": np.ones(n, bool),
+           **_own_returns(tab, v_pi, rng)}
+    ok = own["v_rows"] & own["v_own_valid"]
+    nulls = {"qss": rng.normal(size=(n, 8))}
+    geo = np.asarray(tab["pair_id"])
+    kc = np.isin(geo, (0, 1)) & (rng.random(n) < 0.8)    # kappa clipping on 2 geometries
+    flags = {"observability": SimpleNamespace(s_unobservable=np.zeros(n, bool)),
+             "kappa_clipped": kc}
+    counts = PB.cluster_counts(AN.geometry_clusters(tab)[1], 50)
+    a = cs.analyse_network("toy", world, frozen, fits_own, nulls, flags, counts, own, True,
+                           variants=["braking_keys", "non_braking_keys"])
+    va, vs = a["value_accuracy"], a["value_accuracy_vstar"]
+    assert va["pass"] and va["r2"] > 0.95 and len(va["heads"]) == 5 and min(va["heads"]) > 0.95
+    assert va["target"] == "v_own_det" and va["rows"] == "own"
+    assert va["n"] == va["n_scored"] == int(ok.sum()) and va["n_missing"] == 0
+    assert va["n_asked"] == int(own["v_rows"].sum()) and va["n_terminated"] == int(
+        own["v_own_terminated"].sum()) > 0                      # crashed runs: reported, dropped
+    assert va["n_d"] == int((ok & (tab["t"] == 0)).sum()) > 0 and va["n_t_restarts"] > 0
+    assert va["tail"]["max"] == pytest.approx(0.995 ** 1000) and va["v_steps"] == 1000
+    assert vs["target"] == "v_star_inf" and vs["rows"] == "interior" and vs["descriptive"]
+    assert "pass" not in vs and not vs["meets_threshold"] and vs["r2"] < 0.5
+    assert vs["n"] == int(tab["interior"].sum())
+    assert a["C1-own"]["status"] == "secondary"               # the V*inf score never decides
+    f = cs.analyse_network("toy", world, frozen, fits_vstar, nulls, flags, counts, own, True,
+                           variants=["primary"], strata=())
+    assert f["value_accuracy_vstar"]["meets_threshold"] and not f["value_accuracy"]["pass"]
+    assert f["C1-own"]["status"] == "descriptive (value accuracy)"
+    b = cs.analyse_network("toy", world, frozen, random_, nulls, flags, counts, own, True,
+                           variants=["primary"], strata=("interior", "contact"))
+    assert not b["value_accuracy"]["pass"] and b["value_accuracy"]["r2"] < 0.8
+    assert not b["value_accuracy_vstar"]["meets_threshold"]
+    assert b["C1-own"]["status"] == "descriptive (value accuracy)"
+    assert b["C1-own"]["validity"] == {"k3b_trained": True, "value_accuracy": False}
+    c = cs.analyse_network("toy", world, frozen, fits_own, nulls, flags, counts, own,
+                           np.False_, variants=["primary"], strata=())
+    assert c["C1-own"]["status"] == "descriptive (K3b)" and c["by_stratum"] == {"C1": {}}
+    no_ret = {"lam_own": own["lam_own"], "valid": own["valid"]}
+    d0 = cs.analyse_network("toy", world, frozen, fits_own, nulls, flags, counts, no_ret, True,
+                            variants=["primary"], strata=())
+    assert not d0["value_accuracy"]["pass"] and "own returns" in d0["value_accuracy"]["reason"]
+    assert d0["C1-own"]["status"] == "descriptive (value accuracy)"
+    # C1's strata table: every stratum, the primary row the decision's own record
+    t1 = a["by_stratum"]["C1"]
+    assert list(t1) == list(AN.C1_STRATA)
+    assert t1["interior"]["primary"] and t1["interior"]["stat"] == a["C1"]["stat"]
+    assert np.all(np.isfinite(t1["interior"]["slope_ci"]))       # slope CIs per stratum
+    for name, r in t1.items():
+        assert r["descriptive"] is (name != "interior") and "band" in r, name
+        assert r["n"] == int(AN.stratum_rows(AN.strata_tab(tab, flags), name).sum()), name
+        if r["band"] != "not testable":
+            assert np.isfinite(r["stat"]) and set(r["null_diff"]) == {"qss", "random_critics"}, \
+                name
+    assert t1["contact"]["n"] == int(tab["contact"].sum())
+    assert t1["interior&kappa_clipped"]["geometries"] <= 2
+    assert t1["interior&W:800"]["n"] == 0 and t1["interior&W:800"]["band"] == "not testable"
+    # C1-braking and its strata row are one record: the same CI and band, with slope CIs
+    for sname, vname in (("interior&braking_key", "braking_keys"),
+                         ("interior&~braking_key", "non_braking_keys")):
+        v = a["sensitivity"][vname]
+        assert t1[sname]["ci"] == v["ci"] and t1[sname]["band"] == v["decision"], sname
+        assert np.all(np.isfinite(v["slope_ci"])), sname
+    assert a["C1-braking"]["ci"] == t1["interior&braking_key"]["ci"]
+    assert a["C1-braking"]["label_scope"] == "descriptive"
+    assert set(b["by_stratum"]["C1"]) == {"interior", "contact"}
+    # a non-confirm row carries its slope CIs (recomputed and primary alike)
+    r = cs.analyse_network("toy", world, frozen, {**fits_own, "g": rng.normal(size=(n, 6, 8))},
+                           nulls, flags, counts, None, True, variants=["primary"],
+                           strata=("interior", "contact"))
+    for nm, row in r["by_stratum"]["C1"].items():
+        assert row["band"] != "confirm" and np.all(np.isfinite(row["slope_ci"])), nm
+    # C1-pattern on the interior's pedal-saturated states, descriptive
+    ps = a["C1-pattern_saturated"]
+    assert ps["descriptive"] and ps["n"] == int((tab["interior"] & tab["pedal_saturated"]).sum())
+    # C2's and C2-sw's tables from probes_of, then merged beside C1's
+    acts = {"z": rng.normal(size=(n, 6)), "m": rng.normal(size=(n, 2)),
+            "actor_h3": rng.normal(size=(n, 5)),
+            **{f"random{s}_h3": rng.normal(size=(n, 5)) for s in range(5)}}
+    pr = cs.probes_of(acts, world, frozen, tab["interior"], tab["pedal_switching"],
+                      np.ones((n, 4), bool), variants=["braking_keys"], kappa_clipped=kc)
+    t2, tsw = pr["by_stratum"]["C2"], pr["by_stratum"]["C2-sw"]
+    assert list(t2) == list(AN.C2_STRATA) and list(tsw) == list(AN.C2SW_STRATA)
+    assert t2["interior"]["primary"] and t2["interior"]["stat"] == pr["C2"]["stat"]
+    assert tsw["pedal_switching"]["primary"] and tsw["pedal_switching"]["stat"] == \
+        pr["C2-sw"]["stat"]
+    assert t2["interior&braking_key"]["stat"] == pr["sensitivity"]["braking_keys"]["C2"]["stat"]
+    assert not t2["near_limit"]["primary"] and t2["near_limit"]["n"] == int(
+        tab["near_limit"].sum())
+    assert all("band" in r and "stat" in r for r in (*t2.values(), *tsw.values())
+               if r["band"] != "not testable")
+    # a recomputed row is computed on its own rows (one direct run covers both hypotheses)
+    dr = cs.probes_of(acts, world, frozen, tab["near_limit"], tab["pedal_saturated"],
+                      np.ones((n, 4), bool), variants=["primary"], strata={})
+    assert t2["near_limit"]["stat"] == dr["C2"]["stat"] != t2["interior"]["stat"]
+    assert tsw["pedal_saturated"]["stat"] == dr["C2-sw"]["stat"]
+    assert all(max(r["scored_rows"]) == r["n"] for r in t2.values() if "scored_rows" in r)
+    # the kappa-clipped strata: a row on 2 geometries, not an exception; without the flags
+    # 'not testable'
+    assert t2["interior&kappa_clipped"]["geometries"] <= 2
+    assert t2["interior&kappa_clipped"]["band"] == "not testable"
+    assert t2["interior&W:800"]["band"] == "not testable" and t2["interior&W:800"]["n"] == 0
+    assert tsw["pedal_switching&kappa_clipped"]["n"] == int((tab["pedal_switching"] & kc).sum())
+    nokc = cs.probes_of(acts, world, frozen, tab["interior"], tab["pedal_switching"],
+                        variants=["primary"], strata={"C2": ("interior&kappa_clipped",)})
+    row = nokc["by_stratum"]["C2"]["interior&kappa_clipped"]
+    assert row["band"] == "not testable" and "kappa_clipped" in row["reason"]
+    small = cs.probes_of(acts, world, frozen, np.ones(n, bool), tab["pedal_switching"],
+                         variants=["primary"], strata={"C2": ("interior",)})
+    assert not small["by_stratum"]["C2"]["interior"]["primary"]    # not the decided rows
+    assert small["by_stratum"]["C2-sw"] == {}
+    merged = cs.merge_probes(dict(a), json.loads(json.dumps(pr, default=float)))
+    assert set(merged["by_stratum"]) == {"C1", "C2", "C2-sw"}
+    assert merged["C2"]["stat"] == pr["C2"]["stat"] and "C1" in merged
+    assert merged["sensitivity"]["braking_keys"]["C2"]["stat"] == \
+        pr["sensitivity"]["braking_keys"]["C2"]["stat"]
+    assert merged["sensitivity"]["braking_keys"]["stat"] == a["C1-braking"]["stat"]   # C1's
+
+
 def _walk_keys(d):
     if isinstance(d, dict):
         for k, v in d.items():
@@ -716,6 +1076,10 @@ def test_a_dry_analyse_withholds_every_decision(tmp_path, monkeypatch):
     cs.main(["analyse", "--out", str(out)])
     d = json.loads((out / "analyse" / "decisions_dry.json").read_text())
     assert d["decided"] is False and d["unlocked_by"] is None and "coverage" in d
+    from apexzero.costate import analysis as AN
+    assert {h: set(v) for h, v in d["coverage"]["strata"].items()} == {
+        h: set(v) for h, v in AN.STRATA.items()}                # row counts, no statistic
+    assert d["coverage"]["strata"]["C1"]["contact"] == int(world.tab["contact"].sum())
     banned = {"per_network", "variants", "C3-w", "decision", "label_at_scale", "verdict"}
     assert not banned & set(_walk_keys({k: v for k, v in d.items() if k != "provenance"}))
     monkeypatch.setattr(cs, "unlocked_by", lambda path, tag, root=None: ("ab" * 32, ""))

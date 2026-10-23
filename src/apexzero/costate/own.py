@@ -35,6 +35,10 @@ recovered by ``critic.prev_state``). A reset start (accel = prev_action = 0, as 
 t = 0) keeps the held form, as the critic's reset rows do. A run counts only if it is valid
 on all ``count`` steps (no termination, no truncation; Section 3.3).
 
+**Own returns** (``own_return``; Section 3.3 'Value accuracy'): the delta = 0 loop from many
+starts at once, its J over up to ``V_STEPS`` = 1,000 steps or to the strip's end, gamma^H and
+whether the run crashed: the target the critic's value accuracy scores sigma_R V_c against.
+
 **K3b** (``k3b_start``; Section 7). For one start:
 - the delta = 0 loop reproduces ``closed_loop``'s Trace (states, commands, validity) to
   round-off, and J equals J_env;
@@ -100,6 +104,10 @@ RESTART_RTOL = 1e-9           # per-state VJP against a restart's gradient
 FD_STEPS = (-1.0, -0.5, 0.0, 0.5, 1.0)
 MANIFOLD_AT = 0.5             # the on-manifold check's restart, as a share of count
 ACCEL_WEIGHTS = ((0.0, 0.3), (0.2, 0.0))   # accel_driver: (steer, pedal) x (ax, ay) / 50
+RESTART_EVERY = 20            # Section 3.3: T's interior restarts every 20th plan step
+V_STEPS = 1000                # value accuracy's own returns: loops of up to 1,000 steps
+                              # (gamma^1000 ~ 0.007) or to the strip's end (Section 3.3)
+V_BATCH = 8                   # starts per jit call of ``own_return`` (one compile per shape)
 DIRECTIONS = (*STATE_NAMES, "prev_steer", "prev_pedal")
 STEP_OF = {**FD_H, "prev_steer": CR.PI_H, "prev_pedal": CR.PI_H}
 
@@ -111,8 +119,9 @@ def _keep(alive, new, old):
 def own_loop(fn, params, obs_rms, tr: TrackArrays, li: LoopIn, steps: int, delta, count,
              gamma: float = GAMMA, plant: str | None = None, eps=None):
     """The loop of the module docstring: (J, J_env, outputs) with outputs x [steps+1, 8],
-    valid [steps+1], mean, a [steps, 2], ob [steps, 222], z [steps, 222]. ``eps`` [steps, 2]
-    perturbs the accel the policy observes (default 0). Traceable."""
+    valid [steps+1], mean, a [steps, 2], ob [steps, 222], z [steps, 222], term and trunc
+    [steps] (step k, taken alive, terminated or truncated: ``network.Trace``'s flags).
+    ``eps`` [steps, 2] perturbs the accel the policy observes (default 0). Traceable."""
     if plant is not None and plant not in OWN_PLANTS:
         raise ValueError(f"unknown plant {plant!r}")
     st0 = NW.env_state(li.x0, li.prev_action, li.accel, li.ctx)
@@ -142,7 +151,8 @@ def own_loop(fn, params, obs_rms, tr: TrackArrays, li: LoopIn, steps: int, delta
         J = J + jnp.where(use, jnp.exp(lg * power) * r, 0.0)
         Je = Je + jnp.where(use, jnp.exp(lg * k) * rew, 0.0)
         new = _keep(alive, nxt, st)
-        out = dict(x=new.x, valid=alive, mean=mean, a=a, ob=ob, z=z)
+        out = dict(x=new.x, valid=alive, mean=mean, a=a, ob=ob, z=z, term=alive & term,
+                   trunc=alive & trunc)
         return (new, alive & ~term & ~trunc, prev, J, Je), out
 
     zero = jnp.zeros((), li.x0.dtype)
@@ -259,6 +269,81 @@ def own_costate(net: NetPolicy, tr: TrackArrays, li: LoopIn, steps: int, count: 
     valid = np.asarray(outs["valid"])
     return OwnCostate(float(J), float(Je), lam, pi, np.asarray(gx), x, a,
                       bool(valid[:count + 1].all()), int(count), lam_h, pi_h, dacc, mapped)
+
+
+# ------------------------------------------------------------------------- own returns
+
+
+@functools.lru_cache(maxsize=16)
+def _return_jit(fn, steps: int):
+    """jit(vmap over (x0, prev_action, accel) of (J, J_env, valid, term, trunc, x_end)): the
+    delta = 0 loop counted on every step it takes (forward only)."""
+    def run(params, obs_rms, tr, li, x0s, pas, accs):
+        def one(x0, pa, acc):
+            d0 = jnp.zeros((steps, 8), li.x0.dtype)
+            J, Je, outs = own_loop(fn, params, obs_rms, tr,
+                                   li._replace(x0=x0, prev_action=pa, accel=acc), steps, d0,
+                                   steps)
+            return J, Je, outs["valid"], outs["term"], outs["trunc"], outs["x"][-1]
+
+        return jax.vmap(one)(x0s, pas, accs)
+
+    return jax.jit(run)
+
+
+@dataclass(frozen=True)
+class OwnReturn:
+    """The deterministic policy's own discounted return from m starts (``own_return``)."""
+
+    J: np.ndarray             # [m] sum_{k<H} gamma^k r_k (``own_loop``'s rebuilt reward)
+    J_env: np.ndarray         # [m] the env's own reward summed (its penalty on a crash)
+    H: np.ndarray             # [m] steps counted: until ``steps``, the strip's end or a crash
+    tail: np.ndarray          # [m] gamma^H
+    terminated: np.ndarray    # [m] the run crashed (left the road, spun, stalled) within H
+    strip_end: np.ndarray     # [m] the run reached the strip's end (truncation) within H
+    valid: np.ndarray         # [m] counted: no termination, finite J
+    J_inf: np.ndarray         # [m] J + gamma^H x the constant-speed tail at x_H (descriptive;
+                              # NaN on a crashed run)
+    vx_end: np.ndarray        # [m] vx at x_H
+
+
+def own_return(net: NetPolicy, tr: TrackArrays, li: LoopIn, x0s, pas, accs,
+               steps: int = V_STEPS, gamma: float = GAMMA) -> OwnReturn:
+    """Value accuracy's target (Section 3.3 'Value accuracy'): from each start (x0s [m, 8],
+    pas [m, 2] the previous command, accs [m, 2] the accel the policy observes), the
+    deterministic policy's discounted return J = sum_{k<H} gamma^k r_k, rebuilt as
+    ``own_loop`` rebuilds it (delta = 0, s_stop = +inf, no forced command), with H =
+    ``steps`` (1,000) or fewer where the run reaches the strip's end (the env's truncation
+    at S_TRUNC, racing.py:170-172: a valid end, 'or to the end of the strip'). A run that
+    terminates within H is recorded and not counted (``valid`` False; its J carries no
+    penalty, J_env does). The gamma^H tail is reported; ``J_inf`` adds the horizon
+    correction V*inf uses (``nulls.horizon_values``: gamma^H PROGRESS vx_H DT / (1 - gamma),
+    progress at constant speed) as a descriptive. ``V_BATCH`` starts per jit call (padded),
+    so one compile serves every road of one shape."""
+    _refuse(net)
+    steps = int(steps)
+    li = inputs_inf(li)._replace(a_forced=np.zeros((steps, 2)), n_forced=np.int32(0))
+    x0s, pas, accs = (np.atleast_2d(np.asarray(a, float)) for a in (x0s, pas, accs))
+    m = len(x0s)
+    fn = _return_jit(net.fn, steps)
+    pad = (-m) % V_BATCH
+    rep = np.r_[np.arange(m), np.zeros(pad, int)]
+    outs = []
+    for c in range(0, m + pad, V_BATCH):
+        sl = rep[c:c + V_BATCH]
+        outs.append([np.asarray(v) for v in fn(net.params, net.obs_rms, tr, li, x0s[sl],
+                                                 pas[sl], accs[sl])])
+    J, Je, valid, term, trunc, x_end = (np.concatenate([o[i] for o in outs])[:m]
+                                        for i in range(6))
+    H = valid[:, 1:].sum(1).astype(int)
+    tail = gamma ** H.astype(float)
+    terminated, strip_end = term.any(1), trunc.any(1)
+    vx = x_end[:, 3]
+    p = racing.EnvParams()
+    ok = ~terminated & np.isfinite(J)
+    J_inf = np.where(ok, J + tail * vx * float(NW.ENV.dt) / p.progress_scale / (1.0 - gamma),
+                     np.nan)
+    return OwnReturn(J, Je, H, tail, terminated, strip_end, ok, J_inf, vx)
 
 
 # ------------------------------------------------------------------------- K3b

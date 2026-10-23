@@ -709,6 +709,24 @@ def render(width: int) -> list[str]:
             mark = f"{RED}✗ failed{RESET}" if st.status == "failed" else f"{BLUE}✓{RESET}"
             done.append((st.t_last, f"{mark} {name}"))
 
+    # idea 2 (costate) stages: outputs/costate/logs/costate-<stage>.log, written by scripts/costate.py
+    for log in sorted((ROOT / "outputs" / "costate" / "logs").glob("costate-*.log"),
+                      key=lambda f: f.stat().st_mtime):
+        stage = log.stem.removeprefix("costate-")
+        st = parse_stage(_tail_text(log, 32768), stage,
+                         any(f"costate.py {stage}" in p.cmd for p in procs))
+        if st is None:
+            continue
+        name = f"Idea 2: {stage}"
+        if st.status == "running":
+            planning = st.total <= 1
+            frac = None if planning else st.done / st.total
+            running.append(_bar_line(name, "Mac", frac, None if planning else st.eta_s(now),
+                                     "starting"))
+        elif st.t_last and now - st.t_last < RECENT_DONE_S:
+            mark = f"{RED}✗ failed{RESET}" if st.status == "failed" else f"{BLUE}✓{RESET}"
+            done.append((st.t_last, f"{mark} {name}"))
+
     # jobs on rented boxes
     for label, host, st, left, raw in remote_states():
         if st is not None and st.status == "running":
@@ -740,7 +758,8 @@ def render(width: int) -> list[str]:
         if ("scripts/" in p.cmd and "python" in p.cmd.lower() and not p.cmd.startswith("uv ")
                 and "dashboard.py" not in p.cmd and "psychophysics.py" not in p.cmd
                 and "fields.py" not in p.cmd and "apexzero.fields" not in p.cmd
-                and "h4r.py" not in p.cmd
+                and "h4r.py" not in p.cmd and "costate.py" not in p.cmd
+                and "apexzero.costate" not in p.cmd
                 and not any(f"--name {j.name}" in p.cmd for j in jobs)):
             cmd = p.cmd[p.cmd.find("scripts/"):].split()[0]
             running.append(_bar_line(cmd, f"Mac pid {p.pid}", None, None,

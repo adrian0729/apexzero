@@ -424,7 +424,9 @@ def extractor_check(cfg: PPOConfig, seeds: Sequence[int] = (0, 1), n: int = 64,
 
 def _grad_record(c: Net, zj) -> dict:
     """dV/dz through the JAX extractor against ``jax.grad`` of ``Critic.apply`` (relative
-    max error), and the largest head input gradient by either route."""
+    max error), and the largest head input gradient by either route. A trained network waits
+    for the tag before the ``Critic.apply`` gradient is taken."""
+    _refuse_trained(c, "an input gradient")
     cfg = c.cfg
     gv = np.asarray(jax.grad(lambda x: Critic(cfg).apply(c.params, x).sum())(zj))
     ge = np.asarray(jax.grad(lambda x: hidden(c, x, jnp).out.sum())(zj))

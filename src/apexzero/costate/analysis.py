@@ -101,6 +101,35 @@ Confirm at p <= 0.05. The pairs: lambda_n underpricing the inside wall (sigma (g
 > 0) goes with G < 1 and with a smaller buffer B (step 2's G - 1 and B, sign -1); a too-negative
 lambda_vx (g_vx - lambda_vx < 0) goes with earlier braking (the brake-onset residual
 s_b,net - s_b,opt < 0) and with a lower entry speed (the entry-speed ratio - 1 < 0), sign +1.
+
+**Value accuracy** (``value_accuracy``; Section 3.3 'Value accuracy', Section 12 decision 7,
+Section 13 'Built before the tag'): per network, the out-of-fold R2 of sigma_R V_c against
+the deterministic policy's own discounted return (``VALUE_TARGET`` = 'v_own_det', the own
+stage's ``own.own_return``: J over up to 1,000 steps or to the strip's end, the gamma^H tail
+reported) from the states the own stage restarts from (``VALUE_ROWS`` = 'own': T's interior
+restarts every 20th step and D, every key's t = 0 state; a run that crashes is recorded and
+dropped), with the frozen folds and C1's per-fold affine calibration (slope >= 0); it passes
+at R2 >= ``VALUE_ACCURACY_R2`` = 0.8 with every requested row scored, and is a precondition
+for C1-own's validity: a network that fails it (or K3b's trained analogue) has a descriptive
+C1-own (``c1_own_status``: 'descriptive (value accuracy)'). C1-own is the critic against its
+own policy, so the target is that policy's return, not the optimum's. The critic itself
+regresses on its stochastic training policy's bootstrapped returns (Section 3.3), so even a
+perfect fit differs from this deterministic return by the policy noise, grip jitter and
+crash risk. Reported beside it, descriptively: the same score against the optimum's
+horizon-corrected window value V*inf_t (``VALUE_TARGET_VSTAR``) on T's interior (Section 9's
+'V^pi rather than V*' reading); it never decides C1-own.
+
+**Strata tables** (``stratum_rows``, ``stratum_record``; ``STRATA``): per network and
+hypothesis, the descriptive per-stratum tables of Sections 4, 6, 12 and 13 (C1 and C2:
+interior k = 10 primary, k = 20, near-limit, contact, the corner-phase band and its interior
+part, the interior's phases, its braking and non-braking keys, its left and right turns, its
+W 400 and 800 keys, its pedal-saturated and its kappa-clipped states; C2-sw: the
+pedal-switching steps, their four phase parts, the raw pedal-saturated flag, their braking
+and non-braking keys, left and right, W 400 and 800 and kappa-clipped), each the
+hypothesis' statistic recomputed on the stratum (C1 with its nulls and the slope CIs per
+component), bootstrapped over the geometries present there, with the band it falls in
+reported as 'band', never a decision. Kappa clipping is per network (``inputs.flags`` under
+its own obs_rms), a column added to T's for the tables (``strata_tab``).
 """
 
 from __future__ import annotations
@@ -133,6 +162,12 @@ C3_ALPHA = 0.05
 C3_STRONG = 0.3               # 'rules out a strong association' below this upper bound
 C3_INT_PERMUTATIONS = 10_000  # C3-int's permutations (stream costate_c3, sub-stream 1)
 VALUE_ACCURACY_R2 = 0.8       # Section 12 decision 7: out-of-fold R2 of sigma_R V_c
+VALUE_TARGET = "v_own_det"    # ... against the deterministic policy's own discounted return
+                              # (Section 3.3 'Value accuracy'; the own stage, ``own_of``)
+VALUE_ROWS = "own"            # ... from the own stage's states (T's interior restarts and D),
+                              # per network, the frozen folds; crashed runs dropped
+VALUE_TARGET_VSTAR = "v_star_inf"   # descriptive: against the optimum's V*inf_t ...
+VALUE_ROWS_VSTAR = "interior"       # ... on T's interior (Section 9's 'V^pi, not V*' reading)
 DOUBLE_CENTRE_ITERS = 200
 DOUBLE_CENTRE_TOL = 1e-12
 NULL_NAMES = ("value_ridge", "value_mlp", "value_ridge_window", "qss", "barrier",
@@ -505,6 +540,7 @@ class C1:
     slope_gl: np.ndarray | None = None       # [m] pooled slope of g on lambda, b_gl
     slope_gl_ci: np.ndarray | None = None    # [m, 2]
     inv_slope_ci: np.ndarray | None = None   # [m, 2] CI of 1 / b_lg
+    n_stratum: int | None = None             # the stratum's rows (``rows``), any component
 
     def record(self) -> dict:
         def lst(v):
@@ -518,7 +554,8 @@ class C1:
                 "slope": self.slope.tolist(), "slope_ci": self.slope_ci.tolist(),
                 "slope_gl": lst(self.slope_gl), "slope_gl_ci": lst(self.slope_gl_ci),
                 "inv_slope_lg_ci": lst(self.inv_slope_ci),
-                "n_rows": self.n_rows.tolist(), "decision": self.decision,
+                "n_rows": self.n_rows.tolist(), "n_stratum": self.n_stratum,
+                "decision": self.decision,
                 "label_at_scale": self.label,
                 "calibration": {"a": self.calibrated.a.tolist(), "b": self.calibrated.b.tolist(),
                                 "clamped": self.calibrated.clamped.tolist(),
@@ -591,7 +628,16 @@ def _ci_inf(draws: np.ndarray, level: float = PB.CI_LEVEL) -> tuple[float, float
     if not len(d) or np.all(np.isnan(d)):
         return float("nan"), float("nan")
     a = (1.0 - level) / 2.0
-    return float(np.quantile(d, a)), float(np.quantile(d, 1.0 - a))
+    fin = d[np.isfinite(d)]
+    if not np.isinf(d).any():
+        return float(np.quantile(d, a)), float(np.quantile(d, 1.0 - a))
+    if not len(fin):
+        return tuple(float(np.sign(np.nanmedian(d)) * np.inf) for _ in range(2))
+    # infinite draws as huge finite ones (numpy interpolates inf - inf to NaN); a quantile
+    # beyond every finite draw involves an infinite one, so it is infinite
+    big = np.where(np.isinf(d), np.sign(d) * 1e300, d)
+    q = [float(np.quantile(big, p)) for p in (a, 1.0 - a)]
+    return tuple(np.inf if v > fin.max() else (-np.inf if v < fin.min() else v) for v in q)
 
 
 def c1(g: np.ndarray, lam: np.ndarray, outer: np.ndarray, w: np.ndarray, cluster: np.ndarray,
@@ -599,13 +645,15 @@ def c1(g: np.ndarray, lam: np.ndarray, outer: np.ndarray, w: np.ndarray, cluster
        nulls: dict[str, np.ndarray | list[np.ndarray]] | None = None,
        valid: np.ndarray | None = None, names: Sequence[str] = K_P,
        counts: np.ndarray | None = None, fit_rows: np.ndarray | None = None,
-       slope_boot: bool = True, bounds=None) -> C1:
+       slope_boot: bool | str = True, bounds=None) -> C1:
     """C1 on ``rows`` (the interior stratum) of g [n, m] against lambda [n, m] (winsorised
     targets, columns ``names``). ``nulls``: name -> a gradient [n, m] put through the same
     calibration, or a list of them (the random critics: the per-draw maximum). ``fit_rows``
     defaults to ``rows``; ``valid`` [n, m] the per-component row mask (observability, K2b);
     ``bounds`` [m, 2] the targets' winsorisation bounds the calibrated predictions are
-    clipped to (the critic's, every null's and every random critic's alike)."""
+    clipped to (the critic's, every null's and every random critic's alike). The pooled
+    slopes' CIs are bootstrapped for a confirm (``slope_boot`` True: the label's), always
+    ('always': Section 6's 'slope CIs per component and stratum') or never (False)."""
     names = tuple(names)
     g = np.asarray(g, float).reshape(len(w), -1)
     lam = np.asarray(lam, float).reshape(len(w), -1)
@@ -662,7 +710,8 @@ def c1(g: np.ndarray, lam: np.ndarray, outer: np.ndarray, w: np.ndarray, cluster
     ok = n_rows > 0                     # a component with no row left drops out of the mean
     if not ok.any():
         rec = C1(names, r2c, float("nan"), (float("nan"), float("nan")), {}, {}, sp, sp_ci,
-                 slope, slope_ci, n_rows, "not testable", False, cal, slope_gl, gl_ci, inv_ci)
+                 slope, slope_ci, n_rows, "not testable", False, cal, slope_gl, gl_ci, inv_ci,
+                 int(rows.sum()))
         return rec
     stat = float(r2c[ok].mean())
     st_draws = draws[:, ok].mean(1)
@@ -677,7 +726,8 @@ def c1(g: np.ndarray, lam: np.ndarray, outer: np.ndarray, w: np.ndarray, cluster
         null_diff[k_] = (float(stat - pt_k), dl, dh)
         null_r2c[k_] = null_pt[k_][int(np.argmax(null_pt[k_][:, ok].mean(1)))]
     decision = c1_decide(lo, hi, [v[1] for v in null_diff.values()], sp_ci[ok, 0])
-    if slope_boot and decision == "confirm":     # the label's slope CIs (Section 12 dec. 2)
+    if slope_boot == "always" or (slope_boot and decision == "confirm"):
+        # the label's slope CIs (Section 12 decision 2), or every stratum's (descriptive)
         for k in np.flatnonzero(ok):
             sel = rows & val[:, k]
             ps = pooled_slopes(g[sel, k], lam[sel, k], w[sel], cluster[sel], counts,
@@ -689,7 +739,7 @@ def c1(g: np.ndarray, lam: np.ndarray, outer: np.ndarray, w: np.ndarray, cluster
                  and np.all(gl_ci[ok, 0] >= SCALE_BAND[0])
                  and np.all(inv_ci[ok, 1] <= SCALE_BAND[1]))
     return C1(names, r2c, stat, (lo, hi), null_r2c, null_diff, sp, sp_ci, slope, slope_ci,
-              n_rows, decision, label, cal, slope_gl, gl_ci, inv_ci)
+              n_rows, decision, label, cal, slope_gl, gl_ci, inv_ci, int(rows.sum()))
 
 
 # ------------------------------------------------------------------------- C1 secondaries
@@ -804,21 +854,49 @@ def c1_limit(cal: Calibrated, g: np.ndarray, lam: np.ndarray, outer: np.ndarray,
             "decision": "confirm" if lo > 0 else "not confirmed"}
 
 
+def _passed(ok) -> bool:
+    """A precondition's pass: a scalar boolean (Python or NumPy) that is True. None (not
+    computed), NaN, numbers, strings and arrays of more than one value count as failed."""
+    if ok is None:
+        return False
+    a = np.asarray(ok)
+    return bool(a.shape == () and a.dtype == np.bool_ and bool(a))
+
+
+def c1_own_status(k3b_trained_pass: bool | None, value_accuracy_pass: bool | None) -> str:
+    """C1-own's standing per network (Section 12 decision 3, Section 13 'Built before the
+    tag'): 'secondary' only where the network passed K3b's trained analogue and its critic's
+    value accuracy (``value_accuracy``); otherwise 'descriptive (<the failed
+    preconditions>)', e.g. 'descriptive (value accuracy)'. A precondition not computed
+    (None) counts as failed; NumPy booleans count as booleans (``_passed``)."""
+    failed = [name for name, ok in (("K3b", k3b_trained_pass),
+                                    ("value accuracy", value_accuracy_pass)) if not _passed(ok)]
+    return "secondary" if not failed else f"descriptive ({', '.join(failed)})"
+
+
 def c1_own(g: np.ndarray, lam_own: np.ndarray, outer: np.ndarray, w: np.ndarray,
            cluster: np.ndarray, n_clusters: int, direction: np.ndarray, rows: np.ndarray,
            k3b_trained_pass: bool, names: Sequence[str] = K_P,
-           counts: np.ndarray | None = None, valid: np.ndarray | None = None) -> dict:
+           counts: np.ndarray | None = None, valid: np.ndarray | None = None,
+           value_accuracy_pass: bool | None = None) -> dict:
     """C1-own (Section 6, Section 12 decision 3): C1's bands and sign rules with the policy's
     own costate lambda^own (``own.own_costate``) in place of lambda*, on the rows where it was
     computed on a valid run; a pre-registered secondary only where the network passed K3b's
-    trained analogue (otherwise descriptive). No nulls: it is the first link of the
-    decomposition (critic against its own policy)."""
+    trained analogue and its critic's value accuracy (Section 13: a precondition for
+    C1-own's validity), otherwise descriptive (``c1_own_status``). No nulls: it is the first
+    link of the decomposition (critic against its own policy)."""
+    status = c1_own_status(k3b_trained_pass, value_accuracy_pass)
+    validity = {"k3b_trained": None if k3b_trained_pass is None else _passed(k3b_trained_pass),
+                "value_accuracy": None if value_accuracy_pass is None
+                else _passed(value_accuracy_pass)}
     ok = np.asarray(rows, bool) & np.all(np.isfinite(lam_own), axis=1)
     if ok.sum() < 10:
-        return {"decision": "not testable", "n": int(ok.sum())}
+        return {"decision": "not testable", "n": int(ok.sum()), "status": status,
+                "validity": validity}
     c = c1(g, lam_own, outer, w, cluster, n_clusters, direction, ok, None, valid, names, counts)
     rec = c.record()
-    rec["status"] = "secondary" if k3b_trained_pass else "descriptive"
+    rec["status"] = status
+    rec["validity"] = validity
     return rec
 
 
@@ -886,6 +964,7 @@ def c2_network(h3: np.ndarray, random_h3: Sequence[np.ndarray], z: np.ndarray, m
     gn = PB.c2(h3[rows], [r[rows] for r in random_h3], z[rows], m[rows], Y, sub, w,
                np.asarray(direction)[rows], cols, passing, None, counts, grid, h_grid, mask=mk)
     rec = gn.record()
+    rec["n_stratum"] = int(rows.sum())
     if mk is not None:
         rec["scored_rows"] = mk.sum(0).tolist()
     return rec
@@ -904,6 +983,7 @@ def c2_sw_network(h3: np.ndarray, random_h3: Sequence[np.ndarray], z: np.ndarray
     gn = PB.c2_sw(h3[rows], [r[rows] for r in random_h3], z[rows], sigma_pedal[rows], sub, w,
                   None, counts, grid, h_grid)
     rec = gn.record()
+    rec["n_stratum"] = int(rows.sum())
     rec["spearman_margin"] = PB.wspearman(np.asarray(m_pedal)[rows] - 1.0,
                                           np.asarray(sigma_pedal)[rows], w)
     return rec
@@ -1145,28 +1225,196 @@ def calibrated_agreement(x: np.ndarray, target: np.ndarray, outer: np.ndarray, w
             "n": int(sel.sum())}
 
 
-def value_accuracy(v_critic: np.ndarray, v_det: np.ndarray, w: np.ndarray,
-                   threshold: float = VALUE_ACCURACY_R2) -> dict:
-    """Section 3.3 'Value accuracy': R2 of sigma_R V_c against the deterministic policy's
-    discounted return on the same states; 'values fitted' readings need R2 >= 0.8."""
-    v_critic, v_det = np.asarray(v_critic, float), np.asarray(v_det, float)
-    ok = np.isfinite(v_critic) & np.isfinite(v_det)
-    r = float(PB.r2(v_det[ok], v_critic[ok], np.asarray(w)[ok])[0])
-    return {"r2": r, "pass": bool(r >= threshold), "n": int(ok.sum())}
+def value_accuracy(v_critic: np.ndarray, v_target: np.ndarray | None, outer: np.ndarray,
+                   w: np.ndarray, rows: np.ndarray | None = None,
+                   cluster: np.ndarray | None = None, n_clusters: int | None = None,
+                   counts: np.ndarray | None = None, threshold: float = VALUE_ACCURACY_R2,
+                   n_folds: int = ST.N_FOLDS, target_name: str = VALUE_TARGET,
+                   rows_name: str = VALUE_ROWS) -> dict:
+    """Value accuracy (Section 3.3 'Value accuracy', Section 12 decision 7; Section 13 'Built
+    before the tag': a precondition for C1-own's validity): the out-of-fold R2 of the critic's
+    value sigma_R V_c (reward units, ``critic.Pullback.value``) against ``v_target`` on
+    ``rows``, with the frozen outer folds ``outer``. The decision's target is the
+    deterministic policy's own discounted return from those states (``VALUE_TARGET``,
+    ``own.own_return``, on the own stage's rows, ``VALUE_ROWS``); the optimum's
+    horizon-corrected window value V*inf_t on T's interior (``VALUE_TARGET_VSTAR``) is scored
+    the same way as a descriptive. (The critic regresses on neither: it is fitted to its
+    stochastic training policy's bootstrapped returns.) Per held-out fold, C1's affine
+    calibration (``calibrate``: slope >= 0, the training-fold mean intercept) of the target on
+    sigma_R V_c is fitted on the other folds' rows and predicts the fold's rows; R2 = 1 -
+    SSE/SST pooled over the folds, under the metric's weights ``w``. Passes at R2 >=
+    ``threshold`` (0.8) with every requested row (``rows`` with w > 0) scored: a requested row
+    without a finite critic value or target ('n_missing', 'n_missing_target') or without an
+    out-of-fold prediction (a fold that cannot be calibrated) fails it. An anti-aligned or
+    uninformative value scores R2 <= about 0. Reported beside it (descriptive): the raw R2
+    (sigma_R V_c read as the target itself, no calibration), the weighted Spearman, the
+    per-fold slopes and intercepts and, with ``cluster``, ``n_clusters`` and ``counts``, the
+    cluster-bootstrap CI (the rule reads the point)."""
+    v = np.asarray(v_critic, float).ravel()
+    w = np.asarray(w, float)
+    out = {"threshold": float(threshold), "target": target_name, "rows": rows_name}
+    if v_target is None:
+        return {**out, "r2": float("nan"), "pass": False, "n": 0,
+                "reason": f"no {target_name} column"}
+    t = np.asarray(v_target, float).ravel()
+    rows = np.ones(len(t), bool) if rows is None else np.asarray(rows, bool)
+    req = rows & (w > 0)
+    miss = int((req & ~np.isfinite(v)).sum())
+    miss_t = int((req & ~np.isfinite(t)).sum())
+    ok = req & np.isfinite(v) & np.isfinite(t)
+    out.update(n=int(ok.sum()), n_requested=int(req.sum()), n_missing=miss,
+               n_missing_target=miss_t)
+    if ok.sum() < 3:
+        return {**out, "r2": float("nan"), "pass": False, "reason": "fewer than 3 rows"}
+    cal = calibrate(v[:, None], t[:, None], outer, w, ok, ok[:, None], n_folds)
+    pred = cal.pred[:, 0]
+    sel = ok & np.isfinite(pred)
+    r = float(PB.r2(t[sel], pred[sel], w[sel])[0])
+    out.update(r2=r, n_scored=int(sel.sum()),
+               raw_r2=float(PB.r2(t[ok], v[ok], w[ok])[0]),
+               spearman=PB.wspearman(v[ok], t[ok], w[ok]),
+               slope=cal.b[:, 0].tolist(), intercept=cal.a[:, 0, 0].tolist(),
+               clamped=cal.clamped[:, 0].tolist())
+    out["pass"] = bool(np.isfinite(r) and r >= threshold and miss == 0 and miss_t == 0
+                       and sel.sum() == ok.sum())
+    why = [f"{miss} of {int(req.sum())} rows lack a finite critic value" if miss else "",
+           f"{miss_t} of {int(req.sum())} rows lack a finite target" if miss_t else "",
+           f"{int(ok.sum() - sel.sum())} rows without an out-of-fold prediction"
+           if sel.sum() != ok.sum() else ""]
+    if any(why):
+        out["reason"] = "; ".join(x for x in why if x)
+    if cluster is not None and n_clusters is not None and counts is not None:
+        _, dr = boot_r2(t[sel], [pred[sel]], w[sel], np.asarray(cluster)[sel], int(n_clusters),
+                        counts)
+        out["ci"] = list(_ci(dr[:, 0]))
+    return out
 
 
-def by_strata(tab, mask_names: Sequence[str], fn) -> dict:
-    """fn(mask) for every boolean stratum column (and each phase) of T's table: the
-    descriptive breakdowns of Section 4 'Strata'."""
-    out = {}
-    for name in mask_names:
-        out[name] = fn(np.asarray(tab[name], bool))
-    for ph in ST.PHASES:
-        out[f"phase:{ph}"] = fn(np.asarray(tab["phase"]) == ph)
-    for d in (1, -1):
-        out[f"direction:{d}"] = fn(np.asarray(tab["direction"]) == d)
-    for W in (400, 800):
-        out[f"W:{W}"] = fn(np.asarray(tab["W"]) == W)
+# ------------------------------------------------------------------------- strata tables
+#
+# Sections 4/6/12/13's descriptive per-stratum tables, per network and hypothesis: each
+# hypothesis' statistic recomputed on each stratum with the same statistics (Section 12
+# decision 4: 'reported with the same statistics, descriptively'), never a decision. A
+# stratum is '&'-joined terms over T's columns (``stratum_rows``): a boolean column
+# (``states.key_rows``' strata, or a per-network column, ``PER_NETWORK_COLUMNS``), '~' for
+# its complement, 'phase:<p>' (``states.PHASES``), 'direction:<+1|-1>' or 'W:<400|800>'.
+# 'interior' is k = 10 (``states.INTERIOR_K``, the primary), 'interior20' k = 20;
+# 'corner_band' is Section 12's corner-phase stratum s_c0 <= s < s_c1 (all of T's states
+# there, and its interior part); the braking and non-braking keys are the interior's
+# sub-scores (Section 4); left and right ('direction:'), W 400 and 800, pedal-saturated and
+# kappa-clipped are Section 4's 'Strata' (kappa clipping under the network's own obs_rms,
+# ``inputs.flags``). C2-sw's tables start from its decision stratum (the pedal-switching
+# steps, Section 13) and report it per phase (Section 6: approach and exit separately). Its
+# full-throttle rows also fall in 'corner' (the apex to s_c1) and in 'braking' (from s_c0 on
+# a key without a sustained brake, ``states.phases``), so all four phase rows are listed and
+# they split the stratum; 'exit' means s >= s_c1 in every table. The raw pedal-saturated flag
+# is descriptive (Section 13). Each list is frozen in its order: the C1 rows' bootstrap
+# streams are ``STRATUM_SEED`` + the row's index.
+
+PER_NETWORK_COLUMNS = ("kappa_clipped",)   # strata columns from each network's own flags
+C1_STRATA = ("interior", "interior20", "near_limit", "contact", "corner_band",
+             "interior&corner_band", "interior&phase:approach", "interior&phase:braking",
+             "interior&phase:corner", "interior&phase:exit", "interior&braking_key",
+             "interior&~braking_key", "interior&direction:1", "interior&direction:-1",
+             "interior&W:400", "interior&W:800", "interior&pedal_saturated",
+             "interior&kappa_clipped")
+C2_STRATA = ("interior", "interior20", "near_limit", "contact", "corner_band",
+             "interior&corner_band", "interior&braking_key", "interior&~braking_key",
+             "interior&phase:approach", "interior&phase:braking", "interior&phase:corner",
+             "interior&phase:exit", "interior&direction:1", "interior&direction:-1",
+             "interior&W:400", "interior&W:800", "interior&pedal_saturated",
+             "interior&kappa_clipped")
+C2SW_STRATA = (ST.SW_STRATUM, f"{ST.SW_STRATUM}&phase:approach",
+               f"{ST.SW_STRATUM}&phase:braking", f"{ST.SW_STRATUM}&phase:corner",
+               f"{ST.SW_STRATUM}&phase:exit", "pedal_saturated",
+               f"{ST.SW_STRATUM}&braking_key", f"{ST.SW_STRATUM}&~braking_key",
+               f"{ST.SW_STRATUM}&direction:1", f"{ST.SW_STRATUM}&direction:-1",
+               f"{ST.SW_STRATUM}&W:400", f"{ST.SW_STRATUM}&W:800",
+               f"{ST.SW_STRATUM}&kappa_clipped")
+STRATA = {"C1": C1_STRATA, "C2": C2_STRATA, "C2-sw": C2SW_STRATA}
+PRIMARY_STRATUM = {"C1": "interior", "C2": "interior", "C2-sw": ST.SW_STRATUM}
+STRATUM_SEED = 50             # _subclusters' bootstrap seeds of the strata tables (50 + index)
+
+
+def strata_tab(tab, flags: dict | None = None) -> dict:
+    """T's columns plus the per-network strata columns (``PER_NETWORK_COLUMNS``) from one
+    network's ``inputs.flags`` (absent ones stay absent: their strata are 'not testable')."""
+    out = dict(tab)
+    for c in PER_NETWORK_COLUMNS:
+        if flags is not None and c in flags:
+            out[c] = np.asarray(flags[c], bool)
+    return out
+
+
+def _terms(expr: str) -> list[tuple[bool, str]]:
+    return [(t.startswith("~"), t.removeprefix("~")) for t in str(expr).split("&")]
+
+
+def stratum_rows(tab, expr: str) -> np.ndarray:
+    """[n] bool: the rows of one stratum expression (the section comment above)."""
+    n = len(np.asarray(tab["t"]))
+    m = np.ones(n, bool)
+    for neg, term in _terms(expr):
+        if term.startswith("phase:"):
+            v = np.asarray(tab["phase"]).astype(str) == term[len("phase:"):]
+        elif term.startswith("direction:"):
+            v = np.asarray(tab["direction"]) == int(term[len("direction:"):])
+        elif term.startswith("W:"):
+            v = np.asarray(tab["W"]) == int(term[len("W:"):])
+        elif term in tab:
+            v = np.asarray(tab[term], bool)
+        else:
+            raise KeyError(f"stratum {expr!r}: no column {term!r}")
+        m &= ~v if neg else v
+    return m
+
+
+def missing_columns(tab, expr: str) -> list[str]:
+    """The per-network columns a stratum needs that ``tab`` lacks (``strata_tab``)."""
+    return [t for _, t in _terms(expr) if t in PER_NETWORK_COLUMNS and t not in tab]
+
+
+def strata_rows(tab, names: Sequence[str]) -> dict[str, np.ndarray | None]:
+    """Each stratum's rows; None where a per-network column is absent (``missing_columns``).
+    Any other unknown term raises (``stratum_rows``)."""
+    return {nm: None if missing_columns(tab, nm) else stratum_rows(tab, nm) for nm in names}
+
+
+def strata_counts(tab, names: Sequence[str]) -> dict[str, int | None]:
+    """Each stratum's row count (None without its per-network column): coverage only."""
+    return {nm: None if r is None else int(r.sum()) for nm, r in strata_rows(tab, names).items()}
+
+
+_C1_FIELDS = ("names", "r2c", "stat", "ci", "spearman", "spearman_ci", "slope", "slope_ci",
+              "slope_gl", "slope_gl_ci", "inv_slope_lg_ci", "n_rows", "null_diff", "reason")
+_C2_FIELDS = ("names", "passing", "r2_base", "r2_full", "gain", "raw", "partial", "stat", "ci",
+              "scored_rows", "spearman_margin", "reason")
+
+
+def stratum_record(hypothesis: str, rec: dict, rows: np.ndarray | None, tab,
+                   primary: bool = False) -> dict:
+    """One row of a hypothesis' strata table from its record on that stratum (``c1``'s
+    ``record()``, ``c2_network``, ``c2_sw_network``): the statistic and its CI, per
+    component (R2_c, Spearman and the pooled slopes with their CIs for C1; the gain and the
+    R2s for C2 and C2-sw), the nulls' paired differences (C1), the rows, keys and
+    geometries, and the band the statistic falls in there ('band': descriptive, never a
+    decision; 'primary' marks the decision stratum's own row). ``rows`` None: a stratum whose
+    per-network column is absent ('not testable'). A record computed on other rows than the
+    stratum's (its 'n_stratum') raises: a row is never written under the wrong stratum."""
+    if rows is None:
+        return {"primary": False, "descriptive": True, "n": None, "keys": None,
+                "geometries": None, "band": "not testable",
+                "reason": str(rec.get("reason", "a per-network column is absent"))}
+    rows = np.asarray(rows, bool)
+    if rec.get("n_stratum") is not None and int(rec["n_stratum"]) != int(rows.sum()):
+        raise ValueError(f"{hypothesis}: a record of {rec['n_stratum']} rows written under a "
+                         f"stratum of {int(rows.sum())}")
+    fields = _C1_FIELDS if hypothesis == "C1" else _C2_FIELDS
+    out = {"primary": bool(primary), "descriptive": not primary, "n": int(rows.sum()),
+           "keys": len(np.unique(np.asarray(tab["key_id"])[rows])),
+           "geometries": len(np.unique(ST.geometry_index(tab)[rows])) if rows.any() else 0}
+    out.update({k: rec[k] for k in fields if k in rec})
+    out["band"] = str(rec.get("decision", "not testable"))
     return out
 
 

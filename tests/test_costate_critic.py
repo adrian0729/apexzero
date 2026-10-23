@@ -251,8 +251,9 @@ def test_planted_linear_critics_have_their_closed_forms(dry):
     h = lin["heads"]
     assert h["n_heads"] == 2 and max(h["head0_xi"], h["head1"], h["main"]) <= C.LINEAR_TOL
     assert max(lin["composed"].values()) <= C.LINEAR_TOL, lin["composed"]
+    assert set(lin["fd"]) == set(C.VARIANTS)
     for v, r in lin["fd"].items():
-        assert r["max_err"] < C.FD_TOL and r["share"] == 1.0, (v, r)
+        assert r["max_err"] < C.FD_TOLS[v] and r["share"] == 1.0, (v, r)
 
 
 def test_state_critic_and_the_accel_normal_plant(dry):
@@ -271,10 +272,33 @@ def test_state_critic_and_the_accel_normal_plant(dry):
         assert r["g"] <= C.PLANT_TOL and r["pi"] <= C.PLANT_TOL, (c, r)
         assert min(r["g_held"], r["pi_held"], r["g_xprev"]) > 1e-3, (c, r)
         assert r["accel_sens"] == pytest.approx(0.7 * c, rel=1e-12)
-    r = pl["c=20"]
-    for v in ("fd_manifold", "fd_held"):
-        assert r[v]["max_err"] < C.FD_TOL and r[v]["share"] == 1.0, (v, r[v])
-    assert r["fd_manifold"]["newton"] <= 1e-12
+    for c in (0.5, 20.0):
+        r = pl[f"c={c:g}"]
+        for v in C.VARIANTS:
+            assert r[f"fd_{v}"]["max_err"] < C.FD_TOLS[v] and r[f"fd_{v}"]["share"] == 1.0, (c, v)
+        assert r["fd_manifold"]["newton"] <= 1e-12
+
+
+def test_every_planted_wrong_pullback_exceeds_the_floor(dry):
+    """K3's pass rule (design v2.2 Section 13): on the planted critics whose forms differ by
+    construction (the accel-normal plants with c > 0, the random linear critic over every
+    channel), every AD form scored on every other form's finite differences, and the
+    accel-normal plants' wrong closed forms, exceed WRONG_MIN = 1e-4 (ten times the
+    on-manifold tolerance 1e-5); on every live row too, not only the worst one."""
+    d = dry["plants"]
+    w = d["wrong"]
+    assert set(w) == {"linear", "c=0.5", "c=20"}
+    for p, rec in w.items():
+        want = set(C.WRONG_PAIRS) | ({f"closed:{f}" for f in C.WRONG_CLOSED_FORMS}
+                                     if p != "linear" else set())
+        assert set(rec) == want, p
+        for k, v in rec.items():
+            assert v["max"] > C.WRONG_MIN, (p, k, v)
+            if v["row_min"] is not None:
+                assert v["row_min"] > C.WRONG_MIN and v["n"] == 5, (p, k, v)
+    assert d["wrong_min"] == min(v["max"] for r in w.values() for v in r.values())
+    assert d["wrong_min"] > 10 * C.WRONG_MIN
+    assert d["wrong_min_tol"] == 1e-4 == 10 * C.FD_TOL_MANIFOLD    # Section 13: ten times
 
 
 @needs_g1
@@ -305,16 +329,20 @@ def test_random_critic_pullbacks_match_finite_differences(random_run):
     obs_rms: the keys lie on the env's manifold (body defect ~1e-11), M_x's (s, n, xi)
     columns vanish, J_z and the pullbacks of a random-init critic with heads (main V and
     every head; primary, accel-held and x_{t-1}-held) match Richardson finite differences
-    (field-vector error < 1e-6 where the structure is unchanged, most comparisons counted),
-    and the hand chain rule equals the composition's autodiff."""
+    (field-vector error below the form's tolerance where the structure is unchanged: 1e-6
+    for the held forms, 1e-5 on the manifold, design v2.2 Section 13; most comparisons
+    counted), and the hand chain rule equals the composition's autodiff."""
     r = random_run
     assert r["defect_body"] <= 1e-9 and r["frenet_leak"] <= 1e-14, r
     assert sum(k["n"] for k in r["keys"]) >= 60
     assert r["jz"]["max_err"] < C.FD_TOL and r["jz"]["share"] >= 0.9, r["jz"]
+    assert set(r["fd"]) == set(C.VARIANTS)
     for v, f in r["fd"].items():
-        assert f["main"] < C.FD_TOL and f["heads"] < C.FD_TOL, (v, f)
+        assert f["main"] < C.FD_TOLS[v] and f["heads"] < C.FD_TOLS[v], (v, f)
+        assert f["tol"] == C.FD_TOLS[v]
         assert f["share_main"] >= 0.9 and f["share_heads"] >= 0.9, (v, f)
         assert f["newton"] <= 1e-11, (v, f)
+    assert set(r["fd_cross"]) == set(C.WRONG_PAIRS)     # descriptive on a random critic
     for c in r["composed"]:
         assert max(c.values()) <= 1e-12, c
 

@@ -8,7 +8,9 @@ v2.1, Section 6 with Section 12's decisions).
 - C1's bands: a gradient equal to lambda (plus noise) confirms beyond its nulls and earns the
   label at scale; 10 lambda confirms without the label; -lambda and pure noise refute; a null
   as good as the gradient blocks the confirm; C1-pattern, C1-heads (planted heads with a
-  closed form), C1-limit's sign, C1-dev's 2-of-3 rule, the value-accuracy threshold.
+  closed form), C1-limit's sign, C1-dev's 2-of-3 rule.
+- Value accuracy (out of fold on the stratum, the frozen folds; planted values pass, random,
+  anti-aligned and weak ones fail) and C1-own's standing; the strata tables' rows.
 - C3-w: the stratified permutation p against exact enumeration, the shift-inverted upper bound
   and its decisions; C3-int's double centring and a planted pre-signed association; R18's
   variant rule; C2 'not testable' without a component above the power floor.
@@ -209,10 +211,233 @@ def test_c1_dev_and_value_accuracy():
     assert out["rho"]["G1"] == pytest.approx(1.0) and out["rho"]["G2s1"] == pytest.approx(-1.0)
     assert out["variants"]["v1"] == "confirm"
     assert out["variants"]["v2"] == "not confirmed" and out["variants"]["v3"] == "not testable"
+
+
+def test_value_accuracy_is_out_of_fold_on_the_stratum(world):
+    """Value accuracy (Section 3.3 'Value accuracy', Section 12 decision 7, Section 13 'Built
+    before the tag'): the out-of-fold R2 of sigma_R V_c against a target (the deterministic
+    policy's own return in the decision, ``VALUE_TARGET``) on the requested rows, with the
+    frozen folds and C1's affine calibration. A planted critic, the target plus small noise,
+    passes, also scaled and offset (the calibration absorbs both, the raw R2 does not);
+    anti-aligned, pure-noise and weak values fail; the cut is 0.8 by behaviour, on each side
+    of it, and the comparison reads ``threshold``; the held-out fold's target never enters its
+    own calibration, through value_accuracy itself; rows outside the stratum do not count; a
+    requested row without a finite critic value or target, or without an out-of-fold
+    prediction, fails it; a missing target fails. C1-own's standing follows, NumPy booleans
+    counting as booleans."""
+    tab, lam, w, cl, G, outer, counts = world
     rng = np.random.default_rng(6)
-    v = rng.normal(size=500)
-    assert AN.value_accuracy(v + 0.1 * rng.normal(size=500), v, np.ones(500))["pass"]
-    assert not AN.value_accuracy(v + 1.0 * rng.normal(size=500), v, np.ones(500))["pass"]
+    n = len(w)
+    vstar = 60.0 + 10.0 * lam[:, 3] + 3.0 * lam[:, 0] + 0.5 * rng.normal(size=n)
+    rows = rng.random(n) < 0.6
+    wi = ST.stratum_weights(tab, rows)
+    sd = vstar[rows].std()
+
+    def va(v, target=vstar, **kw):
+        return AN.value_accuracy(v, target, outer, wi, rows, cl, G, counts, **kw)
+
+    v_good = vstar + 0.1 * sd * rng.normal(size=n)
+    good = va(v_good)
+    assert good["pass"] and good["r2"] > 0.97 and good["ci"][0] > 0.95
+    assert good["n"] == good["n_scored"] == good["n_requested"] == rows.sum()
+    assert good["n_missing"] == good["n_missing_target"] == 0 and "reason" not in good
+    assert good["threshold"] == 0.8 and AN.VALUE_ACCURACY_R2 == 0.8
+    assert good["target"] == AN.VALUE_TARGET == "v_own_det" and good["rows"] == "own"
+    vs = va(v_good, target_name="v_star_inf", rows_name="interior")
+    assert vs["target"] == "v_star_inf" and vs["rows"] == "interior" and vs["pass"]
+    assert np.allclose(good["slope"], 1.0, atol=0.05)
+    scaled = va(0.4 * (vstar + 0.1 * sd * rng.normal(size=n)) - 15.0)
+    assert scaled["pass"] and scaled["raw_r2"] < 0.0 and np.allclose(scaled["slope"], 2.5,
+                                                                      rtol=0.05)
+    # an in-sample affine fit cannot score below 0 (a clamped slope predicts the weighted
+    # mean); out of fold the anti-aligned value does
+    anti = va(-vstar)
+    assert not anti["pass"] and anti["r2"] < -1e-3 and all(anti["clamped"])
+    assert not va(rng.normal(size=n))["pass"]
+    weak = va(vstar + 1.0 * sd * rng.normal(size=n))
+    assert not weak["pass"] and 0.3 < weak["r2"] < 0.7
+    # the cut by behaviour: target plus a sd x noise has R2 about 1 / (1 + a^2), 0.862 at
+    # a = 0.4 (passes) and 0.768 at a = 0.55 (fails); the comparison reads threshold
+    e = np.random.default_rng(11).normal(size=n)
+    hi, lo = va(vstar + 0.4 * sd * e), va(vstar + 0.55 * sd * e)
+    assert hi["pass"] and 0.82 < hi["r2"] < 0.9, hi["r2"]
+    assert not lo["pass"] and 0.72 < lo["r2"] < 0.8, lo["r2"]
+    assert va(vstar + 0.55 * sd * e, threshold=0.7)["pass"]
+    r = lo["r2"]
+    assert va(vstar + 0.55 * sd * e, threshold=r)["pass"]
+    assert not va(vstar + 0.55 * sd * e, threshold=np.nextafter(r, 2.0))["pass"]
+    # out of fold, through value_accuracy: fold 0's calibration never sees fold 0's targets
+    t2 = vstar.copy()
+    t2[outer == 0] += 1e3 * rng.normal(size=int((outer == 0).sum()))
+    a, b = va(v_good), va(v_good, target=t2)
+    assert np.isclose(a["slope"][0], b["slope"][0]) and np.isclose(a["intercept"][0],
+                                                                   b["intercept"][0])
+    assert not np.isclose(a["slope"][1], b["slope"][1])
+    a, b = (AN.calibrate(vstar[:, None], t[:, None], outer, wi, rows, rows[:, None])
+            for t in (vstar, t2))
+    assert np.allclose(a.pred[outer == 0], b.pred[outer == 0])
+    # outside the stratum nothing counts
+    v = v_good
+    bad = v.copy()
+    bad[~rows] = 1e6
+    assert va(bad)["r2"] == pytest.approx(va(v)["r2"], rel=1e-12)
+    out_only = v.copy()
+    out_only[~rows] = np.nan
+    assert va(out_only)["pass"] and va(out_only)["n_missing"] == 0
+    # every requested row scored: a good value with holes on the stratum fails, the holes
+    # counted; so does a target with holes
+    holes = v.copy()
+    hit = np.flatnonzero(rows)[::3]
+    holes[hit] = np.nan
+    h = va(holes)
+    assert not h["pass"] and h["n_missing"] == len(hit) and h["r2"] > 0.95
+    assert h["n_requested"] == rows.sum() and "lack a finite critic value" in h["reason"]
+    th = vstar.copy()
+    th[hit[:2]] = np.nan
+    ht = va(v, target=th)
+    assert not ht["pass"] and ht["n_missing_target"] == 2 and "finite target" in ht["reason"]
+    # ... and so does a fold that cannot be calibrated (fold 0 trained on 2 rows), even with
+    # no threshold at all
+    r2m = outer == 0
+    r2m[np.flatnonzero(outer == 1)[:2]] = True
+    o = AN.value_accuracy(v, vstar, outer, ST.stratum_weights(tab, r2m), r2m, threshold=-np.inf)
+    assert o["n_scored"] < o["n"] and np.isfinite(o["r2"]) and not o["pass"]
+    assert "out-of-fold prediction" in o["reason"]
+    miss = AN.value_accuracy(v, None, outer, wi, rows)
+    assert not miss["pass"] and "v_own_det" in miss["reason"]
+    # C1-own: a secondary only with both preconditions; NumPy booleans are booleans, and
+    # anything else (None, NaN, numbers, strings, arrays) is a failed precondition
+    assert AN.c1_own_status(True, True) == "secondary"
+    assert AN.c1_own_status(True, False) == "descriptive (value accuracy)"
+    assert AN.c1_own_status(False, True) == "descriptive (K3b)"
+    assert AN.c1_own_status(False, None) == "descriptive (K3b, value accuracy)"
+    assert AN.c1_own_status(np.True_, np.bool_(True)) == "secondary"
+    assert AN.c1_own_status(np.array(True), True) == "secondary"
+    assert AN.c1_own_status(np.True_, np.bool_(False)) == "descriptive (value accuracy)"
+    for odd in (float("nan"), 1.0, 1, "yes", np.array([True, True])):
+        assert AN.c1_own_status(odd, True) == "descriptive (K3b)", odd
+    g = lam + 0.1 * rng.normal(size=lam.shape)
+    d = tab["direction"]
+    allr = np.ones(n, bool)
+    for k3b, vok, want, valid in ((True, True, "secondary", True),
+                                  (True, False, "descriptive (value accuracy)", False),
+                                  (True, None, "descriptive (value accuracy)", None),
+                                  (np.True_, np.bool_(True), "secondary", True),
+                                  (np.True_, float("nan"), "descriptive (value accuracy)", False)):
+        rec = AN.c1_own(g, lam, outer, w, cl, G, d, allr, k3b, K_P, counts,
+                        value_accuracy_pass=vok)
+        assert rec["status"] == want and rec["validity"]["value_accuracy"] is valid
+        assert rec["validity"]["k3b_trained"] is True
+    few = AN.c1_own(g, lam, outer, w, cl, G, d, np.arange(n) < 5, True, K_P, counts,
+                    value_accuracy_pass=False)
+    assert few["decision"] == "not testable" and few["status"] == "descriptive (value accuracy)"
+
+
+def test_strata_rows_and_their_table_records(world):
+    """The strata tables' row expressions ('&'-joined columns, '~', 'phase:', 'direction:',
+    'W:') and a table row's fields: the statistic, its CI and per-component values, the rows,
+    keys and geometries, the band (descriptive) and the primary mark."""
+    tab, lam, w, cl, G, outer, counts = world
+    rng = np.random.default_rng(8)
+    n = len(w)
+    t = {**tab, "t": np.arange(n), "interior": rng.random(n) < 0.5,
+         "braking_key": np.repeat(rng.random(n // 12) < 0.7, 12),
+         "phase": rng.choice(np.array(["approach", "braking", "corner", "exit"]), n),
+         "W": rng.choice([400, 800], n)}
+    m = AN.stratum_rows(t, "interior&~braking_key&phase:exit")
+    assert np.array_equal(m, t["interior"] & ~t["braking_key"] & (t["phase"] == "exit"))
+    assert np.array_equal(AN.stratum_rows(t, "direction:-1&W:800"),
+                          (t["direction"] == -1) & (t["W"] == 800))
+    with pytest.raises(KeyError, match="no column"):
+        AN.stratum_rows(t, "interior&nonsense")
+    assert set(AN.strata_rows(t, ("interior", "interior&braking_key"))) == {
+        "interior", "interior&braking_key"}
+    for h, names in AN.STRATA.items():
+        assert names[0] == AN.PRIMARY_STRATUM[h] and len(set(names)) == len(names)
+        assert set(AN.strata_rows({**t, "near_limit": ~t["interior"], "contact": t["interior"],
+                                   "interior20": t["interior"], "corner_band": t["interior"],
+                                   "pedal_saturated": t["interior"], ST.SW_STRATUM: t["interior"],
+                                   "kappa_clipped": t["interior"]}, names)) == set(names)
+    rows = t["interior"]
+    g = lam + 0.2 * rng.normal(size=lam.shape)
+    c = AN.c1(g, lam, outer, ST.stratum_weights(t, rows), cl, G, t["direction"], rows, None,
+              None, K_P, counts, slope_boot="always")
+    assert c.decision == "confirm" and np.all(np.isfinite(c.slope_ci))
+    r = AN.stratum_record("C1", c.record(), rows, t, primary=True)
+    assert r["primary"] and not r["descriptive"] and r["band"] == "confirm"
+    assert r["n"] == rows.sum() and r["stat"] == c.stat and r["keys"] == len(
+        np.unique(t["key_id"][rows])) and r["geometries"] == G
+    assert len(r["slope_ci"]) == 4 and "calibration" not in r
+    # without 'always' a non-confirm leaves the slope CIs empty (the label's only); with it
+    # the same non-confirm carries them (Section 6: 'slope CIs per component and stratum')
+    noise = rng.normal(size=lam.shape)
+    c0 = AN.c1(noise, lam, outer, ST.stratum_weights(t, rows), cl, G,
+               t["direction"], rows, None, None, K_P, counts)
+    assert c0.decision != "confirm" and np.all(np.isnan(c0.slope_ci))
+    ca = AN.c1(noise, lam, outer, ST.stratum_weights(t, rows), cl, G, t["direction"], rows, None,
+               None, K_P, counts, slope_boot="always")
+    assert ca.decision == c0.decision != "confirm" and not ca.label
+    assert np.all(np.isfinite(ca.slope_ci)) and np.all(np.isfinite(ca.slope_gl_ci))
+    e = AN.stratum_record("C2", {"decision": "not testable", "reason": "x"}, np.zeros(n, bool), t)
+    assert e["descriptive"] and e["band"] == "not testable" and e["n"] == 0 and e["reason"] == "x"
+    # a record computed on other rows than its stratum's is never written under it
+    assert c.record()["n_stratum"] == rows.sum()
+    with pytest.raises(ValueError, match="written under a stratum"):
+        AN.stratum_record("C1", c.record(), ~rows, t)
+    with pytest.raises(ValueError, match="written under a stratum"):
+        AN.stratum_record("C2-sw", {"decision": "refute", "n_stratum": 3}, rows, t)
+    # the per-network kappa-clipped column: absent, its strata are None ('not testable');
+    # strata_tab adds it from one network's flags
+    assert AN.PER_NETWORK_COLUMNS == ("kappa_clipped",)
+    got = AN.strata_rows(t, ("interior", "interior&kappa_clipped"))
+    assert got["interior&kappa_clipped"] is None and AN.missing_columns(
+        t, "interior&kappa_clipped") == ["kappa_clipped"]
+    nt = AN.stratum_record("C1", {"reason": "no kappa"}, None, t)
+    assert nt["band"] == "not testable" and nt["n"] is None and not nt["primary"]
+    kc = rng.random(n) < 0.1
+    ts = AN.strata_tab(t, {"kappa_clipped": kc, "observability": None})
+    assert np.array_equal(AN.stratum_rows(ts, "interior&kappa_clipped"), t["interior"] & kc)
+    assert "kappa_clipped" not in t and set(ts) == set(t) | {"kappa_clipped"}
+    assert AN.strata_counts(t, ("interior", "interior&kappa_clipped")) == {
+        "interior": int(t["interior"].sum()), "interior&kappa_clipped": None}
+    with pytest.raises(KeyError, match="no column"):
+        AN.strata_rows(t, ("interior&nonsense",))     # only per-network columns may be absent
+
+
+def test_the_frozen_strata_lists():
+    """The strata tables' lists, pinned literally and in order (frozen into the record at the
+    tag; the C1 rows' bootstrap streams are STRATUM_SEED + the row's index, so order matters).
+    Sources: Section 12 item 4 (interior20, the corner band); Section 4 'Strata' (near-limit,
+    contact, the phases, left and right, W 400 and 800, pedal-saturated, kappa-clipped) and
+    'Sub-scores' (the braking and non-braking keys); Section 6 (C2-sw's approach and exit
+    reported separately: all four phase parts, which split its stratum); Section 13 (C2-sw's
+    pedal-switching stratum, the raw pedal-saturated flag descriptive)."""
+    kp = ("interior&direction:1", "interior&direction:-1", "interior&W:400", "interior&W:800",
+          "interior&pedal_saturated", "interior&kappa_clipped")
+    ph = ("interior&phase:approach", "interior&phase:braking", "interior&phase:corner",
+          "interior&phase:exit")
+    sw = "pedal_switching"
+    assert AN.STRATA == {
+        "C1": ("interior", "interior20", "near_limit", "contact", "corner_band",
+               "interior&corner_band", *ph, "interior&braking_key", "interior&~braking_key",
+               *kp),
+        "C2": ("interior", "interior20", "near_limit", "contact", "corner_band",
+               "interior&corner_band", "interior&braking_key", "interior&~braking_key", *ph,
+               *kp),
+        "C2-sw": (sw, f"{sw}&phase:approach", f"{sw}&phase:braking", f"{sw}&phase:corner",
+                  f"{sw}&phase:exit", "pedal_saturated", f"{sw}&braking_key",
+                  f"{sw}&~braking_key", f"{sw}&direction:1", f"{sw}&direction:-1",
+                  f"{sw}&W:400", f"{sw}&W:800", f"{sw}&kappa_clipped")}
+    assert AN.PRIMARY_STRATUM == {"C1": "interior", "C2": "interior", "C2-sw": sw}
+    assert AN.STRATUM_SEED == 50 and ST.SW_STRATUM == sw
+    # C2-sw's four phase rows are disjoint and add up to its stratum on any T
+    rng = np.random.default_rng(9)
+    n = 500
+    t = {"t": np.arange(n), sw: rng.random(n) < 0.4,
+         "phase": rng.choice(np.array(ST.PHASES), n)}
+    parts = [AN.stratum_rows(t, f"{sw}&phase:{p}") for p in ST.PHASES]
+    assert np.array_equal(np.sum(parts, 0), t[sw].astype(int))
+    assert set(ST.PHASES) == {"approach", "braking", "corner", "exit"}
 
 
 def _exact_c3(x, y, strata):

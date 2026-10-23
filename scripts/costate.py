@@ -34,13 +34,20 @@ Post-tag stages (refused unless the freeze check passes: ``freeze_problems``):
 
     activations the actors' h1-h3 and m and the critics' layers and heads at T, with the
                 random-init actors' h3 and m on each network's z
-    critic      the trained critics' pullbacks (V and heads) and uniform inside-widening
-                derivatives at T, and the 20 random-init critics' pullbacks
-    own         the policy's own costate (C1-own) at T's interior restarts, every 20th step
+    critic      the trained critics' values and pullbacks (V and heads) and uniform
+                inside-widening derivatives at T, and the 20 random-init critics' pullbacks
+    own         the policy's own costate (C1-own) at T's interior restarts, every 20th step,
+                K3b's trained analogue, and the deterministic policy's own discounted returns
+                from those restarts and from D (up to 1,000 steps or to the strip's end):
+                value accuracy's target
     probes      C2 and C2-sw per decision network, with the pre-registered sensitivity and
                 robustness variants (partitions 1-10, geometry and state weights, the small
                 geometries and the kappa set dropped, braking and non-braking sub-scores)
-    analyse     the analysis: --confirmatory runs once, into outputs/costate/analyse/
+                and their descriptive strata tables
+    analyse     the analysis (C1 and its secondaries, the critic's value accuracy against its
+                own policy's return, which with K3b's trained analogue decides C1-own's
+                standing, and the per-network strata
+                tables of every hypothesis): --confirmatory runs once, into outputs/costate/analyse/
                 decisions.json, only on complete inputs stamped by this code under this tag;
                 a non-confirmatory run computes no decision at all (coverage and plumbing
                 only) until a stamped confirmatory decisions file is committed
@@ -132,6 +139,7 @@ K3B_CELLS = (("linear", 344), ("linear", 345), ("linear", 66), ("accel", 344), (
              ("hybrid", 66))
 K3B_TRAINED_CELLS = (344, 66)   # the trained analogue of K3b (C1-own's validity), per network
 OWN_EVERY = 20                  # Section 3.3: T's interior restarts every 20th step
+                                # (= own.RESTART_EVERY, the record's; checked in the tests)
 
 
 # ------------------------------------------------------------------------- the freeze
@@ -1023,10 +1031,23 @@ def stage_critic(args) -> None:
                    critic_of(ag, world, bank=bank))
 
 
-def own_of(agent, world, every: int = OWN_EVERY, bank=None) -> dict:
+def own_of(agent, world, every: int = OWN_EVERY, bank=None, net=None, keys=None,
+           v_steps: int | None = None) -> dict:
     """lambda^own and pi^own at T's interior states every ``every``-th plan step (restarts
     from x_t with prev_action a*_{t-1}, H = W - t; Section 3.3): on the manifold, with the
-    key row's own M_x and M_a (``own.own_costate``'s maps0), the held forms beside them."""
+    key row's own M_x and M_a (``own.own_costate``'s maps0), the held forms beside them.
+
+    Value accuracy's target (Section 3.3 'Value accuracy'): from the same restarts and from D
+    (every key's t = 0 state with its reset inputs, prev_action = accel = 0), the
+    deterministic policy's own discounted return (``own.own_return``: delta = 0, s_stop =
+    +inf, up to ``v_steps`` = ``own.V_STEPS`` = 1,000 steps or to the strip's end, not W),
+    per row: v_own_det (J), v_own_H, v_own_tail (gamma^H), v_own_valid (no termination
+    within H; a crash is recorded, 'v_own_terminated', and dropped), v_own_strip_end, the
+    descriptive horizon-corrected v_own_inf, and 'v_rows' (the rows asked for). N's states
+    and the D keys' own-run states (Section 3.3 (ii), (iii)) are not built here.
+
+    ``net`` replaces the agent's actor (a random-init or planted control in tests; the
+    agent's own, marked trained, by default); ``keys`` restricts the rows to those key ids."""
     import numpy as np
 
     from apexzero.costate import inputs as IN
@@ -1035,10 +1056,15 @@ def own_of(agent, world, every: int = OWN_EVERY, bank=None) -> dict:
 
     if bank is None:
         bank, _ = IN.design()
-    net = NW.agent_net(agent)
+    net = NW.agent_net(agent) if net is None else net
+    v_steps = OW.V_STEPS if v_steps is None else int(v_steps)
     tab = world.tab
-    rows = np.flatnonzero(np.asarray(tab["interior"], bool) & (np.asarray(tab["t"]) % every == 0)
-                          & (np.asarray(tab["t"]) > 0))
+    t = np.asarray(tab["t"])
+    pick = (np.ones(world.n, bool) if keys is None
+            else np.isin(np.asarray(tab["key_id"]).astype(str), [str(k) for k in keys]))
+    lam_rows = np.asarray(tab["interior"], bool) & (t % every == 0) & (t > 0) & pick
+    v_rows = (lam_rows | (t == 0)) & pick
+    rows = np.flatnonzero(lam_rows)
     lam, lam_h = np.full((world.n, 8), np.nan), np.full((world.n, 8), np.nan)
     pi, pi_h = np.full((world.n, 2), np.nan), np.full((world.n, 2), np.nan)
     valid = np.zeros(world.n, bool)
@@ -1047,16 +1073,38 @@ def own_of(agent, world, every: int = OWN_EVERY, bank=None) -> dict:
         k = by_key[str(tab["key_id"][i])]
         j = int(np.flatnonzero(k.rows == i)[0])
         inp = k.inp.take([j])
-        W, t = int(tab["W"][i]), int(tab["t"][i])
-        li = NW.LoopIn(inp.x[0], inp.prev_action[0], inp.accel[0], np.zeros((W - t, 2)),
+        W, ti = int(tab["W"][i]), int(tab["t"][i])
+        li = NW.LoopIn(inp.x[0], inp.prev_action[0], inp.accel[0], np.zeros((W - ti, 2)),
                        np.int32(0), np.float64(np.inf), NW.ctx64(), NW.context_channels())
         rd = NW.road(bank, int(tab["stim_id"][i]))
-        oc = OW.own_costate(net, rd.base, li, W - t, W - t, reset=bool(k.oj.reset[j]),
+        oc = OW.own_costate(net, rd.base, li, W - ti, W - ti, reset=bool(k.oj.reset[j]),
                             maps0=(k.oj.Mx[j], k.oj.Ma[j]))
         lam[i], pi[i], valid[i] = oc.lam[0], oc.pi, oc.valid_all
         lam_h[i], pi_h[i] = oc.lam_held[0], oc.pi_held
+    # value accuracy's own returns (Section 3.3): T's interior restarts and D
+    vo = {"v_own_det": np.full(world.n, np.nan), "v_own_inf": np.full(world.n, np.nan),
+          "v_own_tail": np.full(world.n, np.nan), "v_own_H": np.zeros(world.n, int),
+          "v_own_valid": np.zeros(world.n, bool), "v_own_terminated": np.zeros(world.n, bool),
+          "v_own_strip_end": np.zeros(world.n, bool)}
+    li0 = NW.LoopIn(np.zeros(8), np.zeros(2), np.zeros(2), np.zeros((v_steps, 2)), np.int32(0),
+                    np.float64(np.inf), NW.ctx64(), NW.context_channels())
+    by_stim: dict = {}                 # one batched loop per road (keys sharing a stimulus)
+    for k in world.keys:
+        js = np.flatnonzero(v_rows[k.rows])
+        if len(js):
+            inp = k.inp.take(js)
+            by_stim.setdefault(int(tab["stim_id"][int(k.rows[js[0]])]), []).append(
+                (np.asarray(k.rows)[js], inp.x, inp.prev_action, inp.accel))
+    for sid, parts in by_stim.items():
+        idx = np.concatenate([q[0] for q in parts])
+        r = OW.own_return(net, NW.road(bank, sid).base, li0,
+                          *(np.concatenate([q[i] for q in parts]) for i in (1, 2, 3)), v_steps)
+        for name, v in (("v_own_det", r.J), ("v_own_inf", r.J_inf), ("v_own_tail", r.tail),
+                        ("v_own_H", r.H), ("v_own_valid", r.valid),
+                        ("v_own_terminated", r.terminated), ("v_own_strip_end", r.strip_end)):
+            vo[name][idx] = v
     return {"lam_own": lam, "pi_own": pi, "lam_own_held": lam_h, "pi_own_held": pi_h,
-            "valid": valid, "rows": rows}
+            "valid": valid, "rows": rows, "v_rows": v_rows, "v_steps": np.int64(v_steps), **vo}
 
 
 def k3b_trained(agent, bank=None, cells=K3B_TRAINED_CELLS, steps: int = 160) -> dict:
@@ -1163,11 +1211,16 @@ def _bounds(frozen: dict, names):
 
 
 def probes_of(acts: dict, world, frozen: dict, rows_c2, rows_sw, valid=None,
-              variants=None) -> dict:
+              variants=None, strata=None, kappa_clipped=None) -> dict:
     """C2 and C2-sw of one network from its activations (``costate.analysis``), with
-    ``valid`` [n, 4] each K_P component's decision rows (``states.decision_mask``), and the
+    ``valid`` [n, 4] each K_P component's decision rows (``states.decision_mask``), the
     pre-registered variants (``variant_specs``; the decoy residuals re-cross-fitted on each
-    partition's folds; weights renormalised on each variant's stratum)."""
+    partition's folds; weights renormalised on each variant's stratum), and C2's and C2-sw's
+    descriptive strata tables (``by_stratum``: ``analysis.STRATA``, or ``strata`` {'C2': names,
+    'C2-sw': names}; partition 0, key weights renormalised on each stratum; a stratum whose
+    rows a variant already scored reuses that record; ``kappa_clipped`` [n] the network's own
+    kappa flags, ``inputs.flags``, for the kappa-clipped strata, 'not testable' without
+    them)."""
     import numpy as np
 
     from apexzero.costate import analysis as AN
@@ -1184,32 +1237,71 @@ def probes_of(acts: dict, world, frozen: dict, rows_c2, rows_sw, valid=None,
     specs = variant_specs(tab, frozen, variants)
     out: dict = {"sensitivity": {}}
     res_by_p: dict = {}
+
+    def residuals(p: int, fo):
+        if p not in res_by_p:
+            res_by_p[p] = ST.cross_fit(ST.decoy_d1(tab), lam, fo.outer, ST.weights(tab, "key"))
+        return res_by_p[p]
+
+    def c2_on(r2, fo, res, scheme="key") -> dict:
+        try:
+            w2 = ST.stratum_weights(tab, r2, scheme)
+            return AN.c2_network(acts["actor_h3"], rnd, z, acts["m"], res.by_fold, fo, None,
+                                 tab["direction"], TG.K_P, frozen["power_floor"], r2,
+                                 weights=w2[r2], mask=valid)
+        except ValueError as e:
+            return {"decision": "not testable", "reason": str(e)}
+
+    def sw_on(rs, fo, scheme="key") -> dict:
+        try:
+            ws = ST.stratum_weights(tab, rs, scheme)
+            return AN.c2_sw_network(acts["actor_h3"], rnd, z, sig, acts["m"][:, 1], fo, ws[rs],
+                                    rs)
+        except ValueError as e:
+            return {"decision": "not testable", "reason": str(e)}
+
+    done: dict = {}            # (hypothesis, rows) -> record, partition 0 under key weights
     for vname, sp in specs.items():
         fo = PB.folds(tab, sp["partition"])
-        if sp["partition"] not in res_by_p:
-            res_by_p[sp["partition"]] = ST.cross_fit(ST.decoy_d1(tab), lam, fo.outer,
-                                                     ST.weights(tab, "key"))
-        res = res_by_p[sp["partition"]]
+        res = residuals(sp["partition"], fo)
         keep = np.ones(world.n, bool) if sp["keep"] is None else np.asarray(sp["keep"], bool)
         r2, rs = np.asarray(rows_c2, bool) & keep, np.asarray(rows_sw, bool) & keep
-        rec: dict = {}
-        try:
-            w2 = ST.stratum_weights(tab, r2, sp["scheme"])
-            rec["C2"] = AN.c2_network(acts["actor_h3"], rnd, z, acts["m"], res.by_fold, fo,
-                                      None, tab["direction"], TG.K_P, frozen["power_floor"],
-                                      r2, weights=w2[r2], mask=valid)
-        except ValueError as e:
-            rec["C2"] = {"decision": "not testable", "reason": str(e)}
-        try:
-            ws = ST.stratum_weights(tab, rs, sp["scheme"])
-            rec["C2-sw"] = AN.c2_sw_network(acts["actor_h3"], rnd, z, sig, acts["m"][:, 1], fo,
-                                            ws[rs], rs)
-        except ValueError as e:
-            rec["C2-sw"] = {"decision": "not testable", "reason": str(e)}
+        rec = {"C2": c2_on(r2, fo, res, sp["scheme"]), "C2-sw": sw_on(rs, fo, sp["scheme"])}
+        if sp["partition"] == 0 and sp["scheme"] == "key":
+            done[("C2", r2.tobytes())], done[("C2-sw", rs.tobytes())] = rec["C2"], rec["C2-sw"]
         if vname == "primary":
             out.update(rec)
         else:
             out["sensitivity"][vname] = rec
+    # the descriptive strata tables (Sections 6, 12 and 13)
+    fo0 = PB.folds(tab, 0)
+    res0 = residuals(0, fo0)
+    decided = {"C2": np.asarray(rows_c2, bool), "C2-sw": np.asarray(rows_sw, bool)}
+    tab_s = AN.strata_tab(tab, None if kappa_clipped is None
+                          else {"kappa_clipped": kappa_clipped})
+    out["by_stratum"] = {}
+    for h in ("C2", "C2-sw"):
+        names = AN.STRATA[h] if strata is None else strata.get(h, ())
+        table = {}
+        for sname, rows in AN.strata_rows(tab_s, names).items():
+            if rows is None:
+                table[sname] = AN.stratum_record(h, {"reason": "no per-network column " + ", ".join(
+                    AN.missing_columns(tab_s, sname))}, None, tab_s)
+                continue
+            rec_s = done.get((h, rows.tobytes()))
+            if rec_s is None and not rows.any():
+                rec_s = {"decision": "not testable", "reason": "no row"}
+            if rec_s is None:
+                try:
+                    rec_s = c2_on(rows, fo0, res0) if h == "C2" else sw_on(rows, fo0)
+                except (ValueError, ArithmeticError, np.linalg.LinAlgError) as e:
+                    # a descriptive row never stops the analysis
+                    rec_s = {"decision": "not testable", "reason": f"{type(e).__name__}: {e}"}
+                done[(h, rows.tobytes())] = rec_s
+            table[sname] = AN.stratum_record(
+                h, rec_s, rows, tab_s, primary=bool(sname == AN.PRIMARY_STRATUM[h]
+                                                    and np.array_equal(rows, decided[h])))
+        out["by_stratum"][h] = table
     parts = [out["sensitivity"][k]["C2"].get("stat") for k in out["sensitivity"]
              if k.startswith("partition")]
     parts = [v for v in parts if v is not None]
@@ -1242,19 +1334,79 @@ def stage_probes(args) -> None:
         valid = ST.decision_mask(tab, ~fl["observability"].s_unobservable,
                                  rec["frozen"].get("k2b_excluded"))
         _write(_out(args, "post") / "probes" / f"{PR.net_file(name)}.json",
-               probes_of(acts, world, rec["frozen"], inner, sw, valid))
+               probes_of(acts, world, rec["frozen"], inner, sw, valid,
+                         kappa_clipped=fl["kappa_clipped"]))
+
+
+def _summary(v) -> dict | None:
+    import numpy as np
+
+    v = np.asarray(v, float)
+    v = v[np.isfinite(v)]
+    if not len(v):
+        return None
+    return {"min": float(v.min()), "median": float(np.median(v)), "max": float(v.max())}
+
+
+def value_accuracy_of(crit: dict, own: dict | None, tab, fo, cl, G, counts) -> dict:
+    """The critic's value accuracy (``analysis.value_accuracy``; Section 3.3 'Value
+    accuracy', Section 12 decision 7, Section 13): sigma_R V_c (main V; each head
+    descriptively) against the deterministic policy's own return ``own['v_own_det']`` on the
+    own stage's rows (``own['v_rows']``: T's interior restarts and D) where the run did not
+    crash (``own['v_own_valid']``), key weights renormalised there, with the gamma^H tails,
+    the horizons and the crashed and strip-end counts reported. Without the own stage's
+    returns it does not pass ('reason')."""
+    import numpy as np
+
+    from apexzero.costate import analysis as AN
+    from apexzero.costate import states as ST
+
+    v = crit["value"]
+    if own is None or AN.VALUE_TARGET not in own:
+        return {**AN.value_accuracy(v[:, 0], None, fo.outer, np.zeros(len(v))),
+                "reason": f"no own returns ({AN.VALUE_TARGET}: the own stage)", "heads": []}
+    asked = np.asarray(own["v_rows"], bool)
+    ok = asked & np.asarray(own["v_own_valid"], bool)
+    t = np.asarray(own[AN.VALUE_TARGET], float)
+    w = ST.stratum_weights(tab, ok)
+    va = AN.value_accuracy(v[:, 0], t, fo.outer, w, ok, cl, G, counts)
+    va["heads"] = [AN.value_accuracy(v[:, i], t, fo.outer, w, ok)["r2"]
+                   for i in range(1, v.shape[1])]
+    va["n_asked"] = int(asked.sum())
+    va["n_t_restarts"] = int((ok & (np.asarray(tab["t"]) > 0)).sum())
+    va["n_d"] = int((ok & (np.asarray(tab["t"]) == 0)).sum())
+    va["n_terminated"] = int((asked & np.asarray(own["v_own_terminated"], bool)).sum())
+    va["n_strip_end"] = int((ok & np.asarray(own["v_own_strip_end"], bool)).sum())
+    va["v_steps"] = int(own["v_steps"]) if "v_steps" in own else None
+    va["H"] = _summary(np.asarray(own["v_own_H"], float)[ok])
+    va["tail"] = _summary(np.asarray(own["v_own_tail"], float)[ok])
+    if "v_own_inf" in own:            # descriptive: J plus V*inf's constant-speed tail at x_H
+        va["horizon_corrected_r2"] = AN.value_accuracy(
+            v[:, 0], np.asarray(own["v_own_inf"], float), fo.outer, w, ok,
+            target_name="v_own_inf")["r2"]
+    return va
 
 
 def analyse_network(name: str, world, frozen: dict, crit: dict, nulls: dict, flags: dict,
                     counts, own: dict | None = None, k3b_trained: bool = False,
-                    variants=None) -> dict:
+                    variants=None, strata=None) -> dict:
     """C1 and its secondaries of one network (``costate.analysis``): every statistic on a
     stratum with the key weights renormalised there (``states.stratum_weights``), each K_P
     component on its decision rows (``states.decision_mask``: s's observability, K2b's
     frozen exclusions), the calibrated predictions clipped to the frozen winsorisation
-    bounds; C1's pre-registered variants (``variant_specs``; on partitions 1-10 the
-    fold-dependent nulls, fitted on partition 0, are left out and said so), C1-braking and
-    its non-braking counterpart bootstrapped over their own geometries."""
+    bounds, the pooled slopes' CIs per component whatever the decision (Section 6; the label
+    still needs a confirm); the critic's value accuracy against its own policy's return
+    (``value_accuracy_of``: main V and, descriptively, each head), which with K3b's trained
+    analogue decides whether C1-own is a secondary or descriptive, and against the optimum's
+    V*inf on T's interior ('value_accuracy_vstar', descriptive); C1-pattern, and on the
+    interior's pedal-saturated states descriptively with pedal kept there; C1's
+    pre-registered variants (``variant_specs``; on partitions 1-10 the fold-dependent nulls,
+    fitted on partition 0, are left out and said so; partition 0's key-weighted variants carry
+    their slope CIs), C1-braking and its non-braking counterpart bootstrapped over their own
+    geometries; and C1's descriptive strata table (``analysis.STRATA['C1']``, or ``strata``:
+    each stratum with its own geometries' bootstrap, ``by_stratum``; a stratum whose rows
+    the decision or a variant already scored reuses that record, so a named secondary has
+    one CI; the kappa-clipped strata from ``flags['kappa_clipped']``)."""
     import hashlib
 
     import numpy as np
@@ -1278,20 +1430,50 @@ def analyse_network(name: str, world, frozen: dict, crit: dict, nulls: dict, fla
     nl = {k: np.asarray(v)[:, idx] for k, v in nulls.items() if k != "fits"}
     nl["random_critics"] = [r[:, idx] for r in crit["random_g"]]
     c1 = AN.c1(g, lam, fo.outer, w_in, cl, G, tab["direction"], inner, nl, valid, TG.K_P,
-               counts, bounds=bnd)
+               counts, slope_boot="always", bounds=bnd)
     out = {"C1": c1.record(), "decision_rows": {c: int((inner & valid[:, k]).sum())
                                                 for k, c in enumerate(TG.K_P)},
            "decision_mask_sha256": hashlib.sha256(
                np.ascontiguousarray(valid).tobytes()).hexdigest()}
+    # value accuracy (Sections 3.3, 12 decision 7, 13): C1-own's validity, against the
+    # network's own deterministic return; against V*inf on T's interior descriptively
+    va = value_accuracy_of(crit, own, tab, fo, cl, G, counts)
+    out["value_accuracy"] = va
+    vstar = (np.asarray(tab[AN.VALUE_TARGET_VSTAR], float) if AN.VALUE_TARGET_VSTAR in tab
+             else None)
+    vs = AN.value_accuracy(crit["value"][:, 0], vstar, fo.outer, w_in, inner, cl, G, counts,
+                           target_name=AN.VALUE_TARGET_VSTAR, rows_name=AN.VALUE_ROWS_VSTAR)
+    vs["heads"] = [AN.value_accuracy(crit["value"][:, i], vstar, fo.outer, w_in, inner)["r2"]
+                   for i in range(1, crit["value"].shape[1])]
+    vs["descriptive"] = True                         # never C1-own's precondition
+    vs["meets_threshold"] = vs.pop("pass")
+    out["value_accuracy_vstar"] = vs
     # C1-pattern: all 8 components, delta and pedal where their bounds are inactive
     lam8 = _winsorised(tab, frozen, TG.STATE_NAMES)
+    bnd8 = _bounds(frozen, TG.STATE_NAMES)
     valid8 = np.ones((len(w_in), 8), bool)
     valid8[:, idx] = valid
     valid8[:, 6] &= ~np.asarray(tab["delta_bound"], bool)
-    valid8[:, 7] &= ~np.asarray(tab["pedal_saturated"], bool)
+    sat = np.asarray(tab["pedal_saturated"], bool)
+    pedal_free = valid8.copy()
+    valid8[:, 7] &= ~sat
     out["C1-pattern"] = AN.c1_pattern(crit["g"][:, 0], lam8, fo.outer, w_in, cl, G,
                                       tab["direction"], inner, valid8, TG.STATE_NAMES,
-                                      counts=counts, bounds=_bounds(frozen, TG.STATE_NAMES))
+                                      counts=counts, bounds=bnd8)
+    # Section 6 'the saturated stratum is reported separately' (descriptive): C1-pattern on
+    # the interior's pedal-saturated states, pedal scored there
+    rs = inner & sat
+    cp = {"decision": "not testable", "reason": "no row"}
+    if rs.any():
+        try:
+            cl_p, G_p, cnt_p = _subclusters(tab, rs, AN.STRATUM_SEED - 1)
+            cp = AN.c1_pattern(crit["g"][:, 0], lam8, fo.outer, ST.stratum_weights(tab, rs),
+                               cl_p, G_p, tab["direction"], rs, pedal_free, TG.STATE_NAMES,
+                               counts=cnt_p, bounds=bnd8)
+        except (ValueError, ArithmeticError, IndexError, np.linalg.LinAlgError) as e:
+            cp = {"decision": "not testable", "reason": f"{type(e).__name__}: {e}"}
+    cp["n"], cp["descriptive"] = int(rs.sum()), True
+    out["C1-pattern_saturated"] = cp
     if crit["g"].shape[1] > 1:                       # C1-heads: the generalists' 5 heads
         q = {"V": crit["value"][:, 1:]}
         for i, c in enumerate(TG.STATE_NAMES):
@@ -1302,7 +1484,8 @@ def analyse_network(name: str, world, frozen: dict, crit: dict, nulls: dict, fla
         lo = own["lam_own"][:, idx]
         ok = np.isfinite(lo).all(1) & np.asarray(own["valid"], bool)
         out["C1-own"] = AN.c1_own(g, lo, fo.outer, ST.stratum_weights(tab, ok), cl, G,
-                                  tab["direction"], ok, k3b_trained, TG.K_P, counts, valid)
+                                  tab["direction"], ok, k3b_trained, TG.K_P, counts, valid,
+                                  value_accuracy_pass=va["pass"])
     if "dV_dwin" in crit:                           # W1: the critic's width price against Pi^in
         w1 = inner if AN.W1_ROWS == "interior" else np.ones(world.n, bool)
         out["W1"] = AN.calibrated_agreement(crit["dV_dwin"], np.asarray(tab["Pi_in"], float),
@@ -1315,6 +1498,7 @@ def analyse_network(name: str, world, frozen: dict, crit: dict, nulls: dict, fla
                                   counts, direction=tab["direction"], valid=valid)
     out["sensitivity"] = {}
     fold_nulls = ("value_ridge", "value_mlp", "value_ridge_window", "far_geometry")
+    done = {inner.tobytes(): out["C1"]}   # rows -> record (partition 0, key weights)
     for i, (vname, sp) in enumerate(variant_specs(tab, frozen, variants).items()):
         if vname == "primary":
             continue
@@ -1323,18 +1507,50 @@ def analyse_network(name: str, world, frozen: dict, crit: dict, nulls: dict, fla
         fo_v = PB.folds(tab, sp["partition"])
         cl_v, G_v, cnt_v = _subclusters(tab, rows, i)
         nl_v = {k: v for k, v in nl.items() if sp["partition"] == 0 or k not in fold_nulls}
+        canon = sp["partition"] == 0 and sp["scheme"] == "key"
         cv = AN.c1(g, lam, fo_v.outer, ST.stratum_weights(tab, rows, sp["scheme"]), cl_v, G_v,
-                   tab["direction"], rows, nl_v, valid, TG.K_P, cnt_v, slope_boot=False,
-                   bounds=bnd)
+                   tab["direction"], rows, nl_v, valid, TG.K_P, cnt_v,
+                   slope_boot="always" if canon else False, bounds=bnd)
         r = cv.record()
         r["nulls_omitted"] = sorted(set(nl) - set(nl_v))
+        # Section 12 decision 2: the "at scale" label gates C1's primary record only; a
+        # variant's (C1-braking's among them) is reported, never a label claim
+        r["label_scope"] = "descriptive"
         out["sensitivity"][vname] = r
+        if canon:
+            done.setdefault(rows.tobytes(), r)
     if "braking_keys" in out["sensitivity"]:
         out["C1-braking"] = out["sensitivity"]["braking_keys"]
     parts = [v["stat"] for k, v in out["sensitivity"].items() if k.startswith("partition")]
     if parts:
         out["robustness_C1"] = {"stat": parts, "min": float(np.nanmin(parts)),
                                 "max": float(np.nanmax(parts)), "sd": float(np.nanstd(parts))}
+    # C1's descriptive strata table (Sections 4, 6, 12 and 13; ``analysis.STRATA``)
+    table = {}
+    tab_s = AN.strata_tab(tab, flags)
+    names = AN.STRATA["C1"] if strata is None else strata
+    for j, (sname, rows) in enumerate(AN.strata_rows(tab_s, names).items()):
+        if rows is None:
+            table[sname] = AN.stratum_record("C1", {"reason": "no per-network column " + ", ".join(
+                AN.missing_columns(tab_s, sname))}, None, tab_s)
+            continue
+        rec_s = done.get(rows.tobytes())
+        if rec_s is None and not rows.any():
+            rec_s = {"decision": "not testable", "reason": "no row"}
+        if rec_s is None:
+            cl_s, G_s, cnt_s = _subclusters(tab, rows, AN.STRATUM_SEED + j)
+            try:
+                rec_s = AN.c1(g, lam, fo.outer, ST.stratum_weights(tab, rows), cl_s, G_s,
+                              tab["direction"], rows, nl, valid, TG.K_P, cnt_s,
+                              slope_boot="always", bounds=bnd).record()
+            except (ValueError, ArithmeticError, np.linalg.LinAlgError) as e:
+                # a descriptive row never stops the run-once analysis
+                rec_s = {"decision": "not testable", "reason": f"{type(e).__name__}: {e}"}
+            done[rows.tobytes()] = rec_s
+        table[sname] = AN.stratum_record(
+            "C1", rec_s, rows, tab_s,
+            primary=bool(sname == AN.PRIMARY_STRATUM["C1"] and np.array_equal(rows, inner)))
+    out["by_stratum"] = {"C1": table}
     return out
 
 
@@ -1487,6 +1703,11 @@ def confirmatory_input_problems(rec: dict, root: Path, prov=None) -> list[str]:
         with np.load(p) as d:
             if "dV_dwin" not in d.files:
                 probs.append(f"{p.relative_to(root)} has no width derivative (C3-w)")
+    for p in paths["own"]:
+        if p.exists():
+            with np.load(p) as d:
+                if "v_own_det" not in d.files:
+                    probs.append(f"{p.relative_to(root)} has no own returns (value accuracy)")
     post = [p for k in ("post", "own", "c3w") for p in paths[k] if p.exists()]
     probs += F.input_stamp_problems(list(dict.fromkeys(post)), prov.code_hash, prov.deviation,
                                     prov.tag, rec.get("environment"))
@@ -1580,6 +1801,12 @@ def coverage(out_root: Path, world, flags_of) -> dict:
            "braking_keys": len(np.unique(np.asarray(tab["key_id"])[
                np.asarray(tab["braking_key"], bool)])),
            "geometries": int(AN.geometry_clusters(tab)[1]), "networks": {}}
+    try:                       # the strata tables' row counts (no statistic); kappa
+        # clipping is per network: G1's flags here, every network's count below
+        tab_s = AN.strata_tab(tab, flags_of(AN.network_of(AN.DECISION_NETWORKS[0])))
+        out["strata"] = {h: AN.strata_counts(tab_s, names) for h, names in AN.STRATA.items()}
+    except KeyError as e:
+        out["strata"] = {"error": str(e)}
     for a in AN.DECISION_NETWORKS:
         name = AN.network_of(a)
         f = PR.net_file(name)
@@ -1596,8 +1823,25 @@ def coverage(out_root: Path, world, flags_of) -> dict:
             valid = ST.decision_mask(tab, ~fl["observability"].s_unobservable)
             rec["decision_rows"] = {c: int((inner & valid[:, k]).sum())
                                     for k, c in enumerate(("s", "n", "xi", "vx"))}
+            rec["kappa_clipped"] = int(np.asarray(fl["kappa_clipped"], bool).sum())
         out["networks"][name] = rec
     return out
+
+
+def merge_probes(rec_n: dict, pr: dict) -> dict:
+    """One network's probes output (``probes_of``) merged into its analysis record: C2 and
+    C2-sw beside C1, each variant's C2 and C2-sw into that variant's entry, and the C2 and
+    C2-sw strata tables beside C1's (``by_stratum``)."""
+    pr = dict(pr)
+    pr.pop("provenance", None)
+    sens = pr.pop("sensitivity", {})
+    tables = pr.pop("by_stratum", {})
+    rec_n.update(pr)
+    rec_n.setdefault("by_stratum", {}).update(tables)
+    for k, v in sens.items():
+        rec_n.setdefault("sensitivity", {}).setdefault(k, {}).update(
+            {"C2": v.get("C2"), "C2-sw": v.get("C2-sw")})
+    return rec_n
 
 
 def stage_analyse(args) -> None:
@@ -1672,13 +1916,7 @@ def stage_analyse(args) -> None:
                                 variants=getattr(args, "variants", None))
         pp = Path(args.out) / "post" / "probes" / f"{f}.json"
         if pp.exists():
-            pr = json.loads(pp.read_text())
-            pr.pop("provenance", None)
-            sens = pr.pop("sensitivity", {})
-            rec_n.update(pr)
-            for k, v in sens.items():
-                rec_n.setdefault("sensitivity", {}).setdefault(k, {}).update(
-                    {"C2": v.get("C2"), "C2-sw": v.get("C2-sw")})
+            merge_probes(rec_n, json.loads(pp.read_text()))
         res["networks"][name] = rec_n
     res["C3-w"] = c3w_of(Path(args.out), world, counts, rec)
     res["C3-w_sensitivity"] = {}
