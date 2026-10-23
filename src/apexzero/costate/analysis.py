@@ -63,19 +63,22 @@ enter T), and a row is scored only where its fold has a calibration (a fold with
 dropped and counted, never scored against a filled-in 0; a component left without rows drops
 out of the mean, and with none left C1 is 'not testable' with its reason; C1-pattern and
 C1-limit follow the same rule, K2b's frozen exclusions leaving n and vx no decision row on
-T and xi a few wall contacts). Nulls go
-through the same calibration on the same scored rows; the ones fitted on or built from
-targets (``FOLD_NULLS``: the value fits and the far-geometry lambda) are [F, n, m] per
-held-out fold, as C2's lambda_res (``nulls`` module docstring 'Per held-out fold'), and
-fold f's calibration of such a null is fitted on slice f's training rows and predicts fold
-f's rows from slice f, so no target of fold f reaches fold f's prediction. They are compared
-by a paired cluster bootstrap over geometries (the same resamples, ``probes.cluster_counts``
-over T's geometries): value-fit ridge and MLP, QSS, clearance barrier, phase-matched
-far-geometry lambda (``nulls``) and the random-init critics, whose maximum over the 20 seeds
-(of the K_P mean, per bootstrap draw) is the sanity floor. The signed Spearman
-rho(g_k, lambda_k) is weighted (``probes.wspearman``'s mid-ranks) and, for the mirror-odd
-components, the direction-size weighted mean of the within-direction rho (R2_wd's
-convention: a raw rho would reward the turn direction). Confirm: R2_c's CI lower end >
+T and xi a few wall contacts, and so does the calibrated agreement of W1 and C3-w's x,
+``calibrated_agreement``: an x left without a row is NaN, and C3-w lists its network as
+missing). Nulls go through the same calibration on the same scored rows; the ones fitted on
+or built from targets (``FOLD_NULLS``: the value fits and the far-geometry lambda) are
+[F, n, m] per held-out fold, as C2's lambda_res (``nulls`` module docstring 'Per held-out
+fold'), and fold f's calibration of such a null is fitted on slice f's training rows and
+predicts fold f's rows from slice f, so no target of fold f reaches fold f's prediction;
+each slice is cross-fitted as C2's decoys (a training row of fold g carries the fit without
+folds f and g), so the calibration is fitted on out-of-sample predictors, as it is applied.
+They are compared by a paired cluster bootstrap over geometries (the same resamples,
+``probes.cluster_counts`` over T's geometries): value-fit ridge and MLP, QSS, clearance
+barrier, phase-matched far-geometry lambda (``nulls``) and the random-init critics, whose
+maximum over the 20 seeds (of the K_P mean, per bootstrap draw) is the sanity floor. The
+signed Spearman rho(g_k, lambda_k) is weighted (``probes.wspearman``'s mid-ranks) and, for
+the mirror-odd components, the direction-size weighted mean of the within-direction rho
+(R2_wd's convention: a raw rho would reward the turn direction). Confirm: R2_c's CI lower end >
 ``C1_CONFIRM`` = 0.6, every paired R2_c - null CI lower end > 0, and every K_P
 component's Spearman CI lower end > 0. Refute: R2_c's CI upper end < ``C1_REFUTE`` = 0.2.
 Otherwise inconclusive. The label "costate gradient at scale" (``C1.label``): a confirm
@@ -870,18 +873,22 @@ def c1_pattern(g: np.ndarray, lam: np.ndarray, outer: np.ndarray, w: np.ndarray,
     bootstrap; confirm when the CI's lower end is > 0. C1's calibration (within direction for
     the odd components, the training-fold mean intercept), so a zero or pure-noise gradient
     scores about 0 on every component and cannot confirm. As in C1, a component is scored on
-    its valid rows with an out-of-fold calibration ('n_rows'), and one left without a row
-    drops out of its side's mean ('dropped': K2b's frozen exclusions leave n and vx none on
-    T); with a side empty C1-pattern is 'not testable' ('reason')."""
+    its valid rows with an out-of-fold calibration ('n_rows'; the others are dropped and
+    counted, 'n_uncalibrated', never scored), and one left without a row drops out of its
+    side's mean ('dropped': K2b's frozen exclusions leave n and vx none on T); with a side
+    empty C1-pattern is 'not testable' ('reason')."""
     names = tuple(names)
     counts = PB.cluster_counts(n_clusters) if counts is None else counts
     odd = _names_odd(names)
+    g = np.asarray(g, float).reshape(len(w), -1)
+    valid = np.asarray(valid, bool)
     cal = calibrate(g, lam, outer, w, rows, valid, direction=np.asarray(direction), odd=odd,
                     bounds=bounds)
-    pts, drs, n_rows = {}, {}, {}
+    pts, drs, n_rows, n_uncal = {}, {}, {}, {}
     for k, nm in enumerate(names):
-        sel = rows & valid[:, k] & np.isfinite(lam[:, k]) & np.isfinite(cal.pred[:, k])
-        n_rows[nm] = int(sel.sum())
+        req = rows & valid[:, k] & np.isfinite(lam[:, k]) & np.isfinite(g[:, k])
+        sel = req & np.isfinite(cal.pred[:, k])
+        n_rows[nm], n_uncal[nm] = int(sel.sum()), int(req.sum() - sel.sum())
         if not sel.any():
             continue
         pt, dr = boot_r2(lam[sel, k], [cal.pred[sel, k]], w[sel], cluster[sel], n_clusters,
@@ -889,7 +896,7 @@ def c1_pattern(g: np.ndarray, lam: np.ndarray, outer: np.ndarray, w: np.ndarray,
         pts[nm], drs[nm] = pt[0], dr[:, 0]
     a_set, b_set = [n for n in primary if n in pts], [n for n in secondary if n in pts]
     out = {"r2c": {k: float(pts.get(k, np.nan)) for k in names}, "n_rows": n_rows,
-           "dropped": [k for k in names if k not in pts]}
+           "n_uncalibrated": n_uncal, "dropped": [k for k in names if k not in pts]}
     if not a_set or not b_set:
         side = "K_P" if not a_set else "{vy, r, delta, pedal}"
         return {**out, "decision": "not testable",
@@ -1469,18 +1476,33 @@ def calibrated_agreement(x: np.ndarray, target: np.ndarray, outer: np.ndarray, w
     """The calibrated R2 (C1's calibration, out of fold; ``bounds`` the target's own
     winsorisation bounds where given) of one signal against one target on ``rows``, its CI,
     the weighted Spearman and the pooled slope: C3-w's x (the critic's uniform
-    inside-widening derivative against Pi^in) and W1's comparisons."""
+    inside-widening derivative against Pi^in) and W1's comparisons. As in C1 (module
+    docstring 'C1'), a row is scored only where its fold has a calibration: the others are
+    dropped and counted ('n_uncalibrated'), never scored against a filled-in prediction, and
+    the Spearman and the slope read the same rows; with none left the record is 'not
+    testable' with its reason (its numbers NaN: C3-w leaves such a network out as
+    missing)."""
     counts = PB.cluster_counts(n_clusters) if counts is None else counts
     x, t = np.asarray(x, float)[:, None], np.asarray(target, float)[:, None]
+    rows, outer = np.asarray(rows, bool), np.asarray(outer, int)
     cal = calibrate(x, t, outer, w, rows, bounds=bounds)
-    sel = rows & np.isfinite(t[:, 0]) & np.isfinite(x[:, 0])
-    pt, dr = boot_r2(t[sel, 0], [np.nan_to_num(cal.pred[sel, 0])], w[sel], cluster[sel],
-                     n_clusters, counts)
+    req = rows & np.isfinite(t[:, 0]) & np.isfinite(x[:, 0])
+    sel = req & np.isfinite(cal.pred[:, 0])
+    out = {"n": int(sel.sum()), "n_uncalibrated": int(req.sum() - sel.sum())}
+    if not sel.any():
+        n_f = len(np.unique(outer[req]))
+        reason = ("no row" if not req.any() else
+                  f"the rows span {n_f} outer fold: no out-of-fold calibration" if n_f < 2 else
+                  "no row with an out-of-fold calibration")
+        nan = float("nan")
+        return {"r2c": nan, "ci": [nan, nan], "spearman": nan, "spearman_ci": [nan, nan],
+                "slope": nan, "slope_ci": [nan, nan], **out, "decision": "not testable",
+                "reason": reason}
+    pt, dr = boot_r2(t[sel, 0], [cal.pred[sel, 0]], w[sel], cluster[sel], n_clusters, counts)
     rho, rd = spearman_boot(x[sel, 0], t[sel, 0], w[sel], cluster[sel], counts)
     s0, sd = _pooled_slope_boot(x[sel, 0], t[sel, 0], w[sel], cluster[sel], counts)
     return {"r2c": float(pt[0]), "ci": list(_ci(dr[:, 0])), "spearman": rho,
-            "spearman_ci": list(_ci(rd)), "slope": s0, "slope_ci": list(_ci(sd)),
-            "n": int(sel.sum())}
+            "spearman_ci": list(_ci(rd)), "slope": s0, "slope_ci": list(_ci(sd)), **out}
 
 
 def value_accuracy(v_critic: np.ndarray, v_target: np.ndarray | None, outer: np.ndarray,

@@ -1215,7 +1215,7 @@ def test_every_pre_registered_variant_is_reported(tmp_path):
     """Review finding: only partition 0 under key weights was computed. analyse_network and
     probes_of report partitions 1-10, geometry and state weights, the small geometries and
     the kappa set dropped, and the braking / non-braking sub-scores; C3-w carries both
-    covariates."""
+    covariates and leaves out, with its reason, a network whose x keeps no scored row."""
     cs = _script()
     from apexzero.costate import analysis as AN
     from apexzero.costate import probes as PB
@@ -1281,7 +1281,16 @@ def test_every_pre_registered_variant_is_reported(tmp_path):
                                "overlap": float(-i)} for i, nm in enumerate(AN.GENERALISTS)}}
     c3 = cs.c3w_of(tmp_path, world, PB.cluster_counts(G, 50), rec)
     assert c3["n"] == 31 and set(c3["partial"]) == {"competence", "overlap"}
-    assert not c3["critic_missing"]
+    assert not c3["critic_missing"] and not c3["x_not_testable"]
+    assert set(c3["x_n_uncalibrated"].values()) == {0}
+    # finding #10's rule for C3-w's x: a network whose x keeps no scored row is 'not
+    # testable' (never a zero-filled R2), left out as missing, with its reason
+    gone = AN.GENERALISTS[4]
+    np.savez(tmp_path / "post" / "critic" / f"{PR.net_file(gone)}.npz",
+             dV_dwin=np.full(n, np.nan))
+    c3 = cs.c3w_of(tmp_path, world, PB.cluster_counts(G, 50), rec)
+    assert c3["n"] == 30 and gone in c3["missing"] and not c3["critic_missing"]
+    assert c3["x_not_testable"] == {gone: "no row"}
 
 
 def test_c2_cross_fits_with_the_frozen_decoy_k():

@@ -875,9 +875,11 @@ def stage_k6(args) -> None:
 
 def stage_nulls(args) -> None:
     """C1's input-side nulls per network obs_rms (no network evaluated): the fold-dependent
-    ones per held-out fold (``analysis.FOLD_NULLS``, [F, n, 8]), the summary with their shapes
-    and whether every slice is finite (the far-geometry lambda's slices may hold rows without
-    a far geometry: recorded, not required)."""
+    ones per held-out fold (``analysis.FOLD_NULLS``, [F, n, 8], cross-fitted: ``nulls``
+    module docstring 'Per held-out fold'), the summary with their shapes, the value fits'
+    penalties and training R2 (the nested fits' too) and whether every slice is finite (the
+    far-geometry lambda's slices may hold rows without a far geometry: recorded, not
+    required)."""
     import numpy as np
 
     from apexzero.costate import analysis as AN
@@ -1963,7 +1965,9 @@ def c3w_of(out_root: Path, world, counts, rec: dict | None = None, keep=None,
     record's frozen C3-w inputs (read from runs/ only without a record: a dry run);
     ``keep`` restricts the rows (a sensitivity variant); the networks in ``exclude`` (those
     that failed K3 after the tag) are left out, listed in 'missing' and in
-    'k3_trained_excluded'."""
+    'k3_trained_excluded'. A network whose x keeps no row with an out-of-fold calibration
+    (``analysis.calibrated_agreement``: 'not testable', x NaN) is left out as missing, its
+    reason in 'x_not_testable'; 'x_n_uncalibrated' counts each network's dropped rows."""
     import numpy as np
 
     from apexzero.costate import analysis as AN
@@ -1980,7 +1984,7 @@ def c3w_of(out_root: Path, world, counts, rec: dict | None = None, keep=None,
     cl, G, cnt = (*AN.geometry_clusters(tab), counts) if keep is None else _subclusters(tab, rows)
     w = ST.stratum_weights(tab, rows)
     bnd = (rec or {}).get("frozen", {}).get("winsor_bounds", {}).get("Pi_in")
-    x, missing = {}, []
+    x, missing, untestable, n_uncal = {}, [], {}, {}
     for name in AN.GENERALISTS:
         p = Path(out_root) / "post" / "critic" / f"{PR.net_file(name)}.npz"
         if name in exclude:
@@ -1993,12 +1997,16 @@ def c3w_of(out_root: Path, world, counts, rec: dict | None = None, keep=None,
                 missing.append(name)
                 continue
             dw = d["dV_dwin"]
-        x[name] = AN.calibrated_agreement(dw, np.asarray(tab["Pi_in"], float), fo.outer, w, cl,
-                                          G, rows, cnt, bounds=None if bnd is None
-                                          else [bnd])["r2c"]
+        xr = AN.calibrated_agreement(dw, np.asarray(tab["Pi_in"], float), fo.outer, w, cl, G,
+                                     rows, cnt, bounds=None if bnd is None else [bnd])
+        x[name], n_uncal[name] = xr["r2c"], xr["n_uncalibrated"]
+        if xr.get("decision") == "not testable":
+            untestable[name] = xr["reason"]
     y, cov = c3_y(list(x), rec)
     out = AN.c3_w(x, y, covariates=cov)
     out["critic_missing"] = missing
+    out["x_not_testable"] = untestable
+    out["x_n_uncalibrated"] = n_uncal
     out["k3_trained_excluded"] = [n for n in AN.GENERALISTS if n in exclude]
     return out
 

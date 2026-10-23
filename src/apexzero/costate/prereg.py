@@ -269,11 +269,20 @@ def constants() -> dict:
                   "value_target": "horizon-corrected V*inf (value_ridge_window: V*_t)",
                   "value_grid_min": NL.VALUE_GRID_MIN,
                   "per_fold": list(AN.FOLD_NULLS),
-                  "per_fold_rule": "[F, n, 8]: slice f built without fold f (value fits: "
-                                   "every row through fold f's fit; far geometry: neither "
-                                   "fold f nor the row's own fold); fold f's calibration "
-                                   "fitted on slice f's training rows, predicting fold f "
-                                   "from slice f"},
+                  "per_fold_rule": "[F, n, 8]: slice f built without fold f, cross-fitted "
+                                   "as C2's decoys (value fits: fold f's rows through the "
+                                   "fit without fold f, a training row of fold g through "
+                                   "the fit without folds f and g at fold f's penalty, one "
+                                   "fit per pair of folds and penalty; far geometry: "
+                                   "neither fold f nor the row's own fold); fold f's "
+                                   "calibration fitted on slice f's training rows, "
+                                   "predicting fold f from slice f",
+                  "value_mlp_nested_seed": "mlp_rng(partition, a, 99, N_INNER + 1 + b) for "
+                                           "the fit without folds a < b",
+                  "uncalibrated_rows": "C1, C1-pattern, C1-limit, W1 and C3-w's x: a row "
+                                       "whose fold has no calibration is dropped and "
+                                       "counted, never scored; none left: 'not testable' "
+                                       "(C3-w: the network missing)"},
         "critic": {"fd_tol": CR.FD_TOL, "plant_tol": CR.PLANT_TOL, "linear_tol": CR.LINEAR_TOL,
                    "random_seeds": list(CR.RANDOM_SEEDS), "pi_h": CR.PI_H,
                    "k3_min_states": CR.K3_MIN_STATES,

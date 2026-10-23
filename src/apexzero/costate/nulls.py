@@ -21,6 +21,26 @@ K_P-mean R2_c so built against per held-out fold: far-geometry lambda 0.585 and 
 G1's value-fit ridge 0.211 and 0.255; a weaker null made C1's paired rule easier to pass).
 The QSS and barrier values and the random critics read no target and stay [n, 8].
 
+Each slice is **cross-fitted** as ``states.cross_fit`` cross-fits C2's decoys (v2.3, before
+the tag): in slice f, fold f's rows carry the fit without fold f, and a training row of fold
+g carries the fit without folds f and g (``fold_gradients``, ``FoldNets.net_for``; the far
+geometries of neither f nor the row's own fold for the far-geometry lambda), so no row's
+predictor in any slice comes from a fit that saw its own fold. The nested value fit is the
+same fit (z-scored on its own rows) at fold f's penalty, as every kNN serving fold f uses
+fold f's k; one fit per pair of folds and penalty serves both slices (F(F - 1)/2 = 15 extra
+fits when every fold's penalty agrees, as the ridge fits' do on the smoke run; 20 for G1's
+MLP, whose fold 1 chose another penalty). Before it, slice f pulled every
+row back through fold f's fit, so fold f's calibration was fitted on in-sample training-row
+gradients and applied to fold f's out-of-sample ones. On the smoke run's world under G1's
+obs_rms the interior K_P-mean null R2_c (every K_P component scored) moves from 0.2546 to
+0.2172 for the value-fit ridge (n 0.370 to 0.224: its in-sample calibration slopes were
+9.6-120 by fold, cross-fitted 2.4-9.5), from 0.3344 to 0.3328 for the window fit and from
+0.4070 to 0.3978 for the MLP. On G1's decision rows (s and xi under K2b's exclusions) both
+ridge fits' slopes clamp at 0 in both layouts (R2_c -0.0128 either way) and the MLP's s
+slope does not (0.016-0.035 by fold, cross-fitted 0.012-0.029): its R2_c there moves from
+-0.0278 to -0.0164. The nested fits add about a fifth to the nulls stage (G1: 345 s, was
+283 s), nearly all of it the MLP's extra L-BFGS fits.
+
 - **Tail values** (``tail_values``): V*_t = sum_{tau >= t} gamma^(tau - t) r_tau of the key's
   plan, r_tau = (s_{tau+1} - s_tau)/10 - 0.02 ||a_tau - a_{tau-1}||^2 with a_{-1} = 0
   (window.py:470-490; the value the post-jump costate differentiates, targets.py's module
@@ -42,12 +62,12 @@ The QSS and barrier values and the random critics read no target and stay [n, 8]
   does), z-scored by the weighted training SD with units below ``probes.MIN_SD`` dropped
   (``probes.scaler``), the penalty from ``probes.GRID`` by inner grouped CV on the frozen
   inner folds (``probes._select``, the probes' own selection); re-expressed on o as the
-  linear critic w'o + b (``critic.linear_critic``). Slice f pulls every row back through
-  fold f's fit (``fold_gradients``; no refit: a training row's slice-f gradient is that fit's
-  in-sample one, and no row of fold f entered it).
+  linear critic w'o + b (``critic.linear_critic``). Its nested fits (the fit without folds
+  f and g, at fold f's penalty) give slice f's training rows (``fold_gradients``).
 - **Value-fit MLP** (``fit_value_mlp``): the 64-unit tanh MLP probe (``probes.mlp_fit``:
   weighted least squares on the standardised target, L-BFGS, penalty by inner CV over
-  ``VALUE_MLP_ALPHAS``) on the same rows, as a JAX function of o (``_mlp_fn``).
+  ``VALUE_MLP_ALPHAS``) on the same rows, as a JAX function of o (``_mlp_fn``), with nested
+  fits as the ridge's (seeds: ``fit_value_mlp``).
 - **QSS value** (``qss_critic``; Section 6: 'the discounted progress of the preview's
   quasi-steady speed profile, the law step 1's Qp reads'): from the raw observation (o
   decoded through the network's obs_rms), the preview curvature rebuilt on Qp's 2 m grid over
@@ -164,40 +184,94 @@ def horizon_values(x: np.ndarray, a: np.ndarray, gamma: float = GAMMA,
 
 @dataclass(frozen=True)
 class FoldNets:
-    """One null critic per outer fold (index f: fitted without fold f), or one shared."""
+    """A value fit's null critics: ``nets[f]`` fitted without outer fold f (or one shared,
+    fold-free) and, for the full cross-fit (module docstring 'Per held-out fold'),
+    ``nested[f][g]`` fitted without folds f and g at fold f's penalty (None for g = f), the
+    critic slice f pulls fold g's rows back through."""
 
     nets: tuple[CR.CriticNet, ...]
     alpha: np.ndarray            # [F] chosen penalty per fold (nan: none)
     r2_train: np.ndarray         # [F] training R2 of the fit (descriptive)
+    nested: tuple[tuple[CR.CriticNet | None, ...], ...] = ()
+    nested_r2_train: np.ndarray | None = None   # [F, F] training R2 (nan on the diagonal)
 
     def net(self, f: int) -> CR.CriticNet:
         return self.nets[f if len(self.nets) > 1 else 0]
+
+    def net_for(self, f: int, g: int) -> CR.CriticNet:
+        """The critic slice f pulls fold g's rows back through: fold f's own fit for g = f,
+        the fit without folds f and g otherwise (a shared critic for every pair)."""
+        if len(self.nets) == 1 or g == f:
+            return self.net(f)
+        if not self.nested or self.nested[f][g] is None:
+            raise ValueError(f"no fit without folds {f} and {g}: the full cross-fit needs "
+                             "the nested fits")
+        return self.nested[f][g]
+
+    def record(self) -> dict:
+        """The summary's 'fits' entry: the penalties, the training R2 of the fits without fold
+        f and of the nested fits ([F][F], None on the diagonal)."""
+        nr = None if self.nested_r2_train is None else [
+            [None if not np.isfinite(v) else float(v) for v in row]
+            for row in self.nested_r2_train]
+        return {"alpha": self.alpha.tolist(), "r2_train": self.r2_train.tolist(),
+                "nested_r2_train": nr}
 
 
 def _o(z: np.ndarray) -> np.ndarray:
     return np.clip(np.asarray(z, float), -10.0, 10.0)
 
 
+def _pairs(n_folds: int):
+    """(f, g, a, b) for every ordered pair of distinct folds, (a, b) = (min, max)."""
+    for f in range(n_folds):
+        for g in range(n_folds):
+            if g != f:
+                yield f, g, min(f, g), max(f, g)
+
+
+def _ridge_critic(X: np.ndarray, v: np.ndarray, w: np.ndarray, tr: np.ndarray, alpha: float,
+                  obs_rms: RunningMeanStd, name: str,
+                  sc: PB.Scaler | None = None) -> tuple[CR.CriticNet, float]:
+    """(linear critic on o, training R2) of the ridge of ``v`` [n, 1] on X's ``tr`` rows at
+    ``alpha``, z-scored on those rows (``sc``: their scaler, if already fitted)."""
+    sc = PB.scaler(X[tr], w[tr]) if sc is None else sc
+    Xs = sc.apply(X[tr])
+    mu, yb, G, c = PB._sums(Xs, v[tr], w[tr]).moments()
+    beta = PB.ridge_path(G, c, Xs.shape[1], (alpha,), (np.inf,))[0, 0, :, 0]
+    wo = np.zeros(X.shape[1])
+    wo[sc.keep] = beta / sc.sd[sc.keep]
+    b = float(yb[0] - mu @ beta - np.sum(sc.mean[sc.keep] * beta / sc.sd[sc.keep]))
+    return (CR.linear_critic(wo, b, obs_rms, 1.0, name=name),
+            float(PB.r2(v[tr, 0], X[tr] @ wo + b, w[tr])[0]))
+
+
 def fit_value_ridge(z: np.ndarray, v: np.ndarray, fo: PB.Folds, w: np.ndarray,
                     obs_rms: RunningMeanStd, grid: Sequence[float] = VALUE_GRID) -> FoldNets:
-    """The value-fit ridge per outer fold (module docstring), as linear critics on o."""
+    """The value-fit ridge per outer fold and its nested fits (module docstring), as linear
+    critics on o: fold f's penalty by inner CV, every nested fit serving slice f at it."""
     X, v, w = _o(z), np.asarray(v, float)[:, None], np.asarray(w, float)
-    nets, alpha, r2s = [], np.full(fo.n_folds, np.nan), np.full(fo.n_folds, np.nan)
-    for f in range(fo.n_folds):
+    F = fo.n_folds
+    nets, alpha, r2s = [], np.full(F, np.nan), np.full(F, np.nan)
+    for f in range(F):
         tr = fo.outer != f
         sc = PB.scaler(X[tr], w[tr])
         Xs = sc.apply(X)
         p = Xs.shape[1]
         ib, _, _ = PB._select(Xs[tr], v[tr], w[tr], fo.inner[f][tr], p, tuple(grid), (np.inf,))
-        mu, yb, G, c = PB._sums(Xs[tr], v[tr], w[tr]).moments()
-        beta = PB.ridge_path(G, c, p, (grid[ib[0]],), (np.inf,))[0, 0, :, 0]
-        wo = np.zeros(X.shape[1])
-        wo[sc.keep] = beta / sc.sd[sc.keep]
-        b = float(yb[0] - mu @ beta - np.sum(sc.mean[sc.keep] * beta / sc.sd[sc.keep]))
-        nets.append(CR.linear_critic(wo, b, obs_rms, 1.0, name=f"value-ridge-f{f}"))
         alpha[f] = grid[ib[0]]
-        r2s[f] = PB.r2(v[tr, 0], X[tr] @ wo + b, w[tr])[0]
-    return FoldNets(tuple(nets), alpha, r2s)
+        net, r2s[f] = _ridge_critic(X, v, w, tr, alpha[f], obs_rms, f"value-ridge-f{f}", sc)
+        nets.append(net)
+    nested: list[list] = [[None] * F for _ in range(F)]
+    r2n = np.full((F, F), np.nan)
+    done: dict = {}
+    for f, g, a, b in _pairs(F):
+        key = (a, b, float(alpha[f]))
+        if key not in done:
+            tr = (fo.outer != a) & (fo.outer != b)
+            done[key] = _ridge_critic(X, v, w, tr, alpha[f], obs_rms, f"value-ridge-f{a}f{b}")
+        nested[f][g], r2n[f, g] = done[key]
+    return FoldNets(tuple(nets), alpha, r2s, tuple(map(tuple, nested)), r2n)
 
 
 def _mlp_fn(params, o):
@@ -219,15 +293,27 @@ def mlp_net(mdl: PB.MLP, obs_rms: RunningMeanStd, name: str = "value-mlp") -> CR
     return CR.CriticNet(_mlp_fn, prm, CR._rms(obs_rms), 1.0, 0, name)
 
 
+def nested_seed(a: int, b: int) -> int:
+    """The last id of the value-fit MLP's nested fit without folds a < b (``fit_value_mlp``):
+    past the inner folds' 1..N_INNER and the outer fit's 0."""
+    if not a < b:
+        raise ValueError(f"a nested fit's folds in order: {a} >= {b}")
+    return ST.N_INNER + 1 + int(b)
+
+
 def fit_value_mlp(z: np.ndarray, v: np.ndarray, fo: PB.Folds, w: np.ndarray,
                   obs_rms: RunningMeanStd, alphas: Sequence[float] = VALUE_MLP_ALPHAS,
                   hidden: int = PB.MLP_HIDDEN, maxiter: int = PB.MLP_MAXITER) -> FoldNets:
-    """The value-fit MLP per outer fold (module docstring); seeds ``probes.mlp_rng``
-    (partition, fold, 99, inner fold + 1 or 0): component index 99 marks the value fit."""
+    """The value-fit MLP per outer fold and its nested fits (module docstring); seeds
+    ``probes.mlp_rng`` (partition, fold, 99, inner fold + 1 or 0): component index 99 marks
+    the value fit; the nested fit without folds a < b (one per pair and penalty, serving
+    slice a's rows of fold b and slice b's of fold a when their penalties agree) draws
+    (partition, a, 99, ``nested_seed(a, b)``) and is z-scored on its own training rows."""
     X, v, w = _o(z), np.asarray(v, float), np.asarray(w, float)
     part = max(fo.partition, 0)
-    nets, alpha, r2s = [], np.full(fo.n_folds, np.nan), np.full(fo.n_folds, np.nan)
-    for f in range(fo.n_folds):
+    F = fo.n_folds
+    nets, alpha, r2s = [], np.full(F, np.nan), np.full(F, np.nan)
+    for f in range(F):
         tr = fo.outer != f
         sc = PB.scaler(X[tr], w[tr])
         best = alphas[0]
@@ -246,7 +332,19 @@ def fit_value_mlp(z: np.ndarray, v: np.ndarray, fo: PB.Folds, w: np.ndarray,
         nets.append(mlp_net(mdl, obs_rms, f"value-mlp-f{f}"))
         alpha[f] = best
         r2s[f] = PB.r2(v[tr], mdl.predict(X[tr]), w[tr])[0]
-    return FoldNets(tuple(nets), alpha, r2s)
+    nested: list[list] = [[None] * F for _ in range(F)]
+    r2n = np.full((F, F), np.nan)
+    done: dict = {}
+    for f, g, a, b in _pairs(F):
+        key = (a, b, float(alpha[f]))
+        if key not in done:
+            tr = (fo.outer != a) & (fo.outer != b)
+            mdl = PB.mlp_fit(X[tr], v[tr], w[tr], float(alpha[f]),
+                             PB.mlp_rng(part, a, 99, nested_seed(a, b)), hidden, maxiter)
+            done[key] = (mlp_net(mdl, obs_rms, f"value-mlp-f{a}f{b}"),
+                         float(PB.r2(v[tr], mdl.predict(X[tr]), w[tr])[0]))
+        nested[f][g], r2n[f, g] = done[key]
+    return FoldNets(tuple(nets), alpha, r2s, tuple(map(tuple, nested)), r2n)
 
 
 # ------------------------------------------------------------------------- QSS and barrier
@@ -393,12 +491,25 @@ def gradients(net: CR.CriticNet, keys: Sequence[KeyInput], n: int, output: int =
     return Grads(y, g, pi, gh)
 
 
-def fold_gradients(fits: FoldNets, keys: Sequence[KeyInput], n: int, n_folds: int,
-                   output: int = 0) -> np.ndarray:
+def fold_gradients(fits: FoldNets, keys: Sequence[KeyInput], outer: np.ndarray,
+                   n_folds: int = ST.N_FOLDS, output: int = 0) -> np.ndarray:
     """[F, n, 8] a value fit's primary pullback per held-out fold (module docstring 'Per
-    held-out fold'): slice f pulls every key back through ``fits.net(f)``, fitted without
-    fold f."""
-    return np.stack([gradients(fits.net(f), keys, n, output).g for f in range(n_folds)])
+    held-out fold'): slice f pulls fold f's keys back through fold f's fit and a training
+    fold g's keys through the fit without folds f and g (``FoldNets.net_for``), so no row's
+    slice-f gradient comes from a fit that saw its own fold. ``outer`` [n] the rows' outer
+    folds (a key's rows share one: folds are dealt by geometry)."""
+    outer = np.asarray(outer, int)
+    out = np.full((n_folds, len(outer), 8), np.nan)
+    fold_of = []
+    for k in keys:
+        fk = np.unique(outer[k.rows])
+        if len(fk) != 1:
+            raise ValueError(f"key {k.key_id} spans outer folds {fk.tolist()}")
+        fold_of.append(int(fk[0]))
+    for f in range(n_folds):
+        for k, g in zip(keys, fold_of, strict=True):
+            out[f, k.rows] = CR.pullback(fits.net_for(f, g), None, k.inp, k.oj).g[:, output]
+    return out
 
 
 def z_rows(keys: Sequence[KeyInput], obs_rms: RunningMeanStd, n: int
@@ -489,10 +600,11 @@ def null_gradients(keys: Sequence[KeyInput], tab: io.Table, v_star: np.ndarray, 
                    mlp_alphas: Sequence[float] = VALUE_MLP_ALPHAS,
                    mlp_maxiter: int = PB.MLP_MAXITER,
                    v_star_inf: np.ndarray | None = None) -> dict:
-    """{null: g} (and 'fits': the value fits' penalties and training R2) for one network's
-    obs_rms on T (``keys`` cover T's rows; ``lam`` [n, 8] for the far-geometry null): g is
-    [F, n, 8] per held-out fold for the value fits and the far-geometry lambda, [n, 8] for QSS
-    and the barrier (module docstring 'Per held-out fold'). 'value_ridge' and 'value_mlp' fit
+    """{null: g} (and 'fits': the value fits' penalties and training R2, the nested fits'
+    too, ``FoldNets.record``) for one network's obs_rms on T (``keys`` cover T's rows;
+    ``lam`` [n, 8] for the far-geometry null): g is [F, n, 8] per held-out fold for the value
+    fits and the far-geometry lambda (cross-fitted), [n, 8] for QSS and the barrier (module
+    docstring 'Per held-out fold'). 'value_ridge' and 'value_mlp' fit
     ``v_star_inf`` (the horizon-corrected value; default T's 'v_star_inf' column, else
     ``v_star``), 'value_ridge_window' fits ``v_star`` (module docstring). A float64 process."""
     n, F = len(w), fo.n_folds
@@ -504,17 +616,16 @@ def null_gradients(keys: Sequence[KeyInput], tab: io.Table, v_star: np.ndarray, 
         z, _ = z_rows(keys, obs_rms, n)
     if "value_ridge" in which:
         fr = fit_value_ridge(z, v_star_inf, fo, w, obs_rms)
-        out["value_ridge"] = fold_gradients(fr, keys, n, F)
-        out["fits"]["value_ridge"] = {"alpha": fr.alpha.tolist(), "r2_train": fr.r2_train.tolist()}
+        out["value_ridge"] = fold_gradients(fr, keys, fo.outer, F)
+        out["fits"]["value_ridge"] = fr.record()
     if "value_ridge_window" in which:
         fr = fit_value_ridge(z, v_star, fo, w, obs_rms)
-        out["value_ridge_window"] = fold_gradients(fr, keys, n, F)
-        out["fits"]["value_ridge_window"] = {"alpha": fr.alpha.tolist(),
-                                             "r2_train": fr.r2_train.tolist()}
+        out["value_ridge_window"] = fold_gradients(fr, keys, fo.outer, F)
+        out["fits"]["value_ridge_window"] = fr.record()
     if "value_mlp" in which:
         fm = fit_value_mlp(z, v_star_inf, fo, w, obs_rms, mlp_alphas, maxiter=mlp_maxiter)
-        out["value_mlp"] = fold_gradients(fm, keys, n, F)
-        out["fits"]["value_mlp"] = {"alpha": fm.alpha.tolist(), "r2_train": fm.r2_train.tolist()}
+        out["value_mlp"] = fold_gradients(fm, keys, fo.outer, F)
+        out["fits"]["value_mlp"] = fm.record()
     if "qss" in which:
         out["qss"] = gradients(qss_critic(obs_rms), keys, n).g
     if "barrier" in which:

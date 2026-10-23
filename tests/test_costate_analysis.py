@@ -19,9 +19,11 @@ v2.1, Section 6 with Section 12's decisions).
 - C1's per-fold nulls: a regressor [F, n, m] calibrated fold by fold on its own slice, the
   far-geometry lambda and a value fit's pullback (stubbed) per held-out fold: perturbing fold
   f's targets cannot change fold f's calibrated null predictions (the old one-predictor
-  layout let them); rows without an out-of-fold calibration dropped, not zero-filled, and a
-  one-geometry stratum 'not testable'; C3-w's partial covariate renormalised over the strata
-  it scores.
+  layout let them); the value fits (ridge and MLP) cross-fitted as C2's decoys, so fold g's
+  targets never reach a training row's slice-f gradient on fold g; rows without an
+  out-of-fold calibration dropped, not zero-filled (C1, W1's calibrated agreement,
+  C1-pattern's counts), and a one-geometry stratum 'not testable'; C3-w's partial covariate
+  renormalised over the strata it scores.
 
 Pure NumPy (the nulls module only for its far-geometry lambda and, with the pullback stubbed,
 its per-fold wiring): no network, no key file."""
@@ -850,51 +852,140 @@ def test_the_far_geometry_null_cannot_carry_the_held_out_folds_targets(world):
         assert not np.allclose(ob.pred[outer == f], old.pred[outer == f]), f
 
 
-def test_a_value_fit_null_is_pulled_back_through_each_folds_own_fit(world, monkeypatch):
-    """Review finding (fold-dependent C1 nulls): slice f of a value fit's gradient is every
-    row pulled back through the fit made without fold f (``nulls.fold_gradients``; the
-    pullback stubbed as the linear critic's closed form w'J), so fold f's value targets and
-    its lambda change neither slice f nor fold f's calibrated null predictions; under the
-    old construction (each row through its own fold's fit) they did."""
+def _value_fit_world(world, monkeypatch, seed):
+    """A value fit's world on the toy T: features z [n, 12] padded to the 222 channels, a
+    value linear in z, J [n, 12, 8], one ``nulls.KeyInput`` per key whose inputs hold its o
+    and J, and the pullback stubbed as the closed form dV/do J of a linear or a value-fit
+    MLP critic."""
     from apexzero.costate import critic as CR
     from apexzero.costate import nulls as NL
 
     tab, lam, w, cl, G, outer, counts = world
-    rng = np.random.default_rng(32)
-    n, F, p = len(w), ST.N_FOLDS, 12
-    fo = PB.folds(tab)
-    assert np.array_equal(fo.outer, outer)
+    rng = np.random.default_rng(seed)
+    n, p = len(w), 12
     z = rng.normal(size=(n, p))
     J = rng.normal(size=(n, p, 8)) + 0.2 * lam[:, None, [0, 1, 2, 3, 0, 1, 2, 3]]
 
+    def dv_do(net, o):
+        if net.fn is NL._mlp_fn:
+            mean, sd, W1, b1, W2, _, _, ysd = net.params
+            h = np.tanh(((o - mean) / sd) @ W1 + b1)
+            return ysd * ((1.0 - h * h) * W2) @ W1.T / sd
+        return np.broadcast_to(net.params[0][0], o.shape)
+
     def pullback(net, tr, inp, oj):
-        g = np.einsum("kc,ncd->nkd", net.params[0][:, :p], inp)
-        return SimpleNamespace(value=np.zeros((len(inp), 1)), g=g, pi=np.zeros((len(inp), 1, 2)),
+        g = np.einsum("nc,ncd->nd", dv_do(net, inp.o)[:, :p], inp.J)[:, None]
+        return SimpleNamespace(value=np.zeros((len(g), 1)), g=g, pi=np.zeros((len(g), 1, 2)),
                                g_held=g)
 
     monkeypatch.setattr(CR, "pullback", pullback)
-    key = tab["key_id"]
-    keys = [NL.KeyInput(k, np.flatnonzero(key == k), J[key == k], None) for k in np.unique(key)]
-    v = z @ rng.uniform(0.5, 1.5, p) + 0.1 * rng.normal(size=n)
     zz = np.concatenate([z, np.zeros((n, CR.OBS_DIM - p))], 1)
+    key = tab["key_id"]
+    keys = [NL.KeyInput(k, np.flatnonzero(key == k),
+                        SimpleNamespace(o=np.clip(zz[key == k], -10, 10), J=J[key == k]), None)
+            for k in np.unique(key)]
+    v = z @ rng.uniform(0.5, 1.5, p) + 0.1 * rng.normal(size=n)
+    return zz, v, keys, rng
+
+
+def test_a_value_fit_null_is_cross_fitted_as_c2s_decoys(world, monkeypatch):
+    """Review findings #20 and its follow-up (a value fit's training rows in-sample): slice f
+    of a value fit's gradient pulls fold f's rows back through the fit without fold f and a
+    training row of fold g through the fit without folds f and g at fold f's penalty
+    (``nulls.fold_gradients``, ``FoldNets.net_for``; the pullback stubbed), as
+    ``states.cross_fit`` does. So fold f's value targets and lambda change neither slice f
+    nor fold f's calibrated null predictions, and fold g's change no training row's slice-f
+    gradient on fold g; under the previous layout (every row of slice f through fold f's
+    fit) they did, and under the old one (each row through its own fold's fit) fold f's
+    calibration changed."""
+    from apexzero.costate import nulls as NL
+
+    tab, lam, w, cl, G, outer, counts = world
+    zz, v, keys, rng = _value_fit_world(world, monkeypatch, 32)
+    n, F = len(w), ST.N_FOLDS
+    fo = PB.folds(tab)
+    assert np.array_equal(fo.outer, outer)
     d, odd = tab["direction"], AN._names_odd(K_P)
+    grid = (0.1,)                    # one penalty: fold g's targets cannot move fold f's
 
     def nulls_of(v_, lam_):
-        fr = NL.fit_value_ridge(zz, v_, fo, w, None)
-        g3 = NL.fold_gradients(fr, keys, n, F)[..., :4]
-        return g3, AN.calibrate(g3, lam_, outer, w, direction=d, odd=odd), AN.calibrate(
-            g3[outer, np.arange(n)], lam_, outer, w, direction=d, odd=odd)
+        fr = NL.fit_value_ridge(zz, v_, fo, w, None, grid=grid)
+        g3 = NL.fold_gradients(fr, keys, outer, F)[..., :4]
+        prev = np.stack([NL.gradients(fr.net(f), keys, n).g[:, :4] for f in range(F)])
+        return fr, g3, prev, AN.calibrate(g3, lam_, outer, w, direction=d, odd=odd), \
+            AN.calibrate(g3[outer, np.arange(n)], lam_, outer, w, direction=d, odd=odd)
 
-    g3, cal, old = nulls_of(v, lam)
+    fr, g3, prev, cal, old = nulls_of(v, lam)
+    held = outer[None, :] == np.arange(F)[:, None]
     assert g3.shape == (F, n, 4) and not np.allclose(g3[0], g3[1])
-    for f in range(F):
+    assert np.array_equal(g3[held], prev[held]) and not np.allclose(g3[~held], prev[~held])
+    # one fit per pair of folds and penalty, shared by the two slices it serves
+    assert all(fr.nested[f][g] is fr.nested[g][f] for f in range(F) for g in range(F) if g != f)
+    rec = fr.record()
+    assert rec["nested_r2_train"][2][2] is None and 0.9 < rec["nested_r2_train"][2][3] <= 1.0
+    for g_ in range(F):
         v2, lam2 = v.copy(), lam.copy()
-        v2[outer == f] += 5.0 * rng.normal(size=(outer == f).sum())
-        lam2[outer == f] += 5.0 * rng.normal(size=((outer == f).sum(), 4))
-        h3, b, ob = nulls_of(v2, lam2)
-        assert np.array_equal(h3[f], g3[f]), f
-        assert np.allclose(b.pred[outer == f], cal.pred[outer == f]), f
-        assert not np.allclose(ob.pred[outer == f], old.pred[outer == f]), f
+        v2[outer == g_] += 5.0 * rng.normal(size=(outer == g_).sum())
+        lam2[outer == g_] += 5.0 * rng.normal(size=((outer == g_).sum(), 4))
+        _, h3, prev2, b, ob = nulls_of(v2, lam2)
+        assert np.array_equal(h3[g_], g3[g_]), g_
+        assert np.allclose(b.pred[outer == g_], cal.pred[outer == g_]), g_
+        assert not np.allclose(ob.pred[outer == g_], old.pred[outer == g_]), g_
+        for f in range(F):
+            if f == g_:
+                continue
+            on_g = outer == g_
+            assert np.array_equal(h3[f][on_g], g3[f][on_g]), (f, g_)        # out of sample
+            assert not np.allclose(prev2[f][on_g], prev[f][on_g]), (f, g_)   # in sample
+            assert not np.allclose(h3[f][outer == f], g3[f][outer == f]), (f, g_)
+    # a per-fold fit without its nested fits refuses a training fold; a key spans one fold
+    bare = NL.FoldNets(fr.nets, fr.alpha, fr.r2_train)
+    assert bare.net_for(1, 1) is fr.nets[1]
+    with pytest.raises(ValueError, match="nested fits"):
+        bare.net_for(1, 2)
+    shared = NL.FoldNets(fr.nets[:1], fr.alpha[:1], fr.r2_train[:1])
+    assert shared.net_for(1, 2) is fr.nets[0]
+    mixed = outer.copy()
+    mixed[keys[0].rows[0]] = (outer[keys[0].rows[0]] + 1) % F
+    with pytest.raises(ValueError, match="spans outer folds"):
+        NL.fold_gradients(fr, keys, mixed, F)
+
+
+def test_the_value_fit_mlp_is_cross_fitted_too(world, monkeypatch):
+    """The value-fit MLP's nested fits (``nulls.fit_value_mlp``): one per pair of folds and
+    penalty, seeded (partition, a, 99, ``nested_seed(a, b)``) past the inner folds' and the
+    outer fit's ids and z-scored on its own rows, so fold g's value targets change no
+    training row's slice-f gradient on fold g, while fold f's rows (the fit without f, which
+    saw fold g) and the previous layout's fold-g rows change."""
+    from apexzero.costate import nulls as NL
+
+    tab, lam, w, cl, G, outer, counts = world
+    zz, v, keys, rng = _value_fit_world(world, monkeypatch, 36)
+    n, F = len(w), ST.N_FOLDS
+    fo = PB.folds(tab)
+    assert NL.nested_seed(0, 5) == ST.N_INNER + 6
+    with pytest.raises(ValueError, match="in order"):
+        NL.nested_seed(3, 3)
+
+    def run(v_):
+        fm = NL.fit_value_mlp(zz, v_, fo, w, None, alphas=(1e-3,), hidden=8, maxiter=30)
+        return fm, NL.fold_gradients(fm, keys, outer, F), \
+            np.stack([NL.gradients(fm.net(f), keys, n).g for f in range(F)])
+
+    fm, g3, prev = run(v)
+    assert g3.shape == (F, n, 8) and np.isfinite(g3).all()
+    assert all(fm.nested[f][g] is fm.nested[g][f] for f in range(F) for g in range(F) if g != f)
+    assert np.isnan(np.diag(fm.nested_r2_train)).all()
+    g_ = 2
+    v2 = v.copy()
+    v2[outer == g_] += 5.0 * rng.normal(size=(outer == g_).sum())
+    _, h3, prev2 = run(v2)
+    on_g = outer == g_
+    assert np.array_equal(h3[g_], g3[g_])
+    for f in (0, 4):
+        assert np.array_equal(h3[f][on_g], g3[f][on_g]), f
+        assert not np.allclose(prev2[f][on_g], prev[f][on_g]), f
+        assert not np.allclose(h3[f][outer == f], g3[f][outer == f]), f
 
 
 def test_rows_without_an_out_of_fold_calibration_are_dropped_not_zero_filled(world):
@@ -942,6 +1033,58 @@ def test_rows_without_an_out_of_fold_calibration_are_dropped_not_zero_filled(wor
     # the primary record has no reason and counts no dropped row
     full = AN.c1(g, lam, outer, w, cl, G, d, np.ones(n, bool), nl, None, K_P, counts)
     assert "reason" not in full.record() and full.record()["n_uncalibrated"] == [0, 0, 0, 0]
+
+
+def test_w1_and_c1_pattern_drop_and_count_rows_without_a_calibration(world):
+    """Finding #10's rule beyond C1: the calibrated agreement (W1, C3-w's x) zero-filled a
+    fold without a calibration (np.nan_to_num) and scored those rows; now they are dropped
+    and counted, the Spearman and the slope read the same rows, and with none left the
+    record is 'not testable' with its reason (C3-w then lists the network as missing).
+    C1-pattern counts its dropped rows per component."""
+    tab, lam, w, cl, G, outer, counts = world
+    rng = np.random.default_rng(37)
+    n = len(w)
+    d = tab["direction"]
+    x = lam[:, 0] + 0.3 * rng.normal(size=n)
+    t = lam[:, 0]
+    full = AN.calibrated_agreement(x, t, outer, w, cl, G, np.ones(n, bool), counts)
+    assert full["n"] == n and full["n_uncalibrated"] == 0 and "decision" not in full
+    one = cl == 5
+    r = AN.calibrated_agreement(x, t, outer, w, cl, G, one, counts)
+    assert r["decision"] == "not testable" and "1 outer fold" in r["reason"]
+    assert r["n"] == 0 and r["n_uncalibrated"] == one.sum() and np.isnan(r["r2c"])
+    nr = AN.calibrated_agreement(x, t, outer, w, cl, G, np.zeros(n, bool), counts)
+    assert nr["reason"] == "no row"
+    # two geometries in two folds; fold A's calibration has only 2 of B's rows: A's rows are
+    # dropped and counted, B's scored by the fit on A's rows
+    ga = 5
+    gb = int(cl[np.flatnonzero(outer != outer[cl == ga][0])[0]])
+    A, B = cl == ga, cl == gb
+    B2 = B & (np.cumsum(B) <= 2)
+    rows = A | B2
+    with np.errstate(invalid="ignore", divide="ignore"):   # draws without geometry B: nan
+        r2 = AN.calibrated_agreement(x, t, outer, w, cl, G, rows, counts)
+        assert r2["n"] == 2 and r2["n_uncalibrated"] == A.sum()
+        cal = AN.calibrate(x[:, None], t[:, None], outer, w, rows)
+        assert np.isnan(cal.pred[A]).all() and np.isfinite(cal.pred[B2]).all()
+        pt, _ = AN.boot_r2(t[B2], [cal.pred[B2, 0]], w[B2], cl[B2], G, counts)
+        assert r2["r2c"] == pytest.approx(pt[0], rel=1e-12)
+        zero = np.where(B2, cal.pred[:, 0], 0.0)
+        pz, _ = AN.boot_r2(t[rows], [zero[rows]], w[rows], cl[rows], G, counts)
+        assert pz[0] != pytest.approx(pt[0])                     # the old zero-filled score
+        rho, _ = AN.spearman_boot(x[B2], t[B2], w[B2], cl[B2], counts)
+        assert r2["spearman"] == pytest.approx(rho, rel=1e-12)
+    # C1-pattern: a one-geometry stratum leaves every component without a calibrated row
+    lam8 = np.hstack([lam, rng.normal(size=(n, 4))])
+    g8 = lam8 + 0.3 * rng.normal(size=(n, 8))
+    pat = AN.c1_pattern(g8, lam8, outer, w, cl, G, d, one, np.ones((n, 8), bool), NAMES8,
+                        counts=counts)
+    assert pat["decision"] == "not testable"
+    assert set(pat["n_uncalibrated"].values()) == {int(one.sum())}
+    assert set(pat["n_rows"].values()) == {0}
+    ok = AN.c1_pattern(g8, lam8, outer, w, cl, G, d, np.ones(n, bool), np.ones((n, 8), bool),
+                       NAMES8, counts=counts)
+    assert set(ok["n_uncalibrated"].values()) == {0} and set(ok["n_rows"].values()) == {n}
 
 
 def test_the_partial_covariate_skips_and_renormalises_strata_without_it():
