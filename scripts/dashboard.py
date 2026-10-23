@@ -420,6 +420,7 @@ def eta_text(st: StageState, now: float) -> str:
 # events per agent) under ~/.claude/projects/<repo path as a slug>/<session>/subagents/.
 CLAUDE_PROJECT = Path.home() / ".claude" / "projects" / re.sub(r"[/ ]", "-", str(ROOT))
 STALL_S = 20 * 60
+ABANDON_S = 2 * 3600     # a workflow quiet this long was stopped (no journal marker is written)
 
 
 @dataclass
@@ -722,7 +723,10 @@ def render(width: int) -> list[str]:
     # Claude's agent workflows
     for w in workflows(now=now):
         nm = w.name.removeprefix("psychophysics-")
-        if w.running:
+        if w.running and w.last_s > ABANDON_S:      # stopped or lost with its session
+            if w.age_s < RECENT_DONE_S:
+                done.append((now - w.last_s, f"{RED}✗ stopped{RESET} Claude: {nm}"))
+        elif w.running:
             stalled = w.last_s > STALL_S
             extra = (f"{RED}stalled? quiet {fmt_dur(w.last_s)}{RESET}" if stalled
                      else f"running {fmt_dur(w.age_s)}")
