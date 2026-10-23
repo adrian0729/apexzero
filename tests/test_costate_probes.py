@@ -12,7 +12,8 @@ architecture and on constructed data with known answers:
 - K4 plants on a synthetic world (48 geometries, mirror pairs, smooth trajectories): PR-1a
   (one unit per target), PR-1b inside C2 (the plant is recovered and C2 confirms), PR-6 (a
   decoy-only layer does not pass C2's residualised test; the units' biases), PR-2 (m in the
-  layer adds nothing),
+  layer adds nothing), the paired increment of K4's no-gain plants (a host's chance offset
+  cannot fail one; a planted gain still does),
   PR-3 (no leak on the grouped split; the mis-grouped split leaks), PR-7 (scale invariance),
   PR-8 (C2-sw's planted switching unit);
 - K5: permuted targets (wiring null: held-out rows kept, the training rows permuted across
@@ -509,6 +510,53 @@ def test_the_output_in_the_layer_adds_nothing_pr2(world, c2run):
     g_m = P.gain(C["base"], C["with_m"], C["rand"], W["w"], W["fo"], W["sig"], C["passing"])
     g_h = P.gain(C["base"], C["own"], C["rand"], W["w"], W["fo"], W["sig"], C["passing"])
     assert abs(g_m.stat) <= 0.01 and abs(g_m.stat - g_h.stat) <= 0.005, (g_m.gain, g_h.gain)
+
+
+def test_paired_increment_is_the_change_in_the_same_network(world):
+    """K4's no-gain plants are scored by the paired increment Delta2(host + plant) -
+    Delta2(host): one fit of the base and the controls, the same rows and draws, so the
+    controls' median cancels. A host with a chance offset against the controls (a weak unit
+    of lambda_res) and a plant that adds nothing (its own m, already in the base): the
+    unpaired Delta2 carries the offset past 0.01, the paired one stays near 0. A plant that
+    adds information still raises the paired increment past 0.01."""
+    W = world
+    w, fo, sig = W["w"], W["fo"], W["sig"]
+    Y = W["res"].by_fold
+    n = len(w)
+    own = Y[fo.outer, np.arange(n)]
+    h3, m = W["h"]["h3"], W["h"]["m"]
+    host = P.plant_units(h3, own[:, :1], 0.3, w, np.random.default_rng(11))      # 'lucky'
+    counts = P.cluster_counts(int(fo.cluster.max()) + 1, 300, np.random.default_rng(12))
+
+    def run(layer, h=host):
+        return P.c2_paired(layer, h, W["rand"], W["z"], m, Y, fo, w, sig, NAMES, None, None,
+                           counts, GRID, H_GRID)
+
+    nothing = run(np.hstack([host, m]))
+    # the paired increment is the plant's gain minus the host's, both c2's own gains
+    for g, layer in ((nothing.plant, np.hstack([host, m])), (nothing.host, host)):
+        ref = P.c2(layer, W["rand"], W["z"], m, Y, fo, w, sig, NAMES, None, None, counts,
+                   GRID, H_GRID)
+        assert g.stat == ref.stat and np.array_equal(g.boot, ref.boot)
+    assert nothing.stat == pytest.approx(nothing.plant.stat - nothing.host.stat, abs=1e-15)
+    np.testing.assert_allclose(nothing.gain, nothing.plant.r2_full - nothing.host.r2_full,
+                               atol=1e-15)
+    np.testing.assert_array_equal(nothing.boot, nothing.plant.boot - nothing.host.boot)
+    assert nothing.ci == tuple(float(v) for v in P.ci(nothing.boot))
+    rec = nothing.record()
+    assert rec["stat"] == nothing.stat and rec["host"]["stat"] == nothing.host.stat
+    assert rec["unpaired"]["stat"] == nothing.plant.stat
+    # the host's offset alone cannot fail the no-gain tolerance; unpaired, it does
+    assert nothing.host.stat > 0.01 and nothing.plant.stat > 0.01, nothing.host.record()
+    assert abs(nothing.stat) <= 0.005, nothing.gain
+    # a planted gain (a unit of xi's residual, SNR 1) still exceeds it
+    gain = run(P.plant_units(host, own[:, 2:3], 1.0, w, np.random.default_rng(13)))
+    assert gain.stat > 0.01 and gain.ci[0] > 0.0, gain.gain
+    # two gains of different controls are not paired
+    other = P.c2(host, W["rand"][:2], W["z"], m, Y, fo, w, sig, NAMES, None, None, counts,
+                 GRID, H_GRID)
+    with pytest.raises(ValueError):
+        P.paired(nothing.plant, other)
 
 
 def test_scale_invariance_pr7(world, c2run):

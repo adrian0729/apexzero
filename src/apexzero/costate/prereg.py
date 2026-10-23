@@ -210,14 +210,20 @@ def constants() -> dict:
                                  "(knn_k_validation) of K4's PR-6b and PR-6c worlds gives "
                                  "C2's primary Delta2 <= gates.k4[2], y residualised at k and "
                                  "C2's power floor recomputed at k; none: the smallest, a "
-                                 "blocker. Grounds: what leaks into C2 is f_D's bias, which a "
-                                 "network holding the decoy function recovers; its variance "
-                                 "only costs power, so an out-of-geometry SSE, which trades "
-                                 "the two, does not choose k",
+                                 "blocker; the Delta2 read is the units' paired increment "
+                                 "over their host (gates.k4_no_gain_rule). Grounds: what "
+                                 "leaks into C2 is f_D's bias, which a network holding the "
+                                 "decoy function recovers; its variance only costs power, so "
+                                 "an out-of-geometry SSE, which trades the two, does not "
+                                 "choose k",
                    "knn_k_validation": {
                        "seeds": list(GT.DECOY_K_SEEDS), "stream": "costate_decoy_k",
+                       "statistic": GT.K4_PAIRED,
                        "delta2": {str(k): {kind: list(v) for kind, v in d.items()}
-                                  for k, d in GT.DECOY_K_VALIDATION.items()}},
+                                  for k, d in GT.DECOY_K_VALIDATION.items()},
+                       "delta2_unpaired": {str(k): {kind: list(v) for kind, v in d.items()}
+                                           for k, d in
+                                           GT.DECOY_K_VALIDATION_UNPAIRED.items()}},
                    "power_floor": ST.POWER_FLOOR, "tau_s": ST.TAU_S,
                    "winsor": list(ST.WINSOR), "small_geometry": ST.SMALL_GEOMETRY_KEYS,
                    "sw_stratum": ST.SW_STRATUM},
@@ -351,7 +357,21 @@ def constants() -> dict:
                                  "random-init controls) <= k4[2] on every seed, > k4[2] on "
                                  "every seed with the residualisation off, and for PR-6b the "
                                  "units' probe-alone R2 >= the kNN's on every seed; K4 needs "
-                                 "both",
+                                 "both; every Delta2 here is k4_no_gain_rule's paired "
+                                 "increment",
+                  "k4_no_gain_rule": "a plant's effect is the change it causes in the same "
+                                     "network: PR-2 (both variants), PR-3's grouped split, "
+                                     "PR-6, PR-6b and PR-6c (with their residualisation-off "
+                                     "checks and planted faults) are scored by the " + GT.K4_PAIRED
+                                     + " (a paired bootstrap for the CI), tolerances, seeds "
+                                     "and every-seed rules unchanged; the unpaired values and "
+                                     "the host's own offset per plant and per seed are "
+                                     "recorded, descriptive; PR-1a, PR-1b, PR-5, PR-8 and "
+                                     "PR-3's mis-grouped leak check keep their rules (the "
+                                     "leak's paired value reported)",
+                  "k4_pr4_rule": "PR-4 one-sided: h2's and h3's R2 each >= the readout's R2 "
+                                 "- k4[3] (the probe on either layer also sees its other "
+                                 "units and can exceed the readout)",
                   "band_note_margin": AN.BAND_NOTE_MARGIN},
         "streams": dict(STREAMS), "kappa_set_r": KAPPA_SET_R}
 

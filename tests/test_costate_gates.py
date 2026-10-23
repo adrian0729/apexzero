@@ -20,7 +20,10 @@
   by-fold record, PR-6's one-sided rule and gain grid, PR-6b's known truth passing and its
   planted faults failing (the residualisation off or skipped, an over-smoothed kNN, D1
   without s - s_apex), PR-6c's record and rule, C2's primary statistic on C2's decision
-  rows, K4 needing PR-6b and PR-6c, and the rules in the frozen constants; f_D's k (the
+  rows, K4 needing PR-6b and PR-6c, and the rules in the frozen constants; the no-gain
+  plants (PR-2, PR-3's grouped split, PR-6, PR-6b) as paired increments on a host with a
+  chance offset against its controls: the offset alone fails none of them, the unpaired
+  value and the host's offset are recorded, and a planted gain still fails; f_D's k (the
   largest candidate whose every validation seed passes, the smallest as a blocker; the
   validation seeds on their own stream; at_decoy_k's residuals and floor; states.KNN_K the
   rule's choice on the recorded leaks); K5's wiring record and its rule in the frozen
@@ -803,6 +806,10 @@ def test_k4_pr6_one_sided_rule_and_gain_grid(decoy_world):
     assert r["calibrated"] == (abs(r["decoy_r2"] - r["knn_r2"]) <= GT.K4_CALIBRATION_TOL)
     assert r["overfit_cost"] == max(0.0, -r["delta2"])
     assert r["pass"] == (r["delta2"] <= GT.K4_ZERO_TOL), r
+    # the paired increment: the unpaired Delta2 minus the host's own offset
+    assert r["statistic"] == GT.K4_PAIRED
+    assert r["delta2"] == pytest.approx(r["unpaired"]["delta2"] - r["host_offset"]["delta2"],
+                                        abs=1e-12)
     assert r["pass"], r                       # one-sided: a negative Delta2 passes
     assert not GT.pr6(pw, counts, {"pass": False})["pass"]
     assert not GT.pr6(pw, counts, None)["pass"]
@@ -874,6 +881,69 @@ def test_c2_primary_scores_c2s_decision_rows(decoy_world):
     assert rec["stat"] == pytest.approx(np.mean(np.asarray(rec["gain"])[[0, 2]]))
 
 
+def _lucky(pw, Y, snr=0.3, seed=21):
+    """``pw`` with its host (h3[0]) given units of ``Y`` [n, m] at a low SNR: a random network
+    with a chance offset against its controls on those targets."""
+    host = PB.plant_units(pw.h3[0], Y, snr, pw.w, np.random.default_rng(seed))
+    return dataclasses.replace(pw, h3=[host, *pw.h3[1:]])
+
+
+def test_k4_no_gain_plants_are_paired_increments(decoy_world):
+    """PR-2 (both variants), PR-3's grouped split and PR-6 are scored by the paired increment
+    over the host alone: on a host whose own offset against the controls exceeds 0.01 (so
+    every unpaired value does too), plants that add nothing still pass; each record keeps the
+    unpaired value and the host's offset, and K4's 'host_offset' gathers them."""
+    pw, counts = decoy_world
+    n = len(pw.w)
+    rng = np.random.default_rng(5)
+    tab = {**pw.tab, "a_steer": np.tanh(pw.z[:, 0] + 0.1 * rng.standard_normal(n)),
+           "a_pedal": np.tanh(pw.z[:, 1] + 0.1 * rng.standard_normal(n))}
+    own = np.asarray(pw.lam_res)[pw.fo.outer, np.arange(n)]
+    pl = dataclasses.replace(_lucky(pw, own), tab=tab)
+    out = GT.k4(pl, counts, which=("PR-2", "PR-3"))
+    p2, p3 = out["PR-2"], out["PR-3"]
+    for v in ("m", "astar"):
+        r = p2[v]
+        assert r["host_offset"]["delta2"] > GT.K4_ZERO_TOL < r["unpaired"]["delta2"], r
+        assert r["delta2"] == pytest.approx(r["unpaired"]["delta2"]
+                                            - r["host_offset"]["delta2"], abs=1e-12)
+        assert r["delta2"] == p2[f"delta2_{v}"] and abs(r["delta2"]) <= GT.K4_ZERO_TOL
+        assert len(r["host_offset"]["networks"]) == 1 + GT.K4_N_CONTROLS
+    assert p2["pass"] and p2["statistic"] == GT.K4_PAIRED
+    g = p3["grouped_record"]
+    assert g["unpaired"]["delta2"] > GT.K4_ZERO_TOL >= p3["grouped"] == g["delta2"], g
+    assert p3["by_key"] == p3["by_key_record"]["unpaired"]["delta2"]      # its rule: unpaired
+    assert p3["by_key_paired"] == p3["by_key_record"]["delta2"]
+    assert p3["pass"] == (max(p3["by_key"], p3["base_rise_by_key"]) > GT.K4_ZERO_TOL), p3
+    ho = out["host_offset"]
+    assert ho["PR-2"] == {v: p2[v]["host_offset"]["delta2"] for v in ("m", "astar")}
+    assert ho["PR-3"]["grouped"] == g["host_offset"]["delta2"] and ho["descriptive"]
+    r6 = GT.pr6(pl, counts, {"pass": True})
+    assert r6["host_offset"]["delta2"] > GT.K4_ZERO_TOL and r6["pass"], r6
+    assert r6["unpaired"]["delta2"] > r6["delta2"]
+
+
+def test_k4_pr6b_host_offset_cannot_fail_it_and_a_planted_gain_still_does(decoy_world):
+    """PR-6b on a host that holds part of the residualised y (its offset against C2's
+    controls above 0.01, so the unpaired statistic fails): the units holding F still pass
+    on the paired increment; the residualisation turned off (a planted gain) is still
+    detected."""
+    pw, _ = decoy_world
+    F = GT.pr6b_f(pw)
+    y = GT._std(F, pw.w) + GT.K4_PR6_NOISE * GT._ar1(pw.tab, pw.w, 4, GT.k4_rng(14, 0))
+    res = ST.cross_fit(ST.decoy_d1(pw.tab), y, pw.fo.outer, pw.w)
+    r = GT.pr6_world(_lucky(pw, res.oof), "smooth", seeds=(0,), t_wide=False, faults=False)
+    s = r["seeds"][0]
+    assert s["host_offset"]["delta2"] > GT.K4_ZERO_TOL < s["unpaired"]["delta2"], s
+    assert s["delta2"] <= GT.K4_ZERO_TOL and r["residualised_ok"], s
+    assert s["delta2"] == pytest.approx(s["unpaired"]["delta2"] - s["host_offset"]["delta2"],
+                                        abs=1e-12)
+    assert r["leak_bound"] == s["delta2"] and r["leak_bound_unpaired"] > GT.K4_ZERO_TOL
+    assert r["host_offset"] == [s["host_offset"]["delta2"]]
+    assert s["off"]["delta2"] > GT.K4_ZERO_TOL and r["off_detected"], s["off"]
+    assert "unpaired" in s["off"] and r["pass"] and r["statistic"] == GT.K4_PAIRED
+
+
 def test_k4_needs_pr6b_and_pr6c(decoy_world, monkeypatch):
     """K4 runs PR-6b and PR-6c with PR-6 and passes only when both do."""
     pw, counts = decoy_world
@@ -899,6 +969,8 @@ def test_k4_pr6_constants_in_the_record():
     assert g["k4_pr6"]["seeds"] == [0, 1, 2] and g["k4_controls"] == 3
     assert "one-sided" in g["k4_pr6_rule"] and "own-fold" in g["k4_pr1b_rule"]
     assert g["band_note_margin"] == AN.BAND_NOTE_MARGIN == 0.02
+    assert GT.K4_PAIRED in g["k4_no_gain_rule"] and "paired" in g["k4_pr6_rule"]
+    assert "one-sided" in g["k4_pr4_rule"]
 
 
 def test_decoy_k_rule():
@@ -932,11 +1004,15 @@ def test_decoy_k_is_the_rules_choice_on_its_own_validation_seeds(decoy_world, mo
 
     assert ST.KNN_K == GT.decoy_k_choice(GT.DECOY_K_VALIDATION)["k"]
     assert ST.KNN_K in GT.DECOY_K_CANDIDATES and GT.DECOY_K_SEEDS == tuple(range(6))
-    assert all(len(GT.DECOY_K_VALIDATION[k][kind]) == len(GT.DECOY_K_SEEDS)
+    assert all(len(t[k][kind]) == len(GT.DECOY_K_SEEDS)
+               for t in (GT.DECOY_K_VALIDATION, GT.DECOY_K_VALIDATION_UNPAIRED)
                for k in GT.DECOY_K_CANDIDATES for kind in ("smooth", "knn"))
     c = PR.constants()["states"]
     assert c["knn_k"] == ST.KNN_K and c["knn_k_candidates"] == list(GT.DECOY_K_CANDIDATES)
     assert c["knn_k_validation"]["seeds"] == list(GT.DECOY_K_SEEDS)
+    assert c["knn_k_validation"]["statistic"] == GT.K4_PAIRED and "paired" in c["knn_k_rule"]
+    assert c["knn_k_validation"]["delta2_unpaired"]["8"]["knn"] == list(
+        GT.DECOY_K_VALIDATION_UNPAIRED[8]["knn"])
     assert c["knn_k_validation"]["stream"] == "costate_decoy_k" and "largest" in c["knn_k_rule"]
     # the stream is its own, and no validation draw is a gate draw
     assert list(STREAMS.values()).count(STREAMS["costate_decoy_k"]) == 1
@@ -960,15 +1036,20 @@ def test_decoy_k_is_the_rules_choice_on_its_own_validation_seeds(decoy_world, mo
 
     def world(pw_, kind, seeds, t_wide=True, faults=True, k=None, noise=None):
         calls.append((kind, tuple(seeds), t_wide, faults, k, noise, pw_.power_floor))
-        return {"seeds": [{"seed": seeds[0], "delta2": 0.001 * seeds[0]}], "faults": {}}
+        v = seeds[0]
+        return {"seeds": [{"seed": v, "delta2": 0.001 * v, "unpaired": {"delta2": 0.002 * v},
+                           "host_offset": {"delta2": 0.001 * v}}], "faults": {}}
     monkeypatch.setattr(GT, "pr6_world", world)
     out = GT.decoy_k_leaks(pw, 8, faults=True)
     assert [c_[:5] for c_ in calls] == [(kind, (v,), False, True, 8)
                                         for kind in ("smooth", "knn") for v in GT.DECOY_K_SEEDS]
     assert all(c_[5] is GT.decoy_k_rng for c_ in calls)
     assert all(c_[6] == out["real"]["power_floor"] for c_ in calls)
+    # the rule reads the paired increment; the unpaired value and the host offset ride along
     assert out["delta2"] == {kind: [0.001 * v for v in GT.DECOY_K_SEEDS]
                              for kind in ("smooth", "knn")}
+    assert out["delta2_unpaired"]["knn"] == [0.002 * v for v in GT.DECOY_K_SEEDS]
+    assert out["host_offset"]["smooth"] == [0.001 * v for v in GT.DECOY_K_SEEDS]
     assert out["k"] == 8 and len(out["smooth"]["faults"]) == len(GT.DECOY_K_SEEDS)
 
 

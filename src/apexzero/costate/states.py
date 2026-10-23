@@ -79,10 +79,13 @@ and component it replaces took k = 15-30 on K4's smooth known-truth world, which
 leaked). The rule, fixed before any result: among ``gates.DECOY_K_CANDIDATES`` = (3, 5, 8,
 15) the largest k for which every one of 6 validation seeds (stream ``costate_decoy_k``,
 disjoint from K4's gate seeds) of K4's PR-6b and PR-6c worlds gives C2's primary Delta2 <=
-0.01 with y residualised at k, C2's power floor recomputed at k; none: k = 3, a blocker. On
-the full-size T (9,887 states, G1's obs_rms, random-init actors) only k = 8 qualifies
-(largest leak 0.0053 on PR-6b, 0.0096 on PR-6c; k = 3, 5 and 15 each have a seed above
-0.01; ``gates.DECOY_K_VALIDATION``). At k = 8 the interior residual shares of (s, n, xi, vx)
+0.01 with y residualised at k, C2's power floor recomputed at k; none: k = 3, a blocker. The
+Delta2 it reads is the units' paired increment over their host (``gates`` module docstring
+'K4's no-gain plants'; the rule was re-applied unchanged when K4's no-gain plants became
+paired). On the full-size T (9,887 states, G1's obs_rms, random-init actors) only k = 8
+qualifies (largest paired leak 0.0035 on PR-6b, 0.0098 on PR-6c; k = 3, 5 and 15 each have
+a seed above 0.01; ``gates.DECOY_K_VALIDATION``; unpaired, 0.0053 and 0.0096, the same
+choice). At k = 8 the interior residual shares of (s, n, xi, vx)
 are (0.224, 0.091, 0.248, 0.076) (0.289, 0.107, 0.213, 0.070 at the design's k = 15):
 lambda_n is below the power floor, so C2 decides on s and xi.
 

@@ -107,9 +107,10 @@ review): beside every C2 or C2-sw record (the primary, each variant, each strata
 refutes with its CI upper end within ``BAND_NOTE_MARGIN`` = 0.02 of the band, K4's measured
 PR-6 over-fitting cost (decoy-structured units the random controls lack lower Delta2); beside
 every one that confirms with its point within 0.02 of the band, K4's PR-6c leak bound (units
-holding a kNN-shaped decoy function exactly raise Delta2 by up to it). The numbers are the
-record's frozen 'k4_band_notes', copied at prereg from the bound gates/k4.json
-(``gates.band_notes``). They change no decision.
+holding a kNN-shaped decoy function exactly raise Delta2 by up to it). Both are paired
+increments, the change the plant causes in its own host (``gates`` module docstring 'K4's
+no-gain plants'). The numbers are the record's frozen 'k4_band_notes', copied at prereg from
+the bound gates/k4.json (``gates.band_notes``). They change no decision.
 
 **Per network and per variant** (``network_decisions``, ``variant_decisions``). C1, C2 and
 C2-sw are decided per network on the 9 step 1 generalist finals (``DECISION_NETWORKS``,
@@ -1108,7 +1109,7 @@ def c2_network(h3: np.ndarray, random_h3: Sequence[np.ndarray], z: np.ndarray, m
                lam_res: np.ndarray, fo: PB.Folds, w_all, direction: np.ndarray,
                names: Sequence[str], passing: dict, rows: np.ndarray, weights=None,
                counts: np.ndarray | None = None, grid=PB.GRID, h_grid=PB.H_GRID,
-               mask: np.ndarray | None = None) -> dict:
+               mask: np.ndarray | None = None, host: np.ndarray | None = None) -> dict:
     """C2 on the stratum ``rows`` (``PROBE_FIT``): ``lam_res`` [F, n, m] (or [n, m]) over all
     of T, the folds dealt on T. ``w_all`` is a callable giving the metric's weights of a row
     subset (``states.weights`` of the subset table) or the weights of the stratum's rows.
@@ -1116,7 +1117,9 @@ def c2_network(h3: np.ndarray, random_h3: Sequence[np.ndarray], z: np.ndarray, m
     stratum; ``states.decision_mask``). Returns the record, with 'not testable' when no
     component passes the power floor, the stratum has no row or its folds allow no inner
     cross-validation (``probe_cv_problem``); ``probes.NotTestable`` when no component passing
-    keeps a scored row (the caller records it)."""
+    keeps a scored row (the caller records it). ``host`` (K4's planted layers only): ``h3``
+    is a host with a plant, and the record is the plant's paired increment over ``host``
+    alone (``probes.c2_paired``: its unpaired gain and the host's beside it)."""
     rows = np.asarray(rows, bool)
     cols = [f"lam_{n}" for n in names]
     pas = PB._passing(passing, tuple(cols))
@@ -1130,8 +1133,14 @@ def c2_network(h3: np.ndarray, random_h3: Sequence[np.ndarray], z: np.ndarray, m
     Y = np.asarray(lam_res, float)
     Y = Y[:, rows] if Y.ndim == 3 else Y[rows]
     mk = None if mask is None else np.asarray(mask, bool)[rows]
-    gn = PB.c2(h3[rows], [r[rows] for r in random_h3], z[rows], m[rows], Y, sub, w,
-               np.asarray(direction)[rows], cols, passing, None, counts, grid, h_grid, mask=mk)
+    if host is None:
+        gn = PB.c2(h3[rows], [r[rows] for r in random_h3], z[rows], m[rows], Y, sub, w,
+                   np.asarray(direction)[rows], cols, passing, None, counts, grid, h_grid,
+                   mask=mk)
+    else:
+        gn = PB.c2_paired(h3[rows], np.asarray(host)[rows], [r[rows] for r in random_h3],
+                          z[rows], m[rows], Y, sub, w, np.asarray(direction)[rows], cols,
+                          passing, None, counts, grid, h_grid, mask=mk)
     rec = gn.record()
     rec["n_stratum"] = int(rows.sum())
     if mk is not None:

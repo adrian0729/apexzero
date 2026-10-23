@@ -92,7 +92,13 @@ trained network's z and is given the trained network's m, Section 5), averaged o
 components that pass the power floor; ``decide`` applies the bands (confirm: CI lower end > 0
 and point >= ``C2_BAND`` = 0.05; refute: CI upper end < 0.05); with no component passing
 (or none passing with a scored row) it raises ``NotTestable``, the one error a caller records
-as 'not testable'. ``Gain.partial`` is Delta R2 / (1 - R2_base). **C2-sw** (``c2_sw``): the
+as 'not testable'. ``Gain.partial`` is Delta R2 / (1 - R2_base). **Paired increment**
+(``c2_paired``, ``paired``; K4's no-gain plants, gates module docstring): a plant's effect is
+the change it causes in the same network, Delta2(host + plant) - Delta2(host), both gains from
+one fit of the base and the controls on the same rows, components and bootstrap counts, so the
+controls' median cancels: per component R2(host + plant) - R2(host), the CI from the paired
+draws. The host's own gain (its chance offset against the other random networks) is kept
+beside it. **C2-sw** (``c2_sw``): the
 same gain with the base [z] (not conditioned on m) on sigma^ped over the pedal-saturated rows;
 ``wspearman`` gives the co-reported rho(m_pedal - 1, sigma^ped). ``fwl`` is Section 4's
 two-stage (Frisch-Waugh-Lovell) check: within each training fold, the target and every H
@@ -1138,6 +1144,63 @@ def c2(h3: np.ndarray, random_h3: Sequence[np.ndarray], z: np.ndarray, m: np.nda
     base = np.hstack([_as2d(z, len(w)), _as2d(m, len(w))])
     pb, fulls = conditional([h3, *random_h3], base, y_res, fo, w, names, grid, h_grid)
     return gain(pb, fulls[0], fulls[1:], w, fo, direction, passing, rows, counts, mask=mask)
+
+
+@dataclass(frozen=True)
+class Paired:
+    """A plant's paired increment in its own host (module docstring 'Paired increment'):
+    ``gain`` per component R2(host + plant) - R2(host), ``stat`` its mean over the
+    statistic's components, ``boot`` the paired bootstrap draws (the plant's minus the
+    host's under the same counts), ``ci`` their interval; ``plant`` and ``host`` the two
+    unpaired gains (``host``: the host's own offset against the random controls)."""
+
+    plant: Gain
+    host: Gain
+    gain: np.ndarray
+    stat: float
+    boot: np.ndarray
+    ci: tuple[float, float]
+
+    def record(self) -> dict:
+        return {"names": list(self.plant.names), "passing": self.plant.passing.tolist(),
+                "gain": self.gain.tolist(), "stat": self.stat, "ci": list(self.ci),
+                "unpaired": self.plant.record(), "host": self.host.record()}
+
+
+def paired(plant: Gain, host: Gain) -> Paired:
+    """The paired increment of ``plant`` over ``host``: two gains of the same probes' base and
+    random controls on the same rows, components and bootstrap counts (``c2_paired``);
+    ValueError otherwise."""
+    same = (plant.names == host.names and np.array_equal(plant.passing, host.passing)
+            and plant.boot.shape == host.boot.shape
+            and np.array_equal(plant.r2_base, host.r2_base, equal_nan=True)
+            and np.array_equal(plant.r2_random, host.r2_random, equal_nan=True))
+    if not same:
+        raise ValueError("the gains do not share a base, controls, rows and components")
+    boot = plant.boot - host.boot
+    lo, hi = ci(boot)
+    return Paired(plant, host, plant.gain - host.gain, float(plant.stat - host.stat), boot,
+                  (float(lo), float(hi)))
+
+
+def c2_paired(h3: np.ndarray, host: np.ndarray, random_h3: Sequence[np.ndarray], z: np.ndarray,
+              m: np.ndarray, y_res: np.ndarray, fo: Folds, w: np.ndarray,
+              direction: np.ndarray | None, names, passing=None, rows: np.ndarray | None = None,
+              counts: np.ndarray | None = None, grid: Sequence[float] = GRID,
+              h_grid: Sequence[float] = H_GRID, mask: np.ndarray | None = None) -> Paired:
+    """``c2`` of the layer ``h3`` (the host with a plant) paired with ``c2`` of ``host``
+    alone: one fit of the base [z, m] and of the random controls, the two gains on the same
+    rows, mask and bootstrap counts (``counts`` None: ``cluster_counts`` over the rows'
+    geometries, as ``gain`` draws them). ``plant`` and ``host`` equal ``c2``'s own gains of
+    the two layers."""
+    base = np.hstack([_as2d(z, len(w)), _as2d(m, len(w))])
+    pb, fulls = conditional([h3, host, *random_h3], base, y_res, fo, w, names, grid, h_grid)
+    if counts is None:
+        r = np.ones(len(w), bool) if rows is None else np.asarray(rows, bool)
+        counts = cluster_counts(len(np.unique(np.asarray(fo.cluster)[r])))
+    g_plant = gain(pb, fulls[0], fulls[2:], w, fo, direction, passing, rows, counts, mask=mask)
+    g_host = gain(pb, fulls[1], fulls[2:], w, fo, direction, passing, rows, counts, mask=mask)
+    return paired(g_plant, g_host)
 
 
 def c2_sw(h3: np.ndarray, random_h3: Sequence[np.ndarray], z: np.ndarray, sigma: np.ndarray,

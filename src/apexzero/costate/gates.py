@@ -111,15 +111,34 @@ weights; the host is actor seed 0, the controls seeds 1-3, ``K4_N_CONTROLS``, ex
 PR-6b and PR-6c): PR-1a (i.i.d. targets; held-out R2 and Delta2 within 0.03 of SNR/(1 +
 SNR)), PR-1b (real lambda_res, all four K_P components planted at once; partial R2 within
 0.03 of SNR/(1 + SNR) and Delta2 of (1 - R2_b) SNR/(1 + SNR)), PR-2 (m and a*_t in the
-layer: Delta2 within 0.01 of 0), PR-3 (one-hot geometry and pair codes: gain <= 0.01 on the
-grouped split; dealt by key, on each row's out-of-fold lambda_res, a leak: the codes' gain
-or the base R2's rise above 0.01), PR-4 (a readout of z in h2 recovered from h2 and h3
-within 0.02), PR-5, 5b, 5c, 5d (lambda + noise as the critic's gradient through C1 at SNR
-0.25-4 on C1's decision rows, expected SNR / (1 + SNR)), PR-5e (the floor: zero, noise and
--lambda gradients score about 0 per component, a direction-only one at most 0.02 on xi),
-PR-6, PR-6b and PR-6c (below), PR-7 (scale invariance to 1e-6), PR-8 (C2-sw's gain within
-0.03 on C2-sw's stratum), PR-9 (heads sharing V: D_V = 0 and the planted D_grad recovered).
-K4 passes when every plant does.
+layer: the paired Delta2 within 0.01 of 0), PR-3 (one-hot geometry and pair codes: the
+paired gain <= 0.01 on the grouped split; dealt by key, on each row's out-of-fold
+lambda_res, a leak: the codes' unpaired gain or the base R2's rise above 0.01, the paired
+gain reported beside it), PR-4 (``pr4``: a readout of z in h2; h2 and h3 each recover at
+least the readout's R2 minus 0.02, one-sided, since the probe on h2 or h3 also sees the
+layer's other units and can exceed the readout), PR-5, 5b, 5c, 5d (lambda + noise as the
+critic's gradient through C1 at SNR 0.25-4 on C1's decision rows, expected SNR / (1 +
+SNR)), PR-5e (the floor: zero, noise and -lambda gradients score about 0 per component, a
+direction-only one at most 0.02 on xi), PR-6, PR-6b and PR-6c (below), PR-7 (scale
+invariance to 1e-6), PR-8 (C2-sw's gain within 0.03 on C2-sw's stratum), PR-9 (heads sharing
+V: D_V = 0 and the planted D_grad recovered). K4 passes when every plant does.
+
+**K4's no-gain plants** (v2.3, the third decision before the tag, on grounds independent of
+any result: a plant's effect is the change it causes in the same network). Every K4 plant
+whose rule is a no-gain tolerance (PR-2 in both variants, PR-3's grouped split, PR-6, PR-6b
+and PR-6c, and PR-6b's and PR-6c's residualisation-off check and planted faults) is scored by
+its paired increment (``probes.c2_paired``, ``K4_PAIRED``): Delta2(host + plant) -
+Delta2(host), with the same host, random controls, rows, components and bootstrap draws (a
+paired bootstrap for the CI), so the controls' median cancels and the statistic is R2(host +
+plant) - R2(host). The unpaired statistic compares one random host plus the plant with other
+random networks, so it carries the host's own chance offset against the controls (about
+0.007 on T at full size, close to the 0.01 tolerance, and re-drawn by any pipeline change).
+Tolerances, seeds and every-seed rules are unchanged. Each plant's unpaired value
+('unpaired') and the host's own offset ('host_offset': the host alone against that plant's
+controls on its rows, with every random network's own gain and their SD; per plant and per
+seed in the record's 'host_offset', ``host_offsets``) are descriptive; the analysis cites the
+offsets as C2's noise floor. The recovery plants (PR-1a, PR-1b, PR-5, PR-8) keep their
+rules, and so does PR-3's mis-grouped leak check (its paired leak 'by_key_paired' reported).
 
 **K4's PR-1b and PR-6 rules** (v2.3, fixed after the full-size pre-tag run of K4 on random
 and planted networks only, before the tag; the K4 review's verified write-up):
@@ -137,8 +156,8 @@ and planted networks only, before the tag; the K4 review's verified write-up):
   vx, sigma, log R) with random biases (``probes.decoy_units``), the gain from the fixed
   grid ``K4_PR6_GAINS`` whose probe-alone R2 lies closest to the decoy kNN's (the R2 by gain
   and 'calibrated', within ``K4_CALIBRATION_TOL``, recorded; no 32-unit family reaches the
-  kNN). Pass: Delta2 <= ``K4_ZERO_TOL`` one-sided on C2's by-fold lambda_res, and PR-1b
-  passes. Units carrying nothing beyond z, m and h3 cost out-of-fold R2 on held-out
+  kNN). Pass: the paired Delta2 <= ``K4_ZERO_TOL`` one-sided on C2's by-fold lambda_res, and
+  PR-1b passes. Units carrying nothing beyond z, m and h3 cost out-of-fold R2 on held-out
   geometries, so the null expectation is negative: the negative part is reported as the
   plant's over-fitting cost ('overfit_cost'), the unresidualised Delta2 beside it.
 - PR-6b and PR-6c (``pr6_world``, known truth): y = std(F) + 0.5 eps per K_P component,
@@ -150,15 +169,19 @@ and planted networks only, before the tag; the K4 review's verified write-up):
   whatever f_D's). y is residualised by the pipeline's own cross-fit (``states.cross_fit``
   at f_D's one k, ``states.KNN_K``). The statistic is
   C2's primary one (``c2_primary``: C2's decision stratum, each component on its decision
-  rows, the frozen power floor's components, C2's 5 random-init controls). Pass per world:
-  on every seed Delta2 <= ``K4_ZERO_TOL``, and on every seed Delta2 > ``K4_ZERO_TOL`` with the
-  residualisation turned off; for PR-6b also the units' probe-alone R2 at least the kNN's on
-  every seed (mean over K_P on T). T-wide values (every row and component, C2's controls)
-  and per-component gains are descriptive, as are two planted faults on the first seed
-  (an over-smoothed kNN, k = ``K4_OVERSMOOTH_K``; D1 without s - s_apex, at f_D's k).
+  rows, the frozen power floor's components, C2's 5 random-init controls), the units'
+  paired increment over the host. Pass per world: on every seed Delta2 <= ``K4_ZERO_TOL``,
+  and on every seed Delta2 > ``K4_ZERO_TOL`` with the residualisation turned off; for PR-6b
+  also the units' probe-alone R2 at least the kNN's on every seed (mean over K_P on T).
+  T-wide values (every row and component, C2's controls) and per-component gains are
+  descriptive, as are two planted faults on the first seed (an over-smoothed kNN, k =
+  ``K4_OVERSMOOTH_K``; D1 without s - s_apex, at f_D's k). A stated limitation: at full
+  size the second fault was not detected on the gate seeds (C2's decision rows score s on
+  approach and exit rows and xi on approach rows only; the T-wide +0.017 and +0.020 the K4
+  review saw did not reproduce there).
 - ``band_notes``: PR-6's over-fitting cost and PR-6c's leak bound (its largest Delta2 over
-  the seeds), which the analysis prints beside a C2 or C2-sw decision near the band
-  (``analysis.band_notes``; copied into the record from the bound gates/k4.json).
+  the seeds), both paired, which the analysis prints beside a C2 or C2-sw decision near the
+  band (``analysis.band_notes``; copied into the record from the bound gates/k4.json).
 
 **f_D's k** (v2.3, the second decision before the tag; ``states`` module docstring for the
 grounds): one k for every fit, fold, partition and K_P component, chosen on synthetic known
@@ -169,9 +192,16 @@ decision rows, controls and statistic) on each of ``DECOY_K_SEEDS`` (6 noise dra
 residualised at the candidate k and C2's power floor recomputed at k (``at_decoy_k``,
 ``prereg.frozen_values``' rule); ``decoy_k_choice`` takes among ``DECOY_K_CANDIDATES`` = (3,
 5, 8, 15) the largest k whose every validation seed of both worlds gives C2's primary Delta2
-<= ``K4_ZERO_TOL`` (none: the smallest, a blocker). The full-size run's Delta2 per seed is
-``DECOY_K_VALIDATION`` and its choice ``states.KNN_K`` = 8; the choice read the validation
-seeds alone, and K4's gate seeds are left to K4's own run at the chosen k.
+<= ``K4_ZERO_TOL`` (none: the smallest, a blocker). The rule was re-applied unchanged once the
+no-gain plants became paired increments ('K4's no-gain plants'): the statistic it reads is
+the units' paired increment. The full-size run's paired Delta2 per seed is
+``DECOY_K_VALIDATION`` (the same fits' unpaired Delta2 ``DECOY_K_VALIDATION_UNPAIRED``,
+descriptive) and its choice ``states.KNN_K`` = 8, as under the unpaired statistic: k = 3, 5
+and 15 each have a PR-6c or PR-6b seed above 0.01 (largest 0.0130, 0.0165 and 0.0114), k = 8
+none (largest 0.0035 on PR-6b, 0.0098 on PR-6c). The host's own offset on C2's decision rows
+was at most 0.0067 in absolute value on any validation seed (0.0043 at k = 8). The choice
+read the validation seeds alone, and K4's gate seeds are left to K4's own run at the chosen
+k.
 
 **K5** (``k5``): the permuted-target wiring check (``probes.wiring_null``: while each outer
 fold is held out the training targets are permuted state by state across all training rows,
@@ -229,6 +259,8 @@ K4_ZERO_TOL = 0.01
 K4_READOUT_TOL = 0.02
 K4_SCALE_TOL = 1e-6
 K4_N_CONTROLS = 3             # K4's random controls: 3 of C2's 5 (PR-6b and PR-6c use C2's 5)
+K4_PAIRED = ("paired increment: Delta2(host + plant) - Delta2(host), the same host, random "
+             "controls, rows, components and bootstrap draws")   # K4's no-gain plants
 K4_PR6_UNITS = 32             # PR-6: decoy units
 K4_PR6_BIAS = 1.0             # PR-6: the units' biases b ~ N(0, bias^2)
 K4_PR6_GAINS = (0.25, 0.5, 1.0, 2.0, 4.0, 8.0)   # PR-6: the gain grid
@@ -244,11 +276,22 @@ K4_OVERSMOOTH_K = 300         # PR-6b, PR-6c's planted fault: an over-smoothed d
 K4_PR6C_K = 15                # PR-6c's F: the k of its leave-one-geometry-out kNN (the world)
 DECOY_K_CANDIDATES = (3, 5, 8, 15)   # f_D's k: the candidates (module docstring 'f_D's k')
 DECOY_K_SEEDS = (0, 1, 2, 3, 4, 5)   # its validation seeds (stream costate_decoy_k)
-# the choice's record: C2's primary Delta2 per candidate k on the validation seeds (PR-6b
-# 'smooth', PR-6c 'knn'; decoy_k_leaks on the full-size T, G1's obs_rms, random-init actors,
-# C2's decision rows and the power floor at each k; rounded to 1e-6);
-# states.KNN_K = decoy_k_choice(DECOY_K_VALIDATION)['k']
+# the choice's record: C2's primary Delta2, the units' paired increment over the host alone,
+# per candidate k on the validation seeds (PR-6b 'smooth', PR-6c 'knn'; decoy_k_leaks on the
+# full-size T, G1's obs_rms, random-init actors, C2's decision rows and the power floor at
+# each k; rounded to 1e-6); states.KNN_K = decoy_k_choice(DECOY_K_VALIDATION)['k']
 DECOY_K_VALIDATION = {
+    3: {"smooth": (0.002829, -0.000504, 0.003479, 0.002554, 0.003095, -0.000619),
+        "knn": (0.008749, -0.002521, 0.002347, 0.012951, 0.004918, 0.000282)},
+    5: {"smooth": (0.004708, 0.001989, 0.007383, 0.002811, -0.005263, -0.000827),
+        "knn": (0.009730, -0.000436, -0.001349, 0.016534, 0.010810, 0.014429)},
+    8: {"smooth": (0.000766, -0.000072, 0.001025, 0.003486, -0.000186, -0.005066),
+        "knn": (0.007463, 0.000735, -0.002008, 0.007959, 0.008540, 0.009811)},
+    15: {"smooth": (0.004982, 0.011340, 0.002244, 0.001530, 0.004287, 0.006061),
+         "knn": (-0.011556, -0.014612, -0.004766, 0.011414, -0.018638, -0.021502)}}
+# the same fits' unpaired Delta2 (descriptive; the first choice's table, which it reproduces);
+# the host's own offset per seed is DECOY_K_VALIDATION_UNPAIRED - DECOY_K_VALIDATION
+DECOY_K_VALIDATION_UNPAIRED = {
     3: {"smooth": (0.004384, -0.002206, 0.006054, 0.003679, 0.002618, 0.000524),
         "knn": (0.008771, -0.002498, 0.002644, 0.013044, 0.004397, 0.000703)},
     5: {"smooth": (0.006590, 0.003167, 0.010495, 0.002655, -0.003946, 0.000123),
@@ -1265,6 +1308,22 @@ def _std(y: np.ndarray, w: np.ndarray) -> np.ndarray:
     return (y - ST.wmean(y, w)) / np.sqrt(ST.wvar(y, w))
 
 
+def _offset(h: dict | None) -> dict | None:
+    """The host's own offset (descriptive; module docstring 'K4's no-gain plants') from its
+    unpaired gain record (``probes.Gain.record``): its Delta2 against the random controls,
+    with the CI and per component, and every random network's own gain over the base
+    ('networks': the host's, then each control's, the mean over the statistic's components)
+    with their SD, the between-random-network spread C2's statistic carries."""
+    if not h or h.get("stat") is None:
+        return None
+    p = np.asarray(h["passing"], bool)
+    base = np.asarray(h["r2_base"], float)
+    nets = [float(np.mean(np.asarray(h["raw"], float)[p]))]
+    nets += [float(np.mean((np.asarray(r, float) - base)[p])) for r in h["r2_random"]]
+    return {"delta2": h["stat"], "ci": h["ci"], "gain": h["gain"], "networks": nets,
+            "sd_networks": float(np.std(nets, ddof=1)) if len(nets) > 1 else None}
+
+
 def k4(pw: ProbeWorld, counts: np.ndarray | None = None, which: Sequence[str] | None = None,
        readout_net=None) -> dict:
     """K4's plants (module docstring) on one probe world; ``which`` limits them."""
@@ -1282,6 +1341,12 @@ def k4(pw: ProbeWorld, counts: np.ndarray | None = None, which: Sequence[str] | 
         return PB.c2(h, rand if rand_ is None else rand_, z, m0 if mm is None else mm,
                      pw.lam_res if Y is None else Y, fo, w, pw.direction,
                      pw.names if names is None else names, passing, None, counts)
+
+    def pair(h, Y=None, folds=None, cnt=None):
+        # a no-gain plant's paired increment over the host h0 alone (module docstring)
+        return PB.c2_paired(h, h0, rand, z, m0, pw.lam_res if Y is None else Y,
+                            fo if folds is None else folds, w, pw.direction, pw.names, None,
+                            None, counts if cnt is None else cnt)
 
     if "PR-1a" in which:
         rows = []
@@ -1320,27 +1385,34 @@ def k4(pw: ProbeWorld, counts: np.ndarray | None = None, which: Sequence[str] | 
     if "PR-2" in which:
         a_t = np.stack([np.asarray(pw.tab["a_steer"], float),
                         np.asarray(pw.tab["a_pedal"], float)], 1)
-        g1 = c2(np.hstack([h0, m0]))
-        g2 = PB.c2(np.hstack([h0, a_t]), [np.hstack([r_, a_t]) for r_ in rand], z, a_t,
-                   pw.lam_res, fo, w, pw.direction, pw.names, None, None, counts)
-        out["PR-2"] = {"delta2_m": g1.stat, "delta2_astar": g2.stat,
-                       "pass": bool(abs(g1.stat) <= K4_ZERO_TOL and abs(g2.stat) <= K4_ZERO_TOL)}
+        p1 = pair(np.hstack([h0, m0]))
+        # the a*_t variant: a*_t is the base's m and is appended to every layer
+        p2 = PB.c2_paired(np.hstack([h0, a_t]), h0, [np.hstack([r_, a_t]) for r_ in rand], z,
+                          a_t, pw.lam_res, fo, w, pw.direction, pw.names, None, None, counts)
+        out["PR-2"] = {"delta2_m": p1.stat, "delta2_astar": p2.stat,
+                       "m": _stat(p1.record()), "astar": _stat(p2.record()),
+                       "statistic": K4_PAIRED,
+                       "pass": bool(abs(p1.stat) <= K4_ZERO_TOL and abs(p2.stat) <= K4_ZERO_TOL)}
     if "PR-3" in which:
         geo = ST.geometry_index(pw.tab)
-        pair = np.char.add(geo.astype(str), "/" + np.asarray(pw.tab["pair_id"]).astype(str))
-        codes = np.hstack([PB.one_hot(geo), PB.one_hot(pair)])
+        pair_id = np.char.add(geo.astype(str), "/" + np.asarray(pw.tab["pair_id"]).astype(str))
+        codes = np.hstack([PB.one_hot(geo), PB.one_hot(pair_id)])
         H = np.hstack([h0, codes])
-        g = c2(H)
+        p = pair(H)
+        g = p.plant
         mis = PB.grouped_folds(np.asarray(pw.tab["key_id"]), k4_rng(4), cluster=geo)
         oof = np.asarray(pw.lam_res)[fo.outer, np.arange(n)]      # each row's own residual
-        gm = PB.c2(H, rand, z, m0, oof, mis, w, pw.direction, pw.names, None, None,
-                   PB.cluster_counts(int(mis.cluster.max()) + 1, rng=k4_rng(5)))
+        pm = pair(H, oof, mis, PB.cluster_counts(int(mis.cluster.max()) + 1, rng=k4_rng(5)))
+        gm = pm.plant
         # z identifies the geometry as well as the codes do, so under the split by key the
         # leak shows in the base [z, m] (held-out keys of a seen geometry) as much as in the
-        # codes' gain: either counts as the leak shown
+        # codes' gain: either counts as the leak shown (unpaired, its rule unchanged; the
+        # paired leak is reported beside it)
         rise = float(np.mean(gm.r2_base[g.passing]) - np.mean(g.r2_base[g.passing]))
-        out["PR-3"] = {"grouped": g.stat, "by_key": gm.stat, "base_rise_by_key": rise,
-                       "pass": bool(g.stat <= K4_ZERO_TOL
+        out["PR-3"] = {"grouped": p.stat, "by_key": gm.stat, "base_rise_by_key": rise,
+                       "by_key_paired": pm.stat, "grouped_record": _stat(p.record()),
+                       "by_key_record": _stat(pm.record()), "statistic": K4_PAIRED,
+                       "pass": bool(p.stat <= K4_ZERO_TOL
                                     and max(gm.stat, rise) > K4_ZERO_TOL)}
     if "PR-4" in which and readout_net is not None:
         out["PR-4"] = readout_net
@@ -1371,8 +1443,34 @@ def k4(pw: ProbeWorld, counts: np.ndarray | None = None, which: Sequence[str] | 
     if "PR-9" in which:
         out["PR-9"] = pr9(pw, counts)
     out["pass"] = bool(all(v.get("pass", False) for k, v in out.items() if k.startswith("PR")))
+    out["host_offset"] = host_offsets(out)
     out["decoy_k"] = ST.KNN_K                    # f_D's k in lambda_res and PR-6b/6c's y
     return out
+
+
+def host_offsets(rec: dict) -> dict:
+    """The host's own offset per no-gain plant and per seed from a K4 record (descriptive;
+    module docstring 'K4's no-gain plants'): the host alone against that plant's random
+    controls on that plant's rows (PR-2, PR-3, PR-6: T and K4's controls; PR-6b, PR-6c: C2's
+    decision rows and C2's 5 controls, per noise seed), each plant's record carrying its CI,
+    components and the networks' spread."""
+    def d(r):
+        o = (r or {}).get("host_offset") if isinstance(r, dict) else None
+        return None if not o else o.get("delta2")
+
+    out: dict = {}
+    if isinstance(rec.get("PR-2"), dict):
+        out["PR-2"] = {v: d(rec["PR-2"].get(v)) for v in ("m", "astar")}
+    if isinstance(rec.get("PR-3"), dict):
+        out["PR-3"] = {v: d(rec["PR-3"].get(f"{v}_record")) for v in ("grouped", "by_key")}
+    if isinstance(rec.get("PR-6"), dict):
+        out["PR-6"] = d(rec["PR-6"])
+    for p in ("PR-6b", "PR-6c"):
+        if isinstance(rec.get(p), dict):
+            out[p] = [d(s) for s in rec[p].get("seeds") or []]
+    return {**out, "descriptive": True,
+            "is": "Delta2 of the random host alone against the plant's random controls on "
+                  "the plant's rows: the between-random-network spread C2 carries"}
 
 
 K4_C1_SNR = (0.25, 0.5, 1.0, 4.0)   # PR-5's SNRs (0.25 and 0.5: where refute bias showed)
@@ -1510,9 +1608,10 @@ def pr6(pw: ProbeWorld, counts: np.ndarray, pr1b: dict | None,
     """PR-6 (module docstring 'K4's PR-1b and PR-6 rules'): ``K4_PR6_UNITS`` biased tanh
     units of random mixes of the decoys (``decoy4``) appended to the host's h3, the gain from
     ``K4_PR6_GAINS`` whose probe-alone R2 (mean over K_P) lies closest to the decoy kNN's;
-    C2's gain on the by-fold lambda_res against K4's controls. Pass: Delta2 <=
-    ``K4_ZERO_TOL`` (one-sided) and PR-1b passes; 'overfit_cost' is Delta2's negative part,
-    'delta2_unresidualised' the same units on lambda itself (descriptive)."""
+    C2's gain on the by-fold lambda_res against K4's controls, paired over the host alone
+    (``probes.c2_paired``). Pass: the paired Delta2 <= ``K4_ZERO_TOL`` (one-sided) and PR-1b
+    passes; 'overfit_cost' is its negative part, 'delta2_unresidualised' the same units on
+    lambda itself, 'unpaired' and 'host_offset' the two unpaired gains (descriptive)."""
     w, fo = pw.w, pw.fo
     rand = pw.h3[1:1 + K4_N_CONTROLS] if rand is None else rand
     D = decoy4(pw.tab)
@@ -1526,18 +1625,23 @@ def pr6(pw: ProbeWorld, counts: np.ndarray, pr1b: dict | None,
                                      w, pw.direction))) for gn in K4_PR6_GAINS]
     i = int(np.argmin(np.abs(np.asarray(r2s) - target)))
     H = np.hstack([pw.h3[0], units(K4_PR6_GAINS[i])])
-    g = PB.c2(H, rand, pw.z, pw.m[0], pw.lam_res, fo, w, pw.direction, pw.names, None, None,
-              counts)
-    g_raw = PB.c2(H, rand, pw.z, pw.m[0], pw.lam, fo, w, pw.direction, pw.names, None, None,
-                  counts)
+    p = PB.c2_paired(H, pw.h3[0], rand, pw.z, pw.m[0], pw.lam_res, fo, w, pw.direction,
+                     pw.names, None, None, counts)
+    p_raw = PB.c2_paired(H, pw.h3[0], rand, pw.z, pw.m[0], pw.lam, fo, w, pw.direction,
+                         pw.names, None, None, counts)
     pr1b_ok = bool(pr1b and pr1b.get("pass", False))
     return {"knn_r2": target, "gains": list(K4_PR6_GAINS), "r2_by_gain": r2s,
             "gain": float(K4_PR6_GAINS[i]), "decoy_r2": r2s[i],
             "calibrated": bool(abs(r2s[i] - target) <= K4_CALIBRATION_TOL),
-            "delta2": g.stat, "ci": list(g.ci), "by_component": g.gain.tolist(),
-            "overfit_cost": float(max(0.0, -g.stat)),
-            "delta2_unresidualised": g_raw.stat, "ci_unresidualised": list(g_raw.ci),
-            "pr1b_pass": pr1b_ok, "pass": bool(g.stat <= K4_ZERO_TOL and pr1b_ok)}
+            "statistic": K4_PAIRED,
+            "delta2": p.stat, "ci": list(p.ci), "by_component": p.gain.tolist(),
+            "overfit_cost": float(max(0.0, -p.stat)),
+            "unpaired": {"delta2": p.plant.stat, "ci": list(p.plant.ci),
+                         "by_component": p.plant.gain.tolist()},
+            "host_offset": _offset(p.host.record()),
+            "delta2_unresidualised": p_raw.stat, "ci_unresidualised": list(p_raw.ci),
+            "delta2_unresidualised_unpaired": p_raw.plant.stat,
+            "pr1b_pass": pr1b_ok, "pass": bool(p.stat <= K4_ZERO_TOL and pr1b_ok)}
 
 
 def _ar1(tab: io.Table, w: np.ndarray, m: int, rng: np.random.Generator,
@@ -1595,13 +1699,16 @@ def hold_units(F: np.ndarray, w: np.ndarray, rng: np.random.Generator,
     return np.tanh(Fz @ A + b)
 
 
-def c2_primary(pw: ProbeWorld, H: np.ndarray, Y: np.ndarray, t_wide: bool = False) -> dict:
+def c2_primary(pw: ProbeWorld, H: np.ndarray, Y: np.ndarray, t_wide: bool = False,
+               host: np.ndarray | None = None) -> dict:
     """C2's primary statistic of the layer ``H`` (with its host's m) on the targets ``Y``
     ([F, n, 4] or [n, 4]) as the analysis computes it (``analysis.c2_network``): on C2's
     decision stratum (``ProbeWorld.rows_c2``), each component scored on its decision rows
     (``mask``), the mean over the frozen power floor's components (``power_floor``), against
     C2's random-init controls (``h3[1:6]``), key weights renormalised on the stratum, C2's
-    own bootstrap counts. ``t_wide``: every row of T and every component (descriptive)."""
+    own bootstrap counts. ``t_wide``: every row of T and every component (descriptive).
+    ``host``: ``H`` is that host with a plant, and the record is the plant's paired
+    increment over the host alone (module docstring 'K4's no-gain plants')."""
     n = len(pw.w)
     rows = np.ones(n, bool) if (t_wide or pw.rows_c2 is None) else np.asarray(pw.rows_c2,
                                                                                  bool)
@@ -1609,14 +1716,21 @@ def c2_primary(pw: ProbeWorld, H: np.ndarray, Y: np.ndarray, t_wide: bool = Fals
     try:
         return AN.c2_network(H, pw.h3[1:1 + PB.N_RANDOM_ACTORS], pw.z, pw.m[0], Y, pw.fo,
                              None, pw.direction, K_P, None if t_wide else pw.power_floor,
-                             rows, weights=wr[rows], mask=None if t_wide else pw.mask)
+                             rows, weights=wr[rows], mask=None if t_wide else pw.mask,
+                             host=host)
     except PB.NotTestable as e:          # recorded as the analysis does; the plant fails
         return {"decision": "not testable", "reason": str(e)}
 
 
 def _stat(rec: dict) -> dict:
-    return {"delta2": rec.get("stat"), "ci": rec.get("ci"), "gain": rec.get("gain"),
-            "decision": rec.get("decision")}
+    """A gain record's statistic; for a paired increment (``probes.Paired.record``) also its
+    unpaired value and the host's own offset."""
+    out = {"delta2": rec.get("stat"), "ci": rec.get("ci"), "gain": rec.get("gain"),
+           "decision": rec.get("decision")}
+    if "unpaired" in rec:
+        out["unpaired"] = _stat(rec["unpaired"])
+        out["host_offset"] = _offset(rec.get("host"))
+    return out
 
 
 def pr6_world(pw: ProbeWorld, kind: str, seeds: Sequence[int] = K4_PR6_SEEDS,
@@ -1625,32 +1739,36 @@ def pr6_world(pw: ProbeWorld, kind: str, seeds: Sequence[int] = K4_PR6_SEEDS,
     """PR-6b (``kind`` 'smooth', ``pr6b_f``) or PR-6c ('knn', ``pr6c_f``): the known-truth
     world of the module docstring on each noise seed (``noise(seed)``; K4's own, the default,
     is sub-stream (14, seed); ``decoy_k_rng`` the validation seeds of f_D's k), the units
-    holding F on sub-stream (15, j). Per seed: C2's primary Delta2 (``c2_primary``) on y
-    residualised by ``states.cross_fit`` at f_D's k (``k``, default ``states.KNN_K``) and on
-    y itself (the residualisation turned off), the units' probe-alone R2 and the kNN's on T;
-    with ``t_wide`` the T-wide statistic, with ``faults`` (first seed) the over-smoothed kNN
-    and D1 without s - s_apex (at f_D's k). Pass: every seed's Delta2 <= ``K4_ZERO_TOL`` and
-    every seed's unresidualised Delta2 > it, and for PR-6b every seed's probe-alone R2 >= the
-    kNN's (means over K_P). 'leak_bound' is the largest Delta2 over the seeds, 'gain_max'
-    each component's largest gain."""
+    holding F on sub-stream (15, j). Per seed: C2's primary Delta2 (``c2_primary``) as the
+    units' paired increment over the host alone (module docstring 'K4's no-gain plants'; the
+    unpaired value and the host's offset beside it) on y residualised by ``states.cross_fit``
+    at f_D's k (``k``, default ``states.KNN_K``) and on y itself (the residualisation turned
+    off), the units' probe-alone R2 and the kNN's on T; with ``t_wide`` the T-wide statistic,
+    with ``faults`` (first seed) the over-smoothed kNN and D1 without s - s_apex (at f_D's
+    k), each paired. Pass: every seed's Delta2 <= ``K4_ZERO_TOL`` and every seed's
+    unresidualised Delta2 > it, and for PR-6b every seed's probe-alone R2 >= the kNN's (means
+    over K_P). 'leak_bound' is the largest Delta2 over the seeds ('leak_bound_unpaired' the
+    unpaired one), 'gain_max' each component's largest gain, 'host_offset' the host's offset
+    per seed."""
     j = {"smooth": 0, "knn": 1}[kind]
     k = ST.KNN_K if k is None else int(k)
     noise = (lambda s: k4_rng(14, s)) if noise is None else noise
     w, fo = pw.w, pw.fo
     F = pr6b_f(pw) if kind == "smooth" else pr6c_f(pw)
     U = hold_units(F, w, k4_rng(15, j))
-    H = np.hstack([pw.h3[0], U])
+    h0 = pw.h3[0]
+    H = np.hstack([h0, U])
     D1 = ST.decoy_d1(pw.tab)
     Fs = _std(F, w)
     out: dict = {"kind": kind, "F": "pr6b_f" if kind == "smooth" else "pr6c_f",
                  "n_controls": len(pw.h3[1:1 + PB.N_RANDOM_ACTORS]),
                  "rows": int(np.sum(pw.rows_c2)) if pw.rows_c2 is not None else len(w),
                  "passing": None if pw.power_floor is None else dict(pw.power_floor),
-                 "k": k, "seeds": []}
+                 "k": k, "statistic": K4_PAIRED, "seeds": []}
     for s in seeds:
         y = Fs + K4_PR6_NOISE * _ar1(pw.tab, w, F.shape[1], noise(s))
         res = ST.cross_fit(D1, y, fo.outer, w, k=k)
-        on, off = c2_primary(pw, H, res.by_fold), c2_primary(pw, H, y)
+        on, off = c2_primary(pw, H, res.by_fold, host=h0), c2_primary(pw, H, y, host=h0)
         alone = PB.probe_r2(PB.ridge_cv(None, y, fo, w, U, pw.names), w, pw.direction)
         knn = PB.r2(y, y - res.oof, w, pw.direction, pw.names)
         rec = {"seed": int(s), "k": res.k, **_stat(on),
@@ -1658,7 +1776,7 @@ def pr6_world(pw: ProbeWorld, kind: str, seeds: Sequence[int] = K4_PR6_SEEDS,
                "alone_r2": alone.tolist(), "knn_r2": knn.tolist(),
                "alone_mean": float(np.mean(alone)), "knn_mean": float(np.mean(knn))}
         if t_wide:
-            tw = c2_primary(pw, H, res.by_fold, t_wide=True)
+            tw = c2_primary(pw, H, res.by_fold, t_wide=True, host=h0)
             rec["T"] = _stat(tw)
         out["seeds"].append(rec)
         if faults and s == seeds[0]:
@@ -1666,12 +1784,15 @@ def pr6_world(pw: ProbeWorld, kind: str, seeds: Sequence[int] = K4_PR6_SEEDS,
                    "d1_without_ds_apex": ST.cross_fit(D1[:, 1:], y, fo.outer, w, k=k)}
             out["faults"] = {}
             for lab, rf in bad.items():
-                st = _stat(c2_primary(pw, H, rf.by_fold))
+                st = _stat(c2_primary(pw, H, rf.by_fold, host=h0))
                 out["faults"][lab] = {**st, "detected": _gt(st["delta2"], K4_ZERO_TOL),
                                       "descriptive": True}
     rs = out["seeds"]
     d2 = [_num(r["delta2"]) for r in rs]
     out["leak_bound"] = float(max(d2)) if rs and np.all(np.isfinite(d2)) else None
+    d2u = [_num((r.get("unpaired") or {}).get("delta2")) for r in rs]
+    out["leak_bound_unpaired"] = float(max(d2u)) if rs and np.all(np.isfinite(d2u)) else None
+    out["host_offset"] = [(r.get("host_offset") or {}).get("delta2") for r in rs]
     gains = [[_num(v) for v in (r["gain"] or [])] for r in rs]
     out["gain_max"] = None
     if gains and all(len(g) == len(K_P) for g in gains):
@@ -1688,17 +1809,20 @@ def pr6_world(pw: ProbeWorld, kind: str, seeds: Sequence[int] = K4_PR6_SEEDS,
 
 def band_notes(rec: dict) -> dict:
     """K4's two numbers for the C2 and C2-sw band-edge notes (``analysis.band_notes``), from
-    a K4 record: PR-6's over-fitting cost (its Delta2's negative part, with the Delta2 and its
-    CI: T, the mean over K_P, K4's controls) and PR-6c's leak bound (its largest Delta2 over
-    the noise seeds on C2's primary statistic, with each component's largest gain)."""
+    a K4 record: PR-6's over-fitting cost (its paired Delta2's negative part, with the Delta2
+    and its CI: T, the mean over K_P, K4's controls) and PR-6c's leak bound (its largest
+    paired Delta2 over the noise seeds on C2's primary statistic, with each component's
+    largest gain). Both are the plant's paired increment in its host (module docstring 'K4's
+    no-gain plants'), the host's own offset against the controls taken out."""
     p6, p6c = rec.get("PR-6") or {}, rec.get("PR-6c") or {}
     return {"pr6_cost": {"cost": p6.get("overfit_cost"), "delta2": p6.get("delta2"),
                          "ci": p6.get("ci"),
-                         "scope": "K4 PR-6: T, the mean over K_P, K4's random controls"},
+                         "scope": "K4 PR-6: the paired increment on T, the mean over K_P, "
+                                  "K4's random controls"},
             "pr6c_leak": {"bound": p6c.get("leak_bound"), "gain_max": p6c.get("gain_max"),
                           "seeds": len(p6c.get("seeds") or []),
-                          "scope": "K4 PR-6c: C2's primary statistic, the largest over "
-                                   "its noise seeds"}}
+                          "scope": "K4 PR-6c: the paired increment of C2's primary "
+                                   "statistic, the largest over its noise seeds"}}
 
 
 # ------------------------------------------------------------------------- f_D's k
@@ -1728,17 +1852,23 @@ def decoy_k_leaks(pw: ProbeWorld, k: int, seeds: Sequence[int] = DECOY_K_SEEDS,
                   faults: bool = False) -> dict:
     """PR-6b's and PR-6c's records on the validation seeds (``decoy_k_rng``) with f_D at
     ``k``, on ``pw`` at k (``at_decoy_k``): per seed C2's primary Delta2 exactly as K4
-    computes it on its gate seeds (``pr6_world``), with ``faults`` the planted faults on
-    every seed (each seed its own ``pr6_world`` call). 'delta2' {kind: [per seed]} is what
-    ``decoy_k_choice`` reads; the rest is descriptive."""
+    computes it on its gate seeds (``pr6_world``: the units' paired increment over the host
+    alone), with ``faults`` the planted faults on every seed (each seed its own ``pr6_world``
+    call). 'delta2' {kind: [per seed]} is what ``decoy_k_choice`` reads; the rest
+    ('delta2_unpaired', 'host_offset' and the records) is descriptive."""
     pk, info = at_decoy_k(pw, k)
-    out: dict = {"k": int(k), "real": info, "seeds": [int(v) for v in seeds], "delta2": {}}
+    out: dict = {"k": int(k), "real": info, "seeds": [int(v) for v in seeds], "delta2": {},
+                 "delta2_unpaired": {}, "host_offset": {}}
     for kind in ("smooth", "knn"):
         recs = [pr6_world(pk, kind, (v,), t_wide=False, faults=faults, k=k, noise=decoy_k_rng)
                 for v in seeds]
         out[kind] = {"seeds": [r["seeds"][0] for r in recs],
                      "faults": [r.get("faults") for r in recs] if faults else None}
         out["delta2"][kind] = [r["seeds"][0]["delta2"] for r in recs]
+        out["delta2_unpaired"][kind] = [(r["seeds"][0].get("unpaired") or {}).get("delta2")
+                                        for r in recs]
+        out["host_offset"][kind] = [(r["seeds"][0].get("host_offset") or {}).get("delta2")
+                                    for r in recs]
     return out
 
 
@@ -1746,8 +1876,9 @@ def decoy_k_choice(delta2: dict, candidates: Sequence[int] = DECOY_K_CANDIDATES,
                    tol: float = K4_ZERO_TOL) -> dict:
     """f_D's k by the rule (module docstring 'f_D's k'): among ``candidates`` the largest k
     for which every validation seed of PR-6b ('smooth') and PR-6c ('knn') gives C2's primary
-    Delta2 <= ``tol`` (``delta2`` {k: {kind: [Delta2 per seed]}}; a missing or non-finite
-    Delta2 fails); when none does, the smallest candidate, flagged as a blocker."""
+    Delta2, the units' paired increment, <= ``tol`` (``delta2`` {k: {kind: [Delta2 per
+    seed]}}; a missing or non-finite Delta2 fails); when none does, the smallest candidate,
+    flagged as a blocker."""
     ok = {}
     for k in candidates:
         rec = delta2.get(k, delta2.get(str(k), {}))
@@ -1809,7 +1940,9 @@ def pr9(pw: ProbeWorld, counts: np.ndarray, n_heads: int = 5) -> dict:
 def pr4(cfg, pw: ProbeWorld, component: int = 3) -> dict:
     """PR-4: a random-init actor and critic trunk whose h2 holds tanh of a ridge readout of z
     fitted to lambda_k on all rows (``probes.plant_readout``); the readout's R2 recovered from
-    h2 and h3 within 0.02 by the probe pipeline."""
+    h2 and h3 by the probe pipeline. Read one-sided: each layer's R2 at least the readout's
+    minus ``K4_READOUT_TOL`` = 0.02, since the probe on h2 or h3 also sees the layer's other
+    units and can exceed the readout alone."""
     w, fo = pw.w, pw.fo
     y = pw.lam[:, component]
     zs = PB.scaler(pw.z, w)
