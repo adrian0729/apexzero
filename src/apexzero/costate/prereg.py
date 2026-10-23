@@ -20,12 +20,18 @@ fields/prereg.py:1-60, simplified where idea 2 needs less):
   tau_s, the pedal-saturated tolerance), the penalty grid, Huber's constant, the bands, the
   seeds and streams, the null definitions, C3's strata, covariates and pre-signed pairs, the
   value-accuracy threshold;
+- **the deferred analyses** (``deferred``, ``DEFERRED``; design Section 13 'Deferred'):
+  C3-int, C1-dev, Delta C1, C2-pairs and C1-own on its own-run and N states are not part of
+  costate-prereg-v1 (exploratory if run later). C3-int's permutations and pre-signed pairs
+  (in the constants) and C1-dev's snapshot pins stay in the record, labelled there as kept
+  without pre-registering those analyses;
 - **every network** a post-tag stage loads (``network_pins``: the 31 generalists of C3-w's
-  strata and the 3 specialists; ``snapshot_pins``: the C1-dev snapshots of the 9 decision
-  networks): its checkpoint's repo-relative path (built without resolving symlinks, so a
-  worktree whose runs/ links to the main checkout pins runs/...), sha256 (which covers the
-  head subtrees Dense_1-Dense_10) and timesteps; post-tag loaders load the recorded path
-  and check its hash (``pins_problems`` re-hashes networks and snapshots alike);
+  strata and the 3 specialists; ``snapshot_pins``: the snapshots of the 9 decision networks
+  that the deferred C1-dev would read): its checkpoint's repo-relative path (built without
+  resolving symlinks, so a worktree whose runs/ links to the main checkout pins runs/...),
+  sha256 (which covers the head subtrees Dense_1-Dense_10) and timesteps; post-tag loaders
+  load the recorded path and check its hash (``pins_problems`` re-hashes networks and
+  snapshots alike);
 - **the bound pre-tag outputs** (``bind_outputs``): every ``BOUND_OUTPUTS`` file under
   outputs/costate with its sha256 and its stamp's code hash; each must carry a stamp of this
   code, not be partial, and pass (K1 on its ``pass_with_plants``; the nulls summary with
@@ -73,6 +79,24 @@ BOUND_OUTPUTS = ("inputs/summary.json", "gates/k0.json", "gates/k1.json", "gates
                  "gates/k2b.json", "gates/k3.json", "gates/k3b.json", "gates/k4.json",
                  "gates/k5.json", "gates/k6.json", "nulls/summary.json")
 BOUND_ARRAYS = ("inputs/world.npz",)   # plus nulls/<net>.npz per decision network
+# Design Section 13 'Deferred': the analyses that are not part of costate-prereg-v1 (if run
+# later, they are exploratory), as (name, what, the record's items kept for them, which pin
+# their inputs without pre-registering them). The record lists them ('deferred',
+# ``deferred``); a later deferral is added here and to Section 13.
+DEFERRED = (
+    ("C3-int", "the network x geometry interaction test (Section 6; ``analysis.c3_int``)",
+     ("constants.analysis.c3_int_perm", "constants.analysis.c3_int_pairs")),
+    ("C1-dev", ("C1's R2_c across each decision network's snapshots (Section 6; "
+                "``analysis.c1_dev``)"), ("snapshots",)),
+    ("DeltaC1", "R2(z + g) - R2(z), conditional probing (Section 6; ``analysis.delta_c1``)",
+     ()),
+    ("C2-pairs", "matched-decoy row pairs within a geometry (Section 6; ``analysis.c2_pairs``)",
+     ()),
+    ("C1-own on own-run and N states",
+     ("C1-own on every state of each network's own run from each D key and on N (Section 3.3 "
+      "(ii), (iii)): it needs critic pullbacks at own-run states; C1-own is decided on T's "
+      "interior restarts only"), ()),
+)
 
 
 def net_file(name: str) -> str:
@@ -156,6 +180,7 @@ def constants() -> dict:
                      "c1": [AN.C1_CONFIRM, AN.C1_REFUTE],
                      "scale_band": list(AN.SCALE_BAND), "probe_fit": AN.PROBE_FIT,
                      "c3": [AN.C3_PERMUTATIONS, AN.C3_ALPHA, AN.C3_STRONG],
+                     # C3-int is deferred (``DEFERRED``): kept, not pre-registered
                      "c3_int_perm": AN.C3_INT_PERMUTATIONS, "c3_strata": AN.C3_STRATA,
                      "c3_int_pairs": [list(p) for p in AN.C3_INT_PAIRS],
                      "value_accuracy": {
@@ -199,6 +224,14 @@ def constants() -> dict:
                   "k4": [list(GT.K4_SNR), GT.K4_TOL, GT.K4_ZERO_TOL, GT.K4_READOUT_TOL],
                   "k4_c1": [list(GT.K4_C1_SNR), list(GT.K4_FLOOR), GT.K4_DIRECTION_FLOOR]},
         "streams": dict(STREAMS), "kappa_set_r": KAPPA_SET_R}
+
+
+def deferred() -> list[dict]:
+    """The record's 'deferred' list (``DEFERRED``): each analysis with the record items kept
+    for it that do not make it pre-registered."""
+    return [{"name": n, "what": w, "kept_not_preregistered": list(kept),
+             "status": "not part of costate-prereg-v1: exploratory if run later"}
+            for n, w, kept in DEFERRED]
 
 
 def frozen_values(tab, t_H: int | None, partitions: int | None = None) -> dict:
@@ -250,7 +283,8 @@ def build_record(repo: Path, sets: dict[str, list[tuple[str, str]]], keys_root: 
            "content": {k: FP.content_hash(v, keys_root) for k, v in sets.items()},
            "t_pairs": [[str(k), int(t)] for k, t in sorted(t_pairs)],
            "t_sha256": t_hash(t_pairs), "frozen": frozen, "constants": constants(),
-           "design_doc_sha256": sha256_file(repo / DESIGN_DOC), "code_hash": code_hash(repo)}
+           "deferred": deferred(), "design_doc_sha256": sha256_file(repo / DESIGN_DOC),
+           "code_hash": code_hash(repo)}
     rec.update(extra or {})
     return rec
 
@@ -359,12 +393,13 @@ def c3w_problems(rec: dict, repo: Path) -> list[str]:
 
 def stimulus_design_hash() -> str:
     """Step 1's stimulus design hash (``stimuli.design_hash`` of the bank and cells the
-    post-tag roads are rebuilt from)."""
+    post-tag roads are rebuilt from): the cells as ``stimuli.load_design``'s list, in
+    ``keys._design``'s order, as step 2 hashes them (scripts/fields.py:410-414);
+    ``keys.design`` gives them as a dict by id, which ``design_hash`` cannot take."""
     from apexzero.costate import stimuli_dir
-    from apexzero.fields import keys as K
     from apexzero.interp import stimuli
 
-    bank, cells = K.design(stimuli_dir())
+    bank, cells = stimuli.load_design(stimuli_dir())
     return stimuli.design_hash(bank, cells)
 
 

@@ -4,10 +4,12 @@ decisions; the descriptives of Section 6 'Secondary and descriptive').
 Everything here works on arrays that the stages computed (targets, pulled-back gradients,
 hidden units, probe predictions, per-network scalars); nothing evaluates a network. The
 primary family is **C1, C2 and C3-w** (Section 12 decision 6), each with its own bands and
-no correction across them (Section 6 'Multiplicity'). C2-sw and C3-int are named
-secondaries; C1-pattern, C1-heads, C1-own (``c1_own``), C1-limit, C1-braking, C1-dev, Delta
-C1, C2-pairs and W1 (``calibrated_agreement``) are pre-registered secondaries; the rest is
-descriptive.
+no correction across them (Section 6 'Multiplicity'). C2-sw is a named secondary;
+C1-pattern, C1-heads, C1-own (``c1_own``, on T's interior restarts), C1-limit, C1-braking and
+W1 (``calibrated_agreement``) are pre-registered secondaries; the rest is descriptive. C3-int
+(``c3_int``), C1-dev (``c1_dev``), Delta C1 (``delta_c1``), C2-pairs (``c2_pairs``) and C1-own
+on its own-run and N states are deferred (Section 13 'Deferred', ``prereg.DEFERRED``): not
+part of costate-prereg-v1, exploratory if run later; their code is kept.
 
 **C1** (``c1``; Section 6 'C1'). Per component k of K_P = (s, n, xi, vx)
 (``targets.K_P``), a per-fold affine calibration of lambda_k on g_k (``calibrate``) on the
@@ -89,8 +91,9 @@ There is no reversed-sign refute. The covariates (competence, overlap) are repor
 stratified partial associations: within each stratum the ranks of x and y are residualised on
 the covariate's ranks, with the same permutation scheme (descriptive).
 
-**C3-int** (``c3_int``): per network x geometry, the signed calibrated critic residual of
-each K_P component (sigma-folded for the mirror-odd ones, so a geometry's two directions add)
+**C3-int** (``c3_int``; deferred, so not pre-registered, though the record keeps its
+constants): per network x geometry, the signed calibrated critic residual of each K_P
+component (sigma-folded for the mirror-odd ones, so a geometry's two directions add)
 and the behavioural deviations, each double-centred over networks and geometries
 (``double_centre``: alternating row and column centring, exact on a complete table); the
 statistic is the mean over the pre-signed pairs (``C3_INT_PAIRS``) of sign x the Pearson

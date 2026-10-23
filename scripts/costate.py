@@ -11,13 +11,16 @@ is computed; refused once the tag exists):
                 --network (default G1), the observability and kappa flags (inputs/summary.json).
                 The 4 multi-basin keys are left out of T (design Section 3.2) and listed;
                 run it after k2 (its t_H is bound) and again before prereg
-    k0          K0 on the A2 keys (--kinds a2 n adds N's anchored finals)
+    k0          K0 on the A2 keys and N's anchored finals (--kinds a2: the A2 keys only, a
+                partial run)
     k1          K1 on step 2's Gate 1 sample (50 keys; --n fewer, a partial run), with the
                 planted bugs and pi on the anchored keys
     k2          K2 on the horizon twins, and --n-extend W = 800 insurance solves
     k2b         K2b on --n keys (default 30) stratified by R and theta
     k3          K3: the critic's pullback dry runs on 200 T states (--n fewer keys: a
-                partial run) and the extractor's self-consistency (float64 subprocesses)
+                partial run) and the extractor's self-consistency (float64 subprocesses,
+                each report removed before its subprocess runs, their exit statuses
+                checked and recorded)
     k3b         K3b: the policy's own costate loop on step 2's linear driver, its accel-reading
                 plant and the hybrid, with the on-manifold check
     k4          K4's planted representations through the probe pipeline on T (G1's obs_rms)
@@ -54,7 +57,8 @@ Post-tag stages (refused unless the freeze check passes: ``freeze_problems``):
                 (``unlocked_by``)
 
 Each stage writes under outputs/costate/<stage group>/ (``--out`` moves the root; any root
-other than outputs/costate, a --limit or --n or a --network makes the run partial) and logs to
+other than outputs/costate, a --limit or --n or a --network makes the run partial, as does
+an option that changes a bound output from its pre-registered form: ``_partial``) and logs to
 outputs/costate/logs/costate-<stage>.log (never under runs/, which is the main checkout's).
 Every output carries a provenance stamp (``F.Provenance``'s fields on idea 2's code paths:
 the code hash at the start and just before writing, HEAD, the changed paths, argv, the
@@ -67,28 +71,30 @@ be an ancestor of HEAD; the write-once outputs/costate/tag.json the first post-t
 must be committed before the next post-tag stage and stay its first committed version;
 nothing under src/ (all of it), scripts/costate.py or scripts/_bootstrap.py may differ from
 the tag (git diff, untracked files, and byte by byte); step 1's and step 2's frozen code must
-be their own tags'; the record at the tag must exist, register the design document's blob at
-the tag, hash the code the tag holds (``prereg.tree_code_hash``), come from a base commit that
-differs from the tag by the record alone; package versions must be the record's; and the disk
-must match the record (key files and lists, T's list, design document, code hash, bound
-outputs, checkpoints). Only then are ``critic.unlock_trained``, ``probes.unlock_trained`` and
-``network.unlock_trained`` called. A logged ``--post-tag-deviation REASON`` waives only a
-changed-code or changed-design-document problem.
+be their own tags', and those local tags must be the objects the record registers
+(``steps``; step 1's also its pinned ``F.STEP1_TAG_OBJECT``: scripts/fields.py is outside the
+code hash, frozen only by step 2's tag); the record at the tag must exist, register the
+design document's blob at the tag, hash the code the tag holds (``prereg.tree_code_hash``),
+come from a base commit that differs from the tag by the record alone; package versions must
+be the record's; and the disk must match the record (key files and lists, T's list, design
+document, code hash, bound outputs, checkpoints). Only then are ``critic.unlock_trained``,
+``probes.unlock_trained`` and ``network.unlock_trained`` called. A logged
+``--post-tag-deviation REASON`` waives only a changed-code or changed-design-document
+problem.
 
 **Run-once** (Section 7: the analysis runs once): ``analyse --confirmatory`` refuses when its
 decisions file exists or was ever committed, refuses unless every input is present and
-stamped by this code under this tag (``confirmatory_input_problems``), and prints the
+stamped by this code under this tag (the pre-tag nulls arrays: by the record's code, and
+the arrays the record binds; ``confirmatory_input_problems``), and prints the
 ``git add -f`` that commits it. Before that file is committed, a non-confirmatory analyse
 writes coverage and plumbing only (``unlocked_by``, as step 2's).
 
-**Order with step 2 and H4R** (step 2's and H4R's freeze checks also cover all of src): until
-H4R's outputs/h4r/analyse/decisions.json is committed on main, no file under src/ may appear in
-the main checkout's working tree (no merge, cherry-pick, checkout of these paths or untracked
-copy; a file appearing mid-run makes a running ``h4r.py fields`` refuse to write). Idea 2 is
-tagged on the costate-dev branch (``git push origin costate-dev costate-prereg-v1``) and every
-post-tag stage runs in that worktree, where tag.json and decisions.json are committed. Merge
-costate-dev into main only after both H4R's and idea 2's confirmatory decisions are
-committed; never merge main into costate-dev between idea 2's tag and its analyse.
+**Where it runs** (step 2's and H4R's confirmatory decisions are already committed on main):
+idea 2 runs in the main checkout and is tagged on main. The pre-tag stages write
+outputs/costate there and prereg writes the record there; then commit
+src/apexzero/costate/prereg.json on main, ``git tag -a costate-prereg-v1`` on that commit and
+``git push origin main costate-prereg-v1``. Every post-tag stage runs in the main checkout,
+where the bound pre-tag outputs are and where tag.json and decisions.json are committed.
 """
 
 import argparse
@@ -170,13 +176,20 @@ def pin_path_of(root: Path = ROOT) -> Path:
 
 
 def frozen_steps_problems(root: Path = ROOT) -> list:
-    """Step 1's and step 2's frozen code against their own tags (git and byte by byte)."""
+    """Step 1's and step 2's frozen code against their own tags (git and byte by byte); in
+    this repository step 1's tag must also be its pinned object (``F.STEP1_TAG_OBJECT``, as
+    ``fields.step1_problems``)."""
     out = []
     for tag, paths, label in ((STEP1_TAG, STEP1_FROZEN, "step 1"),
                               (STEP2_TAG, STEP2_FROZEN, "step 2")):
-        if F._tag_object(tag, root) is None:
+        t = F._tag_object(tag, root)
+        if t is None:
             out.append(_P("frozen", f"{label}'s tag {tag} is missing"))
             continue
+        if (tag == STEP1_TAG and Path(root).resolve() == ROOT.resolve()
+                and t[0] != F.STEP1_TAG_OBJECT):
+            out.append(_P("frozen", f"{label}'s tag {tag} is {t[0][:12]}, not its pinned object "
+                          f"{F.STEP1_TAG_OBJECT[:12]}"))
         ch = F.changed_since(tag, paths, root)
         if ch:
             out.append(_P("frozen", f"{label}'s frozen code differs from {tag}: {ch[:6]}"))
@@ -188,6 +201,24 @@ def frozen_steps_problems(root: Path = ROOT) -> list:
         if hidden:
             out.append(_P("frozen", f"{label}'s frozen code differs from {tag} byte by byte: "
                           f"{hidden[:6]}"))
+    return out
+
+
+def step_tags_problems(rec: dict, root: Path = ROOT) -> list:
+    """Step 1's and step 2's local tags against the objects the record registers
+    (``steps``, written by prereg): ``frozen_steps_problems`` diffs against the local tag
+    names, so a moved tag would let changed frozen code through, scripts/fields.py among it
+    (outside the code hash). Never waivable ('frozen')."""
+    steps = rec.get("steps") or {}
+    out = []
+    for key, tag in (("step1", STEP1_TAG), ("step2", STEP2_TAG)):
+        want = (steps.get(key) or {}).get("object")
+        t = F._tag_object(tag, root)
+        if not want:
+            out.append(_P("frozen", f"the record registers no object for {key}'s tag {tag}"))
+        elif t is None or t[0] != want:
+            out.append(_P("frozen", f"{key}'s tag {tag} is {(t or ['missing'])[0][:12]}, not "
+                          f"the record's {want[:12]}"))
     return out
 
 
@@ -246,6 +277,7 @@ def freeze_problems(tag: str = TAG, root: Path = ROOT, verify=_verify_on_disk,
     if rec is None:
         out.append(_P("record", f"no pre-registration record {PREREG_REL} at the tag {tag}"))
         return out
+    out += step_tags_problems(rec, root)
     if not rec.get("design_doc_sha256") or tagged_doc_sha256(tag, root) != rec["design_doc_sha256"]:
         out.append(_P("record", "the design document at the tag is not the one the record "
                       "registers"))
@@ -366,20 +398,47 @@ def import_problems(root: Path = ROOT, modules: dict | None = None) -> list[str]
 def _partial(args) -> list[str]:
     """The options that make a run partial: another --out, --limit, --n, --n-extend, and
     --network except on the nulls stage when the networks given cover the decision networks
-    (named by run directory: G1 and runs/dr-pilot-200M are the same)."""
+    (named by run directory: G1 and runs/dr-pilot-200M are the same); and those that change a
+    bound output from its pre-registered form: k0 without 'n' in --kinds (Section 13: K0 on
+    every A2 key and every anchored final), any k4 --which (its pass covers only the plants
+    that ran), a k5 --ceiling other than 'mlp' (ridge is the dry runs' stand-in), nulls
+    --mlp-alphas or --mlp-maxiter other than the record's (``probes.MLP_ALPHAS``,
+    ``probes.MLP_MAXITER``), and inputs --partitions other than all of them
+    (``states.N_PARTITIONS``)."""
     out = []
+    stage = getattr(args, "stage", None)
     if Path(getattr(args, "out", OUT)).resolve() != OUT.resolve():
         out.append("--out")
     for name in ("limit", "n", "network", "n_extend"):
         v = getattr(args, name, None)
         if v in (None, [], False):
             continue
-        if name == "network" and getattr(args, "stage", None) == "nulls":
+        if name == "network" and stage == "nulls":
             from apexzero.costate import prereg as PR
 
             if {PR.net_file(n) for n in PR.null_networks()} <= {PR.net_file(n) for n in v}:
                 continue
         out.append(f"--{name.replace('_', '-')}")
+    if stage == "k0" and "n" not in (getattr(args, "kinds", None) or []):
+        out.append("--kinds")
+    if stage == "k4" and getattr(args, "which", None):
+        out.append("--which")
+    if stage == "k5" and getattr(args, "ceiling", "mlp") != "mlp":
+        out.append("--ceiling")
+    if stage == "nulls":
+        from apexzero.costate import probes as PB
+
+        a = getattr(args, "mlp_alphas", None)
+        if a is not None and tuple(map(float, a)) != tuple(map(float, PB.MLP_ALPHAS)):
+            out.append("--mlp-alphas")
+        if int(getattr(args, "mlp_maxiter", PB.MLP_MAXITER)) != PB.MLP_MAXITER:
+            out.append("--mlp-maxiter")
+    if stage == "inputs":
+        from apexzero.costate import states as ST
+
+        p = getattr(args, "partitions", None)
+        if p is not None and int(p) != ST.N_PARTITIONS:
+            out.append("--partitions")
     return out
 
 
@@ -664,37 +723,61 @@ def stage_k2b(args) -> None:
     _write(_out(args, "gates") / "k2b.json", {"keys": keys, "rule": rule, "pass": bool(ok)})
 
 
-def _subprocess(args, module: str, argv: list[str]) -> dict:
+def _subprocess(args, module: str, argv: list[str], ok: tuple[int, ...] = (0,)) -> int:
+    """``python -m module argv`` (src/ on the path) and its exit status; SystemExit unless
+    the status is in ``ok`` (Python exits 1 on an uncaught exception too, so 1 is accepted
+    only where the caller can tell a fail from a crash)."""
     env = dict(os.environ, PYTHONPATH=str(ROOT / "src"))
     r = subprocess.run([sys.executable, "-m", module, *argv], cwd=ROOT, env=env,
                        capture_output=True, text=True, check=False)
-    if r.returncode not in (0, 1):
-        raise SystemExit(f"{module} {argv[:2]} failed: {r.stderr[-1500:]}")
-    return {"returncode": r.returncode}
+    if r.returncode not in ok:
+        raise SystemExit(f"{module} {argv[:2]} exited {r.returncode}: {r.stderr[-1500:]}")
+    return int(r.returncode)
 
 
 def stage_k3(args) -> None:
+    """K3 from its float64 subprocesses' reports. Each report is removed right before its
+    subprocess runs, so only this run's are judged: the critic's dry runs must exit 0
+    (``critic.main`` returns 0 only: 1 is a crash) and write PREFIX.json; an extractor check
+    must rewrite its report and exit 0 on a pass, 1 on a fail (any other pairing is a crash).
+    Every exit status is recorded ('returncodes')."""
     from apexzero.costate import critic as CR
     from apexzero.costate import gates as GT
 
     d = _out(args, "gates") / "k3"
     d.mkdir(parents=True, exist_ok=True)
-    _subprocess(args, "apexzero.costate.critic", ["dry-run", "plants", "--out", str(d / "plants")])
     size = (["--keys", str(args.n)] if args.n is not None
             else ["--min-states", str(CR.K3_MIN_STATES)])
-    _subprocess(args, "apexzero.costate.critic", ["dry-run", "random", "--out",
-                                                  str(d / "random"), *size])
+    rc: dict[str, int] = {}
+    for what, extra in (("plants", []), ("random", size)):
+        prefix = d / what
+        for q in (prefix.with_suffix(".json"), prefix.with_suffix(".npz")):
+            q.unlink(missing_ok=True)
+        rc[what] = _subprocess(args, "apexzero.costate.critic",
+                               ["dry-run", what, "--out", str(prefix), *extra])
+        if not prefix.with_suffix(".json").exists():
+            raise SystemExit(f"critic dry-run {what} exited 0 without writing {what}.json")
     ext = []
     for heads in ("5", "0"):
         p = d / f"extractor_{heads}.json"
-        _subprocess(args, "apexzero.costate.probes", ["extractor-check", "--out", str(p),
-                                                      "--heads", heads])
-        ext.append(json.loads(p.read_text()))
+        p.unlink(missing_ok=True)
+        rc[f"extractor_{heads}"] = r = _subprocess(
+            args, "apexzero.costate.probes", ["extractor-check", "--out", str(p), "--heads",
+                                              heads], ok=(0, 1))
+        if not p.exists():
+            raise SystemExit(f"extractor-check --heads {heads} exited {r} without writing "
+                             f"{p.name}")
+        e = json.loads(p.read_text())
+        if r != (0 if e.get("pass") else 1):            # probes.main's own exit rule
+            raise SystemExit(f"extractor-check --heads {heads} exited {r} with a report whose "
+                             f"pass is {e.get('pass')!r}: a crash, not its verdict")
+        ext.append(e)
     plants = json.loads((d / "plants.json").read_text())
     random = json.loads((d / "random.json").read_text())
     res = GT.k3_judge(plants, random, ext,
                       min_states=CR.K3_MIN_STATES if args.n is None else 0)
     res["reports"] = {"plants": plants, "random": random, "extractor": ext}
+    res["returncodes"] = rc
     _write(_out(args, "gates") / "k3.json", res)
 
 
@@ -821,8 +904,32 @@ def prereg_frozen(out_root: Path, frozen: dict) -> dict:
     return out
 
 
+def bound_env_problems(out_root: Path, rels, env_now: dict) -> list[str]:
+    """The bound pre-tag outputs whose stamps record other Python or package versions than
+    ``env_now`` (``F.env_problems``), or none: the record takes this run's environment, which
+    the freeze check and the confirmatory input check hold every later stage to, so a package
+    change after a stage ran is refused here, not at the last post-tag stage."""
+    from apexzero.fields.prereg import read_stamp
+
+    out = []
+    for rel in rels:
+        p = Path(out_root) / rel
+        st = read_stamp(p) if p.exists() else None
+        if st is None:
+            continue                       # reported by bind_outputs and bind_arrays
+        if not st.get("environment"):
+            out.append(f"{rel}'s stamp records no environment")
+            continue
+        env = F.env_problems(st["environment"], env_now)
+        if env:
+            out.append(f"{rel} was computed with other package versions than this run's "
+                       f"({env[:3]}): rerun it")
+    return out
+
+
 def stage_prereg(args) -> None:
-    """The record (``costate.prereg``), from a clean tree with every bound output passing."""
+    """The record (``costate.prereg``), from a clean tree with every bound output passing,
+    stamped by this code under this run's package versions."""
     from apexzero.costate import analysis as AN
     from apexzero.costate import keys_root
     from apexzero.costate import prereg as PR
@@ -837,9 +944,12 @@ def stage_prereg(args) -> None:
             probs.append("the code on disk is not HEAD's")
     except RuntimeError as e:
         probs.append(f"git: {e}")
+    env_now = F.environment()
     outputs, p2 = PR.bind_outputs(Path(args.out), code)
     arrays, p2b = PR.bind_arrays(Path(args.out), code)
+    p2 += bound_env_problems(Path(args.out), [*outputs, *arrays], env_now)
     pins, p3 = PR.network_pins(all_networks(), ROOT)
+    # the deferred C1-dev's snapshots (``prereg.DEFERRED``): pinned, not pre-registered
     snaps, p4 = {}, []
     for n in AN.DECISION_NETWORKS:
         snaps[n], q = PR.snapshot_pins(n, ROOT)
@@ -858,7 +968,7 @@ def stage_prereg(args) -> None:
         raise SystemExit("prereg refuses: " + "; ".join(probs))
     t_pairs = list(zip(world.tab["key_id"].tolist(), world.tab["t"].tolist(), strict=True))
     extra = {"prereg_base_commit": F._head(), "networks": pins, "snapshots": snaps,
-             "outputs": {**outputs, **arrays}, "environment": F.environment(),
+             "outputs": {**outputs, **arrays}, "environment": env_now,
              "c3w_inputs": c3w, "design_hash": PR.stimulus_design_hash(),
              "excluded": summ.get("excluded"),
              "steps": {"step1": {"tag": STEP1_TAG, "object": F.STEP1_TAG_OBJECT},
@@ -867,9 +977,9 @@ def stage_prereg(args) -> None:
     rec = PR.build_record(ROOT, PR.key_sets(), keys_root(), t_pairs,
                           prereg_frozen(Path(args.out), summ["frozen"]), extra)
     path = PR.save(rec)
-    print(f"wrote {path}; next: git add {PREREG_REL} && git commit; git tag -a {TAG}; "
-          f"git push {REMOTE} costate-dev {TAG} (the branch and the tag, never main: module "
-          "docstring 'Order with step 2 and H4R')")
+    print(f"wrote {path}; next, on main in this checkout: git add {PREREG_REL} && git commit; "
+          f"git tag -a {TAG}; git push {REMOTE} main {TAG}; then run every post-tag stage in "
+          "this checkout (module docstring 'Where it runs')")
 
 
 # ------------------------------------------------------------------------- post-tag
@@ -1686,7 +1796,9 @@ def confirmatory_input_problems(rec: dict, root: Path, prov=None) -> list[str]:
     ``confirmatory_input_problems`` and ``input_stamp_problems``): a decision network's
     critic, activations, probes or nulls file missing; a generalist's critic without its
     width derivative; a post-tag input not stamped by this code under this tag (or partial,
-    or changed since); a nulls array not the one the record binds."""
+    or changed since); a nulls array not stamped by the record's code (``rec['code_hash']``:
+    pre-tag stages cannot rewrite it after the tag, so under a logged code deviation this
+    run's hash would refuse it for good) or not the one the record binds."""
     import numpy as np
 
     from apexzero.fields.prereg import sha256_file
@@ -1712,7 +1824,7 @@ def confirmatory_input_problems(rec: dict, root: Path, prov=None) -> list[str]:
     probs += F.input_stamp_problems(list(dict.fromkeys(post)), prov.code_hash, prov.deviation,
                                     prov.tag, rec.get("environment"))
     nl = [p for p in paths["nulls"] if p.exists()]
-    probs += F.input_stamp_problems(nl, prov.code_hash, prov.deviation, None,
+    probs += F.input_stamp_problems(nl, rec.get("code_hash"), prov.deviation, None,
                                     rec.get("environment"), check_tag=False)
     for p in nl:
         rel = f"nulls/{p.name}"
@@ -1955,7 +2067,8 @@ def build_parser() -> argparse.ArgumentParser:
             p.add_argument("--partitions", type=int, default=None,
                            help="robustness partitions hashed (default all 11)")
         if name == "k0":
-            p.add_argument("--kinds", nargs="+", default=["a2"], choices=("a2", "n"))
+            p.add_argument("--kinds", nargs="+", default=["a2", "n"], choices=("a2", "n"),
+                           help="the A2 keys and N's anchored finals (without n: partial)")
         if name in ("k1", "k2b", "k3", "k3b"):
             p.add_argument("--n", type=int, default=None, help="fewer items (a partial run)")
         if name == "k2":

@@ -5,7 +5,8 @@ bodies (design v2.1, Section 7 'Freeze'), before the tag.
   design document and step 1's and step 2's tags; the record built on that commit and
   committed alone; the annotated tag pushed to a bare origin): it passes, then fails for a
   code change (committed or not, untracked, byte by byte), step 1's or step 2's frozen code
-  changed, a lightweight or unpushed tag, a changed key file, design document or record.
+  changed, a lightweight or unpushed tag, a changed key file, design document or record, a
+  step 1 or step 2 tag that is not the record's.
 - Pre-tag stages refuse after the tag (a deviation only into a root outside
   outputs/costate); post-tag stages refuse without it; stamps refuse a mid-run code change;
   the confirmatory analysis runs once; partial options are stamped.
@@ -85,8 +86,10 @@ def _scratch(tmp_path, cs, push: bool = True):
     _git(root, "tag", "-a", cs.STEP1_TAG, "-m", "s1")
     _git(root, "tag", "-a", cs.STEP2_TAG, "-m", "s2")
     base = _git(root, "rev-parse", "HEAD").strip()
+    steps = {k: {"tag": t, "object": _git(root, "rev-parse", f"refs/tags/{t}").strip()}
+             for k, t in (("step1", cs.STEP1_TAG), ("step2", cs.STEP2_TAG))}
     rec = PR.build_record(root, sets, keys, [("k1", 0), ("k1", 5), ("k2", 0)], {"t_H": 270},
-                          {"prereg_base_commit": base, "networks": {}})
+                          {"prereg_base_commit": base, "networks": {}, "steps": steps})
     PR.save(rec, root / PR.PREREG_REL)
     _git(root, "add", PR.PREREG_REL)
     _git(root, "commit", "-q", "-m", "record")
@@ -594,6 +597,44 @@ def test_each_freeze_rule_names_its_problem(tmp_path):
     assert any("package versions differ" in p for p in probs(root, verify))
 
 
+def test_step_tags_must_be_the_records(tmp_path, monkeypatch):
+    """Review finding: scripts/fields.py runs in every stage but is outside the code hash,
+    frozen only by a diff against the local step 2 tag, and the step tag objects the record
+    registers were never compared: a moved local tag let changed frozen code through."""
+    from apexzero.fields.prereg import waivable
+
+    cs = _script()
+
+    def probs(root):
+        return cs.freeze_problems(root=root, verify=None, remote=None,
+                                  pin_path=root.parent / "pin.json")
+
+    # step 2's tag moved onto a commit that changes scripts/fields.py (not a code path)
+    root, _, _, _ = _scratch(tmp_path / "a", cs)
+    assert probs(root) == []
+    (root / "scripts/fields.py").write_text("# changed\n")
+    _git(root, "commit", "-q", "-am", "fields.py changed")
+    _git(root, "tag", "-f", "-a", cs.STEP2_TAG, "-m", "moved")
+    p = probs(root)
+    assert [q.code for q in p] == ["frozen"] and "step2" in p[0] and not waivable(p)
+    # step 1's tag re-made (a new tag object on unchanged frozen code)
+    root, _, _, _ = _scratch(tmp_path / "b", cs)
+    _git(root, "tag", "-f", "-a", cs.STEP1_TAG, "-m", "moved")
+    p = probs(root)
+    assert [q.code for q in p] == ["frozen"] and "step1" in p[0]
+    # a record without the step tags
+    root, _, _, _ = _scratch(tmp_path / "c", cs)
+    _retag(root, cs, lambda r: r.pop("steps"))
+    assert sum("registers no object" in q for q in probs(root)) == 2
+    # in this repository step 1's tag must also be its pinned object
+    root, _, _, _ = _scratch(tmp_path / "d", cs)
+    monkeypatch.setattr(cs, "ROOT", root)
+    assert any(q.code == "frozen" and "pinned object" in q for q in probs(root))
+    monkeypatch.setattr(cs.F, "STEP1_TAG_OBJECT",
+                        _git(root, "rev-parse", f"refs/tags/{cs.STEP1_TAG}").strip())
+    assert probs(root) == []
+
+
 def test_pre_tag_stages_refuse_through_main_once_the_tag_exists(tmp_path, monkeypatch):
     """Review finding: deleting the pre-tag refusal from main went unnoticed."""
     cs = _script()
@@ -682,6 +723,198 @@ def test_bound_arrays_and_cross_checks(tmp_path):
     _, probs = PR.bind_outputs(root, code)
     assert any("is not K2's" in p for p in probs)
     assert any("is not the array its summary hashed" in p for p in probs)
+
+
+def test_options_that_change_a_bound_output_are_partial():
+    """Review finding: k0 without N's finals (its old default), k4 --which, k5 --ceiling
+    ridge, the nulls' MLP options and inputs --partitions wrote stamped, non-partial outputs
+    that prereg would bind."""
+    from apexzero.costate import probes as PB
+    from apexzero.costate import states as ST
+
+    cs = _script()
+    ap = cs.build_parser()
+
+    def part(*argv):
+        return cs._partial(ap.parse_args(list(argv)))
+
+    for stage in ("k0", "k4", "k5", "nulls", "inputs"):
+        assert part(stage) == [], stage
+    assert ap.parse_args(["k0"]).kinds == ["a2", "n"]
+    assert part("k0", "--kinds", "a2") == ["--kinds"]
+    assert part("k0", "--kinds", "n", "a2") == []
+    assert part("k4", "--which", "PR-2") == ["--which"]
+    assert part("k4", "--which") == []                    # no plant named: every plant runs
+    assert part("k5", "--ceiling", "ridge") == ["--ceiling"]
+    assert part("nulls", "--mlp-alphas", "1e-3") == ["--mlp-alphas"]
+    assert part("nulls", "--mlp-alphas", *map(str, PB.MLP_ALPHAS)) == []
+    assert part("nulls", "--mlp-maxiter", "50") == ["--mlp-maxiter"]
+    assert part("inputs", "--partitions", "2") == ["--partitions"]
+    assert part("inputs", "--partitions", str(ST.N_PARTITIONS)) == []
+    assert part("k0", "--kinds", "a2", "--limit", "3") == ["--limit", "--kinds"]
+
+
+def test_confirmatory_nulls_against_the_record_and_prereg_against_this_environment(
+        tmp_path, monkeypatch):
+    """Review finding: the confirmatory check held the pre-tag nulls to this run's code hash
+    (a dead end under a logged code deviation, since pre-tag stages cannot rewrite them after
+    the tag), and a package change between a pre-tag stage and prereg was refused only at
+    the last post-tag stage."""
+    cs = _script()
+    root = tmp_path / "root"
+    cs._use_provenance(cs.Provenance(None, "nulls"))
+    for n in PR.null_networks():
+        cs._write_npz(root / "nulls" / f"{PR.net_file(n)}.npz", {"qss": np.ones((2, 8))})
+    code = PR.code_hash(REPO)
+    rec = {"code_hash": code, "environment": cs.F.environment(),
+           "outputs": {f"nulls/{p.name}": {"sha256": PR.sha256_file(p)}
+                       for p in (root / "nulls").glob("*.npz")}}
+
+    def stamp_probs(r, prov):
+        return [p for p in cs.confirmatory_input_problems(r, root, prov)
+                if "nulls/" in p or "other code" in p or "package versions" in p]
+
+    dev = SimpleNamespace(code_hash="0" * 64, deviation={"reason": "a logged fix"}, tag=None)
+    assert stamp_probs(rec, dev) == []
+    assert stamp_probs(rec, SimpleNamespace(code_hash=code, deviation=None, tag=None)) == []
+    assert any("written by other code" in p for p in stamp_probs({**rec, "code_hash": "1" * 64},
+                                                                 dev))
+    # prereg: a bound output stamped under other package versions
+    p = cs.Provenance(None, "k0")
+    p.environment = {**p.environment, "packages": {**p.environment["packages"], "jax": "0.0.1"}}
+    cs._use_provenance(p)
+    cs._write(root / "gates" / "k0.json", {"summary": {"pass": True}})
+    rels = ["gates/k0.json", *(f"nulls/{q.name}" for q in (root / "nulls").glob("*.npz"))]
+    probs = cs.bound_env_problems(root, rels, cs.F.environment())
+    assert len(probs) == 1 and "gates/k0.json" in probs[0] and "jax" in probs[0]
+    # ... is refused by stage_prereg itself (every other check stubbed; nothing is written)
+
+    class Reached(Exception):
+        pass
+
+    def never(*a, **k):
+        raise Reached
+    for name, value in (("dirty_paths", lambda *a, **k: []),
+                        ("frozen_steps_problems", lambda *a, **k: []),
+                        ("_load_world", lambda a: SimpleNamespace(
+                            tab={"key_id": np.array([]), "t": np.array([])})),
+                        ("prereg_frozen", lambda o, f: {})):
+        monkeypatch.setattr(cs, name, value)
+    monkeypatch.setattr(PR, "tree_code_hash", lambda repo, rev: code)
+    monkeypatch.setattr(PR, "bind_outputs", lambda o, c: ({"gates/k0.json": {}}, []))
+    monkeypatch.setattr(PR, "bind_arrays", lambda o, c: ({}, []))
+    for name in ("network_pins", "snapshot_pins", "c3w_inputs"):
+        monkeypatch.setattr(PR, name, lambda *a, **k: ({}, []))
+    monkeypatch.setattr(PR, "stimulus_design_hash", lambda: "d")
+    monkeypatch.setattr(PR, "key_sets", lambda *a: {})
+    monkeypatch.setattr(PR, "build_record", never)
+    monkeypatch.setattr(PR, "save", never)
+    cs._write(root / "inputs" / "summary.json", {"frozen": {}})
+    args = SimpleNamespace(out=str(root))
+    with pytest.raises(SystemExit, match="other package versions"):
+        cs.stage_prereg(args)
+    cs._use_provenance(cs.Provenance(None, "k0"))
+    cs._write(root / "gates" / "k0.json", {"summary": {"pass": True}})
+    with pytest.raises(Reached):                       # this environment's stamp passes
+        cs.stage_prereg(args)
+
+
+def test_k3_judges_only_this_runs_reports(tmp_path, monkeypatch):
+    """Review finding: K3 accepted exit 1 from a crashed dry run (Python's status for an
+    uncaught exception too) and judged the reports a previous run left on disk."""
+    from apexzero.costate import gates as GT
+
+    cs = _script()
+    out = tmp_path / "o"
+    d = out / "gates" / "k3"
+    args = cs.build_parser().parse_args(["k3", "--out", str(out)])
+    cs._use_provenance(cs.Provenance(args, "k3"))
+    monkeypatch.setattr(GT, "k3_judge", lambda *a, **k: {"pass": True})
+    real = subprocess.run
+
+    def run_with(**beh):
+        """subprocess.run with each K3 subprocess's (exit status, report or None)."""
+        def run(cmd, *a, **k):
+            if cmd[0] == "git":
+                return real(cmd, *a, **k)
+            argv = cmd[3:]
+            dry = argv[0] == "dry-run"
+            name = argv[1] if dry else f"extractor_{argv[argv.index('--heads') + 1]}"
+            rc, rep = beh.get(name, (0, {"fresh": name} if dry else {"pass": True,
+                                                                      "fresh": name}))
+            target = Path(argv[argv.index("--out") + 1])
+            if rep is not None:
+                (target.with_suffix(".json") if dry else target).write_text(json.dumps(rep))
+            return SimpleNamespace(returncode=rc, stdout="", stderr="Traceback: boom")
+        return run
+
+    def stale():
+        d.mkdir(parents=True, exist_ok=True)
+        for n in ("plants", "random", "extractor_5", "extractor_0"):
+            (d / f"{n}.json").write_text(json.dumps({"pass": True, "stale": n}))
+
+    for beh, match in (({"random": (1, None)}, "exited 1"),
+                       ({"plants": (1, None)}, "exited 1"),
+                       ({"random": (1, {"fresh": "random"})}, "exited 1"),
+                       ({"plants": (0, None)}, "without writing plants.json"),
+                       ({"extractor_0": (1, None)}, "without writing"),
+                       ({"extractor_5": (1, {"pass": True})}, "a crash"),
+                       ({"extractor_5": (0, {"pass": False})}, "a crash")):
+        stale()
+        monkeypatch.setattr(subprocess, "run", run_with(**beh))
+        with pytest.raises(SystemExit, match=match):
+            cs.stage_k3(args)
+        assert not (out / "gates" / "k3.json").exists(), beh
+        crashed = next(iter(beh))
+        if beh[crashed][1] is None:                   # its stale report was removed first
+            assert not (d / f"{crashed}.json").exists(), beh
+    # an extractor's fail (exit 1 with its rewritten failing report) is a verdict, not a crash
+    stale()
+    monkeypatch.setattr(subprocess, "run", run_with(extractor_5=(1, {"pass": False,
+                                                                    "fresh": "e5"})))
+    cs.stage_k3(args)
+    res = json.loads((out / "gates" / "k3.json").read_text())
+    assert res["returncodes"] == {"plants": 0, "random": 0, "extractor_5": 1, "extractor_0": 0}
+    assert res["reports"]["plants"] == {"fresh": "plants"}
+    assert res["reports"]["random"] == {"fresh": "random"}
+    assert [e["fresh"] for e in res["reports"]["extractor"]] == ["e5", "extractor_0"]
+
+
+@pytest.mark.skipif(not HAVE_KEYS, reason="step 1's stimuli are not on disk")
+def test_stimulus_design_hash_on_step_1s_stimuli():
+    """Review finding (blocker): stimulus_design_hash handed keys.design's dict of cells to
+    stimuli.design_hash, a TypeError in prereg and in every post-tag freeze check."""
+    import re
+
+    from apexzero.fields import prereg as FP
+
+    h = PR.stimulus_design_hash()
+    assert isinstance(h, str) and re.fullmatch(r"[0-9a-f]{64}", h)
+    step2 = json.loads(FP.PREREG_PATH.read_text()) if FP.PREREG_PATH.exists() else {}
+    if step2.get("design_hash"):                     # step 2 hashed the same design
+        assert h == step2["design_hash"]
+
+
+def test_the_record_lists_the_deferred_analyses(tmp_path):
+    """Review finding: the record kept C3-int's pairs and C1-dev's snapshots unlabelled, and
+    the analysis module called the deferred analyses pre-registered (Section 13 'Deferred')."""
+    from apexzero.costate import analysis as AN
+
+    cs = _script()
+    names = [n for n, _, _ in PR.DEFERRED]
+    assert {"C3-int", "C1-dev", "DeltaC1", "C2-pairs"} <= set(names)
+    assert any(n.startswith("C1-own") for n in names)
+    c = PR.constants()
+    for item in (i for d in PR.deferred() for i in d["kept_not_preregistered"]):
+        head, *path = item.split(".")
+        if head == "constants":                      # each kept constant is in the record
+            v = c
+            for k in path:
+                v = v[k]
+    root, _, _, _ = _scratch(tmp_path, cs)
+    assert cs.tagged_record(root=root)["deferred"] == PR.deferred()
+    pre = AN.__doc__.split("**C1**")[0].split("are pre-registered secondaries")[0]
+    assert not any(n in pre for n in ("C3-int", "C1-dev", "Delta C1", "C2-pairs"))
 
 
 def test_verify_record_binds_outputs_checkpoints_and_c3w(tmp_path):
