@@ -21,10 +21,11 @@ fields/prereg.py:1-60, simplified where idea 2 needs less):
   seeds and streams, the null definitions, C3's strata, covariates and pre-signed pairs, the
   value-accuracy threshold;
 - **the deferred analyses** (``deferred``, ``DEFERRED``; design Section 13 'Deferred'):
-  C3-int, C1-dev, Delta C1, C2-pairs and C1-own on its own-run and N states are not part of
-  costate-prereg-v1 (exploratory if run later). C3-int's permutations and pre-signed pairs
-  (in the constants) and C1-dev's snapshot pins stay in the record, labelled there as kept
-  without pre-registering those analyses;
+  C3-int, C1-dev, Delta C1, C2-pairs, C1-own on its own-run and N states, N's replication of
+  C1, C2 and C2-sw, W1 on the Pi targets, W1's own-policy width price and C2 and C2-sw beyond
+  the decision networks are not part of costate-prereg-v1 (exploratory if run later).
+  C3-int's permutations and pre-signed pairs (in the constants) and C1-dev's snapshot pins
+  stay in the record, labelled there as kept without pre-registering those analyses;
 - **every network** a post-tag stage loads (``network_pins``: the 31 generalists of C3-w's
   strata and the 3 specialists; ``snapshot_pins``: the snapshots of the 9 decision networks
   that the deferred C1-dev would read): its checkpoint's repo-relative path (built without
@@ -97,6 +98,20 @@ DEFERRED = (
      ("C1-own on every state of each network's own run from each D key and on N (Section 3.3 "
       "(ii), (iii)): it needs critic pullbacks at own-run states; C1-own is decided on T's "
       "interior restarts only"), ()),
+    ("N's replication",
+     ("N's per-agent replication of C1, C2 and C2-sw (Sections 3.2 and 6, 'N replicates'): "
+      "N's states are never built (the inputs stage builds T only)"), ()),
+    ("W1 on the Pi targets",
+     ("W1's probe R2 and Spearman for Pi^in, Pi^out, Pi^slip and Pi^mu (Section 6 'W1'): W1 "
+      "reports only the critic's width derivative against Pi^in, descriptively"), ()),
+    ("W1's own-policy width price",
+     ("the policy's own width price (Section 3.4) and W1's three comparisons of the critic's "
+      "width field with the optimum's and the policy's own, with their calibrated magnitudes"),
+     ()),
+    ("C2 and C2-sw beyond the decision networks",
+     ("the descriptive C2 and C2-sw of the 22 other generalists and of the specialists "
+      "(Section 6): the probes stage runs on the 9 decision networks only; their C1 (without "
+      "nulls) and the generalists' C1-heads are reported"), ()),
 )
 
 
@@ -181,6 +196,13 @@ def constants() -> dict:
                      "c1": [AN.C1_CONFIRM, AN.C1_REFUTE],
                      "scale_band": list(AN.SCALE_BAND), "probe_fit": AN.PROBE_FIT,
                      "c3": [AN.C3_PERMUTATIONS, AN.C3_ALPHA, AN.C3_STRONG],
+                     "c3_r2c": {"x": "C1's R2_c without nulls (T's interior, the K_P mean)",
+                                "test": "C3-w's", "stream": ["costate_c3", AN.C3_R2C_SUBSTREAM],
+                                "networks": "the 31 generalists"},
+                     "containment": "a descriptive that raises is recorded as {'error': "
+                                    "'<type>: <message>'} (analysis.guarded); C1, C2, C2-sw, "
+                                    "C3-w, C3-R2c and the decision rules of C1-pattern, "
+                                    "C1-own, value accuracy, C1-limit and C1-braking raise",
                      # C3-int is deferred (``DEFERRED``): kept, not pre-registered
                      "c3_int_perm": AN.C3_INT_PERMUTATIONS, "c3_strata": AN.C3_STRATA,
                      "c3_int_pairs": [list(p) for p in AN.C3_INT_PAIRS],

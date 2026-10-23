@@ -332,13 +332,14 @@ tt = np.asarray(world.tab["t"])
 inner = np.asarray(world.tab["interior"], bool)
 asked = (inner & (tt % 20 == 0) & (tt > 0)) | (tt == 0)
 vt = np.asarray(world.tab["v_star_inf"], float)
-own = {"lam_own": world.lam + 0.1 * np.random.default_rng(0).normal(size=world.lam.shape),
-       "valid": np.ones(world.n, bool), "v_rows": asked, "v_own_det": np.where(asked, vt, np.nan),
+lo = world.lam + 0.1 * np.random.default_rng(0).normal(size=world.lam.shape)
+own = {"lam_own": lo, "lam_own_held": lo, "valid": np.ones(world.n, bool), "v_rows": asked,
+       "v_own_det": np.where(asked, vt, np.nan),
        "v_own_valid": asked, "v_own_terminated": np.zeros(world.n, bool),
        "v_own_strip_end": np.zeros(world.n, bool), "v_own_H": np.where(asked, 1000, 0),
        "v_own_tail": np.where(asked, 0.995 ** 1000, np.nan), "v_steps": np.int64(1000)}
 an = cs.analyse_network("stand-in", world, frozen, crit, {k: v for k, v in nl.items()}, fl, counts,
-                        own, True, variants=["braking_keys"],
+                        own, True, variants=["braking_keys", "pullback:held"],
                         strata=("interior", "interior20", "contact", "interior&braking_key",
                                 "interior&kappa_clipped"))
 sw = np.asarray(world.tab[ST.SW_STRATUM], bool)
@@ -374,7 +375,8 @@ print(json.dumps({"n": world.n, "keys": len(pick),
   "strata_c2": sorted(pr["by_stratum"]["C2"]), "strata_sw": sorted(pr["by_stratum"]["C2-sw"]),
   "n_inner": int(inner.sum()), "n_asked": int(asked.sum()), "resolved": resolved,
   "sw_parts": sw_parts, "n_kappa": int(np.asarray(fl["kappa_clipped"]).sum()),
-  "va_vstar": an["value_accuracy_vstar"]}, default=float))
+  "va_vstar": an["value_accuracy_vstar"], "held": an["sensitivity"]["pullback:held"],
+  "own_held": an["C1-own_held"], "c1_stat": an["C1"]["stat"]}, default=float))
 """
 
 
@@ -404,7 +406,13 @@ def test_post_tag_bodies_end_to_end_on_random_stand_ins(tmp_path):
         want = np.subtract(g["r2_full"], g["r2_base"]) - np.median(
             np.subtract(g["r2_random"], g["r2_base"]), axis=0)
         assert np.allclose(g["gain"], want, rtol=0, atol=1e-12), key
-    assert out["sw_rows"] > 0 and out["sens"] == ["braking_keys"]
+    assert out["sw_rows"] > 0 and out["sens"] == ["braking_keys", "pullback:held"]
+    # the accel-held pullback on the critic stage's own g_held (Section 3.2): scored as C1,
+    # every null left out; C1-own's held form beside C1-own (Section 13)
+    held = out["held"]
+    assert "error" not in held and held["null_diff"] == {} and held["pullback"] == "held"
+    assert held["nulls_omitted"] == out["c1_nulls"] and np.isfinite(held["stat"])
+    assert "error" not in out["own_held"] and out["own_held"]["descriptive"]
     assert out["c1_braking"] in ("refute", "inconclusive", "not testable")
     assert out["width_finite"] and out["width_err"] < 1e-6
     assert out["heads"] == ["D", "grad_KP_minus_V", "grad_secondary_minus_KP"]
@@ -953,6 +961,13 @@ def test_the_record_lists_the_deferred_analyses(tmp_path):
     names = [n for n, _, _ in PR.DEFERRED]
     assert {"C3-int", "C1-dev", "DeltaC1", "C2-pairs"} <= set(names)
     assert any(n.startswith("C1-own") for n in names)
+    # the named secondaries the analysis does not compute (review finding: absent and not
+    # deferred): N's replication, W1's Pi probes and own-policy width price, C2 and C2-sw
+    # beyond the decision networks
+    assert {"N's replication", "W1 on the Pi targets", "W1's own-policy width price",
+            "C2 and C2-sw beyond the decision networks"} <= set(names)
+    c3r = PR.constants()["analysis"]["c3_r2c"]
+    assert c3r["stream"] == ["costate_c3", AN.C3_R2C_SUBSTREAM] != ["costate_c3", 1]
     c = PR.constants()
     for item in (i for d in PR.deferred() for i in d["kept_not_preregistered"]):
         head, *path = item.split(".")
@@ -1126,9 +1141,10 @@ def test_every_pre_registered_variant_is_reported(tmp_path):
     rng = np.random.default_rng(3)
     lam8 = np.stack([world.tab[f"lam_{c}"] for c in ("s", "n", "xi", "vx", "vy", "r", "delta",
                                                      "pedal")], 1)
-    crit = {"g": np.repeat((lam8 + rng.normal(size=lam8.shape))[:, None], 6, 1),
-            "value": rng.normal(size=(n, 6)), "pi": rng.normal(size=(n, 6, 2)),
-            "random_g": rng.normal(size=(2, n, 8)), "dV_dwin": rng.normal(size=n)}
+    g = np.repeat((lam8 + rng.normal(size=lam8.shape))[:, None], 6, 1)
+    crit = {"g": g, "g_held": g.copy(), "value": rng.normal(size=(n, 6)),
+            "pi": rng.normal(size=(n, 6, 2)), "random_g": rng.normal(size=(2, n, 8)),
+            "dV_dwin": rng.normal(size=n)}
     # a value fit's null per held-out fold [F, n, 8] (``analysis.FOLD_NULLS``), QSS [n, 8]
     nulls = {"qss": rng.normal(size=(n, 8)), "value_ridge": rng.normal(size=(6, n, 8))}
     flags = {"observability": SimpleNamespace(s_unobservable=np.zeros(n, bool))}
@@ -1139,9 +1155,25 @@ def test_every_pre_registered_variant_is_reported(tmp_path):
     want = {f"partition{p}" for p in range(1, 11)} | {
         "weights:geometry", "weights:state", "drop_small", "drop_kappa_set", "braking_keys",
         "non_braking_keys"}
-    assert set(out["sensitivity"]) == want
+    assert set(out["sensitivity"]) == want | {"pullback:held"}
+    assert not any("error" in v for v in out["sensitivity"].values())
     assert out["sensitivity"]["partition3"]["nulls_omitted"] == ["value_ridge"]
     assert out["sensitivity"]["drop_small"]["nulls_omitted"] == []
+    # review finding: the pre-registered accel-held pullback (Section 3.2) was never scored.
+    # It is C1 on crit['g_held'] with every null left out (a null never enters R2_c: with
+    # g_held = g its R2_c, CI and Spearman are C1's own), descriptive
+    held = out["sensitivity"]["pullback:held"]
+    assert held["nulls_omitted"] == ["qss", "random_critics", "value_ridge"]
+    assert held["null_diff"] == {} and held["label_scope"] == "descriptive"
+    assert held["pullback"] == "held"
+    assert held["n_rows"] == out["C1"]["n_rows"]
+    for k in ("stat", "ci", "r2c", "spearman_ci"):
+        np.testing.assert_allclose(held[k], out["C1"][k], rtol=1e-12, atol=1e-14, err_msg=k)
+    other = cs.analyse_network("toy", world, frozen, {**crit, "g_held": g[:, :, ::-1]}, nulls,
+                               flags, PB.cluster_counts(G, 50), variants=["pullback:held"],
+                               strata=())
+    assert set(other["sensitivity"]) == {"pullback:held"}
+    assert other["sensitivity"]["pullback:held"]["stat"] != out["C1"]["stat"]
     assert len(out["robustness_C1"]["stat"]) == 10 and "C1-braking" in out
     assert out["decision_rows"]["vx"] < out["decision_rows"]["s"]      # K2b's frozen rule
     acts = {"z": rng.normal(size=(n, 6)), "m": rng.normal(size=(n, 2)),
@@ -1204,9 +1236,9 @@ def test_value_accuracy_decides_c1_own_and_every_strata_table_is_reported():
     rng = np.random.default_rng(4)
     lam8 = np.stack([tab[f"lam_{c}"] for c in ("s", "n", "xi", "vx", "vy", "r", "delta",
                                                 "pedal")], 1)
-    base = {"g": np.repeat((lam8 + 0.3 * rng.normal(size=lam8.shape))[:, None], 6, 1),
-            "pi": rng.normal(size=(n, 6, 2)), "random_g": rng.normal(size=(2, n, 8)),
-            "dV_dwin": rng.normal(size=n)}
+    g8 = np.repeat((lam8 + 0.3 * rng.normal(size=lam8.shape))[:, None], 6, 1)
+    base = {"g": g8, "g_held": g8.copy(), "pi": rng.normal(size=(n, 6, 2)),
+            "random_g": rng.normal(size=(2, n, 8)), "dV_dwin": rng.normal(size=n)}
     vstar = tab["v_star_inf"]
     # the policy's own return departs nonlinearly from V*inf: an affine map of V*inf
     # explains little of it
@@ -1219,7 +1251,8 @@ def test_value_accuracy_decides_c1_own_and_every_strata_table_is_reported():
 
     fits_own, fits_vstar = critic(v_pi), critic(vstar)
     random_ = {**base, "value": rng.normal(size=(n, 6))}
-    own = {"lam_own": lam8 + 0.1 * rng.normal(size=lam8.shape), "valid": np.ones(n, bool),
+    lo8 = lam8 + 0.1 * rng.normal(size=lam8.shape)
+    own = {"lam_own": lo8, "lam_own_held": lo8.copy(), "valid": np.ones(n, bool),
            **_own_returns(tab, v_pi, rng)}
     ok = own["v_rows"] & own["v_own_valid"]
     nulls = {"qss": rng.normal(size=(n, 8))}
@@ -1242,6 +1275,12 @@ def test_value_accuracy_decides_c1_own_and_every_strata_table_is_reported():
     assert "pass" not in vs and not vs["meets_threshold"] and vs["r2"] < 0.5
     assert vs["n"] == int(tab["interior"].sum())
     assert a["C1-own"]["status"] == "secondary"               # the V*inf score never decides
+    # Section 13: lambda^own's accel-held form is reported beside C1-own, descriptively
+    # (the critic's held pullback against it; with both forms equal, C1-own's numbers)
+    oh = a["C1-own_held"]
+    assert oh["descriptive"] and oh["pullback"] == "held"
+    assert oh["status"] == "descriptive (the accel-held form)"
+    assert oh["stat"] == a["C1-own"]["stat"] and oh["ci"] == a["C1-own"]["ci"]
     f = cs.analyse_network("toy", world, frozen, fits_vstar, nulls, flags, counts, own, True,
                            variants=["primary"], strata=())
     assert f["value_accuracy_vstar"]["meets_threshold"] and not f["value_accuracy"]["pass"]
@@ -1289,6 +1328,11 @@ def test_value_accuracy_decides_c1_own_and_every_strata_table_is_reported():
                            strata=("interior", "contact"))
     for nm, row in r["by_stratum"]["C1"].items():
         assert row["band"] != "confirm" and np.all(np.isfinite(row["slope_ci"])), nm
+    # review finding: without the own stage's output C1-own was silently absent; a
+    # non-confirmatory run records why (the confirmatory one requires the output)
+    for k in ("C1-own", "C1-own_held"):
+        assert r[k] == {"decision": "not testable", "descriptive": True,
+                        "reason": "no own stage output"}, k
     # C1-pattern on the interior's pedal-saturated states, descriptive
     ps = a["C1-pattern_saturated"]
     assert ps["descriptive"] and ps["n"] == int((tab["interior"] & tab["pedal_saturated"]).sum())
@@ -1317,7 +1361,9 @@ def test_value_accuracy_decides_c1_own_and_every_strata_table_is_reported():
     # the kappa-clipped strata: a row on 2 geometries, not an exception; without the flags
     # 'not testable'
     assert t2["interior&kappa_clipped"]["geometries"] <= 2
-    assert t2["interior&kappa_clipped"]["band"] == "not testable"
+    assert t2["interior&kappa_clipped"]["band"] == "not testable"     # explicitly, not a
+    assert "inner cross-validation" in t2["interior&kappa_clipped"]["reason"]    # LinAlgError
+    assert "inner cross-validation" in tsw["pedal_switching&kappa_clipped"]["reason"]
     assert t2["interior&W:800"]["band"] == "not testable" and t2["interior&W:800"]["n"] == 0
     assert tsw["pedal_switching&kappa_clipped"]["n"] == int((tab["pedal_switching"] & kc).sum())
     nokc = cs.probes_of(acts, world, frozen, tab["interior"], tab["pedal_switching"],
@@ -1334,6 +1380,253 @@ def test_value_accuracy_decides_c1_own_and_every_strata_table_is_reported():
     assert merged["sensitivity"]["braking_keys"]["C2"]["stat"] == \
         pr["sensitivity"]["braking_keys"]["C2"]["stat"]
     assert merged["sensitivity"]["braking_keys"]["stat"] == a["C1-braking"]["stat"]   # C1's
+
+
+def _toy_inputs(world, seed: int = 5):
+    """A toy network's critic, nulls, flags and activations on ``_toy_world``'s T."""
+    rng = np.random.default_rng(seed)
+    tab, n = world.tab, world.n
+    lam8 = np.stack([tab[f"lam_{c}"] for c in ("s", "n", "xi", "vx", "vy", "r", "delta",
+                                                "pedal")], 1)
+    g = np.repeat((lam8 + 0.5 * rng.normal(size=lam8.shape))[:, None], 6, 1)
+    crit = {"g": g, "g_held": g.copy(), "value": rng.normal(size=(n, 6)),
+            "pi": rng.normal(size=(n, 6, 2)), "random_g": rng.normal(size=(2, n, 8)),
+            "dV_dwin": tab["Pi_in"] + rng.normal(size=n)}
+    flags = {"observability": SimpleNamespace(s_unobservable=np.zeros(n, bool)),
+             "kappa_clipped": np.zeros(n, bool)}
+    acts = {"z": rng.normal(size=(n, 6)), "m": rng.normal(size=(n, 2)),
+            "actor_h3": rng.normal(size=(n, 5)),
+            **{f"random{s}_h3": rng.normal(size=(n, 5)) for s in range(5)}}
+    return crit, {"qss": rng.normal(size=(n, 8))}, flags, acts
+
+
+def test_a_raising_descriptive_is_recorded_and_a_raising_decision_propagates(monkeypatch):
+    """The containment rule (``analysis.guarded``; the analysis runs once after the tag and
+    a crash voids the tag): a descriptive computation that raises is recorded as {'error':
+    '<type>: <message>'} in its place; a primary decision or a named secondary's decision
+    rule raises. Review finding: the primary C2 and C2-sw turned any ValueError (a
+    LinAlgError, a broadcasting bug) into a 'not testable' verdict; only
+    ``probes.NotTestable`` is one now."""
+    cs = _script()
+    from apexzero.costate import analysis as AN
+    from apexzero.costate import probes as PB
+
+    world, frozen = _toy_world()
+    tab, n = world.tab, world.n
+    crit, nulls, flags, acts = _toy_inputs(world)
+    counts = PB.cluster_counts(AN.geometry_clusters(tab)[1], 50)
+
+    def boom(*a, **k):
+        raise RuntimeError("boom")
+
+    def run(**kw):
+        return cs.analyse_network("toy", world, frozen, crit, nulls, flags, counts,
+                                  **{"variants": ["primary"], "strata": ("interior",), **kw})
+
+    # descriptives: C1-heads, W1, the V*inf score, a variant, a strata row, the held pullback
+    for target, key in (("c1_heads", "C1-heads"), ("calibrated_agreement", "W1")):
+        with monkeypatch.context() as m:
+            m.setattr(AN, target, boom)
+            assert run()[key] == {"error": "RuntimeError: boom"}, key
+    with monkeypatch.context() as m:
+        m.setattr(AN, "value_accuracy", boom)       # value accuracy itself is a decision rule
+        with pytest.raises(RuntimeError, match="boom"):
+            run()
+    real_c1 = AN.c1
+    primary_rows = np.asarray(tab["interior"], bool)
+
+    def c1_fails_off_the_interior(g, lam, outer, w, cl, G, d, rows, *a, **k):
+        if not np.array_equal(rows, primary_rows):
+            raise ValueError("a descriptive bug")
+        return real_c1(g, lam, outer, w, cl, G, d, rows, *a, **k)
+
+    with monkeypatch.context() as m:
+        m.setattr(AN, "c1", c1_fails_off_the_interior)
+        out = run(variants=["non_braking_keys", "pullback:held"], strata=("interior", "contact"))
+    assert out["sensitivity"]["non_braking_keys"] == {"error": "ValueError: a descriptive bug"}
+    assert "error" not in out["sensitivity"]["pullback:held"]      # on the interior: scored
+    row = out["by_stratum"]["C1"]["contact"]
+    assert row["band"] == "error" and row["error"] == "ValueError: a descriptive bug"
+    assert row["n"] == int(tab["contact"].sum())
+    assert out["by_stratum"]["C1"]["interior"]["primary"]
+    assert "error" not in out["C1"] and out["C1"]["decision"] != "error"
+    with monkeypatch.context() as m:                # C1-braking is a secondary's decision rule
+        m.setattr(AN, "c1", c1_fails_off_the_interior)
+        with pytest.raises(ValueError, match="descriptive bug"):
+            run(variants=["braking_keys"])
+    for target in ("c1", "c1_limit", "c1_pattern", "c1_own"):     # decisions: they raise
+        with monkeypatch.context() as m:
+            m.setattr(AN, target, boom)
+            with pytest.raises(RuntimeError, match="boom"):
+                run(own={"lam_own": np.zeros((n, 8)), "valid": np.ones(n, bool)})
+    # C2 and C2-sw: only NotTestable is a 'not testable' verdict on the primary entry
+    real_c2 = AN.c2_network
+    for exc, raises in ((PB.NotTestable("no component passing the power floor has a scored "
+                                        "row"), False),
+                        (ValueError("operands could not be broadcast"), True),
+                        (np.linalg.LinAlgError("Eigenvalues did not converge"), True)):
+        def c2_raising(*a, exc=exc, **k):
+            raise exc
+
+        with monkeypatch.context() as m:
+            m.setattr(AN, "c2_network", c2_raising)
+            if raises:
+                with pytest.raises(type(exc)):
+                    cs.probes_of(acts, world, frozen, primary_rows, tab["pedal_switching"],
+                                 variants=["primary"], strata={})
+            else:
+                pr = cs.probes_of(acts, world, frozen, primary_rows, tab["pedal_switching"],
+                                  variants=["primary"], strata={})
+                assert pr["C2"] == {"decision": "not testable", "reason": str(exc)}
+
+    def c2_fails_off_the_interior(h3, rnd, z, m_, res, fo, w_all, d, names, passing, rows,
+                                  *a, **k):
+        if not np.array_equal(rows, primary_rows):
+            raise ValueError("a descriptive bug")
+        return real_c2(h3, rnd, z, m_, res, fo, w_all, d, names, passing, rows, *a, **k)
+
+    with monkeypatch.context() as m:
+        m.setattr(AN, "c2_network", c2_fails_off_the_interior)
+        pr = cs.probes_of(acts, world, frozen, primary_rows, tab["pedal_switching"],
+                          variants=["braking_keys"], strata={"C2": ("interior", "contact")})
+    assert "decision" in pr["C2"] and "error" not in pr["C2"]
+    assert pr["sensitivity"]["braking_keys"]["C2"] == {"error": "ValueError: a descriptive bug"}
+    assert "error" not in pr["sensitivity"]["braking_keys"]["C2-sw"]
+    assert pr["by_stratum"]["C2"]["contact"]["band"] == "error"
+    assert pr["by_stratum"]["C2"]["interior"]["primary"]
+    # C3-w and C3-R2c: a covariate's partial is descriptive, the test itself a decision
+    x = {k: float(i) for i, k in enumerate(AN.GENERALISTS)}
+    with monkeypatch.context() as m:
+        m.setattr(AN, "_partial_c3", boom)
+        c3 = AN.c3_r2c(x, x, n_perm=50, covariates={"competence": x})
+    assert c3["partial"] == {"competence": {"error": "RuntimeError: boom"}}
+    assert c3["rho"] == pytest.approx(1.0)
+    with monkeypatch.context() as m:
+        m.setattr(AN, "c3_w", boom)
+        with pytest.raises(RuntimeError, match="boom"):
+            AN.c3_r2c(x, x, n_perm=50)
+
+
+def test_the_confirmatory_analysis_requires_the_own_stage(tmp_path):
+    """Review findings: the run-once analysis checked the own stage's files only where they
+    existed, so a skipped or partial own stage dropped C1-own and value accuracy for good.
+    Every decision network's post/own/<net>.npz (``OWN_FIELDS``) and K3b's trained analogue
+    (<net>.k3b.json, whose decision must be the npz's k3b_pass) are required and
+    stamp-checked; a missing specialist's critic (its descriptive C1) is refused too."""
+    cs = _script()
+    from apexzero.costate import analysis as AN
+
+    root = tmp_path / "root"
+    nets = [PR.net_file(AN.network_of(a)) for a in AN.DECISION_NETWORKS]
+    rec = {"code_hash": "0" * 64, "environment": None, "outputs": {}}
+    prov = SimpleNamespace(code_hash="0" * 64, deviation=None, tag=None)
+
+    def own_probs():
+        return [p for p in cs.confirmatory_input_problems(rec, root, prov)
+                if any(s in p for s in ("(C1-own, value accuracy)", "(K3b's trained analogue)",
+                                        "has no K3b decision", "k3b_pass is not"))]
+
+    probs = own_probs()
+    assert sum("is missing (C1-own, value accuracy)" in p for p in probs) == 9
+    assert sum("is missing (K3b's trained analogue)" in p for p in probs) == 9
+    assert sum("specialist's descriptive C1" in p for p in cs.confirmatory_input_problems(
+        rec, root, prov)) == len(AN.SPECIALISTS)
+    own_dir = root / "post" / "own"
+    own_dir.mkdir(parents=True)
+    full = {k: np.zeros(3) for k in cs.OWN_FIELDS}
+    for i, f in enumerate(nets):
+        arrays = {**full, "k3b_pass": np.bool_(i != 1)}
+        if i == 0:
+            arrays.pop("lam_own")
+        np.savez(own_dir / f"{f}.npz", **arrays)
+        (own_dir / f"{f}.k3b.json").write_text(json.dumps(
+            {"decision": {"pass": i not in (1, 2)}} if i != 3 else {"starts": []}))
+    probs = own_probs()
+    assert probs == [f"post/own/{nets[0]}.npz lacks lam_own (C1-own, value accuracy)",
+                     f"post/own/{nets[2]}.npz's k3b_pass is not {nets[2]}.k3b.json's decision",
+                     f"post/own/{nets[3]}.k3b.json has no K3b decision"]
+    stamps = cs.confirmatory_input_problems(rec, root, prov)
+    for f in nets:                                   # both files stamp-checked
+        assert f"{f}.npz: no provenance stamp" in stamps
+        assert f"{f}.k3b.json: no provenance stamp" in stamps
+    assert "(own optional)" not in cs.analysis_paths.__doc__
+
+
+def test_the_networks_outside_the_decision_set_and_c3_r2c(tmp_path, monkeypatch):
+    """Review finding: C3-R2c (a named secondary), C1-heads beyond the decision networks and
+    the descriptive C1 of the other 22 generalists and the specialists were never computed.
+    The analysis reports, per other generalist, C1 without nulls and C1-heads, per
+    specialist C1 without nulls (contained: a specialist without 'g' is an error, not a
+    crash), and C3-R2c: C1's R2_c of all 31 generalists (a decision network's from its C1)
+    against completion with C3-w's test on its own stream."""
+    cs = _script()
+    from apexzero.costate import analysis as AN
+    from apexzero.costate import probes as PB
+    from apexzero.costate import stream_rng
+    from apexzero.fields import network as NW
+
+    world, frozen = _toy_world()
+    tab = world.tab
+    rng = np.random.default_rng(6)
+    out = tmp_path / "o"
+    decided = {AN.network_of(a) for a in AN.DECISION_NETWORKS}
+    crits, flags = {}, None
+    for i, name in enumerate([*AN.GENERALISTS, *AN.SPECIALISTS]):
+        crit, nulls, flags, _ = _toy_inputs(world, seed=10 + i)
+        if name in AN.SPECIALISTS:
+            crit = {k: (v[:, :1] if k in ("g", "g_held", "value", "pi") else v)
+                    for k, v in crit.items()}
+            if name == AN.SPECIALISTS[-1]:
+                crit.pop("g")
+        crits[name] = crit
+        p = out / "post" / "critic" / f"{PR.net_file(name)}.npz"
+        p.parent.mkdir(parents=True, exist_ok=True)
+        np.savez(p, **crit)
+        if name in decided:
+            (out / "nulls").mkdir(exist_ok=True)
+            np.savez(out / "nulls" / f"{PR.net_file(name)}.npz", **nulls)
+    stat = {name: float(rng.random()) for name in decided}
+    rec = {"frozen": frozen, "networks": {nm: {} for nm in crits},
+           "c3w_inputs": {nm: {"completion": float(rng.random()), "competence": float(i),
+                               "overlap": float(-i)} for i, nm in enumerate(AN.GENERALISTS)}}
+    monkeypatch.setattr(cs, "_post_tag", lambda a, w: rec)
+    monkeypatch.setattr(cs, "_load_world_frozen", lambda a, r: world)
+    monkeypatch.setattr(cs, "ROOT", tmp_path / "repo")
+    monkeypatch.setattr(cs, "unlocked_by", lambda path, tag, root=None: ("ab" * 32, ""))
+    monkeypatch.setattr(cs, "load_agent", lambda name, pin: SimpleNamespace(obs_rms=None))
+    monkeypatch.setattr(NW, "upcast32", lambda x: x)
+    from apexzero.costate import inputs as IN
+    monkeypatch.setattr(IN, "flags", lambda w, rms: flags)
+    monkeypatch.setattr(cs, "analyse_network", lambda name, *a, **k: {
+        "C1": {"stat": stat[name], "decision": "inconclusive"}})
+    cs.main(["analyse", "--out", str(out)])
+    d = json.loads((out / "analyse" / "decisions_dry.json").read_text())
+    desc = d["descriptive_networks"]
+    others = [g for g in AN.GENERALISTS if g not in decided]
+    assert len(others) == 22 and set(desc) == set(others) | set(AN.SPECIALISTS)
+    counts = PB.cluster_counts(AN.geometry_clusters(tab)[1])
+    x = dict(stat)
+    for g in others:
+        c1 = desc[g]["C1"]
+        assert c1["descriptive"] and c1["label_scope"] == "descriptive" and c1["null_diff"] == {}
+        assert c1["nulls_omitted"] == list(AN.NULL_NAMES)
+        assert set(desc[g]["C1-heads"]) == {"D", "grad_KP_minus_V", "grad_secondary_minus_KP"}
+        want, x[g] = cs.describe_network(world, frozen, crits[g], flags, counts)
+        assert c1["stat"] == pytest.approx(want["C1"]["stat"], abs=1e-12) == x[g]
+    for s in AN.SPECIALISTS[:-1]:
+        assert desc[s]["C1"]["descriptive"] and "C1-heads" not in desc[s]
+    assert desc[AN.SPECIALISTS[-1]] == {"error": "KeyError: 'g'"}
+    r2c = d["C3-R2c"]
+    assert r2c["n"] == 31 and r2c["stream"] == ["costate_c3", AN.C3_R2C_SUBSTREAM]
+    y, cov = cs.c3_y(list(x), rec)
+    ref = AN.c3_w(x, y, rng=stream_rng("costate_c3", AN.C3_R2C_SUBSTREAM), covariates=cov)
+    for k in ("rho", "p", "upper_bound", "null_sd", "decision"):
+        assert r2c[k] == pytest.approx(ref[k]), k
+    assert set(r2c["partial"]) == {"competence", "overlap"}
+    # its own stream: C3-w's draws on the same x and y give another null
+    assert AN.c3_w(x, y)["null_sd"] != pytest.approx(ref["null_sd"], abs=1e-12)
+    assert d["C3-w"]["n"] == 31 and set(d["C3-w_sensitivity"]) == {"drop_small",
+                                                                  "drop_kappa_set"}
 
 
 def _walk_keys(d):

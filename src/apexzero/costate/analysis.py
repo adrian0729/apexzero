@@ -4,12 +4,26 @@ decisions; the descriptives of Section 6 'Secondary and descriptive').
 Everything here works on arrays that the stages computed (targets, pulled-back gradients,
 hidden units, probe predictions, per-network scalars); nothing evaluates a network. The
 primary family is **C1, C2 and C3-w** (Section 12 decision 6), each with its own bands and
-no correction across them (Section 6 'Multiplicity'). C2-sw is a named secondary;
-C1-pattern, C1-heads, C1-own (``c1_own``, on T's interior restarts), C1-limit, C1-braking and
-W1 (``calibrated_agreement``) are pre-registered secondaries; the rest is descriptive. C3-int
-(``c3_int``), C1-dev (``c1_dev``), Delta C1 (``delta_c1``), C2-pairs (``c2_pairs``) and C1-own
-on its own-run and N states are deferred (Section 13 'Deferred', ``prereg.DEFERRED``): not
-part of costate-prereg-v1, exploratory if run later; their code is kept.
+no correction across them (Section 6 'Multiplicity'). C2-sw and C3-R2c (``c3_r2c``) are named
+secondaries; C1-pattern, C1-heads, C1-own (``c1_own``, on T's interior restarts), C1-limit,
+C1-braking and W1 (``calibrated_agreement``) are pre-registered secondaries; the rest is
+descriptive. C3-int (``c3_int``), C1-dev (``c1_dev``), Delta C1 (``delta_c1``), C2-pairs
+(``c2_pairs``), C1-own on its own-run and N states, N's replication of C1, C2 and C2-sw, W1's
+probes of the Pi targets and its own-policy width price, and C2 and C2-sw beyond the decision
+networks are deferred (Section 13 'Deferred', ``prereg.DEFERRED``): not part of
+costate-prereg-v1, exploratory if run later; the code that exists is kept.
+
+**Containment** (``guarded``): the analysis runs once after the tag, and a crash voids the
+tag, so every descriptive computation runs through ``guarded``, which records {'error':
+'<type>: <message>'} in its place instead of raising. The decisions are called directly and
+raise: C1, C2, C2-sw and C3-w, the named secondary C3-R2c, and the decision rules of
+C1-pattern, C1-own (with value accuracy, its precondition), C1-limit and C1-braking. Guarded:
+every other sensitivity and robustness variant (C1's and C2's), the strata tables (each
+table and each row: an error row keeps its counts, band 'error'), the accel-held pullback and
+C1-own's accel-held form, C1-heads, W1, the value accuracy's heads, horizons, tails and its
+V*inf and horizon-corrected scores, the descriptive C1-pattern on the pedal-saturated states,
+the specialists' descriptive C1, C3-w's sensitivity variants and the covariates' partials of
+C3-w and C3-R2c (the other generalists' C1 without nulls gives C3-R2c's x, so it raises).
 
 **C1** (``c1``; Section 6 'C1'). Per component k of K_P = (s, n, xi, vx)
 (``targets.K_P``), a per-fold affine calibration of lambda_k on g_k (``calibrate``) on the
@@ -101,7 +115,9 @@ the covariate's ranks, with the same permutation scheme (descriptive). A stratum
 network without the covariate is left out of that partial whole, and the size weights are
 renormalised over the strata scored (the networks without it are listed: step 2 has no
 fields-a2 rows for runs/dr-pilot-v2-tilt30-s3 and -s4, so the overlap partial scores 26 of
-the 31 generalists, base-v2 left out).
+the 31 generalists, base-v2 left out). **C3-R2c** (``c3_r2c``; a named secondary) is the same
+test with x each generalist's C1 R2_c without nulls, on stream ``costate_c3`` sub-stream
+``C3_R2C_SUBSTREAM`` = 2.
 
 **C3-int** (``c3_int``; deferred, so not pre-registered, though the record keeps its
 constants): per network x geometry, the signed calibrated critic residual of each K_P
@@ -176,6 +192,8 @@ C3_PERMUTATIONS = 100_000     # Section 6 C3-w
 C3_ALPHA = 0.05
 C3_STRONG = 0.3               # 'rules out a strong association' below this upper bound
 C3_INT_PERMUTATIONS = 10_000  # C3-int's permutations (stream costate_c3, sub-stream 1)
+C3_R2C_SUBSTREAM = 2          # C3-R2c's permutations: stream costate_c3, sub-stream 2 (C3-w
+                              # draws from the stream itself, C3-int from sub-stream 1)
 VALUE_ACCURACY_R2 = 0.8       # Section 12 decision 7: out-of-fold R2 of sigma_R V_c
 VALUE_TARGET = "v_own_det"    # ... against the deterministic policy's own discounted return
                               # (Section 3.3 'Value accuracy'; the own stage, ``own_of``)
@@ -218,6 +236,17 @@ def network_of(agent: str) -> str:
     """A registry agent's run directory (G1 -> runs/dr-pilot-200M); a run path itself."""
     spec = registry.AGENTS.get(agent)
     return spec.run if spec is not None else agent
+
+
+def guarded(fn, *args, **kwargs):
+    """``fn(*args, **kwargs)``, or {'error': '<type>: <message>'} in its place when it raises:
+    the containment rule (module docstring 'Containment'). Only a descriptive computation
+    goes through it; a primary decision or a named secondary's decision rule is called
+    directly, so its errors propagate."""
+    try:
+        return fn(*args, **kwargs)
+    except Exception as e:  # noqa: BLE001 (the containment rule: any error is recorded)
+        return {"error": f"{type(e).__name__}: {e}"}
 
 
 # ------------------------------------------------------------------------- calibration
@@ -997,6 +1026,22 @@ def stratum_folds(fo: PB.Folds, rows: np.ndarray) -> PB.Folds:
     return fo.subset(np.asarray(rows, bool))
 
 
+def probe_cv_problem(fo: PB.Folds, rows: np.ndarray) -> str | None:
+    """Why the probes cannot be cross-validated on the stratum ``rows`` (T's folds subset),
+    or None: ``probes.ridge_cv`` chooses its penalties by inner CV on each held-out fold's
+    training rows, so those rows must lie in at least 2 inner folds (a stratum on 2
+    geometries, e.g. a kappa-clipped one, can leave a fold none; C1's counterpart is a fold
+    without an out-of-fold calibration). The decision strata span T's geometries."""
+    sub = stratum_folds(fo, rows)
+    for f in np.unique(sub.outer):
+        inner = sub.inner[int(f)][sub.outer != f]
+        k = len(np.unique(inner[inner >= 0]))
+        if k < 2:
+            return (f"held-out fold {int(f)}'s training rows lie in {k} inner fold(s): no "
+                    "inner cross-validation")
+    return None
+
+
 def c2_network(h3: np.ndarray, random_h3: Sequence[np.ndarray], z: np.ndarray, m: np.ndarray,
                lam_res: np.ndarray, fo: PB.Folds, w_all, direction: np.ndarray,
                names: Sequence[str], passing: dict, rows: np.ndarray, weights=None,
@@ -1007,12 +1052,17 @@ def c2_network(h3: np.ndarray, random_h3: Sequence[np.ndarray], z: np.ndarray, m
     subset (``states.weights`` of the subset table) or the weights of the stratum's rows.
     ``mask`` [n, m]: component k is scored only on rows & mask[:, k] (fitted on the whole
     stratum; ``states.decision_mask``). Returns the record, with 'not testable' when no
-    component passes the power floor (or none passing keeps a scored row)."""
+    component passes the power floor, the stratum has no row or its folds allow no inner
+    cross-validation (``probe_cv_problem``); ``probes.NotTestable`` when no component passing
+    keeps a scored row (the caller records it)."""
     rows = np.asarray(rows, bool)
     cols = [f"lam_{n}" for n in names]
     pas = PB._passing(passing, tuple(cols))
     if not pas.any():
         return {"decision": "not testable", "reason": "no component passes the power floor"}
+    why = "no row" if not rows.any() else probe_cv_problem(fo, rows)
+    if why:
+        return {"decision": "not testable", "reason": why, "n_stratum": int(rows.sum())}
     sub = stratum_folds(fo, rows)
     w = np.asarray(w_all, float) if weights is None else np.asarray(weights, float)
     Y = np.asarray(lam_res, float)
@@ -1034,8 +1084,12 @@ def c2_sw_network(h3: np.ndarray, random_h3: Sequence[np.ndarray], z: np.ndarray
     """C2-sw on its stratum ``rows`` (``states.SW_STRATUM``: the folded pedal-command
     multiplier active, where sigma^ped is nonzero; the raw pedal-saturated flag is a
     descriptive stratum), with the co-reported Spearman rho(m_pedal - 1, sigma^ped)
-    (weighted)."""
+    (weighted); 'not testable' when the stratum has no row or its folds allow no inner
+    cross-validation (``probe_cv_problem``)."""
     rows = np.asarray(rows, bool)
+    why = "no row" if not rows.any() else probe_cv_problem(fo, rows)
+    if why:
+        return {"decision": "not testable", "reason": why, "n_stratum": int(rows.sum())}
     sub = stratum_folds(fo, rows)
     gn = PB.c2_sw(h3[rows], [r[rows] for r in random_h3], z[rows], sigma_pedal[rows], sub, w,
                   None, counts, grid, h_grid)
@@ -1133,7 +1187,8 @@ def c3_w(x: dict[str, float], y: dict[str, float], strata: dict[str, str] | None
          covariates: dict[str, dict[str, float]] | None = None, alpha: float = C3_ALPHA,
          strong: float = C3_STRONG) -> dict:
     """C3-w (module docstring). ``x``, ``y``: per network (C3_STRATA's keys); networks
-    missing from either are left out and listed."""
+    missing from either are left out and listed. Each covariate's partial is descriptive
+    (``guarded``)."""
     strata = C3_STRATA if strata is None else strata
     nets = [n for n in strata if n in x and n in y and np.isfinite(x[n]) and np.isfinite(y[n])]
     missing = [n for n in strata if n not in nets]
@@ -1163,9 +1218,22 @@ def c3_w(x: dict[str, float], y: dict[str, float], strata: dict[str, str] | None
            "upper_bound": ub, "null_sd": float(null.std()),
            "critical": float(np.quantile(null, 1.0 - alpha)), "decision": decision}
     if covariates:
-        out["partial"] = {name: _partial_c3(X, Y, np.array([cov.get(n, np.nan) for n in nets],
-                                                           float), idx, nets)
-                          for name, cov in covariates.items()}
+        out["partial"] = {name: guarded(lambda cov=cov: _partial_c3(
+            X, Y, np.array([cov.get(n, np.nan) for n in nets], float), idx, nets))
+            for name, cov in covariates.items()}
+    return out
+
+
+def c3_r2c(x: dict[str, float], y: dict[str, float], strata: dict[str, str] | None = None,
+           n_perm: int = C3_PERMUTATIONS,
+           covariates: dict[str, dict[str, float]] | None = None) -> dict:
+    """C3-R2c (Section 6, a named secondary): C3-w's test (``c3_w``: the recipe strata, the
+    stratified permutation, the bound and the covariates' partials) with x each generalist's
+    C1 R2_c without nulls (T's interior, the K_P mean: C1's calibration, rows and decision
+    mask) against the same y, on its own stream (costate_c3 sub-stream ``C3_R2C_SUBSTREAM``),
+    its weighted rho reported as the effect size. The width account predicts a null."""
+    out = c3_w(x, y, strata, n_perm, stream_rng("costate_c3", C3_R2C_SUBSTREAM), covariates)
+    out["stream"] = ["costate_c3", C3_R2C_SUBSTREAM]
     return out
 
 
@@ -1451,9 +1519,9 @@ def strata_counts(tab, names: Sequence[str]) -> dict[str, int | None]:
 
 _C1_FIELDS = ("names", "r2c", "stat", "ci", "spearman", "spearman_ci", "slope", "slope_ci",
               "slope_gl", "slope_gl_ci", "inv_slope_lg_ci", "n_rows", "n_uncalibrated",
-              "null_diff", "reason")
+              "null_diff", "reason", "error")
 _C2_FIELDS = ("names", "passing", "r2_base", "r2_full", "gain", "raw", "partial", "stat", "ci",
-              "scored_rows", "spearman_margin", "reason")
+              "scored_rows", "spearman_margin", "reason", "error")
 
 
 def stratum_record(hypothesis: str, rec: dict, rows: np.ndarray | None, tab,
@@ -1464,7 +1532,8 @@ def stratum_record(hypothesis: str, rec: dict, rows: np.ndarray | None, tab,
     R2s for C2 and C2-sw), the nulls' paired differences (C1), the rows, keys and
     geometries, and the band the statistic falls in there ('band': descriptive, never a
     decision; 'primary' marks the decision stratum's own row). ``rows`` None: a stratum whose
-    per-network column is absent ('not testable'). A record computed on other rows than the
+    per-network column is absent ('not testable'). A record that is a contained error
+    (``guarded``) gives band 'error' with the error. A record computed on other rows than the
     stratum's (its 'n_stratum') raises: a row is never written under the wrong stratum."""
     if rows is None:
         return {"primary": False, "descriptive": True, "n": None, "keys": None,
@@ -1479,7 +1548,7 @@ def stratum_record(hypothesis: str, rec: dict, rows: np.ndarray | None, tab,
            "keys": len(np.unique(np.asarray(tab["key_id"])[rows])),
            "geometries": len(np.unique(ST.geometry_index(tab)[rows])) if rows.any() else 0}
     out.update({k: rec[k] for k in fields if k in rec})
-    out["band"] = str(rec.get("decision", "not testable"))
+    out["band"] = "error" if "error" in rec else str(rec.get("decision", "not testable"))
     return out
 
 

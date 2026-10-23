@@ -912,3 +912,38 @@ def test_the_partial_covariate_skips_and_renormalises_strata_without_it():
     assert res["partial"]["constant_gap"]["rho"] == pytest.approx(want, abs=1e-12)
     none = AN.c3_w(xs, ys, n_perm=100, rng=np.random.default_rng(37), covariates={"x": {}})
     assert np.isnan(none["partial"]["x"]["rho"]) and none["partial"]["x"]["n"] == 0
+
+
+def test_only_the_designs_conditions_are_not_testable():
+    """Review finding: the primary C2 and C2-sw caught any ValueError as 'not testable'.
+    ``probes.gain`` raises ``probes.NotTestable`` (a ValueError subclass) for the design's
+    two conditions only; a stratum whose folds leave a held-out fold's training rows in one
+    inner fold is 'not testable' with that reason (``probe_cv_problem``), not a LinAlgError
+    from an empty inner fit; ``guarded`` records an error in place of a descriptive."""
+    assert issubclass(PB.NotTestable, ValueError)
+    y = np.zeros((4, 1))
+    p = PB.Probe(y, y, np.zeros((6, 1, 2)), np.zeros((6, 2), int), ("lam_vx",))
+    with pytest.raises(PB.NotTestable, match="no component passes the power floor"):
+        PB.gain(p, p, [], np.ones(4), None, passing=[False])
+    with pytest.raises(PB.NotTestable, match="has a scored row"):
+        PB.gain(p, p, [], np.ones(4), None, passing=[True], mask=np.zeros((4, 1), bool))
+    q = PB.Probe(y + 1.0, y + 1.0, np.zeros((6, 1, 2)), np.zeros((6, 2), int), ("lam_vx",))
+    with pytest.raises(ValueError, match="same targets") as e:
+        PB.gain(p, q, [], np.ones(4), None)
+    assert not isinstance(e.value, PB.NotTestable)
+    tab, _ = _world()
+    fo = PB.folds(tab)
+    geo = ST.geometry_index(tab)
+    assert AN.probe_cv_problem(fo, np.ones(len(geo), bool)) is None
+    two = np.isin(geo, np.unique(geo)[:2])
+    why = AN.probe_cv_problem(fo, two)
+    assert why is not None and "inner cross-validation" in why
+    rec = AN.c2_sw_network(None, [], None, None, None, fo, None, two)
+    assert rec == {"decision": "not testable", "reason": why, "n_stratum": int(two.sum())}
+    none = AN.c2_network(None, [], None, None, None, fo, None, None, K_P,
+                         dict.fromkeys(K_P, True), np.zeros(len(geo), bool))
+    assert none["decision"] == "not testable" and none["reason"] == "no row"
+    assert AN.guarded(lambda: 1 / 0) == {"error": "ZeroDivisionError: division by zero"}
+    assert AN.guarded(dict, a=1) == {"a": 1}
+    r = AN.stratum_record("C2", {"error": "KeyError: 'x'"}, two, tab)
+    assert r["band"] == "error" and r["error"] == "KeyError: 'x'" and r["n"] == int(two.sum())

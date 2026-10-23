@@ -88,13 +88,15 @@ per-(geometry, direction) sums. CIs are percentile intervals (``ci``).
 for the network minus the median over the random-init actors of the same gain (each reads the
 trained network's z and is given the trained network's m, Section 5), averaged over the
 components that pass the power floor; ``decide`` applies the bands (confirm: CI lower end > 0
-and point >= ``C2_BAND`` = 0.05; refute: CI upper end < 0.05). ``Gain.partial`` is
-Delta R2 / (1 - R2_base). **C2-sw** (``c2_sw``): the same gain with the base [z] (not
-conditioned on m) on sigma^ped over the pedal-saturated rows; ``wspearman`` gives the
-co-reported rho(m_pedal - 1, sigma^ped). ``fwl`` is Section 4's two-stage (Frisch-Waugh-Lovell)
-check: within each training fold, the target and every H column residualised on B by ridge at
-the full model's alpha_B, then a ridge of the residual target on the residual H at its
-alpha_H; with alpha_B -> 0 it reproduces the full model exactly.
+and point >= ``C2_BAND`` = 0.05; refute: CI upper end < 0.05); with no component passing
+(or none passing with a scored row) it raises ``NotTestable``, the one error a caller records
+as 'not testable'. ``Gain.partial`` is Delta R2 / (1 - R2_base). **C2-sw** (``c2_sw``): the
+same gain with the base [z] (not conditioned on m) on sigma^ped over the pedal-saturated rows;
+``wspearman`` gives the co-reported rho(m_pedal - 1, sigma^ped). ``fwl`` is Section 4's
+two-stage (Frisch-Waugh-Lovell) check: within each training fold, the target and every H
+column residualised on B by ridge at the full model's alpha_B, then a ridge of the residual
+target on the residual H at its alpha_H; with alpha_B -> 0 it reproduces the full model
+exactly.
 
 **MLP probe** (``mlp_cv``; secondary, a decodability ceiling only): one hidden layer of
 ``MLP_HIDDEN`` = 64 tanh units on z-scored features, weighted least squares on the
@@ -1032,13 +1034,21 @@ def _passing(passing, names: tuple) -> np.ndarray:
     return np.asarray(passing, bool)
 
 
+class NotTestable(ValueError):
+    """The design's 'not testable' conditions for C2 and C2-sw (Section 12 decision 5: no
+    component passes the power floor; no component passing it has a scored row): a verdict
+    the analysis records. Every other error is a failure and propagates (a ValueError
+    subclass, so callers that caught ValueError still catch it)."""
+
+
 def gain(base: Probe, full: Probe, randoms: Sequence[Probe], w: np.ndarray, fo: Folds,
          direction: np.ndarray | None = None, passing=None, rows: np.ndarray | None = None,
          counts: np.ndarray | None = None, band: float = C2_BAND,
          mask: np.ndarray | None = None) -> Gain:
     """The gain statistic of probes fitted on the same rows and targets (``rows``: the
     stratum scored, e.g. the interior; ``counts`` [B, G] over ``fo.cluster``'s clusters;
-    ``mask`` [n, m] each component's own scored rows within them)."""
+    ``mask`` [n, m] each component's own scored rows within them). ``NotTestable`` when no
+    component passes the power floor or none passing it keeps a scored row."""
     m = np.ones(len(w), bool) if rows is None else np.asarray(rows, bool)
     names = base.names
     for p in (full, *randoms):
@@ -1046,14 +1056,14 @@ def gain(base: Probe, full: Probe, randoms: Sequence[Probe], w: np.ndarray, fo: 
             raise ValueError("the probes were not fitted on the same targets")
     passing = _passing(passing, names)
     if not passing.any():
-        raise ValueError("no component passes the power floor: the statistic is not testable")
+        raise NotTestable("no component passes the power floor: the statistic is not testable")
     P = np.stack([base.pred, full.pred, *[p.pred for p in randoms]])[:, m]
     d = None if direction is None else np.asarray(direction)[m]
     mk = None if mask is None else np.asarray(mask, bool).reshape(len(w), -1)[m]
     if mk is not None:
         passing = passing & mk.any(0)
         if not passing.any():
-            raise ValueError("no component passing the power floor has a scored row")
+            raise NotTestable("no component passing the power floor has a scored row")
     bs = boot_sums(base.y[m], P, np.asarray(w)[m], fo.cluster[m], d, names, mk)
     G = bs.w.shape[0]
     r0 = boot_r2(bs, np.ones((1, G)))[0]                                   # [2 + J, m]
