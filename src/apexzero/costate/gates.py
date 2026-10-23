@@ -175,7 +175,9 @@ and planted networks only, before the tag; the K4 review's verified write-up):
   also the units' probe-alone R2 at least the kNN's on every seed (mean over K_P on T).
   T-wide values (every row and component, C2's controls) and per-component gains are
   descriptive, as are two planted faults on the first seed (an over-smoothed kNN, k =
-  ``K4_OVERSMOOTH_K``; D1 without s - s_apex, at f_D's k). A stated limitation: at full
+  ``K4_OVERSMOOTH_K``, capped at the cross-fit's smallest training set, ``oversmooth_k``,
+  which binds only on a T as small as the rehearsal's; D1 without s - s_apex, at f_D's k;
+  each fault's k recorded). A stated limitation: at full
   size the second fault was not detected on the gate seeds (C2's decision rows score s on
   approach and exit rows and xi on approach rows only; the T-wide +0.017 and +0.020 the K4
   review saw did not reproduce there).
@@ -1733,6 +1735,15 @@ def _stat(rec: dict) -> dict:
     return out
 
 
+def oversmooth_k(fold: np.ndarray) -> int:
+    """The over-smoothed fault's k: ``K4_OVERSMOOTH_K``, capped at the smallest training set
+    of ``states.cross_fit``'s fits (the rows outside two outer folds), so a T too small for
+    k = 300 (the rehearsal's reduced T) still scores the fault, its kNN then near the
+    weighted mean of the training rows. On the full T the cap does not bind."""
+    cnt = np.sort(np.bincount(np.asarray(fold, int)))
+    return int(max(1, min(K4_OVERSMOOTH_K, int(cnt.sum() - cnt[-2:].sum()))))
+
+
 def pr6_world(pw: ProbeWorld, kind: str, seeds: Sequence[int] = K4_PR6_SEEDS,
               t_wide: bool = True, faults: bool = True, k: int | None = None,
               noise: Callable[[int], np.random.Generator] | None = None) -> dict:
@@ -1744,8 +1755,9 @@ def pr6_world(pw: ProbeWorld, kind: str, seeds: Sequence[int] = K4_PR6_SEEDS,
     unpaired value and the host's offset beside it) on y residualised by ``states.cross_fit``
     at f_D's k (``k``, default ``states.KNN_K``) and on y itself (the residualisation turned
     off), the units' probe-alone R2 and the kNN's on T; with ``t_wide`` the T-wide statistic,
-    with ``faults`` (first seed) the over-smoothed kNN and D1 without s - s_apex (at f_D's
-    k), each paired. Pass: every seed's Delta2 <= ``K4_ZERO_TOL`` and every seed's
+    with ``faults`` (first seed) the over-smoothed kNN (``oversmooth_k``) and D1 without
+    s - s_apex (at f_D's k), each paired, with its k. Pass: every seed's Delta2 <=
+    ``K4_ZERO_TOL`` and every seed's
     unresidualised Delta2 > it, and for PR-6b every seed's probe-alone R2 >= the kNN's (means
     over K_P). 'leak_bound' is the largest Delta2 over the seeds ('leak_bound_unpaired' the
     unpaired one), 'gain_max' each component's largest gain, 'host_offset' the host's offset
@@ -1780,13 +1792,13 @@ def pr6_world(pw: ProbeWorld, kind: str, seeds: Sequence[int] = K4_PR6_SEEDS,
             rec["T"] = _stat(tw)
         out["seeds"].append(rec)
         if faults and s == seeds[0]:
-            bad = {"knn_k300": ST.cross_fit(D1, y, fo.outer, w, k=K4_OVERSMOOTH_K),
+            bad = {"knn_k300": ST.cross_fit(D1, y, fo.outer, w, k=oversmooth_k(fo.outer)),
                    "d1_without_ds_apex": ST.cross_fit(D1[:, 1:], y, fo.outer, w, k=k)}
             out["faults"] = {}
             for lab, rf in bad.items():
                 st = _stat(c2_primary(pw, H, rf.by_fold, host=h0))
                 out["faults"][lab] = {**st, "detected": _gt(st["delta2"], K4_ZERO_TOL),
-                                      "descriptive": True}
+                                      "k": rf.k, "descriptive": True}
     rs = out["seeds"]
     d2 = [_num(r["delta2"]) for r in rs]
     out["leak_bound"] = float(max(d2)) if rs and np.all(np.isfinite(d2)) else None

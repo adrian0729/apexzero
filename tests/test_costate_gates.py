@@ -827,6 +827,8 @@ def test_k4_pr6b_known_truth_passes_and_its_planted_faults_fail(decoy_world, mon
     assert s["delta2"] <= GT.K4_ZERO_TOL < s["off"]["delta2"]
     assert s["alone_mean"] >= s["knn_mean"] and s["k"] == r["k"] == ST.KNN_K
     assert all(f["detected"] for f in r["faults"].values()), r["faults"]
+    assert r["faults"]["knn_k300"]["k"] == GT.K4_OVERSMOOTH_K      # the cap does not bind
+    assert r["faults"]["d1_without_ds_apex"]["k"] == ST.KNN_K
     assert r["leak_bound"] == s["delta2"] and len(r["gain_max"]) == 4
     assert r["n_controls"] == PB.N_RANDOM_ACTORS
 
@@ -838,6 +840,24 @@ def test_k4_pr6b_known_truth_passes_and_its_planted_faults_fail(decoy_world, mon
     monkeypatch.setattr(ST, "cross_fit", skipped)
     bad = GT.pr6_world(pw, "smooth", seeds=(0,), t_wide=False, faults=False)
     assert not bad["pass"] and not bad["residualised_ok"], bad["seeds"][0]
+
+
+def test_k4_pr6_world_faults_on_a_t_smaller_than_the_oversmoothed_k():
+    """The over-smoothed fault's k is capped at the cross-fit's smallest training set (the
+    rows outside two outer folds): on a T that small (the rehearsal's reduced T had 283
+    such rows, and k = 300 crashed knn_fit) PR-6b still scores both faults."""
+    fold = np.repeat(np.arange(6), [40, 50, 60, 45, 55, 50])
+    assert GT.oversmooth_k(fold) == 300 - 60 - 55          # all rows less the two largest folds
+    assert GT.oversmooth_k(np.repeat(np.arange(6), 1000)) == GT.K4_OVERSMOOTH_K
+    pw = _decoy_world(n_geo=12, keys=4, steps=8)
+    cap = GT.oversmooth_k(pw.fo.outer)
+    assert cap < GT.K4_OVERSMOOTH_K
+    with pytest.raises(ValueError, match="training states < k"):
+        ST.cross_fit(ST.decoy_d1(pw.tab), pw.lam, pw.fo.outer, pw.w, k=GT.K4_OVERSMOOTH_K)
+    ST.cross_fit(ST.decoy_d1(pw.tab), pw.lam, pw.fo.outer, pw.w, k=cap)
+    r = GT.pr6_world(pw, "smooth", seeds=(0,), t_wide=False)
+    assert r["faults"]["knn_k300"]["k"] == cap and r["faults"]["knn_k300"]["descriptive"]
+    assert r["faults"]["d1_without_ds_apex"]["k"] == ST.KNN_K
 
 
 def test_k4_pr6c_record_and_rule(decoy_world):
