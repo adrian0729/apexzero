@@ -14,8 +14,11 @@ architecture and on constructed data with known answers:
   decoy-only layer does not pass C2's residualised test), PR-2 (m in the layer adds nothing),
   PR-3 (no leak on the grouped split; the mis-grouped split leaks), PR-7 (scale invariance),
   PR-8 (C2-sw's planted switching unit);
-- K5: permuted targets (wiring null), the control task's calibration and selectivity; the
-  FWL two-stage check; the MLP probe; the decision bands.
+- K5: permuted targets (wiring null: held-out rows kept, the training rows permuted across
+  the training folds, mirror-odd columns within direction), the wiring check's 10-draw rule
+  passing and failing on each planted fault (a fold's model on unpermuted targets, an odd
+  column left unpermuted, test-set tuning), the control task's calibration and selectivity;
+  the FWL two-stage check; the MLP probe; the decision bands.
 
 No trained network is loaded or evaluated (design Section 1: nothing before the tag
 costate-prereg-v1); only G1's config.json is read. NumPy float64 in this process (x64 stays
@@ -504,24 +507,100 @@ def test_grouped_split_has_no_leak_and_a_misgrouped_one_does_pr3(world):
 # ------------------------------------------------------------------------- K5, FWL, C2-sw, MLP
 
 
+def _rows(a: np.ndarray) -> np.ndarray:
+    """a's rows in lexicographic order: two arrays hold the same multiset of rows iff equal."""
+    a = np.asarray(a)
+    return a[np.lexsort(a.T[::-1])]
+
+
 def test_permuted_targets_are_a_wiring_null(world):
+    """While fold f is held out its rows keep their targets; the training rows are permuted
+    state by state across the training folds (never within each one), the mirror-odd columns
+    (n, xi) within each turn direction and s, vx across both; a draw is reproducible, two
+    draws differ; without the direction nothing is permuted."""
     W = world
-    fo = W["fo"]
-    Yf = P.permuted_targets(W["lam"], fo)
-    assert Yf.shape == (6, *W["lam"].shape)
+    fo, lam, sig = W["fo"], W["lam"], W["sig"]
+    odd = np.array([P.is_odd(nm) for nm in NAMES])
+    assert odd.tolist() == [False, True, True, False]
+    Yf = P.permuted_targets(lam, fo, sig, NAMES)
+    assert Yf.shape == (6, *lam.shape)
     for f in range(6):
-        np.testing.assert_array_equal(Yf[f][fo.outer == f], W["lam"][fo.outer == f])
-        for g in range(6):
+        held, train = fo.outer == f, fo.outer != f
+        np.testing.assert_array_equal(Yf[f][held], lam[held])
+        np.testing.assert_array_equal(_rows(Yf[f][train][:, ~odd]), _rows(lam[train][:, ~odd]))
+        for d in (-1, 1):
+            rows = train & (sig == d)
+            np.testing.assert_array_equal(_rows(Yf[f][rows][:, odd]), _rows(lam[rows][:, odd]))
+            # s and vx cross the directions
+            assert not np.array_equal(np.sort(Yf[f][rows][:, ~odd], 0),
+                                      np.sort(lam[rows][:, ~odd], 0))
+        for g in set(range(6)) - {f}:          # every column crosses the training folds
             rows = fo.outer == g
-            if g != f:     # a permutation of the same fold's rows
-                np.testing.assert_allclose(np.sort(Yf[f][rows], 0), np.sort(W["lam"][rows], 0))
-                assert not np.array_equal(Yf[f][rows], W["lam"][rows])
-    np.testing.assert_array_equal(P.permuted_targets(W["lam"], fo), Yf)
-    out = P.wiring_null(W["z"], W["lam"], fo, W["w"], None, NAMES, W["sig"],
-                        P.cluster_counts(48, 400, P.boot_rng(0)))
-    assert out["pass"], out
-    real = P.probe_r2(P.ridge_cv(W["z"], W["lam"], fo, W["w"], None, NAMES), W["w"], W["sig"])
+            for k in range(4):
+                assert not np.array_equal(np.sort(Yf[f][rows, k]), np.sort(lam[rows, k]))
+    np.testing.assert_array_equal(P.permuted_targets(lam, fo, sig, NAMES), Yf)
+    other = P.permuted_targets(lam, fo, sig, NAMES, draw=1)
+    assert not np.array_equal(other[0][fo.outer != 0], Yf[0][fo.outer != 0])
+    with pytest.raises(ValueError, match="direction"):
+        P.permuted_targets(lam, fo, None, NAMES)
+
+
+def test_wiring_null_passes_and_its_planted_faults_fail(world, monkeypatch):
+    """K5's wiring check (``WIRING_DRAWS`` = 10 draws averaged; a component passes with its
+    R2_wd CI's lower end <= 0 and its point <= 0.01): the correct pipeline passes, each
+    draw's point recorded. Each planted fault fails on the components z decodes (s, n, vx;
+    xi's real R2 here is low): one outer fold's model fitted on unpermuted targets; lam_n
+    left unpermuted for one model (n alone fails); test-set tuning, every penalty chosen by
+    the held-out SSE against the real targets. Without the direction it raises."""
+    W = world
+    fo, lam, w, sig = W["fo"], W["lam"], W["w"], W["sig"]
+    counts = P.cluster_counts(48, 400, P.boot_rng(0))
+
+    def check():
+        return P.wiring_null(W["z"], lam, fo, w, None, NAMES, sig, counts)
+
+    out = check()
+    assert out["pass"] and all(out["pass_by_component"]), out
+    assert out["n_draws"] == P.WIRING_DRAWS == 10 and out["tol"] == P.WIRING_TOL == 0.01
+    assert np.shape(out["per_draw"]) == (10, 4) and len(set(map(tuple, out["per_draw"]))) == 10
+    real = P.probe_r2(P.ridge_cv(W["z"], lam, fo, w, None, NAMES), w, sig)
     assert np.all(real[[0, 1, 3]] > 0.5)                 # the same pipeline on real targets
+
+    perm, ridge = P.permuted_targets, P.ridge_cv
+
+    def fold0_unpermuted(Y, fo, direction, names=None, draw=0):
+        Yf = perm(Y, fo, direction, names, draw)
+        Yf[0] = Y
+        return Yf
+
+    def n_unpermuted(Y, fo, direction, names=None, draw=0):
+        Yf = perm(Y, fo, direction, names, draw)
+        Yf[0][:, 1] = Y[:, 1]
+        return Yf
+
+    def tuned_on_test_set(base, Y, fo, w, hidden=None, names=None, grid=P.GRID,
+                          h_grid=P.H_GRID):     # on this file's coarser GRID, for speed
+        fits = [ridge(base, Y, fo, w, hidden, names, (a,), (h,)) for a in GRID
+                for h in (H_GRID if hidden is not None else (np.inf,))]
+        pred = np.array(fits[0].pred)
+        for f in range(fo.n_folds):
+            te = fo.outer == f            # Probe.y: the real held-out targets
+            sse = np.stack([w[te] @ (p.y[te] - p.pred[te]) ** 2 for p in fits])
+            pred[te] = np.stack([p.pred[te] for p in fits])[sse.argmin(0), :, np.arange(4)].T
+        return P.Probe(pred, fits[0].y, fits[0].alpha, fits[0].kept, fits[0].names)
+
+    for name, fake, fails in (("permuted_targets", fold0_unpermuted, [0, 1, 3]),
+                              ("permuted_targets", n_unpermuted, [1]),
+                              ("ridge_cv", tuned_on_test_set, [0, 1, 3])):
+        with monkeypatch.context() as mp:
+            mp.setattr(P, name, fake)
+            out = check()
+        ok = np.array(out["pass_by_component"])
+        assert not out["pass"] and not ok[fails].any(), (fake.__name__, out)
+        if fake is n_unpermuted:
+            assert ok.tolist() == [True, False, True, True], out
+    with pytest.raises(ValueError, match="direction"):
+        P.wiring_null(W["z"], lam, fo, w, None, NAMES, None, counts)
 
 
 def test_two_stage_fwl_reproduces_the_full_model(world):

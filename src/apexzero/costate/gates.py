@@ -117,7 +117,12 @@ while PR-1b is recovered), PR-7 (scale invariance to 1e-6), PR-8 (C2-sw's gain w
 on C2-sw's stratum),
 PR-9 (heads sharing V: D_V = 0 and the planted D_grad recovered).
 
-**K5** (``k5``): the permuted-target wiring check (``probes.wiring_null``) and the control task
+**K5** (``k5``): the permuted-target wiring check (``probes.wiring_null``: while each outer
+fold is held out the training targets are permuted state by state across all training rows,
+within turn direction for the mirror-odd components and across both for s and vx; the
+out-of-fold predictions of ``probes.WIRING_DRAWS`` = 10 draws averaged and scored by R2_wd
+against the unpermuted held-out lambda; every K_P component needs a CI lower end at or below
+0 and a point at or below ``probes.WIRING_TOL`` = ``K4_ZERO_TOL``) and the control task
 (``probes.control_task``; descriptive). **K6** (``k6``): coverage per component and reason.
 
 Seeds: K4's planted noise uses ``K4_STREAM`` (310, ``costate.STREAMS``' 'costate_k4') and K2b's
@@ -1438,9 +1443,9 @@ def pr4(cfg, pw: ProbeWorld, component: int = 3) -> dict:
 
 
 def k5(pw: ProbeWorld, counts: np.ndarray | None = None, ceiling: str = "ridge") -> dict:
-    """K5 (module docstring): the permuted-target wiring check on [z, m] + h3 and the
-    control task per K_P component (descriptive; ``ceiling`` 'mlp' is the design's MLP-on-z
-    ceiling, 'ridge' a cheaper stand-in for dry runs)."""
+    """K5 (module docstring): the permuted-target wiring check on [z, m] + h3 (its verdict is
+    K5's) and the control task per K_P component (descriptive; ``ceiling`` 'mlp' is the
+    design's MLP-on-z ceiling, 'ridge' a cheaper stand-in for dry runs)."""
     w, fo = pw.w, pw.fo
     G = int(fo.cluster.max()) + 1
     counts = PB.cluster_counts(G, rng=k4_rng(12)) if counts is None else counts

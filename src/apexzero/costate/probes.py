@@ -113,9 +113,27 @@ standardised target with an L2 penalty on the weights, L-BFGS from a seeded init
   ceiling (a callable y -> R2, the MLP-on-z ceiling of the real pipeline), s is adjusted by
   log-bisection for at most ``CONTROL_STEPS`` evaluations until the ceiling lands within
   ``CONTROL_TOL`` = 0.02 of R2*_k. ``selectivity`` = R2(target) - R2(control) (descriptive).
-- ``permuted_targets``: while fold f is held out, the training targets are permuted row by row
-  within each training fold g (stream ``costate_perm``, sub-stream (f, g)); held-out rows keep
-  their own targets. A wiring check: the probe's R2 CI must lie at or below 0.
+- ``permuted_targets``: while outer fold f is held out, the training targets (every row
+  outside f) are permuted state by state across all training folds, never within each
+  training fold (that keeps each fold's mean, an eighth of each of its geometries' own mean:
+  real training signal that transfers to held-out geometries). The mirror-odd columns are
+  permuted within each turn direction, since R2_wd already credits the per-direction mean
+  (sub-stream (draw, f, 1 + j), j the direction's index in ``np.unique(direction)``); s, vx
+  and the other even columns across both directions (sub-stream (draw, f, 0)); stream
+  ``costate_perm``. Held-out rows keep their own targets. ``direction`` is required.
+- ``wiring_null`` (K5's wiring check, a one-sided test for a positive R2): ``WIRING_DRAWS`` =
+  10 permuted-target probes (one ``ridge_cv`` per draw), their out-of-fold predictions
+  averaged and scored by R2_wd against the unpermuted held-out targets, with the cluster-
+  bootstrap CI. A component passes when its CI's lower end is at or below 0 and its point at
+  or below ``WIRING_TOL`` = 0.01 (gates.K4_ZERO_TOL); K5's check passes when every one does.
+  Under correct wiring the expected R2 is that of the unweighted leave-fold-out training mean
+  (the permutation moves targets between rows of unequal weight), slightly below 0. One draw
+  adds a chance term (the probe's small prediction spread times its chance correlation with
+  the target) that the geometry bootstrap holds fixed, so a single draw can break both bounds
+  with no leak; hence the average. The per-draw points are reported. Not seen: a leak
+  confined to the intercept or the fold means (bounded by the between-fold share of the
+  target's variance) and a single leaked geometry, near the floor; ``Folds.check`` and
+  ``ridge_cv``'s training masks guard both.
 
 **Plants** (Section 7 K4): ``plant_units`` (PR-1a, PR-1b, PR-8: a scaled unit u = t + eta per
 target), ``decoy_units`` (PR-6: tanh units of random mixes of decoy variables),
@@ -176,6 +194,8 @@ CONTROL_HIDDEN = 64             # K5: the control function's width
 CONTROL_GAIN = 1.0              # K5: the stated gain (weights N(0, gain^2 / fan-in))
 CONTROL_TOL = 0.02              # K5: the control's ceiling within this of R2*_k
 CONTROL_STEPS = 8               # K5: bisection evaluations at most
+WIRING_DRAWS = 10               # K5: permutation draws whose out-of-fold predictions average
+WIRING_TOL = 0.01               # K5: the largest permuted-target R2_wd point (gates.K4_ZERO_TOL)
 BOOT_STREAM = 308               # costate.STREAMS['costate_boot']
 MLP_STREAM = 307                # costate.STREAMS['costate_mlp']
 
@@ -1300,34 +1320,68 @@ def selectivity(r2_target: np.ndarray, r2_control: np.ndarray) -> np.ndarray:
     return np.asarray(r2_target, np.float64) - np.asarray(r2_control, np.float64)
 
 
-def permuted_targets(Y: np.ndarray, fo: Folds) -> np.ndarray:
-    """[F, n, m] training targets permuted within each training fold (module docstring);
-    the held-out rows keep their own."""
+def permuted_targets(Y: np.ndarray, fo: Folds, direction: np.ndarray, names=None,
+                     draw: int = 0) -> np.ndarray:
+    """[F, n, m]: while outer fold f is held out, the training targets (every row outside f)
+    permuted state by state across all training folds, the mirror-odd columns of ``names``
+    within each turn direction, the others across both (module docstring); the held-out rows
+    keep their own. ``draw`` is the permutation draw (sub-streams (draw, f, j))."""
+    if direction is None:
+        raise ValueError("permuted_targets needs the turn direction: the mirror-odd columns "
+                         "are permuted within it")
     F = fo.n_folds
     Yf = np.array(_by_fold(Y, F), copy=True)
+    direction = np.asarray(direction)
+    if direction.shape != (Yf.shape[1],):
+        raise ValueError(f"direction {direction.shape} for {Yf.shape[1]} rows")
+    odd = np.array([is_odd(nm) for nm in _names(names, Yf.shape[2])], bool)
+    dirs = np.unique(direction)
     for f in range(F):
-        for g in range(F):
-            if g == f:
-                continue
-            idx = np.flatnonzero(fo.outer == g)
-            Yf[f][idx] = Yf[f][idx[stream_rng("costate_perm", f, g).permutation(len(idx))]]
+        train = fo.outer != f
+        tr = np.flatnonzero(train)
+        p = tr[stream_rng("costate_perm", draw, f, 0).permutation(len(tr))]
+        Yf[f][np.ix_(tr, ~odd)] = Yf[f][np.ix_(p, ~odd)]
+        for j, d in enumerate(dirs):
+            idx = np.flatnonzero(train & (direction == d))
+            p = idx[stream_rng("costate_perm", draw, f, 1 + j).permutation(len(idx))]
+            Yf[f][np.ix_(idx, odd)] = Yf[f][np.ix_(p, odd)]
     return Yf
 
 
 def wiring_null(base: np.ndarray, Y: np.ndarray, fo: Folds, w: np.ndarray,
                 hidden: np.ndarray | None = None, names=None, direction=None,
-                counts: np.ndarray | None = None, grid: Sequence[float] = GRID,
+                counts: np.ndarray | None = None, n_draws: int = WIRING_DRAWS,
+                tol: float = WIRING_TOL, grid: Sequence[float] = GRID,
                 h_grid: Sequence[float] = H_GRID) -> dict:
-    """K5's permuted-target wiring check: R2_wd of the probe trained on permuted targets and
-    scored on the unpermuted held-out targets, with its bootstrap CI; passes when the CI's
-    upper end is at or below 0 for every component."""
-    pr = ridge_cv(base, permuted_targets(Y, fo), fo, w, hidden, names, grid, h_grid)
-    bs = boot_sums(pr.y, pr.pred, w, fo.cluster, direction, pr.names)
+    """K5's permuted-target wiring check (module docstring): one ``ridge_cv`` on
+    ``permuted_targets`` per draw 0 .. n_draws - 1, the out-of-fold predictions averaged
+    over the draws and scored by R2_wd against the unpermuted held-out targets, with the
+    cluster-bootstrap CI (``counts``). A component passes when the CI's lower end is at or
+    below 0 and the point at or below ``tol``; 'per_draw' [n_draws][m] holds each draw's own
+    point. ``direction`` is required."""
+    if int(n_draws) < 1:
+        raise ValueError(f"n_draws = {n_draws}: at least one permutation draw")
+    w = np.asarray(w, np.float64)
+    F = fo.n_folds
+    Y0 = _by_fold(Y, F)
+    y = np.full(Y0.shape[1:], np.nan)
+    for f in range(F):
+        y[fo.outer == f] = Y0[f][fo.outer == f]          # the unpermuted held-out targets
+    preds = []
+    for d in range(int(n_draws)):
+        pr = ridge_cv(base, permuted_targets(Y, fo, direction, names, d), fo, w, hidden, names,
+                      grid, h_grid)
+        preds.append(pr.pred)
+    bs = boot_sums(y, np.stack([*preds, np.mean(preds, 0)]), w, fo.cluster, direction,
+                   pr.names)
     counts = cluster_counts(bs.w.shape[0]) if counts is None else counts
-    point = boot_r2(bs, np.ones((1, bs.w.shape[0])))[0, 0]
-    lo, hi = ci(boot_r2(bs, counts)[:, 0])
+    points = boot_r2(bs, np.ones((1, bs.w.shape[0])))[0]      # [n_draws + 1, m]
+    point = points[-1]
+    lo, hi = ci(boot_r2(bs, counts)[:, -1])
+    ok = (lo <= 0.0) & (point <= tol)
     return {"r2": point.tolist(), "lo": lo.tolist(), "hi": hi.tolist(),
-            "pass": bool(np.all(hi <= 0.0))}
+            "per_draw": points[:-1].tolist(), "n_draws": int(n_draws), "tol": float(tol),
+            "pass_by_component": ok.tolist(), "pass": bool(np.all(ok))}
 
 
 # ------------------------------------------------------------------------- plants (K4)

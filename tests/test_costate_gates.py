@@ -14,7 +14,7 @@
   matches finite differences of the env's own return on step 2's linear driver, restarts
   match per-state VJPs, and the planted bugs fail.
 - K4's plants that need no network (PR-5 family through C1, PR-9's heads) and PR-1a/PR-7 on a
-  synthetic layer; K6's counts."""
+  synthetic layer; K5's wiring record and its rule in the frozen constants; K6's counts."""
 
 import dataclasses
 import json
@@ -631,6 +631,26 @@ def test_k4_plants_without_a_network(big_world):
     out = GT.k4(pw, counts, which=("PR-1a", "PR-7"))
     assert out["PR-7"]["pass"], out["PR-7"]
     assert out["PR-1a"]["pass"], out["PR-1a"]     # K4_TOL (0.03), partial and Delta2
+
+
+def test_k5_wiring_record_and_its_rule_in_the_frozen_constants(big_world):
+    """K5's verdict is the wiring check's: 10 draws averaged, each draw's point recorded, a
+    component passing with its CI lower end <= 0 and point <= K4_ZERO_TOL; the record states
+    the draws, the tolerance and the scheme."""
+    from apexzero.costate import prereg as PR
+
+    pw, counts = big_world
+    out = GT.k5(pw, counts, ceiling="ridge")
+    wn = out["wiring"]
+    assert (wn["n_draws"], wn["tol"]) == (PB.WIRING_DRAWS, PB.WIRING_TOL) == (10, 0.01)
+    assert PB.WIRING_TOL == GT.K4_ZERO_TOL
+    assert np.shape(wn["per_draw"]) == (10, 4) and len(wn["pass_by_component"]) == 4
+    ok = (np.array(wn["lo"]) <= 0) & (np.array(wn["r2"]) <= wn["tol"])
+    assert wn["pass_by_component"] == ok.tolist() and out["pass"] == wn["pass"] == ok.all()
+    assert out["pass"], wn
+    c = PR.constants()["probes"]
+    assert c["wiring"] == [10, 0.01]
+    assert "within turn direction" in c["wiring_rule"] and "lower end <= 0" in c["wiring_rule"]
 
 
 def test_k6_counts():

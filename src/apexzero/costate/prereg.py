@@ -203,7 +203,16 @@ def constants() -> dict:
                    "random_actors": PB.N_RANDOM_ACTORS, "random_critics": PB.N_RANDOM_CRITICS,
                    "mlp": [PB.MLP_HIDDEN, list(PB.MLP_ALPHAS), PB.MLP_MAXITER],
                    "control": [PB.CONTROL_HIDDEN, PB.CONTROL_GAIN, PB.CONTROL_TOL,
-                               PB.CONTROL_STEPS], "streams": [PB.BOOT_STREAM, PB.MLP_STREAM]},
+                               PB.CONTROL_STEPS], "wiring": [PB.WIRING_DRAWS, PB.WIRING_TOL],
+                   "wiring_rule": "K5: while each outer fold is held out, the training "
+                                  "targets permuted state by state across all training rows "
+                                  "(the mirror-odd components within turn direction, the "
+                                  "others across both; stream costate_perm, sub-streams "
+                                  "(draw, f, j)); the out-of-fold predictions of wiring[0] "
+                                  "draws averaged and scored by R2_wd against the unpermuted "
+                                  "held-out targets; every K_P component needs a cluster-"
+                                  "bootstrap CI lower end <= 0 and a point <= wiring[1]",
+                   "streams": [PB.BOOT_STREAM, PB.MLP_STREAM]},
         "analysis": {"huber_c": AN.HUBER_C, "cal_slope": AN.CAL_SLOPE, "k_lev": AN.K_LEV,
                      "c3w_rows": AN.C3W_ROWS, "w1_rows": AN.W1_ROWS,
                      "c1": [AN.C1_CONFIRM, AN.C1_REFUTE],
