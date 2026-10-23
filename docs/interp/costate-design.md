@@ -1,4 +1,4 @@
-# Idea 2: does the network encode the costate? (design v2.2, not frozen)
+# Idea 2: does the network encode the costate? (design v2.3, not frozen)
 
 Status: 22 Oct 2026.
 - **v1** was reviewed on four lenses (math, probing, feasibility, science): 42 findings were
@@ -9,6 +9,9 @@ Status: 22 Oct 2026.
 - **v2.2** records the implementation in `src/apexzero/costate/` (merged 22 Oct) and the decisions
   it required (Section 13). The implementation was adversarially reviewed: 25 findings were
   confirmed and fixed.
+- **v2.3** records the decisions of a final pre-tag review of that code (Section 14): 21
+  findings were confirmed, and each is resolved by a code change, a rule stated there or a
+  deferral.
 
 Nothing here has been computed on a trained network: no activation, gradient or probe. The
 numbers come from step 1's key files, run metadata (`runs/*/config.json`, `runs/*/eval_rdev.json`,
@@ -1145,6 +1148,7 @@ extra null.
 - C1-own on its other two state sets (Section 3.3 (ii) and (iii)): every state of each network's
   own run from each D key, and N. They would need critic pullbacks at own-run states. C1-own
   is decided on T's interior restarts only.
+- Section 14 (v2.3) extends this list. The record's 'deferred' list holds all of it.
 
 **Order before the tag.**
 1. Stage inputs (with no t_H yet), then K2, then inputs again (binding t_H).
@@ -1155,4 +1159,455 @@ extra null.
 
 **Post-tag cost.** C2 runs 17 sensitivity variants per network. The rough, unmeasured estimate is
 20–30 minutes per network on the full T set.
+
+## 14. Pre-tag review decisions (v2.3; before the tag, no trained network computed)
+
+22 Oct 2026. A final review of the v2.2 code, before the tag, on four lenses (design
+conformance, post-tag crash, lockbox and pre-registration, statistics) confirmed 21 findings
+(#0–#20: one blocker, six major, fourteen minor) and refuted one. The fixes are in
+`src/apexzero/costate/` and `scripts/costate.py`, with 146 tests (the opt-in rehearsal among
+them). After the tag the post-tag stages run once, and a crash voids the tag, so the post-tag
+path's correctness and crash safety came first. This section states each rule as the code
+applies it; the last table maps every finding to its resolution. The numbers come from the input
+side (the full-size smoke run of the pre-tag stages at v2.2: its inputs/world.npz and gate
+outputs, under each network's stored obs_rms) and from random-init stand-ins.
+
+**Labels (Sections 6 and 12, decision 6).**
+- The primary family is unchanged: C1, C2 and C3-w.
+- The named secondaries are C2-sw and C3-R²c. C3-int is no longer one: it is deferred.
+- The pre-registered secondaries are C1-pattern, C1-heads, C1-own (on T's interior restarts),
+  C1-limit, C1-braking and W1. C1-dev, ΔC1 and C2-pairs are deferred, so no longer
+  pre-registered.
+- W1 as run has no decision band. It is the calibrated agreement (R²_c with its CI, the Spearman
+  ρ and the pooled slope) of the critic's uniform inside-widening derivative with Π^in on T's
+  interior.
+- Section 7 'Freeze' lists "the pre-signed C3-int pairs" among the frozen items. Read this as
+  kept in the record, not pre-registered ("The record and the freeze" below).
+
+**What decides on T.** The counts below come from the smoke run's input side. The re-run before
+prereg binds them again, from code that did not change.
+- K2b's frozen exclusions are: approach n and vx; braking and corner s, n, ξ and vx; exit n, ξ
+  and vx. They leave n and vx no interior decision row. s keeps 1,643 and ξ 1,581, the same under
+  each of the 9 decision networks' obs_rms.
+- So C1, C1-own and C1-braking decide on {s, ξ}, and the strata tables are scored on them. C2's
+  power floor passes s, n and ξ (vx fails), but n has no scored row, so C2 is scored on {s, ξ}.
+  This is the decision set.
+- **C1-pattern.** As in C1, a component without a decision row drops out of its side's mean, so
+  K_P's side is {s, ξ}. C1-pattern is 'not testable' if either side has no component left.
+- **C1-limit.** T has 482 wall-contact rows: approach 2, braking 174, corner 149 and exit 157.
+  n keeps none, and ξ keeps the 2 approach rows, both in one geometry. That geometry is absent
+  from 687 of the 2,000 bootstrap resamples. A component with a draw that holds none of its rows
+  has no CI and drops out, so C1-limit is 'not testable' on T for every network. Its rows are
+  not revised.
+- **The accel-held pullback's** R²_c cannot differ from C1's here. The accel term reaches only
+  vx, vy, r, δ and pedal (Section 3.2: only the body block of M_x is non-zero). So g_held and g
+  agree on s, n and ξ, to 10⁻¹⁴ in the rehearsal.
+- **C3-w and C3-R²c** are 'not testable' when no recipe stratum varies in both x and y, because
+  the permutation null is then the point 0. Networks whose x calibration slope clamps at 0 share
+  the same x, which is a tie within a stratum.
+
+**C1's nulls per held-out fold (#20).**
+- The nulls fitted on or built from targets are value_ridge, value_mlp, value_ridge_window and
+  far_geometry (`analysis.FOLD_NULLS`). They are computed on partition 0's folds as one slice
+  per held-out outer fold: an [F = 6, n, 8] array.
+- **Value fits.** Slice f pulls every T row back through the value fit made without fold f. The
+  fit is not refitted per row, so a training row's slice-f gradient is that fit's in-sample
+  gradient.
+- **Far geometry.** Slice f is, for every row, the median over far geometries whose outer fold
+  is neither f nor the row's own fold. For a held-out row of fold f this is the v2.2 predictor.
+- Fold f's calibration of such a null (slope and direction intercepts) is fitted on slice f's
+  training rows (outer ≠ f) and predicts fold f's rows from slice f. No target of fold f (λ,
+  V*_∞ or V*) reaches fold f's prediction.
+- QSS, the barrier and the 20 random critics read no target and stay single [n, 8] arrays. On
+  robustness partitions 1–10 the four fold-dependent nulls are left out, as before.
+- **Why.** v2.2 gave each row one predictor, built without that row's own fold. The training
+  rows that fit fold f's calibration then carried fold f's targets: far geometries borrowed
+  from fold f, and value fits fitted on fold f's V*. A value fit was also calibrated on a mix of
+  five folds' fits.
+- **Measured effect** (the smoke run's world, input side only; the interior K_P-mean null R²_c,
+  v2.2 then per held-out fold): far_geometry 0.5846 then 0.5908; G1's value_ridge 0.2112 then
+  0.2546; G1's value_ridge_window 0.3282 then 0.3344. The v2.2 nulls were weaker, which made
+  C1's paired "R²_c minus null" rule easier to pass.
+- **Binding before the tag.** nulls/summary.json passes prereg only if every decision network
+  lists every C1 null except the random critics, with its shape. value_ridge, value_mlp,
+  value_ridge_window and far_geometry must be [6, n, 8], qss and barrier [n, 8], all with the
+  same n. Every null except far_geometry must be finite in every slice. far_geometry's
+  non-finite (slice, row) count and out-of-fold row count are recorded, not required. On the
+  smoke run's world both are 0.
+
+**Rows without an out-of-fold calibration (#10).**
+- This applies to every C1 computation: the decision, its variants, the strata table and C1-own.
+  A component is scored only on the stratum's rows that are valid for it and whose outer fold
+  has a calibration (at least 3 training fit rows for that component). Other rows are dropped
+  and counted ('n_uncalibrated'), never scored against a filled-in prediction.
+- R²_c, every null's paired R²_c, the Spearman ρ and the pooled slopes use the same rows. A null
+  without a prediction on a scored row predicts 0 there.
+- A component with no scored row leaves the K_P mean. C1's record gives its null R²_c and
+  Spearman as NaN, not 0.
+- With no component left, C1 is 'not testable' with a reason: "the rows span 1 outer fold: no
+  out-of-fold calibration" for a stratum inside one outer fold (every one-geometry stratum), and
+  otherwise "no component keeps a valid row with an out-of-fold calibration" (or "no row").
+- Consequence: G2's, G2s1's and G2s2's descriptive 'interior&kappa_clipped' rows (23–24 rows in
+  one geometry) are 'not testable', not 'refute'. No decision stratum is affected.
+- C1-pattern and C1-limit follow the same rule.
+
+**C1's Spearman rule (#1).** For the mirror-odd components of K_P (n and ξ), the Spearman
+ρ(g_k, λ_k) in C1's confirm rule is the mean of the within-direction ρ, weighted by each
+direction's total weight. This is R²_wd's convention: a raw ρ would reward the turn direction.
+For s and vx it is the weighted Spearman over the scored rows.
+
+**Secondaries as coded (#3).**
+- C1-limit is scored on wall contacts only (wall_side ≠ 0). Slip contacts have no n or ξ
+  direction.
+- C1-own uses the unwinsorised λ^own, and its calibrated predictions are not clipped: λ*'s
+  winsorisation bounds do not apply to the policy's own costate.
+- C1-pattern's pedal mask follows Section 3.2's pedal-saturated flag, unchanged: pedal is scored
+  where the pedal state is not saturated, δ where its box is inactive.
+
+**Observability (#5).** No per-component observability threshold is applied, and only τ_s
+excludes rows (s, where ‖J_z e_s‖ / median_k ‖J_z e_k‖ < 10⁻⁴). The thresholds that Section 3.2
+and Section 7 'Freeze' leave to the dry run are therefore none. The evidence, from the smoke
+run's world (T's 9,887 rows), with J_z under each of the 9 decision networks' obs_rms and
+`states.observability`:
+- The smallest relative squared residual of each non-s column (its squared residual after
+  projection on the other columns, divided by its own squared norm), over every row and network,
+  is: vx 0.0106, ξ 0.052, vy 0.111, r 0.134, pedal 0.153, δ 0.224 and n 0.412. Every non-s column
+  keeps at least a tenth of its norm outside the others' span.
+- The smallest absolute squared residuals are: vx 2.8·10⁻³, vy 1.16, n 1.24, pedal 3.9, r 4.3,
+  ξ 98.8 and δ 259. vx's column is the smallest (squared norm down to 2.8·10⁻³). Under G1, its
+  smallest relative residual is at a t = 0 row, where the s and vx columns nearly share a
+  direction (cosine 0.995).
+- Structural unobservability looks like s on the exit straight, whose column norm falls below
+  10⁻⁴ of the median (at most 5.1·10⁻⁵ there, under G1). No non-s column comes near it: the
+  smallest relative residual is about 10⁻². vx and n have no decision row on T in any case
+  (K2b).
+
+**C2 and C2-sw 'not testable' (#6; the record of Section 12, decision 5).**
+- The primary C2 and C2-sw are 'not testable' only on `probes.NotTestable`: no component passes
+  the power floor, or no component passing it has a scored row.
+- Two more 'not testable' cases are returned before any fit. Either the stratum has no row, or
+  for some held-out fold the stratum's training rows lie in fewer than 2 inner folds, so the
+  probe penalties cannot be inner-cross-validated (`analysis.probe_cv_problem`). C1's
+  counterpart is a fold without an out-of-fold calibration. The decision strata span T's
+  geometries, so in practice this hits descriptive strata only, such as the 2-geometry κ-clipped
+  ones.
+- Any other error on a primary entry is a failed run, never a verdict. That includes a
+  ValueError, a LinAlgError, a broadcasting error, and the "not fitted on the same targets" and
+  bootstrap-count checks.
+
+**The accel-held pullback (#0; Section 3.2's pre-registered sensitivity).**
+- 'pullback:held' is C1's statistic with the critic's accel-held main-V pullback g_held in place
+  of the on-manifold g. It uses T's interior, each network's decision mask, C1's calibration
+  with the frozen winsorisation bounds and clipping, the geometry bootstrap and the slope CIs
+  per component.
+- It has no nulls: 'nulls_omitted' lists every one, the random critics included. Its label scope
+  is descriptive, and it reports its band, never a decision or a label.
+- 'C1-own_held', beside C1-own, is the critic's accel-held pullback against λ^own's accel-held
+  form. It uses C1-own's rows (valid own runs with a finite held λ^own) and C1-own's rules, with
+  no nulls. It is descriptive, with the status "descriptive (the accel-held form)".
+
+**C3-w and C3-R²c (#2, #7, #16).**
+- **C3-w's sensitivities.** C3-w gets only the drop_small and κ-set variants. Section 4's
+  weight, partition and sub-score sensitivities are not run for C3-w.
+- **Covariates** (descriptive). In each covariate's stratified partial Spearman, a recipe
+  stratum that holds any network without that covariate is skipped whole. The partial ρ is the
+  size-weighted mean over the scored strata, with weights n_s / Σ(scored n_s). The output lists
+  the networks without the covariate ('missing'), the skipped strata, the networks scored ('n')
+  and 'complete'.
+- Step 2 has no fields-a2 rows for runs/dr-pilot-v2-tilt30-s3 and -s4. So the overlap partial
+  scores 26 of the 31 generalists, with base-v2 skipped. The competence partial scores all 31.
+- **C3-R²c** (Section 6; a named secondary).
+  - x is each of the 31 generalists' C1 R²_c without nulls: T's interior, the K_P mean, C1's
+    calibration and bounds, and the network's own decision mask. For the 9 decision networks
+    this is their C1 R²_c, since nulls never enter R²_c.
+  - y is the mean R-dev completion from the record's C3-w inputs.
+  - The test is C3-w's: the 7 recipe strata, the size-weighted within-stratum Spearman, and a
+    one-sided stratified permutation with y permuted within strata and 100,000 draws. It
+    confirms at p ≤ 0.05 and "rules out a strong association" when the shift-inverted 95% upper
+    bound is < 0.3.
+  - It runs on its own seed stream, costate_c3 sub-stream 2 (C3-w uses the stream itself, C3-int
+    sub-stream 1).
+  - Competence and overlap are reported as descriptive stratified partials, with C3-w's rule for
+    a stratum missing the covariate. The weighted ρ is reported as the effect size.
+
+**Networks outside the decision set (#2; Section 6, "descriptive for those").**
+- For each of the 22 other generalists, the analysis reports C1 without nulls (descriptive,
+  label scope descriptive) and C1-heads (D_q and the two paired comparisons).
+- For each of the 3 specialists, it reports C1 without nulls (descriptive).
+- The 9 decision networks' C1-heads are in their own per-network records, so C1-heads is
+  reported for all 31 generalists. C2 and C2-sw beyond the decision networks are deferred.
+
+**Containment (new rule).** The analysis runs once after the tag.
+- Every descriptive computation is wrapped (`analysis.guarded`). If it raises an Exception, its
+  result is replaced by {'error': '<ExceptionType>: <message>'}. That is never a verdict and
+  never a decision.
+- A strata-table row whose statistic raised keeps its n, keys and geometries and gets band
+  'error'.
+- **Guarded:**
+  - every C1 and C2/C2-sw sensitivity and robustness variant except C1-braking;
+  - robustness_C1 and robustness_C2;
+  - every strata table and row of C1, C2 and C2-sw;
+  - the accel-held pullback sensitivity and C1-own's accel-held form;
+  - C1-heads (D_q and its two comparisons) for every generalist;
+  - W1;
+  - the value accuracy's per-head scores, horizons, tails and horizon-corrected score, and the
+    V*_∞ value score;
+  - C1-pattern on the pedal-saturated states;
+  - the specialists' descriptive C1;
+  - C3-w's two sensitivity variants (small geometries and κ set dropped);
+  - each covariate partial (competence, overlap) of C3-w and of C3-R²c.
+- **Not guarded,** so an error stops the run:
+  - C1, the primary C2 and C2-sw, and C3-w's test;
+  - C3-R²c's test, including the 22 other generalists' C1 without nulls that gives its x;
+  - the value accuracy's main-V score (C1-own's precondition);
+  - C1-pattern, C1-own, C1-limit, and C1-braking (C1 on the braking keys).
+
+  The primary decisions and the named secondaries' decision rules raise.
+- One more case: a network that failed K3's after-the-tag checks decides nothing, so its whole
+  analysis or description is contained (next paragraph).
+- The record's constants carry the rule (constants()['analysis']['containment']).
+
+**K3 after the tag (#18; Section 7 K3, "trained networks after it, on D" and "After the tag").**
+- **Place.** K3 runs in the critic stage after the tag, after the freeze check and the unlock.
+  It covers every pinned network (the 31 generalists and S1–S3), before that network's critic
+  arrays.
+- **Output.** post/critic/<net>.k3.json, with the verdict repeated as 'k3_trained_pass' in
+  post/critic/<net>.npz. The code is `k3_trained` in scripts/costate.py, and `gates.k3_trained`
+  and `gates.k3_trained_judge`.
+- **D in the code** is T's t = 0 rows. That is 477 states, not 481, because the 4 multi-basin
+  keys are left out of T. Each state is the bound world's raw observation, normalised and
+  clipped under the network's own obs_rms, as every pullback reads it.
+- **Float64.** The work runs in the critic stage's own process, not a separate subprocess. That
+  process is already an x64 process: every post-tag stage switches x64 on in `_post_tag`. The
+  float32 V is computed in the same process, with x64 switched off around it
+  (jax.enable_x64(False), as `random_critic_params` draws its weights). On random-init critics
+  this is bit for bit what a float32 process computes (tested).
+- **Extractor check.** On D, in float64, max |extractor − Flax| ≤ 10⁻¹⁰ for:
+  - the actor's mean (Actor.apply);
+  - the critic's V (Critic.apply);
+  - each head output (Critic.apply(..., with_heads=True)).
+
+  Both extractors run it: `critic.extract`, which the pullbacks use (`critic.net_apply_gap`),
+  and `probes.hidden`, which the activations and C2 use (`probes.extractor_gap`). Every result's
+  dtype must be float64. The pre-tag check's input-gradient comparisons are not repeated after
+  the tag.
+- **Head rule.** Four counts must all equal 5 for each of the 31 generalists and 0 for S1–S3:
+  the config's ensemble_heads, the tree's head count, Flax's with_heads output count and the
+  probe extractor's count (`gates.expected_heads`, `probes.N_HEADS_GENERALIST`).
+- **Float32 check.**
+  - V32 is RunningMeanStd.normalize and Critic.apply in float32, with x64 off, on the float32
+    params and the raw D observation rounded to float32.
+  - V64 is the float64 V the pullback reads: the critic's output 0 on the float64 normalised and
+    clipped observation.
+  - Pass: max over D of |V64 − V32| ≤ 10⁻⁴ absolute, with V32 computed in float32. The units are
+    the critic's own: Critic.apply's output, reward/σ_R, before σ_R.
+  - This reads "match float32 to 10⁻⁴" as an absolute tolerance, like step 2's Gate 3 MEAN_TOL.
+    The largest relative difference and the largest |V| are reported, not judged
+    (`critic.F32_TOL`, `critic.float32_gap`).
+- **Containment.** Before the tag the checks are refused (the trained marks), and that refusal
+  is never contained. After the tag, a measurement that raises is recorded as {'error': ...}
+  and fails its check, with the error as the reason. So a network cannot crash the critic stage
+  there.
+- **A fail** (new rule, as H4R's gate2-trained rule treats a failing network). A network that
+  fails any of the three checks (extractor, heads, float32) keeps every statistic.
+  - These records are marked descriptive: C1, C1-heads, C1-own and its accel-held form,
+    C1-pattern, C1-limit, C1-braking, W1, C2 and C2-sw, and its strata tables' primary rows.
+    Each gets 'descriptive': true and 'descriptive_reason': "K3 trained check failed: <check>
+    (<why>); ...". The records, not the rows, also get label_scope 'descriptive'. C1-own's
+    status becomes "descriptive (<reason>)".
+  - It is treated as missing for every decision it enters. Its per-network C1, C2 and C2-sw are
+    'missing' (with 'excluded': the reason), so R18's variant verdict counts it as a missing
+    seed. C3-w, both of C3-w's sensitivity variants and C3-R²c leave it out, and list it under
+    'missing' and 'k3_trained_excluded'.
+  - Its own analysis, or description, is contained, not allowed to raise.
+  - The analysis lists every network's verdict ('k3_trained': networks, failed, not_run). The
+    record's constants pin the rule (constants()['critic']['k3_trained']).
+- **Run once.** The confirmatory analysis refuses unless all 34 networks have a k3.json with a
+  boolean decision, stamped by this code under this tag. Each critic's k3_trained_pass must also
+  equal that decision. A non-confirmatory analysis without these files treats the networks as
+  'not run', not excluded.
+
+**Confirmatory inputs (#11, #14; Section 7, "the analysis runs once").** The confirmatory
+analysis refuses to start unless these exist:
+- for every decision network, post/own/<net>.npz with lam_own, valid, v_rows, v_own_det,
+  v_own_valid, v_own_terminated, v_own_strip_end and k3b_pass;
+- for every decision network, post/own/<net>.k3b.json with a boolean decision.pass equal to that
+  k3b_pass (both files are stamp-checked like the other post-tag inputs);
+- every specialist's critic file;
+- every generalist's critic with g, value and dV_dwin (a decision network's also with
+  random_g);
+- the 34 K3 files above.
+
+A non-confirmatory analysis without the own stage's output records C1-own and its held form as
+'not testable', descriptive, with the reason "no own stage output".
+
+**The record and the freeze (Section 7 'Freeze'; #4, #9, #13, #15, #17, #19).**
+- **design_hash (#9).** This is step 1's `stimuli.design_hash` over `stimuli.load_design` of
+  step 1's stimuli directory: the bank, and the cells as a list in cells.json order. It is the
+  value step 2's record holds (e7846c92b1e4…). Every post-tag freeze check recomputes it and
+  compares. v2.2 handed it `keys.design`'s dict of cells, a TypeError in prereg and in every
+  post-tag freeze check.
+- **Step tags (#19).** The record registers step 1's and step 2's tag objects:
+  - steps.step1.object is f68d0430cccf…, the pinned STEP1_TAG_OBJECT;
+  - steps.step2.object is the local receptive-fields-prereg-v1 object at prereg.
+
+  Every post-tag stage refuses, with a non-waivable 'frozen' problem, when a local step tag is
+  not the recorded object, or when the record registers none. In this repository, prereg and
+  every freeze check also require the local psychophysics-prereg-v2 to be its pinned object. The
+  reason: scripts/fields.py is imported by every stage but is outside the code hash, and only
+  step 2's tag freezes it.
+- **Deferred (#4).** The record carries a 'deferred' list (`prereg.DEFERRED`, below). Some items
+  stay in the record but do not make their analyses pre-registered:
+  - C3-int's frozen permutation count and pre-signed pairs (constants.analysis.c3_int_perm and
+    c3_int_pairs);
+  - C1-dev's pinned snapshots ('snapshots').
+
+  The record labels them as kept, not pre-registered. Any later deferral is added to both
+  `prereg.DEFERRED` and the design's deferred list.
+- **Environment (#17).** prereg refuses when any bound pre-tag output or array was stamped under
+  a different environment from the one prereg runs in. That means a different Python version, or
+  different versions of the compared packages: jax, jaxlib, numpy, scipy, casadi, flax and optax.
+  It also refuses a stamp that records no environment. The record captures prereg's
+  environment, and every post-tag stage is held to it.
+- **The nulls under a deviation (#17).** The confirmatory analysis checks the pre-tag nulls
+  arrays against the record's code hash and the sha256 the record binds, not against the
+  current run's hash. The pre-tag stages cannot rewrite them after the tag, so a logged post-tag
+  code deviation does not block the confirmatory analysis.
+- **Partial runs (#15).** A partial pre-tag run cannot be bound. These options make a run
+  partial: --out, --limit, --n, --n-extend and --network (on the nulls stage, --network only when
+  it does not cover the decision networks). So do these:
+  - k0 without N's anchored finals (--kinds without n; the default is now a2 and n);
+  - k4 with --which naming plants;
+  - k5 with --ceiling ridge;
+  - nulls with --mlp-alphas other than (10⁻⁴, 10⁻³, 10⁻²), or --mlp-maxiter other than 500
+    (`probes.MLP_ALPHAS`, `MLP_MAXITER`);
+  - inputs with --partitions other than all 11.
+- **K3's subprocesses (#13).**
+  - Each subprocess's report (gates/k3/plants and random, .json and .npz; extractor_5.json and
+    extractor_0.json) is deleted right before that subprocess runs.
+  - A critic dry run must exit 0 and write its report.
+  - An extractor check must rewrite its report. It must exit 0 exactly when the report passes,
+    and 1 exactly when it fails.
+  - Anything else stops K3 without writing k3.json. k3.json records every subprocess's exit
+    status ('returncodes').
+
+**Deferred** (this extends Section 13's list). These are not part of `costate-prereg-v1`. If run
+later, they are exploratory. The record's 'deferred' list (`prereg.DEFERRED`) holds exactly these
+nine:
+1. C3-int. The record keeps its permutation count and pre-signed pairs.
+2. C1-dev. The record keeps its snapshot pins.
+3. ΔC1.
+4. C2-pairs.
+5. C1-own on its own-run and N states (Section 3.3 (ii) and (iii)). C1-own is decided on T's
+   interior restarts only.
+6. N's per-agent replication of C1, C2 and C2-sw ("N replicates", Sections 3.2 and 6). N's
+   states are never built: the inputs stage builds T only.
+7. W1's probe R² and Spearman for Π^in, Π^out, Π^slip and Π^μ.
+8. The policy's own width price (Section 3.4), and W1's three comparisons of the critic's width
+   field with the optimum's and the policy's own, with their calibrated magnitudes.
+9. The descriptive C2 and C2-sw of the 22 other generalists and of the specialists. The probes
+   stage runs on the 9 decision networks only.
+
+**Not in the confirmatory run (#8).** The analysis does not compute these descriptives from
+Sections 3.2, 4 and 6. They are not part of the confirmatory run. They may follow as exploratory
+output after the decisions are committed:
+- the unwinsorised R² beside R²_c, and raw R² with the direction-only floor;
+- R²_z, the MLP-on-z ceiling and R²_c/R²_MLP (`analysis.ratio_to_ceiling` has no caller);
+- Section 4's two-stage (FWL) check (`probes.fwl`);
+- probes of h1 and h2; Δ2_D; Δ2 without residualisation; Δ2 conditioned on z only;
+- the spread over folds;
+- C1 and C2 on the D set by itself (D's rows are T's t = 0 rows; as a set, D enters only value
+  accuracy and K3's after-the-tag checks);
+- the share of g_vx from the accel term, and the accel-channel sensitivity (`accel_sens` is
+  stored in the critic files, not reported);
+- C1-heads' per-head R²_c and the inter-head reliability ρ_k.
+
+**Where it runs, and the order before the tag (#12).** This replaces the costate-dev procedure
+in the v2.2 code, and step 5 of Section 13's "Order before the tag".
+- The pre-tag stages and prereg run in the main checkout.
+- prereg.json is committed on main, and costate-prereg-v1 is an annotated tag on that commit. It
+  is pushed with `git push origin main costate-prereg-v1`.
+- Every post-tag stage runs in the main checkout, where tag.json and decisions.json are
+  committed. There is no tag on costate-dev, and no merge after the tag.
+- The fixes change the code hash, and prereg binds only outputs stamped by the code it runs
+  with. So, with this code on main, every pre-tag stage is re-run before prereg, in this order:
+  inputs, K2, inputs again (binding t_H), K2b, K0, K1, K3, K3b, K4, K5, K6, the nulls.
+- The v2.2 smoke run is evidence only. Nothing it wrote is bound.
+
+**The rehearsal** (tests/test_costate_rehearsal.py). It runs every stage of scripts/costate.py
+through its `main()`, in order, on random-init stand-ins for the trained networks, before the
+tag.
+- **What it exercises.**
+  - A scratch clone of HEAD whose origin is a local bare repository, so the freeze check's tag,
+    push, ancestor, pin and committed-file rules run for real.
+  - Stand-in runs: each network's real config.json, eval_rdev.json and metrics.csv, and a
+    checkpoint in the same pickle format with the real config, obs_rms, ret_rms and timesteps.
+    Its params are random-init, on exactly the real trees.
+  - Reduced lists patched into every stage's process, so every output is stamped as a full run
+    and prereg binds it. The keys are 15 A2 keys on 10 geometries: a horizon twin pair, a 5-key
+    geometry, the κ set, braking and non-braking keys and one multi-basin key. The networks are
+    G1, two other generalists (one without step 2's overlap) and S1.
+  - The real T's power floor and K2b exclusions replace the reduced T's. K4's and K5's verdicts
+    are forced to pass, with the computed ones kept beside them.
+- **The sequence:**
+  1. inputs, K2, inputs, K2b, K0, K1, K3, K3b, K4, K5, K6, the nulls and prereg;
+  2. the record committed, annotated-tagged and pushed, and a pre-tag stage refused;
+  3. activations, tag.json committed, then critic, own and probes;
+  4. a non-confirmatory analyse (coverage only), then analyse --confirmatory, with its decisions
+     committed;
+  5. a second confirmatory analyse, which must refuse, and a non-confirmatory analyse unlocked
+     by the committed decisions.
+
+  It fails on any contained error, and on any decision stated on a non-finite CI.
+- **Result.** It took 47 minutes on 2 threads beside the smoke run (probes 24, the pre-tag
+  stages 20). Every stage exited 0, with no contained error and no decision on a non-finite CI.
+- **What it found.** Its first pass found the wrong-data paths recorded above: C1-pattern
+  averaging a NaN component, C1-limit's zero-filled excess and NaN CI, C1's null R²_c of 0 for a
+  dropped component, and C3-w's point-0 null. It also found an absolute local path in the
+  record's overlap file. All are fixed.
+- **What it cannot exercise.** Trained weights. A random-init policy crashes within about 20
+  steps, so no own run is valid: C1-own, its held form and value accuracy are 'not testable', and
+  K3b's trained analogue fails. tests/test_costate_stages.py scores them on planted own arrays.
+  Nor the full T, the 34 networks and the 9 decision networks (R18's variants see one seed),
+  their run time and memory, or K4's and K5's real verdicts.
+- **Re-run.** `COSTATE_REHEARSAL=1 uv run --no-sync pytest tests/test_costate_rehearsal.py -p
+  no:cacheprovider`. Or run `uv run --no-sync python tests/test_costate_rehearsal.py --dir DIR`,
+  which keeps DIR; `--from STEP` resumes there. Its report (report.json) lists each step's time.
+
+**Cost** (informational).
+- **The nulls** (before the tag) take about 327 s per network on the shared Mac with 2 threads,
+  so about 50 minutes for the 9 decision networks. value_mlp's fits take 320 s; value_ridge
+  0.8 s; value_ridge_window 0.8 s; QSS 4.4 s; the barrier 0.3 s; far_geometry 1.1 s. The per-fold
+  pullbacks add about 3 s per network.
+- **K3 after the tag** was measured on random-init stand-ins at the real D (477 states). It took
+  1.2 s for the first network (JIT compile), then 0.04–0.06 s per network: about 3–4 s for all 34
+  in the critic stage. On those stand-ins both extractors matched Flax to at most 2·10⁻¹⁵, and
+  the float32 gap was 7.4·10⁻⁷ with |V| up to 1.09.
+
+**Findings and resolutions.** "Code" names the change, "rule" a rule in this section, and
+"deferred" an entry in the deferred list.
+
+| # | Finding | Resolution |
+|---|---|---|
+| 0 | The accel-held pullback, a pre-registered sensitivity, was never computed | Code: `analyse_network`'s 'pullback:held' and 'C1-own_held' (scripts/costate.py). Rule: "The accel-held pullback" |
+| 1 | C1's Spearman rule is the within-direction mean for n and ξ, not recorded | Rule: "C1's Spearman rule" |
+| 2 | Named secondaries missing and not deferred (C3-R²c, C1-heads beyond 9 networks, W1, N, the other networks) | Code: `analysis.c3_r2c`, `c3r2c_of`, `describe_network` (scripts/costate.py). Deferred: items 6–9. Rule: "C3-w and C3-R²c", "Networks outside the decision set" |
+| 3 | C1-limit's slip contacts, C1-own's winsorisation, C1-pattern's pedal mask | Rule: "Secondaries as coded" (C1-pattern unchanged) |
+| 4 | Deferred analyses still pinned and labelled pre-registered | Code: `prereg.DEFERRED` and the record's 'deferred'; the `analysis` docstring. Rule: "Labels", "The record and the freeze" |
+| 5 | No per-component observability thresholds | Rule: "Observability" (none, with the residuals) |
+| 6 | Any ValueError made a primary C2 or C2-sw 'not testable' | Code: `probes.NotTestable`, `probes_of` (scripts/costate.py), `analysis.probe_cv_problem`. Rule: "C2 and C2-sw 'not testable'" |
+| 7 | C3-w lacks Section 4's weight, partition and sub-score sensitivities | Rule: "C3-w and C3-R²c" |
+| 8 | Descriptives the design says are reported are not computed | Rule: "Not in the confirmatory run" |
+| 9 | `stimulus_design_hash` crashed in prereg and every post-tag freeze check | Code: `prereg.stimulus_design_hash` (`stimuli.load_design`), with a test on step 1's stimuli |
+| 10 | One-geometry strata scored against zero-filled, uncalibrated predictions | Code: `analysis.c1` ('n_uncalibrated', 'reason'), `c1_pattern`, `c1_limit`. Rule: "Rows without an out-of-fold calibration" |
+| 11 | The confirmatory analysis ran without the own stage | Code: `confirmatory_input_problems`, `analyse_network` (scripts/costate.py). Rule: "Confirmatory inputs" |
+| 12 | The documented tag and post-tag procedure was on costate-dev | Code: scripts/costate.py's docstring and prereg's message. Rule: "Where it runs" |
+| 13 | K3 accepted a crashed subprocess and stale reports | Code: `stage_k3`, `_subprocess` (scripts/costate.py) |
+| 14 | C1-own and value accuracy could go undecided for good | As #11 |
+| 15 | `_partial` missed options that change a bound output | Code: `_partial`, k0's default (scripts/costate.py). Rule: "Partial runs" |
+| 16 | The overlap partial's weights summed to 26/31 | Code: `analysis._partial_c3`. Rule: "C3-w and C3-R²c" |
+| 17 | The nulls were stamp-checked against the current run; environments were checked only at the end | Code: `confirmatory_input_problems`, `bound_env_problems` (scripts/costate.py). Rule: "The record and the freeze" |
+| 18 | K3's after-the-tag checks were not implemented | Code: `gates.k3_trained`, `gates.k3_trained_judge`, `critic.net_apply_gap`, `critic.float32_gap`, `probes.extractor_gap`, `analysis.k3_trained_failed`, `k3_trained` and `stage_critic` (scripts/costate.py). Rule: "K3 after the tag" |
+| 19 | scripts/fields.py is outside the code hash, and the step tags were not checked against the record | Code: `step_tags_problems`, `frozen_steps_problems` (scripts/costate.py). Rule: "The record and the freeze" |
+| 20 | The fold-dependent C1 nulls let the held-out fold's targets into the calibration | Code: `nulls.far_lambda`, `nulls.fold_gradients`, `analysis.calibrate` and `FOLD_NULLS`, `prereg._null_shapes_ok`, `stage_nulls`. Rule: "C1's nulls per held-out fold" |
 
