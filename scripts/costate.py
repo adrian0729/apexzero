@@ -1886,8 +1886,12 @@ def fields_out(root: Path = ROOT) -> Path:
 def overlap(run: str, root: Path = ROOT) -> tuple[float, str, str]:
     """C3-w's overlap covariate (Section 6): step 2's B on the A2 cells, the network's
     median over geometries of its per-key B (``fields.stages.edge_key_measures``, H4's
-    statistic), with the rows file read and its sha256. Reads step 2's outputs only."""
+    statistic), with the rows file read (repo-relative without resolving symlinks, as the
+    checkpoint pins: through a worktree's outputs/outputs link it is still a relative path,
+    never an absolute local one in the record) and its sha256. Reads step 2's outputs
+    only."""
     from apexzero.costate import analysis as AN
+    from apexzero.costate import prereg as PR
     from apexzero.fields import stages as S
     from apexzero.fields.prereg import sha256_file
     from apexzero.interp import registry
@@ -1903,7 +1907,7 @@ def overlap(run: str, root: Path = ROOT) -> tuple[float, str, str]:
         raise FileNotFoundError(f"{run}: no step 2 fields-a2 rows")
     opt = {r["key_id"]: r for r in S.read_rows(d / "opt-fields" / "rows.jsonl")}
     b = S.median_statistic(S.edge_key_measures(S.read_rows(p), opt, "B"), n=1)
-    return float(b), F._rel(p, root) or str(p), sha256_file(p)
+    return float(b), PR._repo_rel(p, root), sha256_file(p)
 
 
 def c3w_of(out_root: Path, world, counts, rec: dict | None = None, keep=None,

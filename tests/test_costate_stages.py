@@ -1043,6 +1043,29 @@ def test_network_pins_survive_a_symlinked_runs_directory(tmp_path, monkeypatch):
     assert list(snaps) == ["runs/x@7"] and snaps["runs/x@7"]["path"].startswith("runs/x/")
 
 
+def test_the_overlap_file_is_repo_relative_through_a_linked_outputs_directory(tmp_path,
+                                                                              monkeypatch):
+    """Post-tag rehearsal finding: through a checkout whose step 2 outputs are reached by the
+    outputs/outputs link, ``overlap`` resolved the link and wrote the rows file's absolute
+    local path into the record (C3-w's 'overlap_file'); it is repo-relative, as the pins."""
+    from apexzero.fields import stages as S
+
+    cs = _script()
+    real = tmp_path / "main_outputs" / "fields"
+    (real / "fields-a2").mkdir(parents=True)
+    (real / "opt-fields").mkdir()
+    (real / "fields-a2" / "runs_x.jsonl").write_text("{}\n")
+    (real / "opt-fields" / "rows.jsonl").write_text("{}\n")
+    repo = tmp_path / "repo"
+    (repo / "outputs").mkdir(parents=True)
+    (repo / "outputs" / "outputs").symlink_to(tmp_path / "main_outputs")
+    monkeypatch.setattr(S, "read_rows", lambda p: [])
+    monkeypatch.setattr(S, "edge_key_measures", lambda rows, opt, m: {})
+    monkeypatch.setattr(S, "median_statistic", lambda d, n=1: 0.5)
+    b, rel, sha = cs.overlap("runs/x", repo)
+    assert (b, rel) == (0.5, "outputs/outputs/fields/fields-a2/runs_x.jsonl") and len(sha) == 64
+
+
 def test_load_agent_checks_the_pin(tmp_path, monkeypatch):
     cs = _script()
     (tmp_path / "ck.pkl").write_bytes(b"w")

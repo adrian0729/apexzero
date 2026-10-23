@@ -210,6 +210,24 @@ def test_c1_secondaries(world):
     toward[:, 2] += 0.5 * side
     assert AN.c1_limit(cal, toward, lam, outer, w, cl, G, side, sd, K_P, counts)["decision"] \
         == "not confirmed"
+    # Post-tag rehearsal finding (K2b's frozen exclusions leave xi 2 contact rows on T, n
+    # none): a component whose contact rows some bootstrap draw leaves out has no CI and
+    # drops out (it read 'not confirmed' on a NaN CI); a row without an out-of-fold
+    # calibration is dropped, not scored at a zero excess
+    one = np.flatnonzero((side != 0) & (cl == cl[side != 0][0]))
+    valid = np.zeros((n, 4), bool)
+    valid[one, 2] = True
+    lim1 = AN.c1_limit(cal, away, lam, outer, w, cl, G, side, sd, K_P, counts, valid=valid)
+    assert lim1["decision"] == "not testable" and lim1["per_component"]["xi"]["ci"] is None
+    assert lim1["per_component"]["xi"]["geometries"] == 1
+    assert lim1["per_component"]["n"]["n"] == 0
+    cal_nan = AN.calibrate(g, lam, outer, w)
+    cal_nan.a[0] = np.nan                       # fold 0 without a calibration
+    lim2 = AN.c1_limit(cal_nan, away, lam, outer, w, cl, G, side, sd, K_P, counts)
+    dropped = int(np.sum((side != 0) & (outer == 0)))
+    assert dropped and lim2["per_component"]["xi"]["n_uncalibrated"] == dropped
+    assert lim2["per_component"]["xi"]["n"] == lim["n"] - dropped
+    assert lim2["decision"] == "confirm"
 
 
 def test_c1_dev_and_value_accuracy():
@@ -486,7 +504,14 @@ def test_c3_w_against_enumeration_and_its_bound():
     # ties in y (completion 1.0) and a constant stratum contribute rho = 0
     yt = {k: (1.0 if strata[k] == "s0" else y[k]) for k in strata}
     tie = AN.c3_w(x, yt, strata, n_perm=2_000, rng=np.random.default_rng(10))
-    assert tie["strata"]["s0"]["rho"] == 0.0
+    assert tie["strata"]["s0"]["rho"] == 0.0 and tie["n_varying"] == 8
+    # Post-tag rehearsal finding: with every stratum tied (x the same where the calibration
+    # slope clamps at 0, or one network per stratum) the null is the point 0 and its bound
+    # of 0 read 'rules out a strong association'; it is not testable
+    xt = {k: 0.5 for k in strata}
+    flat = AN.c3_w(xt, y, strata, n_perm=2_000, rng=np.random.default_rng(10))
+    assert flat["decision"] == "not testable" and flat["n_varying"] == 0 and flat["reason"]
+    assert AN.c3_w({}, {}, strata, n_perm=100)["decision"] == "not testable"
     # the design's strata: 31 networks, 7 strata; covariates as partial associations
     xs = {k: float(rng.normal()) for k in AN.C3_STRATA}
     ys = {k: float(rng.normal()) for k in AN.C3_STRATA}
@@ -613,6 +638,41 @@ def test_uninformative_gradients_score_about_zero_and_never_confirm_c1_pattern()
     pat = AN.c1_pattern(g8, lam, outer, w, cl, G, d, rows, np.ones((n, 8), bool), NAMES8,
                         counts=counts, bounds=bounds)
     assert pat["decision"] == "confirm"
+
+
+def test_c1_pattern_drops_the_components_without_a_decision_row():
+    """Post-tag rehearsal finding: K2b's frozen exclusions leave n and vx no decision row on
+    T, and C1-pattern averaged their NaN R2_c into K_P's mean, so its difference and CI were
+    NaN and it read 'not confirmed' for every network. As in C1, such a component drops out
+    of its side's mean; with a side empty C1-pattern is 'not testable'. C1's record gives a
+    dropped component's null R2_c and Spearman as NaN (they read 0)."""
+    tab, lam, w = _skewed_world()
+    cl, G = AN.geometry_clusters(tab)
+    outer = ST.row_folds(tab)
+    counts = PB.cluster_counts(G, 400, np.random.default_rng(21))
+    d = tab["direction"]
+    n = len(w)
+    rows = np.ones(n, bool)
+    rng = np.random.default_rng(23)
+    g8 = lam + np.hstack([0.1 * rng.normal(size=(n, 4)), 3.0 * rng.normal(size=(n, 4))])
+    valid = np.ones((n, 8), bool)
+    valid[:, [K_P.index("n"), K_P.index("vx")]] = False
+    pat = AN.c1_pattern(g8, lam, outer, w, cl, G, d, rows, valid, NAMES8, counts=counts)
+    assert pat["dropped"] == ["n", "vx"] and pat["n_rows"]["n"] == 0
+    assert pat["n_rows"]["s"] == n and np.isfinite(pat["diff"]) and np.all(np.isfinite(pat["ci"]))
+    assert pat["decision"] == "confirm"
+    kept = (pat["r2c"]["s"] + pat["r2c"]["xi"]) / 2 - np.mean(
+        [pat["r2c"][c] for c in ("vy", "r", "delta", "pedal")])
+    assert pat["diff"] == pytest.approx(kept, abs=1e-12)
+    c = AN.c1(g8[:, :4], lam[:, :4], outer, w, cl, G, d, rows, {"zero": np.zeros((n, 4))},
+              valid[:, :4], K_P, counts)
+    assert list(c.n_rows[[1, 3]]) == [0, 0] and np.isfinite(c.stat)
+    assert np.all(np.isnan(c.null_r2c["zero"][[1, 3]]))
+    assert np.all(np.isfinite(c.null_r2c["zero"][[0, 2]]))
+    assert np.all(np.isnan(c.spearman[[1, 3]])) and np.all(np.isnan(c.spearman_ci[[1, 3]]))
+    valid[:, :4] = False
+    pat = AN.c1_pattern(g8, lam, outer, w, cl, G, d, rows, valid, NAMES8, counts=counts)
+    assert pat["decision"] == "not testable" and "K_P" in pat["reason"]
 
 
 def _snr_noise(lam, w, d, snr, rng):

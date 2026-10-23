@@ -60,7 +60,9 @@ tau_s rule, ``states.observability``; K2b's per-phase exclusions; multi-basin ke
 enter T), and a row is scored only where its fold has a calibration (a fold with fewer than
 3 training rows, e.g. every fold of a stratum inside one geometry, has none: its rows are
 dropped and counted, never scored against a filled-in 0; a component left without rows drops
-out of the mean, and with none left C1 is 'not testable' with its reason). Nulls go
+out of the mean, and with none left C1 is 'not testable' with its reason; C1-pattern and
+C1-limit follow the same rule, K2b's frozen exclusions leaving n and vx no decision row on
+T and xi a few wall contacts). Nulls go
 through the same calibration on the same scored rows; the ones fitted on or built from
 targets (``FOLD_NULLS``: the value fits and the far-geometry lambda) are [F, n, m] per
 held-out fold, as C2's lambda_res (``nulls`` module docstring 'Per held-out fold'), and
@@ -113,7 +115,8 @@ and C3-R2c leave it out and list it), as H4R's gate2-trained rule treats a faili
 
 **C3-w** (``c3_w``; Section 6 'C3'): the size-weighted mean over the 7 recipe strata
 (``C3_STRATA``) of the within-stratum Spearman rho(x, y) (average ranks for ties; a stratum
-with a constant x or y contributes rho = 0), a one-sided stratified permutation test (y
+with a constant x or y contributes rho = 0; with none varying in both, the null is the
+point 0 and C3-w is 'not testable'), a one-sided stratified permutation test (y
 permuted within strata, ``C3_PERMUTATIONS`` = 100,000 draws on stream ``costate_c3``;
 p = (1 + #{null >= observed}) / (1 + draws)); confirm at p <= 0.05. The 'rules out a strong
 association' bound is the shift inversion of the same test: the 95% upper bound is
@@ -772,9 +775,10 @@ def c1(g: np.ndarray, lam: np.ndarray, outer: np.ndarray, w: np.ndarray, cluster
                                   direction=direction, odd=odd, bounds=bounds).pred for x in vs]
     B = len(counts)
     r2c, draws = np.zeros(m), np.zeros((B, m))
-    null_pt = {k_: np.zeros((len(v), m)) for k_, v in null_cal.items()}
-    null_dr = {k_: np.zeros((B, len(v), m)) for k_, v in null_cal.items()}
-    sp, sp_ci = np.zeros(m), np.zeros((m, 2))
+    # a component that drops out (no scored row) reports NaN, never a 0 it was not scored at
+    null_pt = {k_: np.full((len(v), m), np.nan) for k_, v in null_cal.items()}
+    null_dr = {k_: np.full((B, len(v), m), np.nan) for k_, v in null_cal.items()}
+    sp, sp_ci = np.full(m, np.nan), np.full((m, 2), np.nan)
     slope, slope_ci = np.full(m, np.nan), np.full((m, 2), np.nan)
     slope_gl, gl_ci = np.full(m, np.nan), np.full((m, 2), np.nan)
     inv_ci = np.full((m, 2), np.nan)
@@ -851,25 +855,38 @@ def c1_pattern(g: np.ndarray, lam: np.ndarray, outer: np.ndarray, w: np.ndarray,
                secondary: Sequence[str] = SECONDARY, counts: np.ndarray | None = None,
                bounds=None) -> dict:
     """C1-pattern: R2_c over K_P minus R2_c over {vy, r, delta, pedal} (``valid`` restricts
-    delta and pedal to bound-inactive states), paired bootstrap; confirm when the CI's lower
-    end is > 0. C1's calibration (within direction for the odd components, the training-fold
-    mean intercept), so a zero or pure-noise gradient scores about 0 on every component and
-    cannot confirm."""
+    delta and pedal to bound-inactive states, and K_P to C1's decision rows), paired
+    bootstrap; confirm when the CI's lower end is > 0. C1's calibration (within direction for
+    the odd components, the training-fold mean intercept), so a zero or pure-noise gradient
+    scores about 0 on every component and cannot confirm. As in C1, a component is scored on
+    its valid rows with an out-of-fold calibration ('n_rows'), and one left without a row
+    drops out of its side's mean ('dropped': K2b's frozen exclusions leave n and vx none on
+    T); with a side empty C1-pattern is 'not testable' ('reason')."""
     names = tuple(names)
     counts = PB.cluster_counts(n_clusters) if counts is None else counts
     odd = _names_odd(names)
     cal = calibrate(g, lam, outer, w, rows, valid, direction=np.asarray(direction), odd=odd,
                     bounds=bounds)
-    pts, drs = {}, {}
+    pts, drs, n_rows = {}, {}, {}
     for k, nm in enumerate(names):
-        sel = rows & valid[:, k] & np.isfinite(lam[:, k])
+        sel = rows & valid[:, k] & np.isfinite(lam[:, k]) & np.isfinite(cal.pred[:, k])
+        n_rows[nm] = int(sel.sum())
+        if not sel.any():
+            continue
         pt, dr = boot_r2(lam[sel, k], [cal.pred[sel, k]], w[sel], cluster[sel], n_clusters,
                          counts, direction[sel], bool(odd[k]))
         pts[nm], drs[nm] = pt[0], dr[:, 0]
-    a = np.mean([pts[n] for n in primary]) - np.mean([pts[n] for n in secondary])
-    d = np.mean([drs[n] for n in primary], 0) - np.mean([drs[n] for n in secondary], 0)
+    a_set, b_set = [n for n in primary if n in pts], [n for n in secondary if n in pts]
+    out = {"r2c": {k: float(pts.get(k, np.nan)) for k in names}, "n_rows": n_rows,
+           "dropped": [k for k in names if k not in pts]}
+    if not a_set or not b_set:
+        side = "K_P" if not a_set else "{vy, r, delta, pedal}"
+        return {**out, "decision": "not testable",
+                "reason": f"no component of {side} keeps a scored row"}
+    a = np.mean([pts[n] for n in a_set]) - np.mean([pts[n] for n in b_set])
+    d = np.mean([drs[n] for n in a_set], 0) - np.mean([drs[n] for n in b_set], 0)
     lo, hi = _ci(d)
-    return {"r2c": {k: float(v) for k, v in pts.items()}, "diff": float(a), "ci": [lo, hi],
+    return {**out, "diff": float(a), "ci": [lo, hi],
             "decision": "confirm" if lo > 0 else "not confirmed"}
 
 
@@ -922,12 +939,17 @@ def c1_limit(cal: Calibrated, g: np.ndarray, lam: np.ndarray, outer: np.ndarray,
     g_n and g_xi applied out of fold, and the mean signed excess d (g_cal - lambda) / SD_T,
     d = -wall_side (away from the binding wall: decreasing n at the left wall); confirm when
     the CI's lower end of the mean over the components is > 0. Slip contacts have no wall
-    direction and are left out."""
+    direction and are left out. As in C1, a component is scored on its valid rows with an
+    out-of-fold calibration ('n_uncalibrated' the others, never a filled-in excess), and it
+    drops out of the mean when it has no such row or when a bootstrap draw holds none of
+    them (its rows' geometries all left out of the draw: no CI; K2b's frozen exclusions
+    leave xi a few contact rows on T); with none left C1-limit is 'not testable'
+    ('reason')."""
     names = list(names)
     counts = PB.cluster_counts(n_clusters) if counts is None else counts
     sel = np.asarray(wall_side) != 0
     if not sel.any():
-        return {"n": 0, "decision": "not testable"}
+        return {"n": 0, "decision": "not testable", "reason": "no wall contact"}
     pred = cal.apply(g, outer, direction)              # unclipped: a signed excess
     d = -np.asarray(wall_side, float)
     ok = np.ones((len(w), len(names)), bool) if valid is None else np.asarray(valid, bool)
@@ -935,19 +957,27 @@ def c1_limit(cal: Calibrated, g: np.ndarray, lam: np.ndarray, outer: np.ndarray,
     tot, used = None, 0
     for nm in components:
         k = names.index(nm)
-        sk = sel & ok[:, k]
-        if not sk.any():
-            per[nm] = {"n": 0, "excess": None, "ci": None}
+        sk = sel & ok[:, k] & np.isfinite(lam[:, k])
+        sc = sk & np.isfinite(pred[:, k])
+        rec = {"n": int(sc.sum()), "n_uncalibrated": int(sk.sum() - sc.sum()),
+               "geometries": len(np.unique(np.asarray(cluster)[sc]))}
+        if not sc.any():
+            per[nm] = {**rec, "excess": None, "ci": None}
             continue
-        cw = np.vstack([w[None], w[None] * np.asarray(counts, float)[:, cluster]])[:, sk]
-        e = d[sk] * (pred[sk, k] - lam[sk, k]) / sd[k]
-        e = np.where(np.isfinite(e), e, 0.0)
-        val = (cw * e).sum(1) / cw.sum(1)
-        per[nm] = {"n": int(sk.sum()), "excess": float(val[0]), "ci": list(_ci(val[1:]))}
+        cw = np.vstack([w[None], w[None] * np.asarray(counts, float)[:, cluster]])[:, sc]
+        e = d[sc] * (pred[sc, k] - lam[sc, k]) / sd[k]
+        with np.errstate(invalid="ignore", divide="ignore"):
+            val = (cw * e).sum(1) / cw.sum(1)
+        if not np.all(np.isfinite(val)):
+            per[nm] = {**rec, "excess": float(val[0]), "ci": None,
+                       "reason": "a bootstrap draw holds none of its rows"}
+            continue
+        per[nm] = {**rec, "excess": float(val[0]), "ci": list(_ci(val[1:]))}
         tot = val if tot is None else tot + val
         used += 1
     if not used:
-        return {"n": int(sel.sum()), "per_component": per, "decision": "not testable"}
+        return {"n": int(sel.sum()), "per_component": per, "decision": "not testable",
+                "reason": "no component keeps contact rows that every bootstrap draw holds"}
     tot = tot / used
     lo, hi = _ci(tot[1:])
     return {"n": int(sel.sum()), "per_component": per, "excess": float(tot[0]), "ci": [lo, hi],
@@ -1227,7 +1257,10 @@ def c3_w(x: dict[str, float], y: dict[str, float], strata: dict[str, str] | None
          strong: float = C3_STRONG) -> dict:
     """C3-w (module docstring). ``x``, ``y``: per network (C3_STRATA's keys); networks
     missing from either are left out and listed. Each covariate's partial is descriptive
-    (``guarded``)."""
+    (``guarded``). A stratum constant in x or y (ties) contributes rho = 0 and nothing to
+    the null; with no stratum varying in both, the null is the point 0 and C3-w is 'not
+    testable' ('reason'; its bound of 0 would otherwise rule out a strong association
+    untested)."""
     strata = C3_STRATA if strata is None else strata
     nets = [n for n in strata if n in x and n in y and np.isfinite(x[n]) and np.isfinite(y[n])]
     missing = [n for n in strata if n not in nets]
@@ -1240,6 +1273,7 @@ def c3_w(x: dict[str, float], y: dict[str, float], strata: dict[str, str] | None
     obs = 0.0
     null = np.zeros(int(n_perm))
     per = {}
+    varies = 0
     for s, i in idx.items():
         rx, ry = _centred_ranks(X[i]), _centred_ranks(Y[i])
         den = np.sqrt((rx @ rx) * (ry @ ry))
@@ -1247,15 +1281,21 @@ def c3_w(x: dict[str, float], y: dict[str, float], strata: dict[str, str] | None
         per[s] = {"n": len(i), "rho": rho}
         obs += len(i) / N * rho
         if den > 0:
+            varies += len(i)
             perm = rng.permuted(np.tile(ry, (int(n_perm), 1)), axis=1)
             null += len(i) / N * (perm @ rx) / den
     p = float((1 + np.sum(null >= obs - 1e-12)) / (1 + len(null)))
     ub = float(obs - np.quantile(null, alpha))
     decision = ("confirm" if p <= alpha else
                 ("rules out a strong association" if ub < strong else "inconclusive"))
+    if not varies:
+        decision = "not testable"
     out = {"n": N, "missing": missing, "strata": per, "rho": float(obs), "p": p,
            "upper_bound": ub, "null_sd": float(null.std()),
-           "critical": float(np.quantile(null, 1.0 - alpha)), "decision": decision}
+           "critical": float(np.quantile(null, 1.0 - alpha)), "decision": decision,
+           "n_varying": varies}
+    if not varies:
+        out["reason"] = "no stratum varies in both x and y: the permutation null is the point 0"
     if covariates:
         out["partial"] = {name: guarded(lambda cov=cov: _partial_c3(
             X, Y, np.array([cov.get(n, np.nan) for n in nets], float), idx, nets))
