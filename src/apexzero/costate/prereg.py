@@ -244,7 +244,23 @@ def constants() -> dict:
                    "fd_tol_manifold": CR.FD_TOL_MANIFOLD, "fd_tols": dict(CR.FD_TOLS),
                    "jz_tol": CR.FD_TOL, "wrong_min": CR.WRONG_MIN,
                    "wrong_pairs": list(CR.WRONG_PAIRS),
-                   "wrong_closed_forms": list(CR.WRONG_CLOSED_FORMS)},
+                   "wrong_closed_forms": list(CR.WRONG_CLOSED_FORMS),
+                   # K3 after the tag (Section 7; ``gates.k3_trained``): every pinned network
+                   "k3_trained": {
+                       "rows": "D: T's t = 0 rows", "checks": list(GT.K3_TRAINED_CHECKS),
+                       "extractor_tol": PB.EXTRACTOR_TOL,
+                       "extractor_is": "max |extractor - Flax| in float64 of the actor's mean "
+                                       "(Actor.apply), the critic's V and heads "
+                                       "(Critic.apply(with_heads=True)), by both extractors",
+                       "heads": {"generalists": PB.N_HEADS_GENERALIST, "specialists": 0},
+                       "float32_tol": CR.F32_TOL,
+                       "float32_is": "max |V64 - V32| in the critic's units; V32: "
+                                     "RunningMeanStd.normalize and Critic.apply in float32 "
+                                     "(x64 off) on the observation rounded to float32",
+                       "fail": "its C1, C1-heads, C1-own (and held form), C1-pattern, "
+                               "C1-limit, C1-braking, W1, C2 and C2-sw descriptive ('K3 "
+                               "trained check failed: ...'); missing from every decision it "
+                               "enters (per network, the variants, C3-w, C3-R2c)"}},
         "own": {"k3b": [OW.K3B_MEDIAN, OW.K3B_P95], "plants": list(OW.OWN_PLANTS),
                 "v_steps": OW.V_STEPS, "restart_every": OW.RESTART_EVERY,
                 "manifold_at": OW.MANIFOLD_AT, "accel_weights": OW.ACCEL_WEIGHTS},

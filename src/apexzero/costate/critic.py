@@ -74,7 +74,11 @@ output Dense before the hidden one inside the call ``_dense(1)(relu(_dense(64)(h
 the pairing (2i + 2 hidden, 2i + 1 output) is by construction order, checked on shapes, not
 inferred from them. Head gradients are taken only through the extractor: through
 ``Critic.apply`` they are exactly 0 (stop_gradient, ppo.py:211). ``apply_gap`` is K3's
-self-consistency check against ``Critic.apply`` / ``Actor.apply`` in float64.
+self-consistency check against ``Critic.apply`` / ``Actor.apply`` in float64 (on raw
+params); ``net_apply_gap`` is the same on a ``CriticNet`` and its actor, and ``float32_gap``
+K3's after-the-tag float32 check, the float64 V against ``float32_values`` (the critic in
+float32 with x64 off, as training evaluates it) to ``F32_TOL`` = 1e-4: after the tag both
+run on each trained network at D (``gates.k3_trained``).
 
 **C1-heads** (``head_quantities``, ``head_disagreement``, ``head_reliability``). For q in {V,
 g_s, ..., g_pedal, pi_steer, pi_pedal}, D_q = mean_t var_k(q^k_t) / var_t(mean_k q^k_t) (heads
@@ -123,7 +127,8 @@ finite differences, and Section 5's 20 random-init critics.
 
 **Pre-registration** (Section 1, Section 7): before the tag ``costate-prereg-v1`` no trained
 critic's value, gradient or finite difference is computed. ``trained_critic`` marks its critic
-``trained``; ``pullback``, ``values`` and ``fd_pullback`` refuse it (PermissionError) until
+``trained``; ``pullback``, ``values``, ``fd_pullback``, ``net_apply_gap``, ``float32_values``
+and ``float32_gap`` refuse it (PermissionError) until
 ``unlock_trained``, which only scripts/costate.py calls, after its freeze check. Reading a
 snapshot's parameter tree (``layers``) evaluates nothing.
 """
@@ -192,6 +197,8 @@ PEDAL_KNOTS = (-2e-2, 0.0, 2e-2)         # ops.relu's knots on +-pedal (ops.py:4
 BATCH = 128                              # rows per jit call (one compile per function)
 K3_MIN_STATES = 200                      # Section 7 K3: J_z and the pullbacks on 200 T states
 OBS_F32_RTOL = 1e-3                      # K3: s's ratio on float32-upcast key arrays (report)
+F32_TOL = 1e-4                           # K3 after the tag: max |float64 V - float32 V| on D,
+                                         # in the critic's units (``float32_gap``)
 
 # ------------------------------------------------------------------------- pre-registration
 
@@ -337,6 +344,56 @@ def apply_gap(cfg: PPOConfig, params, o, kind: str = "critic") -> dict:
             "heads": float(jnp.max(jnp.abs(act.heads - hs))) if hs.shape[-1] else 0.0,
             "n_heads": int(act.heads.shape[-1]), "flax_heads": int(hs.shape[-1]),
             "dtype": str(v.dtype)}
+
+
+def net_apply_gap(net: CriticNet, cfg: PPOConfig, o, actor_params=None) -> dict:
+    """``apply_gap`` of a ``CriticNet`` on observations o [n, 222] (a trained critic waits
+    for the tag; after it, each trained network's self-consistency at D, ``gates.k3_trained``):
+    the critic's V and heads, and with ``actor_params`` (the same network's actor, float64
+    upcasts) the actor's mean ('actor', 'actor_dtype')."""
+    _refuse_trained(net, "the extractor check")
+    rec = apply_gap(cfg, net.params, o, "critic")
+    if actor_params is not None:
+        a = apply_gap(cfg, actor_params, o, "actor")
+        rec["actor"], rec["actor_dtype"] = a["mean"], a["dtype"]
+    return rec
+
+
+def float32_values(net: CriticNet, cfg: PPOConfig, ob) -> np.ndarray:
+    """[n] the critic's V in float32 as training evaluates it, in a float64 process: with x64
+    off (as ``random_critic_params`` draws), ``RunningMeanStd.normalize`` (ppo.py:282-283) on
+    the raw observations ob [n, 222] rounded to float32 and ``Critic.apply`` on the float32
+    params (``net.params`` and ``net.obs_rms`` are exact upcasts, so rounding them back is
+    exact). A trained critic waits for the tag."""
+    _refuse_trained(net, "a float32 value")
+    p32 = jax.tree.map(lambda a: np.asarray(a, np.float32), net.params)
+    with jax.enable_x64(False):
+        rms = RunningMeanStd(*(jnp.asarray(np.asarray(a, np.float32)) for a in net.obs_rms))
+        o = rms.normalize(jnp.asarray(np.asarray(ob, np.float32)), OBS_CLIP)
+        return np.asarray(Critic(cfg).apply(p32, o))
+
+
+def float32_gap(net: CriticNet, cfg: PPOConfig, ob) -> dict:
+    """K3 after the tag (Section 7, 'each trained critic's float64 V on D must match float32
+    to 1e-4'): the float64 V the pullback reads (``net.fn``'s output 0 on the float64
+    normalised, clipped ob, as ``pullback``) against ``float32_values`` at raw observations
+    ob [n, 222], in the critic's units (reward / sigma_R): the largest absolute difference
+    ('max_abs', judged on ``F32_TOL``) and relative one ('max_rel', reported), the largest
+    |V| and the float32 run's dtype (it must be float32 for the comparison to mean
+    anything)."""
+    _refuse_trained(net, "a float32 value")
+    NW.require_x64()
+    ob = np.asarray(ob, np.float64)
+    mean, var = (np.asarray(a, np.float64) for a in (net.obs_rms.mean, net.obs_rms.var))
+    o = np.clip((ob - mean) / np.sqrt(var + RMS_EPS), -OBS_CLIP, OBS_CLIP)
+    f = _forward_jit(net.fn)
+    v64 = np.asarray(_batched(lambda o_: f(net.params, o_), len(o), o))[:, 0]
+    v32 = float32_values(net, cfg, ob)
+    d = np.abs(v64 - v32.astype(np.float64))
+    return {"max_abs": float(np.max(d)),
+            "max_rel": float(np.max(d / np.maximum(np.abs(v64), np.finfo(np.float64).tiny))),
+            "v_absmax": float(np.max(np.abs(v64))), "dtype32": str(v32.dtype),
+            "n": len(ob), "tol": F32_TOL}
 
 
 # ------------------------------------------------------------------------- critics

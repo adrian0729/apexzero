@@ -80,6 +80,16 @@ planted linear critic's ``linear_fd`` too, every form present). The record
 carries the tolerances, each form's errors and the smallest planted error
 ('planted_wrong').
 
+**K3 after the tag** (``k3_trained``, ``k3_trained_judge``; Section 7 K3 'trained networks
+after it, on D' and 'After the tag'): on each trained network, in the critic stage's float64
+process, at D's raw observations: the extractor's self-consistency by both extractors to
+``probes.EXTRACTOR_TOL`` = 1e-10 (the critic's V and heads against ``Critic.apply(...,
+with_heads=True)``, the actor's mean against ``Actor.apply``), every head count (config,
+tree, Flax, probe extractor) equal to ``expected_heads`` (5 for a generalist, 0 for S1-S3),
+and the float64 V against the critic run in float32 with x64 off to ``critic.F32_TOL`` =
+1e-4. A network that fails is treated as missing in every decision it enters
+(``analysis.k3_trained_failed``).
+
 **K3b** (``k3b``): ``own.k3b_start`` on step 2's linear driver, its accel-reading plant
 (``own.accel_driver``) and its hybrid control on A2 cell starts (network.py:388-460), with the
 on-manifold check, pooled by ``own.k3b_decision``.
@@ -109,6 +119,7 @@ nothing random.
 from __future__ import annotations
 
 import dataclasses
+import time
 from collections.abc import Callable, Sequence
 
 import numpy as np
@@ -891,6 +902,92 @@ def k3_wrong_missing(plants: dict) -> list[str]:
     return [f"{p}:{k}" for p, ks in need.items() for k in ks
             if k not in (wrong.get(p) or {})
             or not np.isfinite(_num((wrong[p][k] or {}).get("max")))]
+
+
+# ------------------------------------------------------------------------- K3 after the tag
+
+K3_TRAINED_CHECKS = ("extractor", "heads", "float32")
+
+
+def expected_heads(name: str) -> int | None:
+    """Section 7 K3: every generalist has exactly ``probes.N_HEADS_GENERALIST`` = 5 heads,
+    S1-S3 none; None for a network outside both (its head check fails)."""
+    if name in AN.GENERALISTS:
+        return PB.N_HEADS_GENERALIST
+    if name in AN.SPECIALISTS:
+        return 0
+    return None
+
+
+def k3_trained(agent, ob: np.ndarray, heads: int | None) -> dict:
+    """K3's checks on one trained network after the tag (Section 7) at raw observations
+    ob [n, 222] (the critic stage passes D's), in a float64 process: the extractor's
+    self-consistency in float64 by both extractors (``critic.net_apply_gap``: the critic's V
+    and heads and the actor's mean; ``probes.extractor_gap``: the same through the probe
+    extractor), each network's head count against ``heads`` (``expected_heads``), and the
+    float64 V against the float32 one (``critic.float32_gap``), judged by
+    ``k3_trained_judge``. The trained marks refuse it before the tag, and that refusal is
+    never contained; after it each measurement is (``analysis.guarded``: one that raises
+    fails its checks with the error as the reason, so a network cannot crash the stage
+    here)."""
+    from apexzero.costate import critic as CR
+
+    t0 = time.perf_counter()
+    net = CR.trained_critic(agent)
+    actor, critic = PB.agent_nets(agent)
+    CR._refuse_trained(net, "K3's trained checks")
+    PB._refuse_trained(actor, "K3's trained checks")
+    o, _ = PB.normalise(ob, agent.obs_rms)
+    gap = AN.guarded(CR.net_apply_gap, net, agent.cfg, o, actor.params)
+    ext = AN.guarded(PB.extractor_gap, actor, critic, o)
+    f32 = AN.guarded(CR.float32_gap, net, agent.cfg, ob)
+    out = k3_trained_judge(gap, ext, f32, heads, int(agent.cfg.ensemble_heads))
+    out.update(critic=gap, extractor=ext, float32=f32, n_states=len(ob),
+               seconds=time.perf_counter() - t0)
+    return out
+
+
+def k3_trained_judge(gap: dict, ext: dict, f32: dict, heads: int | None,
+                     cfg_heads: int) -> dict:
+    """K3's after-the-tag pass (``k3_trained``'s measurements): 'extractor' every error of
+    both extractors at most ``probes.EXTRACTOR_TOL`` = 1e-10, computed in float64; 'heads'
+    the config's, the tree's, Flax's and the probe extractor's head counts all equal to
+    ``heads``; 'float32' the float32 run computed in float32 and its largest |V64 - V32| at
+    most ``critic.F32_TOL`` = 1e-4 (the critic's units). A measurement that raised fails its
+    checks. 'decision' holds 'pass', the failed checks and, on a fail, the reason 'K3
+    trained check failed: <check> (<why>); ...'."""
+    from apexzero.costate import critic as CR
+
+    tol = PB.EXTRACTOR_TOL
+    why: dict[str, list[str]] = {}
+    pb_keys = ("actor_mean", "critic_v") + (("critic_heads",) if cfg_heads else ())
+    for src, d, keys, dts in (("critic", gap, ("v", "heads", "actor"), ("dtype", "actor_dtype")),
+                              ("probe extractor", ext, pb_keys, ("dtype",))):
+        if "error" in d:
+            why.setdefault("extractor", []).append(f"{src}: {d['error']}")
+            continue
+        why.setdefault("extractor", []).extend(
+            f"{src} {k} {_num(d.get(k)):.3g} > {tol:g}" for k in keys if not _le(_num(d.get(k)),
+                                                                                 tol))
+        why["extractor"].extend(f"{src} {k} {d.get(k)}" for k in dts if d.get(k) != "float64")
+    counts = {"config": cfg_heads, "tree": gap.get("n_heads"), "Flax": gap.get("flax_heads"),
+              "probe extractor": ext.get("heads")}
+    if heads is None:
+        why["heads"] = ["no head rule for this network"]
+    elif any(v != heads for v in counts.values()):
+        why["heads"] = [f"expected {heads}: " + ", ".join(f"{k} {v}" for k, v in counts.items())]
+    if "error" in f32:
+        why["float32"] = [f32["error"]]
+    elif f32.get("dtype32") != "float32":
+        why["float32"] = [f"the float32 run computed in {f32.get('dtype32')}"]
+    elif not _le(_num(f32.get("max_abs")), CR.F32_TOL):
+        why["float32"] = [f"max |V64 - V32| {_num(f32.get('max_abs')):.3g} > {CR.F32_TOL:g}"]
+    failed = [k for k in K3_TRAINED_CHECKS if why.get(k)]
+    reason = ("K3 trained check failed: " + "; ".join(f"{k} ({', '.join(why[k])})"
+                                                      for k in failed)) if failed else None
+    return {"checks": {k: k not in failed for k in K3_TRAINED_CHECKS},
+            "decision": {"pass": not failed, "failed": failed, "reason": reason},
+            "expected_heads": heads, "tolerances": {"extractor": tol, "float32": CR.F32_TOL}}
 
 
 # ------------------------------------------------------------------------- K3b

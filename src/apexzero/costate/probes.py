@@ -31,7 +31,9 @@ PPOConfig (``run_config``: the run's config.json filtered to PPOConfig's fields,
 agents.py:130-131 does; G1's run is registry.py:88). ``extractor_check`` is K3's float64
 self-consistency against ``Actor.apply`` and ``Critic.apply(..., with_heads=True)``; it needs
 x64, so it runs in its own process (``python -m apexzero.costate.probes extractor-check``), as
-step 2's float64 work does (network.py:4-8).
+step 2's float64 work does (network.py:4-8). ``extractor_gap`` is its record for one network:
+after the tag it runs on each trained network at D inside the critic stage's x64 process
+(``gates.k3_trained``, Section 7 K3 'trained networks after it, on D').
 
 **Pre-registration** (design Section 1; Section 7 'Freeze'): before the tag
 ``costate-prereg-v1`` no trained network's activation, hidden unit, value or gradient is
@@ -401,18 +403,8 @@ def extractor_check(cfg: PPOConfig, seeds: Sequence[int] = (0, 1), n: int = 64,
     zj = jnp.asarray(z, jnp.float64)
     rows = []
     for s in seeds:
-        a, c = random_actor(cfg, s), random_critic(cfg, s)
-        ha, hc = hidden(a, z), hidden(c, z)
-        mean = np.asarray(Actor(cfg, racing.ACTION_DIM, False).apply(a.params, zj)[0])
-        rec = {"seed": int(s), "dtype": str(mean.dtype),
-               "actor_mean": float(np.max(np.abs(mean - ha.out))),
-               "heads": int(n_heads(c.params))}
-        if cfg.ensemble_heads:
-            v, hd = Critic(cfg).apply(c.params, zj, with_heads=True)
-            rec["critic_heads"] = float(np.max(np.abs(np.asarray(hd) - hc.heads)))
-        else:
-            v = Critic(cfg).apply(c.params, zj)
-        rec["critic_v"] = float(np.max(np.abs(np.asarray(v) - hc.out)))
+        c = random_critic(cfg, s)
+        rec = {"seed": int(s), **extractor_gap(random_actor(cfg, s), c, z)}
         rec.update(_grad_record(c, zj))
         rows.append(rec)
     errs = ("actor_mean", "critic_v", "critic_heads", "grad_v")
@@ -422,6 +414,31 @@ def extractor_check(cfg: PPOConfig, seeds: Sequence[int] = (0, 1), n: int = 64,
     ok = (worst <= EXTRACTOR_TOL and all(r["dtype"] == "float64" for r in rows)
           and all(r["heads"] == cfg.ensemble_heads for r in rows) and heads_ok)
     return {"rows": rows, "max_error": worst, "tol": EXTRACTOR_TOL, "pass": bool(ok)}
+
+
+def extractor_gap(actor: Net, critic: Net, z: np.ndarray) -> dict:
+    """One network's extractor against Flax in float64 on inputs z [n, OBS_DIM] (normalised,
+    clipped; K3's self-consistency, ``extractor_check``'s record without the input
+    gradients): max |m - ``Actor.apply``'s mean| ('actor_mean'), max |V - ``Critic.apply``'s
+    V| ('critic_v'), with heads max |heads - ``Critic.apply(..., with_heads=True)``'s|
+    ('critic_heads'), the tree's head count ('heads') and the dtype. A trained network waits
+    for the tag (refused before any evaluation, as ``hidden`` refuses it)."""
+    _refuse_trained(actor, "the extractor check")
+    _refuse_trained(critic, "the extractor check")
+    NW.require_x64()
+    ha, hc = hidden(actor, z), hidden(critic, z)
+    zj = jnp.asarray(z, jnp.float64)
+    cfg = critic.cfg
+    mean = np.asarray(Actor(actor.cfg, racing.ACTION_DIM, False).apply(actor.params, zj)[0])
+    rec = {"dtype": str(mean.dtype), "actor_mean": float(np.max(np.abs(mean - ha.out))),
+           "heads": int(n_heads(critic.params))}
+    if cfg.ensemble_heads:
+        v, hd = Critic(cfg).apply(critic.params, zj, with_heads=True)
+        rec["critic_heads"] = float(np.max(np.abs(np.asarray(hd) - hc.heads)))
+    else:
+        v = Critic(cfg).apply(critic.params, zj)
+    rec["critic_v"] = float(np.max(np.abs(np.asarray(v) - hc.out)))
+    return rec
 
 
 def _grad_record(c: Net, zj) -> dict:

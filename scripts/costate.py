@@ -39,8 +39,13 @@ Post-tag stages (refused unless the freeze check passes: ``freeze_problems``):
 
     activations the actors' h1-h3 and m and the critics' layers and heads at T, with the
                 random-init actors' h3 and m on each network's z
-    critic      the trained critics' values and pullbacks (V and heads) and uniform
-                inside-widening derivatives at T, and the 20 random-init critics' pullbacks
+    critic      first K3's after-the-tag checks on each network at D, T's t = 0 rows
+                (``k3_trained``, post/critic/<net>.k3.json: the extractor's float64
+                self-consistency against Actor.apply and Critic.apply(with_heads=True) to
+                1e-10, 5 heads per generalist and none for S1-S3, the float64 V against the
+                float32 one to 1e-4); then the trained critics' values and pullbacks (V and
+                heads) and uniform inside-widening derivatives at T, and the 20 random-init
+                critics' pullbacks (post/critic/<net>.npz, with 'k3_trained_pass')
     own         the policy's own costate (C1-own) at T's interior restarts, every 20th step,
                 K3b's trained analogue, and the deterministic policy's own discounted returns
                 from those restarts and from D (up to 1,000 steps or to the strip's end):
@@ -55,7 +60,9 @@ Post-tag stages (refused unless the freeze check passes: ``freeze_problems``):
                 trained analogue decides C1-own's standing, the per-network strata tables of
                 every hypothesis, C3-w and C3-R2c over the 31 generalists, and the
                 descriptive C1 and C1-heads of the networks outside the decision set; every
-                descriptive contained, ``analysis.guarded``): --confirmatory runs once, into
+                descriptive contained, ``analysis.guarded``; a network that failed K3's
+                after-the-tag checks is descriptive and missing from every decision,
+                ``analysis.k3_trained_failed``, and listed): --confirmatory runs once, into
                 outputs/costate/analyse/decisions.json, only on complete inputs stamped by
                 this code under this tag; a non-confirmatory run computes no decision at all
                 (coverage and plumbing only) until a stamped confirmatory decisions file is
@@ -89,7 +96,8 @@ problem.
 
 **Run-once** (Section 7: the analysis runs once): ``analyse --confirmatory`` refuses when its
 decisions file exists or was ever committed, refuses unless every input is present (the own
-stage's arrays and K3b's trained analogue among them) and stamped by this code under this
+stage's arrays, K3b's trained analogue and every network's K3 after-the-tag checks among
+them) and stamped by this code under this
 tag (the pre-tag nulls arrays: by the record's code, and
 the arrays the record binds; ``confirmatory_input_problems``), and prints the
 ``git add -f`` that commits it. Before that file is committed, a non-confirmatory analyse
@@ -1143,7 +1151,42 @@ def stage_activations(args) -> None:
                    activations_of(ag, world))
 
 
+def d_rows(world):
+    """D (design Section 3.2 'D (secondary)', the decision states): T's t = 0 rows, one per
+    A2 key in T (the 4 multi-basin keys are left out of T, so 477 of the 481)."""
+    import numpy as np
+
+    return np.flatnonzero(np.asarray(world.tab["t"]) == 0)
+
+
+def k3_trained(agent, world, name: str) -> dict:
+    """K3's checks on a trained network after the tag (Section 7 K3: 'trained networks after
+    it, on D' and 'After the tag'): ``gates.k3_trained`` at D's raw observations (the bound
+    world's ``ObsJac.ob``, the observations every pullback reads) with ``name``'s head rule
+    (``gates.expected_heads``). A network that fails is treated as missing in every decision
+    it enters (``analysis.k3_trained_failed``)."""
+    import numpy as np
+
+    from apexzero.costate import critic as CR
+    from apexzero.costate import gates as GT
+
+    ob = np.full((world.n, CR.OBS_DIM), np.nan)
+    for k in world.keys:
+        ob[k.rows] = k.oj.ob
+    rows = d_rows(world)
+    have = rows[np.isfinite(ob[rows]).all(axis=1)]
+    out = GT.k3_trained(agent, ob[have], GT.expected_heads(name))
+    out.update(rows="D: T's t = 0 rows", n_d=len(rows),
+               n_d_without_observation=int(len(rows) - len(have)))
+    return out
+
+
 def stage_critic(args) -> None:
+    """Per network (every one the record pins): K3's after-the-tag checks on D
+    (``k3_trained``, post/critic/<net>.k3.json), then its critic's arrays (``critic_of``,
+    post/critic/<net>.npz, with the check's verdict as 'k3_trained_pass')."""
+    import numpy as np
+
     from apexzero.costate import inputs as IN
     from apexzero.costate import prereg as PR
 
@@ -1152,8 +1195,15 @@ def stage_critic(args) -> None:
     bank, _ = IN.design()
     for name in args.network or list(rec["networks"]):
         ag = load_agent(name, rec["networks"][name])
-        _write_npz(_out(args, "post") / "critic" / f"{PR.net_file(name)}.npz",
-                   critic_of(ag, world, bank=bank))
+        f = PR.net_file(name)
+        k3 = k3_trained(ag, world, name)
+        _write(_out(args, "post") / "critic" / f"{f}.k3.json", k3)
+        if not k3["decision"]["pass"]:
+            print(f"{name}: {k3['decision']['reason']} (descriptive, missing from every "
+                  "decision)", flush=True)
+        out = critic_of(ag, world, bank=bank)
+        out["k3_trained_pass"] = np.bool_(k3["decision"]["pass"])
+        _write_npz(_out(args, "post") / "critic" / f"{f}.npz", out)
 
 
 def own_of(agent, world, every: int = OWN_EVERY, bank=None, net=None, keys=None,
@@ -1856,12 +1906,15 @@ def overlap(run: str, root: Path = ROOT) -> tuple[float, str, str]:
     return float(b), F._rel(p, root) or str(p), sha256_file(p)
 
 
-def c3w_of(out_root: Path, world, counts, rec: dict | None = None, keep=None) -> dict:
+def c3w_of(out_root: Path, world, counts, rec: dict | None = None, keep=None,
+           exclude=()) -> dict:
     """C3-w over the generalists with critic outputs: x the calibrated R2 (C1's calibration,
     on ``analysis.C3W_ROWS``, key weights renormalised there) of sigma_R dV_c/dDelta_in
     against Pi^in_t, y the mean completion and the covariates (competence, overlap) from the
     record's frozen C3-w inputs (read from runs/ only without a record: a dry run);
-    ``keep`` restricts the rows (a sensitivity variant)."""
+    ``keep`` restricts the rows (a sensitivity variant); the networks in ``exclude`` (those
+    that failed K3 after the tag) are left out, listed in 'missing' and in
+    'k3_trained_excluded'."""
     import numpy as np
 
     from apexzero.costate import analysis as AN
@@ -1881,6 +1934,8 @@ def c3w_of(out_root: Path, world, counts, rec: dict | None = None, keep=None) ->
     x, missing = {}, []
     for name in AN.GENERALISTS:
         p = Path(out_root) / "post" / "critic" / f"{PR.net_file(name)}.npz"
+        if name in exclude:
+            continue
         if not p.exists():
             missing.append(name)
             continue
@@ -1895,6 +1950,7 @@ def c3w_of(out_root: Path, world, counts, rec: dict | None = None, keep=None) ->
     y, cov = c3_y(list(x), rec)
     out = AN.c3_w(x, y, covariates=cov)
     out["critic_missing"] = missing
+    out["k3_trained_excluded"] = [n for n in AN.GENERALISTS if n in exclude]
     return out
 
 
@@ -1943,13 +1999,16 @@ CRITIC_FIELDS = ("g", "value", "dV_dwin")
 def analysis_paths(root: Path) -> dict[str, list[Path]]:
     """The files the analysis reads: per decision network its critic, activations, probes,
     nulls, own stage arrays and K3b's trained analogue ('own', 'k3b'); every generalist's
-    critic (C3-w's and C3-R2c's x, C1-heads) and every specialist's (its descriptive C1)."""
+    critic (C3-w's and C3-R2c's x, C1-heads) and every specialist's (its descriptive C1); and
+    for each of those 34 networks K3's after-the-tag checks ('k3': post/critic/<net>.k3.json,
+    generalists then specialists)."""
     from apexzero.costate import analysis as AN
     from apexzero.costate import prereg as PR
 
     root = Path(root)
     nets = [PR.net_file(AN.network_of(a)) for a in AN.DECISION_NETWORKS]
-    out = {"post": [], "nulls": [], "own": [], "k3b": [], "c3w": [], "specialists": []}
+    out = {"post": [], "nulls": [], "own": [], "k3b": [], "c3w": [], "specialists": [],
+           "k3": []}
     for f in nets:
         out["post"] += [root / "post" / "critic" / f"{f}.npz",
                         root / "post" / "activations" / f"{f}.npz",
@@ -1960,6 +2019,49 @@ def analysis_paths(root: Path) -> dict[str, list[Path]]:
     out["c3w"] = [root / "post" / "critic" / f"{PR.net_file(n)}.npz" for n in AN.GENERALISTS]
     out["specialists"] = [root / "post" / "critic" / f"{PR.net_file(n)}.npz"
                           for n in AN.SPECIALISTS]
+    out["k3"] = [root / "post" / "critic" / f"{PR.net_file(n)}.k3.json"
+                 for n in [*AN.GENERALISTS, *AN.SPECIALISTS]]
+    return out
+
+
+def _json_decision(path: Path):
+    """A verdict file's decision.pass (K3b's trained analogue, K3 after the tag), or None
+    when the file cannot be read or holds none."""
+    try:
+        return json.loads(Path(path).read_text())["decision"]["pass"]
+    except (OSError, ValueError, KeyError, TypeError):
+        return None
+
+
+def _npz_flag(path: Path, key: str) -> bool | None:
+    """An npz's one-value boolean flag (k3b_pass, k3_trained_pass), or None without it."""
+    import numpy as np
+
+    with np.load(path) as d:
+        if key in d.files and np.asarray(d[key]).size == 1:
+            return bool(np.asarray(d[key]).item())
+    return None
+
+
+def k3_trained_of(out_root: Path) -> dict[str, dict]:
+    """Every network's K3 after-the-tag verdict (``analysis_paths``' 'k3' files): {'pass':
+    bool, 'reason': None or 'K3 trained check failed: ...'}; without a readable decision,
+    {'pass': None, 'reason': 'not run'} (a non-confirmatory run only: the confirmatory one
+    requires every file, ``confirmatory_input_problems``)."""
+    from apexzero.costate import analysis as AN
+
+    out = {}
+    for name, p in zip([*AN.GENERALISTS, *AN.SPECIALISTS], analysis_paths(out_root)["k3"],
+                       strict=True):
+        dec = _json_decision(p) if p.exists() else None
+        if not isinstance(dec, bool):
+            out[name] = {"pass": None, "reason": "not run"}
+            continue
+        why = None
+        if not dec:
+            why = (json.loads(p.read_text())["decision"].get("reason")
+                   or "K3 trained check failed (no reason recorded)")
+        out[name] = {"pass": dec, "reason": why}
     return out
 
 
@@ -1969,11 +2071,13 @@ def confirmatory_input_problems(rec: dict, root: Path, prov=None) -> list[str]:
     critic, activations, probes, nulls, own stage arrays (``OWN_FIELDS``: C1-own and value
     accuracy) or K3b's trained analogue missing, or its k3b_pass not that file's decision; a
     generalist's or specialist's critic missing, or a generalist's without ``CRITIC_FIELDS``
-    (a decision network's also without its random critics); a post-tag input not stamped by
-    this code under this tag (or partial, or changed since); a nulls array not stamped by
-    the record's code (``rec['code_hash']``: pre-tag stages cannot rewrite it after the
-    tag, so under a logged code deviation this run's hash would refuse it for good) or not
-    the one the record binds."""
+    (a decision network's also without its random critics); any of the 34 networks' K3
+    after-the-tag checks (post/critic/<net>.k3.json) missing or without a boolean decision,
+    or its critic's k3_trained_pass missing or not that decision; a post-tag input not
+    stamped by this code under this tag (or partial, or changed since); a nulls array not
+    stamped by the record's code (``rec['code_hash']``: pre-tag stages cannot rewrite it
+    after the tag, so under a logged code deviation this run's hash would refuse it for
+    good) or not the one the record binds."""
     import numpy as np
 
     from apexzero.fields.prereg import sha256_file
@@ -2010,15 +2114,28 @@ def confirmatory_input_problems(rec: dict, root: Path, prov=None) -> list[str]:
         if not pk.exists():
             probs.append(f"{pk.relative_to(root)} is missing (K3b's trained analogue)")
             continue
-        try:
-            dec = json.loads(pk.read_text())["decision"]["pass"]
-        except (OSError, ValueError, KeyError, TypeError):
-            dec = None
+        dec = _json_decision(pk)
         if not isinstance(dec, bool):
             probs.append(f"{pk.relative_to(root)} has no K3b decision")
         elif k3b is not None and dec != k3b:
             probs.append(f"{p.relative_to(root)}'s k3b_pass is not {pk.name}'s decision")
-    post = [p for k in ("post", "own", "k3b", "c3w", "specialists") for p in paths[k]
+    # K3 after the tag (the critic stage): every network whose critic the analysis reads
+    for p, pk in zip([*paths["c3w"], *paths["specialists"]], paths["k3"], strict=True):
+        if not pk.exists():
+            probs.append(f"{pk.relative_to(root)} is missing (K3 after the tag)")
+            continue
+        dec = _json_decision(pk)
+        if not isinstance(dec, bool):
+            probs.append(f"{pk.relative_to(root)} has no K3 decision")
+            continue
+        if p.exists():
+            flag = _npz_flag(p, "k3_trained_pass")
+            if flag is None:
+                probs.append(f"{p.relative_to(root)} lacks k3_trained_pass (K3 after the tag)")
+            elif flag != dec:
+                probs.append(f"{p.relative_to(root)}'s k3_trained_pass is not {pk.name}'s "
+                             "decision")
+    post = [p for k in ("post", "own", "k3b", "c3w", "specialists", "k3") for p in paths[k]
             if p.exists()]
     probs += F.input_stamp_problems(list(dict.fromkeys(post)), prov.code_hash, prov.deviation,
                                     prov.tag, rec.get("environment"))
@@ -2209,6 +2326,17 @@ def stage_analyse(args) -> None:
         return
     G = AN.geometry_clusters(world.tab)[1]
     counts = PB.cluster_counts(G)
+    # K3 after the tag (the critic stage): a failing network keeps its statistics, marked
+    # descriptive, and is missing from every decision it enters (``analysis.k3_trained_failed``)
+    k3t = k3_trained_of(Path(args.out))
+    if args.confirmatory and any(v["pass"] is None for v in k3t.values()):
+        raise SystemExit("a K3 after-the-tag verdict vanished during the analysis")
+    failed = {n: v["reason"] for n, v in k3t.items() if v["pass"] is False}
+    res["k3_trained"] = {"networks": k3t, "failed": failed,
+                         "not_run": [n for n, v in k3t.items() if v["pass"] is None],
+                         "rule": "a failing network's decision-bearing records are "
+                                 "descriptive and it is missing from every decision it "
+                                 "enters (C1, C2, C2-sw, the variants, C3-w, C3-R2c)"}
     res["networks"] = {}
     for name in [AN.network_of(a) for a in AN.DECISION_NETWORKS]:
         f = PR.net_file(name)
@@ -2224,19 +2352,25 @@ def stage_analyse(args) -> None:
         if args.confirmatory and not op.exists():
             raise SystemExit(f"{name}: an input vanished during the analysis")
         own = _npz(op) if op.exists() else None
-        rec_n = analyse_network(name, world, frozen, crit, nulls, flags_of(name), counts, own,
-                                bool(own is not None and own.get("k3b_pass", False)),
-                                variants=getattr(args, "variants", None))
+        an_args = (name, world, frozen, crit, nulls, flags_of(name), counts, own,
+                   bool(own is not None and own.get("k3b_pass", False)))
+        an_kw = {"variants": getattr(args, "variants", None)}
+        # a network that failed K3 after the tag decides nothing, so it is contained
+        rec_n = (AN.guarded(analyse_network, *an_args, **an_kw) if name in failed
+                 else analyse_network(*an_args, **an_kw))
         pp = Path(args.out) / "post" / "probes" / f"{f}.json"
         if pp.exists():
             merge_probes(rec_n, json.loads(pp.read_text()))
+        if name in failed:
+            AN.k3_trained_failed(rec_n, failed[name])
         res["networks"][name] = rec_n
     # the networks outside the decision set (Section 6: descriptive; ``describe_network``):
-    # an other generalist's C1 R2_c is C3-R2c's x, so it raises; a specialist's record is
+    # an other generalist's C1 R2_c is C3-R2c's x, so it raises (unless the network failed
+    # K3 after the tag: then it is out of C3-R2c and contained); a specialist's record is
     # descriptive throughout (``analysis.guarded``)
     decided = {AN.network_of(a) for a in AN.DECISION_NETWORKS}
     x_r2c = {n: res["networks"][n]["C1"]["stat"] for n in decided
-             if "C1" in res["networks"].get(n, {})}
+             if n not in failed and "C1" in res["networks"].get(n, {})}
     res["descriptive_networks"] = {}
     for name in [*AN.GENERALISTS, *AN.SPECIALISTS]:
         if name in decided:
@@ -2248,21 +2382,26 @@ def stage_analyse(args) -> None:
             res["descriptive_networks"][name] = {"missing": True}
             continue
         crit = _npz(cp)
-        if name in AN.GENERALISTS:
+        if name in AN.GENERALISTS and name not in failed:
             rec_d, x_r2c[name] = describe_network(world, frozen, crit, flags_of(name), counts)
         else:
             rec_d = AN.guarded(lambda c=crit, n=name: describe_network(
-                world, frozen, c, flags_of(n), counts, heads=False)[0])
+                world, frozen, c, flags_of(n), counts, heads=n in AN.GENERALISTS)[0])
+        if name in failed:
+            AN.k3_trained_failed(rec_d, failed[name])
         res["descriptive_networks"][name] = rec_d
-    res["C3-w"] = c3w_of(Path(args.out), world, counts, rec)
+    res["C3-w"] = c3w_of(Path(args.out), world, counts, rec, exclude=failed)
     res["C3-R2c"] = c3r2c_of(x_r2c, rec)
+    res["C3-R2c"]["k3_trained_excluded"] = [n for n in AN.GENERALISTS if n in failed]
     res["C3-w_sensitivity"] = {}
     for vname in ("drop_small", "drop_kappa_set"):
         res["C3-w_sensitivity"][vname] = AN.guarded(lambda v=vname: c3w_of(
-            Path(args.out), world, counts, rec, variant_specs(world.tab, frozen, [v])[v]["keep"]))
+            Path(args.out), world, counts, rec, variant_specs(world.tab, frozen, [v])[v]["keep"],
+            exclude=failed))
     per = {a: AN.network_decisions(res["networks"].get(AN.network_of(a), {}).get("C1"),
                                    res["networks"].get(AN.network_of(a), {}).get("C2"),
-                                   res["networks"].get(AN.network_of(a), {}).get("C2-sw"))
+                                   res["networks"].get(AN.network_of(a), {}).get("C2-sw"),
+                                   excluded=failed.get(AN.network_of(a)))
            for a in AN.DECISION_NETWORKS}
     res["per_network"] = per
     res["variants"] = AN.variant_decisions(per)

@@ -101,6 +101,16 @@ C2-sw are decided per network on the 9 step 1 generalist finals (``DECISION_NETW
 interp/registry.py:110-114); a variant claim needs the same decision in 2 of its 3 seeds:
 step 1's rule R18 (``interp.analysis.variant_verdict``, analysis.py:3976-3993), used as is.
 
+**K3 after the tag** (``k3_trained_failed``; Section 7 K3, the critic stage's
+``gates.k3_trained`` on each trained network at D): a network that fails the extractor's
+self-consistency, the head count or the float32 check keeps every statistic, but its
+decision-bearing records (``K3_TRAINED_RECORDS``: C1, C1-heads, C1-own and its held form,
+C1-pattern, C1-limit, C1-braking, W1, C2 and C2-sw) are marked descriptive with the reason
+'K3 trained check failed: ...', and it is treated as missing for every decision it enters
+(its C1, C2 and C2-sw per network are 'missing', so R18 counts it as a missing seed; C3-w
+and C3-R2c leave it out and list it), as H4R's gate2-trained rule treats a failing network
+(scripts/h4r.py ``gate_verdict``). The analysis lists every network's verdict.
+
 **C3-w** (``c3_w``; Section 6 'C3'): the size-weighted mean over the 7 recipe strata
 (``C3_STRATA``) of the within-stratum Spearman rho(x, y) (average ranks for ties; a stratum
 with a constant x or y contributes rho = 0), a one-sided stratified permutation test (y
@@ -211,6 +221,10 @@ FOLD_NULLS = ("value_ridge", "value_mlp", "value_ridge_window", "far_geometry")
 C3W_ROWS = "interior"         # C3-w's x is fitted and scored on T's interior stratum (frozen;
                               # the full-T and near-limit x are pre-registered descriptives)
 W1_ROWS = "interior"          # W1's stratum (frozen with C3-w's)
+# a network failing K3 after the tag: these records are marked descriptive, and it is missing
+# from every decision (``k3_trained_failed``; module docstring 'K3 after the tag')
+K3_TRAINED_RECORDS = ("C1", "C1-heads", "C1-own", "C1-own_held", "C1-pattern", "C1-limit",
+                      "C1-braking", "W1", "C2", "C2-sw")
 
 # The 31 generalists in C3-w's 7 recipe strata (Section 6 'C3-w'), by run directory.
 C3_STRATA = {
@@ -1143,12 +1157,37 @@ def c2_pairs(tab, pred: np.ndarray, lam: np.ndarray, w: np.ndarray, names: Seque
 # ------------------------------------------------------------------------- per network, variant
 
 
-def network_decisions(c1_rec: dict | None, c2_rec: dict | None, c2sw_rec: dict | None) -> dict:
-    """{C1, C2, C2-sw: decision} of one network ('missing' without a record)."""
+def network_decisions(c1_rec: dict | None, c2_rec: dict | None, c2sw_rec: dict | None,
+                      excluded: str | None = None) -> dict:
+    """{C1, C2, C2-sw: decision} of one network ('missing' without a record); with
+    ``excluded`` (the reason a network failed K3 after the tag, ``k3_trained_failed``) every
+    decision is 'missing' and the reason is kept ('excluded')."""
     def dec(r):
         return "missing" if r is None else str(r.get("decision", "missing"))
 
+    if excluded is not None:
+        return {"C1": "missing", "C2": "missing", "C2-sw": "missing", "excluded": excluded}
     return {"C1": dec(c1_rec), "C2": dec(c2_rec), "C2-sw": dec(c2sw_rec)}
+
+
+def k3_trained_failed(rec: dict, reason: str) -> dict:
+    """Mark a network that failed K3 after the tag (module docstring 'K3 after the tag'): each
+    of its ``K3_TRAINED_RECORDS`` present becomes descriptive ('descriptive', label_scope
+    'descriptive', 'descriptive_reason' = ``reason``; a 'status' says 'descriptive
+    (<reason>)'), and so does each strata table's primary row, its statistics kept; the
+    network record carries 'k3_trained'. In place; returns ``rec``."""
+    for k in K3_TRAINED_RECORDS:
+        r = rec.get(k)
+        if isinstance(r, dict):
+            r.update(descriptive=True, label_scope="descriptive", descriptive_reason=reason)
+            if "status" in r:
+                r["status"] = f"descriptive ({reason})"
+    for table in (rec.get("by_stratum") or {}).values():
+        for row in (table.values() if isinstance(table, dict) else ()):
+            if isinstance(row, dict) and row.get("primary"):
+                row.update(descriptive=True, descriptive_reason=reason)
+    rec["k3_trained"] = {"pass": False, "reason": reason}
+    return rec
 
 
 def variant_decisions(per_network: dict[str, dict]) -> dict:

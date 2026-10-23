@@ -1085,6 +1085,20 @@ def test_trained_networks_are_refused_everywhere_before_the_tag():
         IN.width_values(net, None, None, 1)
     with pytest.raises(PermissionError):           # the composition's own autodiff
         CR._composed(net, None, None)
+    # K3 after the tag (the critic stage's ``gates.k3_trained``): every measurement
+    from apexzero.agents.ppo import RunningMeanStd
+    from apexzero.costate import gates as GT
+
+    with pytest.raises(PermissionError):
+        PB.extractor_gap(actor, critic, np.zeros((2, 222)))
+    for fn in (CR.net_apply_gap, CR.float32_values, CR.float32_gap):
+        with pytest.raises(PermissionError):
+            fn(net, cfg, np.zeros((2, 222)))
+    snap.ret_rms = RunningMeanStd(np.zeros(()), np.float32(1.0), np.float32(1.0))
+    agent = SimpleNamespace(agent_id="x", timesteps=1, cfg=cfg, snapshot=snap,
+                            obs_rms=RunningMeanStd(np.zeros(222), np.ones(222), np.float32(1.0)))
+    with pytest.raises(PermissionError):           # refused, never contained
+        GT.k3_trained(agent, np.zeros((2, 222)), 5)
 
 
 def _toy_world(n_geo: int = 12, keys: int = 4, steps: int = 12, seed: int = 0):
@@ -1627,6 +1641,323 @@ def test_the_networks_outside_the_decision_set_and_c3_r2c(tmp_path, monkeypatch)
     assert AN.c3_w(x, y)["null_sd"] != pytest.approx(ref["null_sd"], abs=1e-12)
     assert d["C3-w"]["n"] == 31 and set(d["C3-w_sensitivity"]) == {"drop_small",
                                                                   "drop_kappa_set"}
+
+
+_K3T = r"""
+import dataclasses, json, sys
+import importlib.util
+import jax
+jax.config.update("jax_enable_x64", True)
+import numpy as np
+from types import SimpleNamespace
+from apexzero.agents.ppo import RunningMeanStd
+from apexzero.costate import critic as CR, probes as PB, inputs as IN
+from apexzero.fields import network as NW
+spec = importlib.util.spec_from_file_location("costate_script", sys.argv[1])
+cs = importlib.util.module_from_spec(spec)
+sys.path.insert(0, str(spec.origin.rsplit("/", 1)[0]))
+spec.loader.exec_module(cs)
+rms, cfg = IN.obs_rms_of("G1")
+rms32 = jax.tree.map(lambda a: np.asarray(a, np.float32), rms)
+GEN, SPEC = "runs/dr-pilot-200M", "S1"
+# a world of 8 keys x 5 rows (t = 0..4), raw observations around G1's normaliser's mean
+rng = np.random.default_rng(0)
+mean, sd = np.asarray(rms.mean, float), np.sqrt(np.asarray(rms.var, float) + 1e-8)
+ob = mean + sd * rng.normal(0.0, 1.5, (40, 222))
+world = SimpleNamespace(n=40, tab={"t": np.tile(np.arange(5), 8)}, keys=[
+    SimpleNamespace(rows=np.arange(5 * i, 5 * i + 5), oj=SimpleNamespace(ob=ob[5 * i:5 * i + 5]))
+    for i in range(8)])
+
+def stand_in(c, seed=3, bias=0.0):
+    # a random-init stand-in for a trained snapshot (G1's obs_rms; float32 leaves)
+    crit = CR.random_critic_params(c, seed)
+    crit["params"]["Dense_0"]["bias"] = crit["params"]["Dense_0"]["bias"] + np.float32(bias)
+    snap = SimpleNamespace(actor=NW.random_actor_params(c, seed), critic=crit,
+                           ret_rms=RunningMeanStd(np.zeros(()), np.float32(4.0), np.float32(1.0)))
+    return SimpleNamespace(agent_id="stand-in", timesteps=0, cfg=c, obs_rms=rms32, snapshot=snap)
+
+def run(ag, name):
+    r = cs.k3_trained(ag, world, name)
+    return {"decision": r["decision"], "checks": r["checks"], "critic": r["critic"],
+            "extractor": r["extractor"], "float32": r["float32"], "n": r["n_states"],
+            "n_d": r["n_d"], "rows": r["rows"]}
+
+out = {}
+try:                                  # before the unlock (the tag): refused, never contained
+    cs.k3_trained(stand_in(cfg), world, GEN)
+    out["refused"] = False
+except PermissionError:
+    out["refused"] = True
+PB.unlock_trained(); CR.unlock_trained()    # the test's stand-in for the freeze check
+out["gen"] = run(stand_in(cfg), GEN)
+spec_cfg = cfg.with_(ensemble_heads=0)
+out["spec"] = run(stand_in(spec_cfg), SPEC)
+# planted failures: V near 1e4 (float32 resolves it to about 1e-3, float64 to 2e-12); a
+# head-free critic as a generalist and 5 heads as a specialist; the probe extractor off by
+# 1e-8; a float32 measurement that raises (contained: it fails its check)
+out["bias"] = run(stand_in(cfg, bias=1e4), GEN)
+out["spec_as_gen"] = run(stand_in(spec_cfg), GEN)
+out["gen_as_spec"] = run(stand_in(cfg), SPEC)
+hidden = PB.hidden
+PB.hidden = lambda net, z, xp=np: dataclasses.replace(hidden(net, z, xp),
+                                                      out=hidden(net, z, xp).out + 1e-8)
+out["extractor_off"] = run(stand_in(cfg), GEN)
+PB.hidden = hidden
+gap32 = CR.float32_gap
+def boom(*a, **k):
+    raise ValueError("boom")
+CR.float32_gap = boom
+out["raised"] = run(stand_in(cfg), GEN)
+CR.float32_gap = gap32
+# the float32 values this x64 process computes (the test compares them with its own float32
+# process's)
+v32 = CR.float32_values(CR.trained_critic(stand_in(cfg)), cfg, ob[cs.d_rows(world)])
+out["v32"], out["v32_dtype"] = v32.tolist(), str(v32.dtype)
+print(json.dumps(out, default=float))
+"""
+
+
+@pytest.mark.skipif(not _have_g1(), reason="G1's normaliser and config are missing")
+def test_k3_after_the_tag_on_random_init_stand_ins_with_planted_failures(tmp_path):
+    """Section 7 K3 after the tag (review finding: never run on trained networks): the
+    critic stage's ``k3_trained`` on random-init stand-ins at D (T's t = 0 rows), in a
+    float64 process. It is refused before the unlock (the trained marks; not contained),
+    passes a generalist (5 heads) and a specialist (none) with both extractors exact and the
+    float32 V within 1e-4, and fails each planted defect on its own check: V near 1e4
+    (float32), the wrong head count either way, a probe extractor off by 1e-8, and a float32
+    measurement that raises (contained)."""
+    env = dict(os.environ, PYTHONPATH=str(REPO / "src"))
+    r = subprocess.run([sys.executable, "-c", _K3T, str(SCRIPT)], cwd=REPO, env=env,
+                       capture_output=True, text=True, timeout=600, check=False)
+    assert r.returncode == 0, r.stderr[-3000:]
+    out = json.loads(r.stdout.strip().splitlines()[-1])
+    assert out["refused"]
+    for k in ("gen", "spec"):
+        g = out[k]
+        assert g["decision"] == {"pass": True, "failed": [], "reason": None}, (k, g)
+        assert g["n"] == g["n_d"] == 8 and g["rows"] == "D: T's t = 0 rows"
+        assert g["critic"]["dtype"] == g["critic"]["actor_dtype"] == "float64"
+        assert max(g["critic"][q] for q in ("v", "heads", "actor")) <= 1e-10
+        assert max(v for q, v in g["extractor"].items()
+                   if q in ("actor_mean", "critic_v", "critic_heads")) <= 1e-10
+        assert g["float32"]["dtype32"] == "float32" and g["float32"]["max_abs"] < 1e-5
+    assert out["gen"]["critic"]["n_heads"] == out["gen"]["extractor"]["heads"] == 5
+    assert out["spec"]["critic"]["n_heads"] == out["spec"]["critic"]["flax_heads"] == 0
+    b = out["bias"]
+    assert b["decision"]["failed"] == ["float32"] and b["float32"]["max_abs"] > 1e-4
+    assert b["float32"]["v_absmax"] > 9e3 and b["checks"]["extractor"]
+    assert out["spec_as_gen"]["decision"]["failed"] == ["heads"]
+    assert out["gen_as_spec"]["decision"]["failed"] == ["heads"]
+    assert "expected 0" in out["gen_as_spec"]["decision"]["reason"]
+    e = out["extractor_off"]
+    assert e["decision"]["failed"] == ["extractor"] and "probe extractor" in e["decision"]["reason"]
+    assert e["critic"]["v"] <= 1e-10                   # the critic's extractor is untouched
+    ra = out["raised"]
+    assert ra["decision"]["failed"] == ["float32"] and ra["float32"] == {
+        "error": "ValueError: boom"}
+    assert ra["decision"]["reason"].startswith("K3 trained check failed: float32 (")
+    # the float32 V of the x64 process (x64 switched off around it) is bit for bit what
+    # this float32 process computes: RunningMeanStd.normalize and Critic.apply in float32
+    import jax
+    import jax.numpy as jnp
+
+    from apexzero.agents.ppo import Critic, RunningMeanStd
+    from apexzero.costate import critic as CR
+    from apexzero.costate import inputs as IN
+
+    assert not jax.config.jax_enable_x64
+    rms, cfg = IN.obs_rms_of("G1")
+    mean, sd = np.asarray(rms.mean, float), np.sqrt(np.asarray(rms.var, float) + 1e-8)
+    ob = mean + sd * np.random.default_rng(0).normal(0.0, 1.5, (40, 222))
+    r32 = RunningMeanStd(*(jnp.asarray(np.asarray(a, np.float32)) for a in rms))
+    ref = np.asarray(Critic(cfg).apply(CR.random_critic_params(cfg, 3), r32.normalize(
+        jnp.asarray(ob[::5].astype(np.float32)), 10.0)))
+    assert out["v32_dtype"] == "float32" == str(ref.dtype)
+    assert np.array_equal(np.asarray(out["v32"], np.float32), ref)
+
+
+def test_the_critic_stage_writes_k3_and_the_confirmatory_analysis_requires_it(
+        tmp_path, monkeypatch):
+    """The critic stage writes each network's K3 after-the-tag checks (<net>.k3.json) before
+    its arrays, which carry the verdict ('k3_trained_pass'); the confirmatory analysis
+    refuses unless all 34 networks have a stamped verdict with a boolean decision that their
+    critic's flag repeats."""
+    cs = _script()
+    from apexzero.costate import analysis as AN
+    from apexzero.costate import inputs as IN
+
+    gen, spec = AN.GENERALISTS[0], AN.SPECIALISTS[0]
+    rec = {"networks": {gen: {}, spec: {}}}
+    order = []
+
+    def k3(agent, world, name):
+        order.append(("k3", name))
+        ok = name != spec
+        return {"decision": {"pass": ok, "failed": [] if ok else ["heads"],
+                             "reason": None if ok else "K3 trained check failed: heads (x)"}}
+
+    def crit(agent, world, bank=None):
+        order.append(("critic", agent))
+        return {"g": np.zeros((3, 6, 8)), "value": np.zeros((3, 6)), "dV_dwin": np.zeros(3)}
+
+    monkeypatch.setattr(cs, "_post_tag", lambda a, w: rec)
+    monkeypatch.setattr(cs, "_load_world_frozen", lambda a, r: None)
+    monkeypatch.setattr(cs, "load_agent", lambda name, pin: name)
+    monkeypatch.setattr(IN, "design", lambda: (None, None))
+    monkeypatch.setattr(cs, "k3_trained", k3)
+    monkeypatch.setattr(cs, "critic_of", crit)
+    out = tmp_path / "o"
+    cs.main(["critic", "--out", str(out)])
+    assert order == [("k3", gen), ("critic", gen), ("k3", spec), ("critic", spec)]
+    d = out / "post" / "critic"
+    for name, ok in ((gen, True), (spec, False)):
+        f = PR.net_file(name)
+        k = json.loads((d / f"{f}.k3.json").read_text())
+        assert k["decision"]["pass"] is ok and "provenance" in k
+        with np.load(d / f"{f}.npz") as z:
+            assert bool(z["k3_trained_pass"]) is ok
+    v = cs.k3_trained_of(out)
+    assert v[gen] == {"pass": True, "reason": None}
+    assert v[spec] == {"pass": False, "reason": "K3 trained check failed: heads (x)"}
+    assert v[AN.GENERALISTS[1]] == {"pass": None, "reason": "not run"} and len(v) == 34
+    # the confirmatory input check
+    prov = SimpleNamespace(code_hash="0" * 64, deviation=None, tag=None)
+    crec = {"code_hash": "0" * 64, "environment": None, "outputs": {}}
+
+    def k3_probs():
+        return [p for p in cs.confirmatory_input_problems(crec, out, prov)
+                if "K3 after the tag" in p or "K3 decision" in p or "k3_trained_pass" in p]
+
+    probs = k3_probs()
+    assert sum("k3.json is missing (K3 after the tag)" in p for p in probs) == 32
+    assert not any(p.startswith((f"post/critic/{PR.net_file(gen)}.",
+                                 f"post/critic/{PR.net_file(spec)}.")) for p in probs)
+    g1 = AN.GENERALISTS[1]
+    f1, f2 = PR.net_file(g1), PR.net_file(AN.GENERALISTS[2])
+    (d / f"{f1}.k3.json").write_text(json.dumps({"decision": {"pass": "yes"}}))
+    np.savez(d / f"{f1}.npz", g=np.zeros(3))
+    (d / f"{f2}.k3.json").write_text(json.dumps({"decision": {"pass": True}}))
+    np.savez(d / f"{f2}.npz", k3_trained_pass=np.bool_(False))
+    np.savez(d / f"{PR.net_file(gen)}.npz", g=np.zeros(3))
+    probs = k3_probs()
+    assert f"post/critic/{f1}.k3.json has no K3 decision" in probs
+    assert (f"post/critic/{f2}.npz's k3_trained_pass is not {f2}.k3.json's decision"
+            in probs)
+    assert f"post/critic/{PR.net_file(gen)}.npz lacks k3_trained_pass (K3 after the tag)" \
+        in probs
+    stamps = cs.confirmatory_input_problems(crec, out, prov)
+    assert f"{f2}.k3.json: no provenance stamp" in stamps        # stamp-checked
+    assert str(Path("post/critic") / f"{PR.net_file(gen)}.k3.json") in cs.input_hashes(out)
+
+
+def test_a_network_failing_k3_after_the_tag_is_missing_from_every_decision(
+        tmp_path, monkeypatch):
+    """Section 7 K3 after the tag: a network that fails it keeps its statistics, its C1,
+    C1-heads, C1-own, C1-pattern, C1-limit, C1-braking, W1, C2 and C2-sw records are marked
+    descriptive with the reason 'K3 trained check failed: ...', and it is missing from every
+    decision it enters (per network, so R18 counts a missing seed; C3-w and C3-R2c leave it
+    out and list it), as H4R's gate2-trained rule treats a failing network; a failing
+    network's own analysis is contained (it decides nothing); the analysis lists every
+    verdict."""
+    cs = _script()
+    from apexzero.costate import analysis as AN
+    from apexzero.fields import network as NW
+
+    world, frozen = _toy_world()
+    out = tmp_path / "o"
+    decided = {AN.network_of(a) for a in AN.DECISION_NETWORKS}
+    g2, g3s2, other, s1 = (AN.network_of("G2"), AN.network_of("G3s2"), AN.GENERALISTS[-1],
+                           AN.SPECIALISTS[0])
+    bad = {g2: "K3 trained check failed: float32 (max |V64 - V32| 0.0003 > 0.0001)",
+           g3s2: "K3 trained check failed: heads (expected 5: config 5, tree 4, Flax 4, "
+                 "probe extractor 4)",
+           other: "K3 trained check failed: extractor (critic v 2e-09 > 1e-10)",
+           s1: "K3 trained check failed: heads (expected 0: config 5, tree 5, Flax 5, "
+               "probe extractor 5)"}
+    for i, name in enumerate([*AN.GENERALISTS, *AN.SPECIALISTS]):
+        crit, nulls, flags, _ = _toy_inputs(world, seed=10 + i)
+        if name in AN.SPECIALISTS:
+            crit = {k: (v[:, :1] if k in ("g", "g_held", "value", "pi") else v)
+                    for k, v in crit.items()}
+        f = PR.net_file(name)
+        (out / "post" / "critic").mkdir(parents=True, exist_ok=True)
+        np.savez(out / "post" / "critic" / f"{f}.npz", **crit)
+        ok = name not in bad
+        (out / "post" / "critic" / f"{f}.k3.json").write_text(json.dumps(
+            {"decision": {"pass": ok, "failed": [] if ok else ["x"], "reason": bad.get(name)}}))
+        if name in decided:
+            (out / "nulls").mkdir(exist_ok=True)
+            np.savez(out / "nulls" / f"{f}.npz", **nulls)
+    probes = {"C2": {"decision": "confirm", "stat": 0.2}, "C2-sw": {"decision": "refute"},
+              "by_stratum": {"C2": {"interior": {"primary": True, "descriptive": False},
+                                    "contact": {"primary": False, "descriptive": True}}}}
+    (out / "post" / "probes").mkdir(parents=True)
+    (out / "post" / "probes" / f"{PR.net_file(g2)}.json").write_text(json.dumps(probes))
+    rng = np.random.default_rng(3)
+    rec = {"frozen": frozen, "networks": {nm: {} for nm in [*AN.GENERALISTS, *AN.SPECIALISTS]},
+           "c3w_inputs": {nm: {"completion": float(rng.random()), "competence": float(i),
+                               "overlap": float(-i)} for i, nm in enumerate(AN.GENERALISTS)}}
+
+    def analyse(name, *a, **k):
+        if name == g3s2:
+            raise FloatingPointError("a failing network's statistic raised")
+        return {"C1": {"stat": 0.7, "decision": "confirm"},
+                "C1-own": {"decision": "refute", "status": "secondary"},
+                "C1-heads": {"D": {"decision": "confirm"}},
+                "C1-pattern": {"decision": "confirm"}, "C1-limit": {"decision": "refute"},
+                "W1": {"r2c": 0.3}, "value_accuracy": {"pass": True}}
+
+    monkeypatch.setattr(cs, "_post_tag", lambda a, w: rec)
+    monkeypatch.setattr(cs, "_load_world_frozen", lambda a, r: world)
+    monkeypatch.setattr(cs, "ROOT", tmp_path / "repo")
+    monkeypatch.setattr(cs, "unlocked_by", lambda path, tag, root=None: ("ab" * 32, ""))
+    monkeypatch.setattr(cs, "load_agent", lambda name, pin: SimpleNamespace(obs_rms=None))
+    monkeypatch.setattr(NW, "upcast32", lambda x: x)
+    from apexzero.costate import inputs as IN
+    monkeypatch.setattr(IN, "flags", lambda w, rms: flags)
+    monkeypatch.setattr(cs, "analyse_network", analyse)
+    cs.main(["analyse", "--out", str(out)])
+    d = json.loads((out / "analyse" / "decisions_dry.json").read_text())
+    k3 = d["k3_trained"]
+    assert k3["failed"] == bad and k3["not_run"] == [] and len(k3["networks"]) == 34
+    assert k3["networks"][AN.GENERALISTS[0]] == {"pass": True, "reason": None}
+    # the failing decision network: every decision-bearing record descriptive, with the reason
+    n2 = d["networks"][g2]
+    for k in ("C1", "C1-own", "C1-heads", "C1-pattern", "C1-limit", "W1", "C2", "C2-sw"):
+        assert n2[k]["descriptive"] is True and n2[k]["label_scope"] == "descriptive", k
+        assert n2[k]["descriptive_reason"] == bad[g2], k
+    assert n2["C1"]["decision"] == "confirm" and n2["C1"]["stat"] == 0.7     # kept
+    assert n2["C1-own"]["status"] == f"descriptive ({bad[g2]})"
+    assert "descriptive" not in n2["value_accuracy"]
+    assert n2["k3_trained"] == {"pass": False, "reason": bad[g2]}
+    primary = n2["by_stratum"]["C2"]["interior"]                # its primary row too
+    assert primary["descriptive"] is True and primary["descriptive_reason"] == bad[g2]
+    assert "descriptive_reason" not in n2["by_stratum"]["C2"]["contact"]
+    # its analysis raising is contained, not a crash
+    assert d["networks"][g3s2]["error"].startswith("FloatingPointError: ")
+    assert d["networks"][g3s2]["k3_trained"]["pass"] is False
+    # missing from every decision it enters
+    for a, name in (("G2", g2), ("G3s2", g3s2)):
+        assert d["per_network"][a] == {"C1": "missing", "C2": "missing", "C2-sw": "missing",
+                                       "excluded": bad[name]}
+    assert d["per_network"]["G1"] == {"C1": "confirm", "C2": "missing", "C2-sw": "missing"}
+    assert d["variants"]["v2"]["C1"]["seeds"]["G2"] == "missing"
+    assert d["variants"]["v2"]["C1"]["seeds"]["G2s1"] == "confirm"
+    excluded = sorted(n for n in (g2, g3s2, other))
+    for k in ("C3-w", "C3-R2c"):
+        assert d[k]["n"] == 28 and sorted(d[k]["k3_trained_excluded"]) == excluded, k
+        assert set(excluded) <= set(d[k]["missing"]), k
+    assert all(sorted(v["k3_trained_excluded"]) == excluded
+               for v in d["C3-w_sensitivity"].values())
+    # outside the decision set: marked, still described (contained)
+    desc = d["descriptive_networks"]
+    assert desc[other]["C1"]["descriptive_reason"] == bad[other]
+    assert desc[other]["C1-heads"]["descriptive_reason"] == bad[other]
+    assert desc[s1]["k3_trained"] == {"pass": False, "reason": bad[s1]}
+    assert desc[s1]["C1"]["descriptive_reason"] == bad[s1]
+    passing = next(n for n in AN.GENERALISTS if n not in decided and n not in bad)
+    assert "k3_trained" not in desc[passing] and "descriptive_reason" not in desc[passing]["C1"]
+    assert "k3_trained" not in desc[AN.SPECIALISTS[1]]
 
 
 def _walk_keys(d):

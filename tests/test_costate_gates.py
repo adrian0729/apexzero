@@ -374,6 +374,60 @@ def test_k3_judge_fails_on_planted_defects():
     assert GT.k3_judge(plants, small, ext, min_states=0)["pass"]
 
 
+def test_k3_trained_judge_names_each_failure():
+    """K3 after the tag (Section 7, ``gates.k3_trained_judge``): a passing set of
+    measurements passes; each planted defect fails its own check with the reason 'K3
+    trained check failed: <check> (...)'; a measurement that raised fails (contained)."""
+    import copy
+
+    gap = {"v": 0.0, "heads": 0.0, "n_heads": 5, "flax_heads": 5, "dtype": "float64",
+           "actor": 1e-16, "actor_dtype": "float64"}
+    ext = {"dtype": "float64", "actor_mean": 1e-17, "heads": 5, "critic_heads": 2e-15,
+           "critic_v": 1e-15}
+    f32 = {"max_abs": 7e-7, "max_rel": 3e-5, "v_absmax": 1.1, "dtype32": "float32", "n": 477,
+           "tol": CR.F32_TOL}
+    ok = GT.k3_trained_judge(gap, ext, f32, 5, 5)
+    assert ok["decision"] == {"pass": True, "failed": [], "reason": None}
+    assert ok["checks"] == dict.fromkeys(GT.K3_TRAINED_CHECKS, True)
+    assert ok["tolerances"] == {"extractor": PB.EXTRACTOR_TOL, "float32": CR.F32_TOL} == {
+        "extractor": 1e-10, "float32": 1e-4}
+    assert GT.expected_heads("runs/dr-pilot-200M") == 5 and GT.expected_heads("S2") == 0
+    assert GT.expected_heads("runs/elsewhere") is None
+
+    def failed(g=gap, e=ext, f=f32, heads=5, cfg_heads=5):
+        d = GT.k3_trained_judge(g, e, f, heads, cfg_heads)["decision"]
+        assert not d["pass"] and d["reason"].startswith("K3 trained check failed: ")
+        return d
+
+    for src, key, val in ((gap, "v", 2e-10), (gap, "heads", 1e-9), (gap, "actor", 1e-8),
+                          (ext, "actor_mean", 3e-10), (ext, "critic_v", float("nan")),
+                          (ext, "critic_heads", 1e-6), (gap, "dtype", "float32"),
+                          (ext, "dtype", "float32")):
+        bad = copy.deepcopy(src)
+        bad[key] = val
+        d = failed(bad if src is gap else gap, bad if src is ext else ext)
+        assert d["failed"] == ["extractor"] and key in d["reason"], (key, d)
+    # the head rule: 5 per generalist, none for S1-S3, every count equal
+    assert failed(heads=0)["failed"] == ["heads"]
+    assert failed(heads=None)["failed"] == ["heads"]
+    d = failed(g={**gap, "flax_heads": 4})
+    assert d["failed"] == ["heads"] and "Flax 4" in d["reason"]
+    assert failed(e={**ext, "heads": 3})["failed"] == ["heads"]
+    # the float32 check: 1e-4 in the critic's units, a run really in float32
+    d = failed(f={**f32, "max_abs": 3e-4})
+    assert d["failed"] == ["float32"] and "0.0003 > 0.0001" in d["reason"]
+    assert failed(f={**f32, "dtype32": "float64"})["failed"] == ["float32"]
+    assert failed(f={**f32, "max_abs": float("nan")})["failed"] == ["float32"]
+    # a measurement that raised fails every check it feeds
+    d = failed(g={"error": "ValueError: boom"})
+    assert d["failed"] == ["extractor", "heads"] and "critic: ValueError: boom" in d["reason"]
+    d = failed(f={"error": "ValueError: boom"})
+    assert d["failed"] == ["float32"] and "ValueError: boom" in d["reason"]
+    d = failed(g={**gap, "v": 1.0}, f={**f32, "max_abs": 1.0})
+    assert d["failed"] == ["extractor", "float32"]
+    assert d["reason"].index("extractor (") < d["reason"].index("; float32 (")
+
+
 _K3B = r"""
 import json, sys
 import jax
