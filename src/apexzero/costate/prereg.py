@@ -202,7 +202,10 @@ def constants() -> dict:
                      "containment": "a descriptive that raises is recorded as {'error': "
                                     "'<type>: <message>'} (analysis.guarded); C1, C2, C2-sw, "
                                     "C3-w, C3-R2c and the decision rules of C1-pattern, "
-                                    "C1-own, value accuracy, C1-limit and C1-braking raise",
+                                    "C1-own, value accuracy, C1-limit and C1-braking raise; "
+                                    "a network that failed K3 after the tag "
+                                    "(critic.k3_trained) decides nothing, so its whole "
+                                    "analysis or description is contained",
                      # C3-int is deferred (``DEFERRED``): kept, not pre-registered
                      "c3_int_perm": AN.C3_INT_PERMUTATIONS, "c3_strata": AN.C3_STRATA,
                      "c3_int_pairs": [list(p) for p in AN.C3_INT_PAIRS],
@@ -260,10 +263,12 @@ def constants() -> dict:
                        "fail": "its C1, C1-heads, C1-own (and held form), C1-pattern, "
                                "C1-limit, C1-braking, W1, C2 and C2-sw descriptive ('K3 "
                                "trained check failed: ...'); missing from every decision it "
-                               "enters (per network, the variants, C3-w, C3-R2c)"}},
+                               "enters (per network, the variants, C3-w, C3-R2c); its whole "
+                               "analysis or description contained (analysis.guarded)"}},
         "own": {"k3b": [OW.K3B_MEDIAN, OW.K3B_P95], "plants": list(OW.OWN_PLANTS),
-                "v_steps": OW.V_STEPS, "restart_every": OW.RESTART_EVERY,
-                "manifold_at": OW.MANIFOLD_AT, "accel_weights": OW.ACCEL_WEIGHTS},
+                "k3b_steps": OW.K3B_STEPS, "v_steps": OW.V_STEPS,
+                "restart_every": OW.RESTART_EVERY, "manifold_at": OW.MANIFOLD_AT,
+                "accel_weights": OW.ACCEL_WEIGHTS},
         "gates": {"k1_kink_share": GT.K1_KINK_SHARE, "k2_tol": GT.K2_TOL,
                   "k2b": [GT.K2B_MARGIN, GT.K2B_SEVERITIES, list(GT.K2B_RAMP), GT.K2B_TOL],
                   "k4": [list(GT.K4_SNR), GT.K4_TOL, GT.K4_ZERO_TOL, GT.K4_READOUT_TOL],

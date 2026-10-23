@@ -95,6 +95,8 @@ GAMMA = 0.995
 OWN_PLANTS = ("no_clip", "gamma_power", "prev_off_by_one")
 K3B_MEDIAN = 1e-3
 K3B_P95 = 1e-2
+K3B_STEPS = 160               # K3b's closed loops from each A2 cell start (and its trained
+                              # analogue's); another count is a partial K3b run
 ZERO_ATOL = 1e-6              # Gate 1's zero-field rule (kkt.py:163)
 RICH_RTOL = NW.RICH_RTOL
 ROUNDOFF = 64.0               # x eps |J| / h: the round-off floor of FD(h) - FD(h/2)

@@ -410,22 +410,22 @@ def import_problems(root: Path = ROOT, modules: dict | None = None) -> list[str]
 
 
 def _partial(args) -> list[str]:
-    """The options that make a run partial: another --out, --limit, --n, --n-extend, and
-    --network except on the nulls stage when the networks given cover the decision networks
-    (named by run directory: G1 and runs/dr-pilot-200M are the same); and those that change a
-    bound output from its pre-registered form: k0 without 'n' in --kinds (Section 13: K0 on
-    every A2 key and every anchored final), any k4 --which (its pass covers only the plants
-    that ran), a k5 --ceiling other than 'mlp' (ridge is the dry runs' stand-in), nulls
-    --mlp-alphas or --mlp-maxiter other than the record's (``probes.MLP_ALPHAS``,
-    ``probes.MLP_MAXITER``), and inputs --partitions other than all of them
-    (``states.N_PARTITIONS``)."""
+    """The options that make a run partial: another --out, any --limit, --n or --n-extend
+    given (0 included), and --network except on the nulls stage when the networks given
+    cover the decision networks (named by run directory: G1 and runs/dr-pilot-200M are the
+    same); and those that change a bound output from its pre-registered form: k0 without 'n'
+    in --kinds (Section 13: K0 on every A2 key and every anchored final), any k4 --which (its
+    pass covers only the plants that ran), a k5 --ceiling other than 'mlp' (ridge is the dry
+    runs' stand-in), k3b --steps other than ``own.K3B_STEPS``, nulls --mlp-alphas or
+    --mlp-maxiter other than the record's (``probes.MLP_ALPHAS``, ``probes.MLP_MAXITER``),
+    and inputs --partitions other than all of them (``states.N_PARTITIONS``)."""
     out = []
     stage = getattr(args, "stage", None)
     if Path(getattr(args, "out", OUT)).resolve() != OUT.resolve():
         out.append("--out")
     for name in ("limit", "n", "network", "n_extend"):
         v = getattr(args, name, None)
-        if v in (None, [], False):
+        if v is None or v is False or (isinstance(v, list) and not v):   # 0 is given
             continue
         if name == "network" and stage == "nulls":
             from apexzero.costate import prereg as PR
@@ -439,6 +439,12 @@ def _partial(args) -> list[str]:
         out.append("--which")
     if stage == "k5" and getattr(args, "ceiling", "mlp") != "mlp":
         out.append("--ceiling")
+    if stage == "k3b":
+        from apexzero.costate import own as OW
+
+        s = getattr(args, "steps", None)
+        if s is not None and int(s) != OW.K3B_STEPS:
+            out.append("--steps")
     if stage == "nulls":
         from apexzero.costate import probes as PB
 
@@ -1282,14 +1288,16 @@ def own_of(agent, world, every: int = OWN_EVERY, bank=None, net=None, keys=None,
             "valid": valid, "rows": rows, "v_rows": v_rows, "v_steps": np.int64(v_steps), **vo}
 
 
-def k3b_trained(agent, bank=None, cells=K3B_TRAINED_CELLS, steps: int = 160) -> dict:
+def k3b_trained(agent, bank=None, cells=K3B_TRAINED_CELLS, steps: int | None = None) -> dict:
     """K3b's trained analogue (Section 7: after the tag each network runs one; a network
     that fails has descriptive C1-own): ``own.k3b_start`` on the network's own policy from
-    A2 cell starts, with the on-manifold check, pooled by ``own.k3b_decision``."""
+    A2 cell starts, closed loops of ``steps`` (default ``own.K3B_STEPS``, K3b's), with the
+    on-manifold check, pooled by ``own.k3b_decision``."""
     from apexzero.costate import inputs as IN
     from apexzero.costate import own as OW
     from apexzero.fields import network as NW
 
+    steps = OW.K3B_STEPS if steps is None else int(steps)
     bank_, cells_ = IN.design()
     bank = bank_ if bank is None else bank
     net = NW.agent_net(agent)
@@ -1664,7 +1672,8 @@ def analyse_network(name: str, world, frozen: dict, crit: dict, nulls: dict, fla
     key-weighted variants carry their slope CIs), C1-braking and its non-braking counterpart
     bootstrapped over their own geometries, and the accel-held pullback ('pullback:held',
     Section 3.2's pre-registered sensitivity: ``crit['g_held']`` scored as C1 with every null
-    left out, ``nulls_omitted``); and C1's descriptive strata table
+    left out, ``nulls_omitted``, descriptive: its 'band', no decision or label); and C1's
+    descriptive strata table
     (``analysis.STRATA['C1']``, or ``strata``: each stratum with its own geometries'
     bootstrap, ``by_stratum``; a stratum whose rows the decision or a variant already scored
     reuses that record, so a named secondary has one CI; the kappa-clipped strata from
@@ -1814,8 +1823,13 @@ def analyse_network(name: str, world, frozen: dict, crit: dict, nulls: dict, fla
         out["C1-braking"] = out["sensitivity"]["braking_keys"]
     if variants is None or "pullback:held" in variants:
         def held() -> dict:
+            # without nulls C1's null rule is vacuous: the record holds its band, never a
+            # decision or a label (as a strata row's)
             r = c1_bare(fr, crit["g_held"][:, 0], counts).record()
-            r.update(nulls_omitted=sorted(nl), label_scope="descriptive", pullback="held")
+            r["band"] = r.pop("decision")
+            r.pop("label_at_scale")
+            r.update(nulls_omitted=sorted(nl), descriptive=True, label_scope="descriptive",
+                     pullback="held")
             return r
 
         out["sensitivity"]["pullback:held"] = AN.guarded(held)
@@ -2443,7 +2457,9 @@ def build_parser() -> argparse.ArgumentParser:
             p.add_argument("--n-extend", type=int, default=None,
                            help="insurance solves (default 30; fewer is partial)")
         if name == "k3b":
-            p.add_argument("--steps", type=int, default=160)
+            p.add_argument("--steps", type=int, default=None,
+                           help="closed-loop steps (default own.K3B_STEPS = 160; another "
+                                "is partial)")
         if name == "k4":
             p.add_argument("--which", nargs="*", default=None)
         if name == "k5":

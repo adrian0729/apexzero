@@ -269,6 +269,10 @@ def test_import_rule_and_record_pieces():
     assert c["analysis"]["strata"] == {h: list(v) for h, v in AN.STRATA.items()}
     assert c["analysis"]["strata_per_network_columns"] == ["kappa_clipped"]
     assert c["own"]["v_steps"] == 1000 and c["own"]["restart_every"] == 20
+    assert c["own"]["k3b_steps"] == OW.K3B_STEPS == 160
+    # a network that failed K3 after the tag: its analysis is contained (stage_analyse)
+    assert "failed K3 after the tag" in c["analysis"]["containment"]
+    assert "contained" in c["critic"]["k3_trained"]["fail"]
 
 
 _SUBPROCESS = r"""
@@ -784,8 +788,10 @@ def test_bound_arrays_and_cross_checks(tmp_path):
 
 def test_options_that_change_a_bound_output_are_partial():
     """Review finding: k0 without N's finals (its old default), k4 --which, k5 --ceiling
-    ridge, the nulls' MLP options and inputs --partitions wrote stamped, non-partial outputs
-    that prereg would bind."""
+    ridge, k3b --steps, the nulls' MLP options and inputs --partitions wrote stamped,
+    non-partial outputs that prereg would bind; and a --n, --limit or --n-extend of 0 (a
+    vacuous K2b passes on no key) read as not given."""
+    from apexzero.costate import own as OW
     from apexzero.costate import probes as PB
     from apexzero.costate import states as ST
 
@@ -795,7 +801,7 @@ def test_options_that_change_a_bound_output_are_partial():
     def part(*argv):
         return cs._partial(ap.parse_args(list(argv)))
 
-    for stage in ("k0", "k4", "k5", "nulls", "inputs"):
+    for stage in ("k0", "k3b", "k4", "k5", "nulls", "inputs"):
         assert part(stage) == [], stage
     assert ap.parse_args(["k0"]).kinds == ["a2", "n"]
     assert part("k0", "--kinds", "a2") == ["--kinds"]
@@ -809,6 +815,14 @@ def test_options_that_change_a_bound_output_are_partial():
     assert part("inputs", "--partitions", "2") == ["--partitions"]
     assert part("inputs", "--partitions", str(ST.N_PARTITIONS)) == []
     assert part("k0", "--kinds", "a2", "--limit", "3") == ["--limit", "--kinds"]
+    assert OW.K3B_STEPS == 160 and ap.parse_args(["k3b"]).steps is None
+    assert part("k3b", "--steps", "20") == ["--steps"]
+    assert part("k3b", "--steps", str(OW.K3B_STEPS)) == []
+    for argv, opt in ((("k2b", "--n", "0"), "--n"), (("k3", "--n", "0"), "--n"),
+                      (("k2", "--n-extend", "0"), "--n-extend"),
+                      (("k0", "--limit", "0"), "--limit"),
+                      (("inputs", "--limit", "0"), "--limit")):
+        assert part(*argv) == [opt], argv
 
 
 def test_confirmatory_nulls_against_the_record_and_prereg_against_this_environment(
@@ -1202,7 +1216,10 @@ def test_every_pre_registered_variant_is_reported(tmp_path):
     held = out["sensitivity"]["pullback:held"]
     assert held["nulls_omitted"] == ["qss", "random_critics", "value_ridge"]
     assert held["null_diff"] == {} and held["label_scope"] == "descriptive"
-    assert held["pullback"] == "held"
+    assert held["pullback"] == "held" and held["descriptive"]
+    # without nulls C1's null rule is vacuous: its band, never a decision or a label
+    assert "decision" not in held and "label_at_scale" not in held
+    assert held["band"] in ("confirm", "refute", "inconclusive", "not testable")
     assert held["n_rows"] == out["C1"]["n_rows"]
     for k in ("stat", "ci", "r2c", "spearman_ci"):
         np.testing.assert_allclose(held[k], out["C1"][k], rtol=1e-12, atol=1e-14, err_msg=k)

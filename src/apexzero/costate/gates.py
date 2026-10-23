@@ -927,9 +927,10 @@ def k3_trained(agent, ob: np.ndarray, heads: int | None) -> dict:
     extractor), each network's head count against ``heads`` (``expected_heads``), and the
     float64 V against the float32 one (``critic.float32_gap``), judged by
     ``k3_trained_judge``. The trained marks refuse it before the tag, and that refusal is
-    never contained; after it each measurement is (``analysis.guarded``: one that raises
-    fails its checks with the error as the reason, so a network cannot crash the stage
-    here)."""
+    never contained; after it each of the three measurements is (``analysis.guarded``: one
+    that raises fails its checks with the error as the reason). The setup is not: a non-MLP
+    config, or a tree whose head count is not the config's, is ``critic.trained_critic``'s
+    refusal and stops the stage, as the network's ``critic_of`` would right after."""
     from apexzero.costate import critic as CR
 
     t0 = time.perf_counter()
@@ -951,11 +952,12 @@ def k3_trained_judge(gap: dict, ext: dict, f32: dict, heads: int | None,
                      cfg_heads: int) -> dict:
     """K3's after-the-tag pass (``k3_trained``'s measurements): 'extractor' every error of
     both extractors at most ``probes.EXTRACTOR_TOL`` = 1e-10, computed in float64; 'heads'
-    the config's, the tree's, Flax's and the probe extractor's head counts all equal to
-    ``heads``; 'float32' the float32 run computed in float32 and its largest |V64 - V32| at
-    most ``critic.F32_TOL`` = 1e-4 (the critic's units). A measurement that raised fails its
-    checks. 'decision' holds 'pass', the failed checks and, on a fail, the reason 'K3
-    trained check failed: <check> (<why>); ...'."""
+    the config's, the tree's (the config's by construction in ``k3_trained``:
+    ``critic.trained_critic`` refuses a mismatch), Flax's and the probe extractor's head
+    counts all equal to ``heads``; 'float32' the float32 run computed in float32 and its
+    largest |V64 - V32| at most ``critic.F32_TOL`` = 1e-4 (the critic's units). A
+    measurement that raised fails its checks. 'decision' holds 'pass', the failed checks
+    and, on a fail, the reason 'K3 trained check failed: <check> (<why>); ...'."""
     from apexzero.costate import critic as CR
 
     tol = PB.EXTRACTOR_TOL
@@ -993,15 +995,17 @@ def k3_trained_judge(gap: dict, ext: dict, f32: dict, heads: int | None,
 # ------------------------------------------------------------------------- K3b
 
 
-def k3b(cells: Sequence[tuple[str, int]], cfg, obs_rms, steps: int = 160, bank=None,
+def k3b(cells: Sequence[tuple[str, int]], cfg, obs_rms, steps: int | None = None, bank=None,
         hybrid_seed: int = 0) -> dict:
     """K3b on (policy, A2 cell) pairs, policy 'linear' (step 2's linear driver), 'accel'
     (the linear driver reading the accel channels, ``own.accel_driver``: the on-manifold
     check's plant, its held gradients must fail) or 'hybrid' (the small-gain random-init
-    hybrid on G1's architecture and obs_rms): a float64 process."""
+    hybrid on G1's architecture and obs_rms), closed loops of ``steps`` (default
+    ``own.K3B_STEPS`` = 160): a float64 process."""
     from apexzero.costate import own as OW
     from apexzero.fields import network as NW
 
+    steps = OW.K3B_STEPS if steps is None else int(steps)
     if bank is None:
         bank, cells_ = K.design(stimuli_dir())
     else:

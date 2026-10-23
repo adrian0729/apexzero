@@ -1300,8 +1300,10 @@ run's world (T's 9,887 rows), with J_z under each of the 9 decision networks' ob
   of the on-manifold g. It uses T's interior, each network's decision mask, C1's calibration
   with the frozen winsorisation bounds and clipping, the geometry bootstrap and the slope CIs
   per component.
-- It has no nulls: 'nulls_omitted' lists every one, the random critics included. Its label scope
-  is descriptive, and it reports its band, never a decision or a label.
+- It has no nulls: 'nulls_omitted' lists every one, the random critics included, so C1's null
+  rule is vacuous for it. Its record is marked 'descriptive', with label scope descriptive. It
+  reports its band ('band', as a strata row does) and has no 'decision' or 'label_at_scale'
+  field.
 - 'C1-own_held', beside C1-own, is the critic's accel-held pullback against λ^own's accel-held
   form. It uses C1-own's rows (valid own runs with a finite held λ^own) and C1-own's rules, with
   no nulls. It is descriptive, with the status "descriptive (the accel-held form)".
@@ -1364,8 +1366,10 @@ run's world (T's 9,887 rows), with J_z under each of the 9 decision networks' ob
 
   The primary decisions and the named secondaries' decision rules raise.
 - One more case: a network that failed K3's after-the-tag checks decides nothing, so its whole
-  analysis or description is contained (next paragraph).
-- The record's constants carry the rule (constants()['analysis']['containment']).
+  analysis or description is contained (next paragraph). Its value accuracy is contained with
+  it.
+- The record's constants carry the rule, the K3-failed case included
+  (constants()['analysis']['containment'], and constants()['critic']['k3_trained']['fail']).
 
 **K3 after the tag (#18; Section 7 K3, "trained networks after it, on D" and "After the tag").**
 - **Place.** K3 runs in the critic stage after the tag, after the freeze check and the unlock.
@@ -1393,7 +1397,11 @@ run's world (T's 9,887 rows), with J_z under each of the 9 decision networks' ob
   the tag.
 - **Head rule.** Four counts must all equal 5 for each of the 31 generalists and 0 for S1–S3:
   the config's ensemble_heads, the tree's head count, Flax's with_heads output count and the
-  probe extractor's count (`gates.expected_heads`, `probes.N_HEADS_GENERALIST`).
+  probe extractor's count (`gates.expected_heads`, `probes.N_HEADS_GENERALIST`). The tree's
+  count equals the config's by construction there: `critic.trained_critic` refuses a tree
+  whose head count is not the config's, before any measurement ("Containment" below). So the
+  judge can fail on the config's count against the expected one, on Flax's or on the probe
+  extractor's, never on a tree that disagrees with its config.
 - **Float32 check.**
   - V32 is RunningMeanStd.normalize and Critic.apply in float32, with x64 off, on the float32
     params and the raw D observation rounded to float32.
@@ -1405,9 +1413,15 @@ run's world (T's 9,887 rows), with J_z under each of the 9 decision networks' ob
     The largest relative difference and the largest |V| are reported, not judged
     (`critic.F32_TOL`, `critic.float32_gap`).
 - **Containment.** Before the tag the checks are refused (the trained marks), and that refusal
-  is never contained. After the tag, a measurement that raises is recorded as {'error': ...}
-  and fails its check, with the error as the reason. So a network cannot crash the critic stage
-  there.
+  is never contained. After the tag, each of the three measurements (both extractor gaps and
+  the float32 gap) that raises is recorded as {'error': ...} and fails its check, with the
+  error as the reason.
+  - The network's setup is not contained. A non-MLP config, or a tree whose head count is not
+    the config's, is a refusal in `critic.trained_critic` and stops the critic stage. The
+    network's critic arrays (`critic_of`, unguarded right after) would stop it the same way,
+    and the design provides no way to skip that network's arrays.
+  - These are pre-tag matters: `load_agent` pins each checkpoint by sha256, so the trees after
+    the tag are the ones pinned before it.
 - **A fail** (new rule, as H4R's gate2-trained rule treats a failing network). A network that
   fails any of the three checks (extractor, heads, float32) keeps every statistic.
   - These records are marked descriptive: C1, C1-heads, C1-own and its accel-held form,
@@ -1474,9 +1488,12 @@ A non-confirmatory analysis without the own stage's output records C1-own and it
   current run's hash. The pre-tag stages cannot rewrite them after the tag, so a logged post-tag
   code deviation does not block the confirmatory analysis.
 - **Partial runs (#15).** A partial pre-tag run cannot be bound. These options make a run
-  partial: --out, --limit, --n, --n-extend and --network (on the nulls stage, --network only when
-  it does not cover the decision networks). So do these:
+  partial: --out, any --limit, --n or --n-extend given (0 included: a K2b on --n 0 passes on no
+  key), and --network (on the nulls stage, --network only when it does not cover the decision
+  networks). So do these:
   - k0 without N's anchored finals (--kinds without n; the default is now a2 and n);
+  - k3b with --steps other than 160 (`own.K3B_STEPS`, the record's constants own.k3b_steps; K3b's
+    trained analogue after the tag uses the same count);
   - k4 with --which naming plants;
   - k5 with --ceiling ridge;
   - nulls with --mlp-alphas other than (10⁻⁴, 10⁻³, 10⁻²), or --mlp-maxiter other than 500
@@ -1520,7 +1537,20 @@ output after the decisions are committed:
   accuracy and K3's after-the-tag checks);
 - the share of g_vx from the accel term, and the accel-channel sensitivity (`accel_sens` is
   stored in the critic files, not reported);
-- C1-heads' per-head R²_c and the inter-head reliability ρ_k.
+- C1-heads' per-head R²_c and the inter-head reliability ρ_k;
+- from Section 6's 'Descriptive only' list: Δ1; R²_{z⊕D₂}, the decoy-only R² and R²_template;
+  conditioning on a*_{t+k}; λ probed with channels 207 and 210–211 residualised; the switching
+  function against m, λ(t⁻) − λ(t⁺) and the action-projected critic signal q_c with its
+  association with completion; the critic's layers, the heads' units and MLP probes of trained
+  networks; context prices; the left/right asymmetry index; a pooled Spearman for C3; and C2's
+  statistic against completion.
+
+This list is not exhaustive. Any descriptive in Sections 3–6 that `analyse_network`,
+`describe_network`, `probes_of`, `c3w_of` or `c3r2c_of` (scripts/costate.py) does not compute is
+outside the confirmatory run, and exploratory if run later. Some of Section 6's items are
+covered elsewhere: N by deferred item 6, the policy's own width price by deferred item 8.
+C3-R²c, like C3-w, gets none of Section 4's weight, partition or sub-score sensitivities. It is
+computed once, on partition 0, with no variants.
 
 **Where it runs, and the order before the tag (#12).** This replaces the costate-dev procedure
 in the v2.2 code, and step 5 of Section 13's "Order before the tag".
@@ -1604,7 +1634,7 @@ tag.
 | 12 | The documented tag and post-tag procedure was on costate-dev | Code: scripts/costate.py's docstring and prereg's message. Rule: "Where it runs" |
 | 13 | K3 accepted a crashed subprocess and stale reports | Code: `stage_k3`, `_subprocess` (scripts/costate.py) |
 | 14 | C1-own and value accuracy could go undecided for good | As #11 |
-| 15 | `_partial` missed options that change a bound output | Code: `_partial`, k0's default (scripts/costate.py). Rule: "Partial runs" |
+| 15 | `_partial` missed options that change a bound output | Code: `_partial`, k0's default (scripts/costate.py), `own.K3B_STEPS`. Rule: "Partial runs" |
 | 16 | The overlap partial's weights summed to 26/31 | Code: `analysis._partial_c3`. Rule: "C3-w and C3-R²c" |
 | 17 | The nulls were stamp-checked against the current run; environments were checked only at the end | Code: `confirmatory_input_problems`, `bound_env_problems` (scripts/costate.py). Rule: "The record and the freeze" |
 | 18 | K3's after-the-tag checks were not implemented | Code: `gates.k3_trained`, `gates.k3_trained_judge`, `critic.net_apply_gap`, `critic.float32_gap`, `probes.extractor_gap`, `analysis.k3_trained_failed`, `k3_trained` and `stage_critic` (scripts/costate.py). Rule: "K3 after the tag" |
