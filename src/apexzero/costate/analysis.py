@@ -43,7 +43,15 @@ R2_c is the R2_wd (``probes.r2``: SST within direction for the mirror-odd
 components) of the calibrated g on the scored rows, averaged over K_P; components carry
 their own row masks (``valid``: s is dropped where it is structurally unobservable, the
 tau_s rule, ``states.observability``; K2b's per-phase exclusions; multi-basin keys never
-enter T). Nulls go through the same calibration and are compared
+enter T), and a row is scored only where its fold has a calibration (a fold with fewer than
+3 training rows, e.g. every fold of a stratum inside one geometry, has none: its rows are
+dropped and counted, never scored against a filled-in 0; a component left without rows drops
+out of the mean, and with none left C1 is 'not testable' with its reason). Nulls go
+through the same calibration on the same scored rows; the ones fitted on or built from
+targets (``FOLD_NULLS``: the value fits and the far-geometry lambda) are [F, n, m] per
+held-out fold, as C2's lambda_res (``nulls`` module docstring 'Per held-out fold'), and
+fold f's calibration of such a null is fitted on slice f's training rows and predicts fold
+f's rows from slice f, so no target of fold f reaches fold f's prediction. They are compared
 by a paired cluster bootstrap over geometries (the same resamples, ``probes.cluster_counts``
 over T's geometries): value-fit ridge and MLP, QSS, clearance barrier, phase-matched
 far-geometry lambda (``nulls``) and the random-init critics, whose maximum over the 20 seeds
@@ -89,7 +97,11 @@ rho_obs - q_0.05(null), and it fires when that is below ``C3_STRONG`` = 0.3 (wit
 of about 0.20 it fires about 40% of the time under an exact null, as Section 6 states).
 There is no reversed-sign refute. The covariates (competence, overlap) are reported as
 stratified partial associations: within each stratum the ranks of x and y are residualised on
-the covariate's ranks, with the same permutation scheme (descriptive).
+the covariate's ranks, with the same permutation scheme (descriptive). A stratum holding a
+network without the covariate is left out of that partial whole, and the size weights are
+renormalised over the strata scored (the networks without it are listed: step 2 has no
+fields-a2 rows for runs/dr-pilot-v2-tilt30-s3 and -s4, so the overlap partial scores 26 of
+the 31 generalists, base-v2 left out).
 
 **C3-int** (``c3_int``; deferred, so not pre-registered, though the record keeps its
 constants): per network x geometry, the signed calibrated critic residual of each K_P
@@ -175,6 +187,9 @@ DOUBLE_CENTRE_ITERS = 200
 DOUBLE_CENTRE_TOL = 1e-12
 NULL_NAMES = ("value_ridge", "value_mlp", "value_ridge_window", "qss", "barrier",
               "far_geometry", "random_critics")
+# the nulls fitted on or built from targets: [F, n, m] per held-out fold (``calibrate``;
+# ``nulls`` module docstring 'Per held-out fold'), on partition 0's folds only
+FOLD_NULLS = ("value_ridge", "value_mlp", "value_ridge_window", "far_geometry")
 C3W_ROWS = "interior"         # C3-w's x is fitted and scored on T's interior stratum (frozen;
                               # the full-T and near-limit x are pre-registered descriptives)
 W1_ROWS = "interior"          # W1's stratum (frozen with C3-w's)
@@ -359,6 +374,19 @@ class Calibrated:
         return pred
 
 
+def fold_slices(g: np.ndarray, n: int, n_folds: int = ST.N_FOLDS) -> np.ndarray:
+    """[F, n, m] a regressor per held-out fold: a 3-D ``g`` as given (slice f: what every row
+    carries while fold f is held out, ``FOLD_NULLS``), a 1-D or 2-D one the same in every
+    slice."""
+    g = np.asarray(g, float)
+    if g.ndim == 3:
+        if g.shape[:2] != (n_folds, n):
+            raise ValueError(f"a per-fold regressor {g.shape}: expected [{n_folds}, {n}, m]")
+        return g
+    g = np.atleast_2d(g.T).T.reshape(n, -1)
+    return np.broadcast_to(g, (n_folds, *g.shape))
+
+
 def calibrate(g: np.ndarray, lam: np.ndarray, outer: np.ndarray, w: np.ndarray,
               fit_rows: np.ndarray | None = None, valid: np.ndarray | None = None,
               n_folds: int = ST.N_FOLDS, direction: np.ndarray | None = None,
@@ -366,9 +394,13 @@ def calibrate(g: np.ndarray, lam: np.ndarray, outer: np.ndarray, w: np.ndarray,
     """C1's per-fold calibration (module docstring 'C1') of each column of ``lam`` on the
     same column of ``g``, fitted on the training folds' ``fit_rows`` that are ``valid`` for
     the component; ``odd`` [m] the mirror-odd columns (intercepts per ``direction``);
-    ``bounds`` [m, 2] the targets' winsorisation bounds the predictions are clipped to."""
-    g, lam = np.atleast_2d(np.asarray(g, float).T).T, np.atleast_2d(np.asarray(lam, float).T).T
+    ``bounds`` [m, 2] the targets' winsorisation bounds the predictions are clipped to.
+    ``g`` [n, m], or [F, n, m] per held-out fold (a fold-dependent null, ``FOLD_NULLS``):
+    fold f is fitted on slice f's training rows and predicts fold f's rows from slice f, so
+    nothing of fold f enters its own calibration through the regressor."""
+    lam = np.atleast_2d(np.asarray(lam, float).T).T
     n, m = lam.shape
+    gs = fold_slices(g, n, n_folds)
     w = np.asarray(w, float)
     outer = np.asarray(outer, int)
     fit = np.ones(n, bool) if fit_rows is None else np.asarray(fit_rows, bool)
@@ -379,11 +411,12 @@ def calibrate(g: np.ndarray, lam: np.ndarray, outer: np.ndarray, w: np.ndarray,
     b = np.full((n_folds, m), np.nan)
     cl = np.zeros((n_folds, m), bool)
     for f in range(n_folds):
+        gf = gs[f]
         for k in range(m):
-            tr = (outer != f) & fit & val[:, k] & np.isfinite(g[:, k]) & np.isfinite(lam[:, k])
+            tr = (outer != f) & fit & val[:, k] & np.isfinite(gf[:, k]) & np.isfinite(lam[:, k])
             if tr.sum() < 3:
                 continue
-            x, y, w0 = g[tr, k], lam[tr, k], w[tr]
+            x, y, w0 = gf[tr, k], lam[tr, k], w[tr]
             dk = None if d is None else d[tr]
             bk = cal_slope(x, y, w0, dk, bool(odd[k]))
             cl[f, k] = bk < 0.0
@@ -400,7 +433,7 @@ def calibrate(g: np.ndarray, lam: np.ndarray, outer: np.ndarray, w: np.ndarray,
             b[f, k] = bk
     bnd = None if bounds is None else np.asarray(bounds, float).reshape(m, 2)
     cal = Calibrated(np.zeros((n, m)), a, b, cl, None, bnd)
-    raw = cal.apply(g, outer, d)
+    raw = cal.apply(gs[outer, np.arange(n)], outer, d)     # each row from its own fold's slice
     share = None
     if bnd is not None:
         with np.errstate(invalid="ignore"):
@@ -544,12 +577,15 @@ class C1:
     slope_gl_ci: np.ndarray | None = None    # [m, 2]
     inv_slope_ci: np.ndarray | None = None   # [m, 2] CI of 1 / b_lg
     n_stratum: int | None = None             # the stratum's rows (``rows``), any component
+    n_uncalibrated: np.ndarray | None = None  # [m] valid rows dropped: no out-of-fold fit
+    reason: str | None = None                # why 'not testable'
 
     def record(self) -> dict:
         def lst(v):
             return None if v is None else np.asarray(v).tolist()
 
-        return {"names": list(self.names), "r2c": self.r2c.tolist(), "stat": self.stat,
+        extra = {} if self.reason is None else {"reason": self.reason}
+        return {**extra, "names": list(self.names), "r2c": self.r2c.tolist(), "stat": self.stat,
                 "ci": list(self.ci), "null_r2c": {k: np.asarray(v).tolist()
                                                   for k, v in self.null_r2c.items()},
                 "null_diff": {k: list(v) for k, v in self.null_diff.items()},
@@ -558,7 +594,7 @@ class C1:
                 "slope_gl": lst(self.slope_gl), "slope_gl_ci": lst(self.slope_gl_ci),
                 "inv_slope_lg_ci": lst(self.inv_slope_ci),
                 "n_rows": self.n_rows.tolist(), "n_stratum": self.n_stratum,
-                "decision": self.decision,
+                "n_uncalibrated": lst(self.n_uncalibrated), "decision": self.decision,
                 "label_at_scale": self.label,
                 "calibration": {"a": self.calibrated.a.tolist(), "b": self.calibrated.b.tolist(),
                                 "clamped": self.calibrated.clamped.tolist(),
@@ -643,6 +679,12 @@ def _ci_inf(draws: np.ndarray, level: float = PB.CI_LEVEL) -> tuple[float, float
     return tuple(np.inf if v > fin.max() else (-np.inf if v < fin.min() else v) for v in q)
 
 
+def _null_array(x, n: int) -> np.ndarray:
+    """A null's gradient as [n, m], or [F, n, m] per held-out fold as given."""
+    x = np.asarray(x, float)
+    return x if x.ndim == 3 else x.reshape(n, -1)
+
+
 def c1(g: np.ndarray, lam: np.ndarray, outer: np.ndarray, w: np.ndarray, cluster: np.ndarray,
        n_clusters: int, direction: np.ndarray, rows: np.ndarray,
        nulls: dict[str, np.ndarray | list[np.ndarray]] | None = None,
@@ -650,21 +692,30 @@ def c1(g: np.ndarray, lam: np.ndarray, outer: np.ndarray, w: np.ndarray, cluster
        counts: np.ndarray | None = None, fit_rows: np.ndarray | None = None,
        slope_boot: bool | str = True, bounds=None) -> C1:
     """C1 on ``rows`` (the interior stratum) of g [n, m] against lambda [n, m] (winsorised
-    targets, columns ``names``). ``nulls``: name -> a gradient [n, m] put through the same
-    calibration, or a list of them (the random critics: the per-draw maximum). ``fit_rows``
-    defaults to ``rows``; ``valid`` [n, m] the per-component row mask (observability, K2b);
-    ``bounds`` [m, 2] the targets' winsorisation bounds the calibrated predictions are
-    clipped to (the critic's, every null's and every random critic's alike). The pooled
-    slopes' CIs are bootstrapped for a confirm (``slope_boot`` True: the label's), always
-    ('always': Section 6's 'slope CIs per component and stratum') or never (False)."""
+    targets, columns ``names``). ``nulls``: name -> a gradient [n, m], or [F, n, m] per
+    held-out fold (``FOLD_NULLS``: ``calibrate`` fits and predicts fold f from slice f), put
+    through the same calibration, or a list of them (the random critics: the per-draw
+    maximum). ``fit_rows`` defaults to ``rows``; ``valid`` [n, m] the per-component row mask
+    (observability, K2b); ``bounds`` [m, 2] the targets' winsorisation bounds the calibrated
+    predictions are clipped to (the critic's, every null's and every random critic's alike).
+    A component is scored on its valid rows that have an out-of-fold calibration (a fold
+    with fewer than 3 training rows has none: its rows are dropped and counted,
+    'n_uncalibrated', never scored against a filled-in prediction); the nulls are scored on
+    the same rows (a null without a prediction on one of them predicts 0 there). A
+    component left without a row drops out of the mean, and with none left C1 is 'not
+    testable' ('reason'). The pooled slopes' CIs are bootstrapped for a confirm
+    (``slope_boot`` True: the label's), always ('always': Section 6's 'slope CIs per
+    component and stratum') or never (False)."""
     names = tuple(names)
-    g = np.asarray(g, float).reshape(len(w), -1)
-    lam = np.asarray(lam, float).reshape(len(w), -1)
+    n = len(w)
+    g = np.asarray(g, float).reshape(n, -1)
+    lam = np.asarray(lam, float).reshape(n, -1)
     m = lam.shape[1]
     rows = np.asarray(rows, bool)
+    outer = np.asarray(outer, int)
     direction = np.asarray(direction)
     fit_rows = rows if fit_rows is None else np.asarray(fit_rows, bool)
-    val = np.ones((len(w), m), bool) if valid is None else np.asarray(valid, bool)
+    val = np.ones((n, m), bool) if valid is None else np.asarray(valid, bool)
     val = val & np.isfinite(lam) & np.isfinite(g)
     counts = PB.cluster_counts(n_clusters) if counts is None else np.asarray(counts)
     odd = _names_odd(names)
@@ -674,9 +725,8 @@ def c1(g: np.ndarray, lam: np.ndarray, outer: np.ndarray, w: np.ndarray, cluster
     null_cal = {}
     for k_, v in nulls.items():
         vs = v if isinstance(v, list) else [v]
-        null_cal[k_] = [calibrate(np.asarray(x, float).reshape(len(w), -1), lam, outer, w,
-                                  fit_rows, val, direction=direction, odd=odd,
-                                  bounds=bounds).pred for x in vs]
+        null_cal[k_] = [calibrate(_null_array(x, n), lam, outer, w, fit_rows, val,
+                                  direction=direction, odd=odd, bounds=bounds).pred for x in vs]
     B = len(counts)
     r2c, draws = np.zeros(m), np.zeros((B, m))
     null_pt = {k_: np.zeros((len(v), m)) for k_, v in null_cal.items()}
@@ -685,10 +735,12 @@ def c1(g: np.ndarray, lam: np.ndarray, outer: np.ndarray, w: np.ndarray, cluster
     slope, slope_ci = np.full(m, np.nan), np.full((m, 2), np.nan)
     slope_gl, gl_ci = np.full(m, np.nan), np.full((m, 2), np.nan)
     inv_ci = np.full((m, 2), np.nan)
-    n_rows = np.zeros(m, int)
+    n_rows, n_uncal = np.zeros(m, int), np.zeros(m, int)
+    scored = rows[:, None] & val & np.isfinite(cal.pred)      # [n, m]: the scored rows
     for k in range(m):
-        sel = rows & val[:, k]
+        sel = scored[:, k]
         n_rows[k] = int(sel.sum())
+        n_uncal[k] = int((rows & val[:, k]).sum()) - n_rows[k]
         if not sel.any():
             r2c[k], draws[:, k] = np.nan, np.nan
             continue
@@ -696,8 +748,7 @@ def c1(g: np.ndarray, lam: np.ndarray, outer: np.ndarray, w: np.ndarray, cluster
         spans = []
         for k_, ps in null_cal.items():
             spans.append((k_, len(preds), len(ps)))
-            preds += [p[sel, k] for p in ps]
-        preds = [np.where(np.isfinite(p), p, 0.0) for p in preds]
+            preds += [np.where(np.isfinite(p[sel, k]), p[sel, k], 0.0) for p in ps]
         pt, dr = boot_r2(lam[sel, k], preds, w[sel], cluster[sel], n_clusters, counts,
                          direction[sel], bool(odd[k]))
         r2c[k], draws[:, k] = pt[0], dr[:, 0]
@@ -712,10 +763,13 @@ def c1(g: np.ndarray, lam: np.ndarray, outer: np.ndarray, w: np.ndarray, cluster
         slope[k], slope_gl[k] = ps["lg"], ps["gl"]
     ok = n_rows > 0                     # a component with no row left drops out of the mean
     if not ok.any():
-        rec = C1(names, r2c, float("nan"), (float("nan"), float("nan")), {}, {}, sp, sp_ci,
-                 slope, slope_ci, n_rows, "not testable", False, cal, slope_gl, gl_ci, inv_ci,
-                 int(rows.sum()))
-        return rec
+        n_f = len(np.unique(outer[rows]))
+        reason = ("no row" if not rows.any() else
+                  f"the rows span {n_f} outer fold: no out-of-fold calibration" if n_f < 2 else
+                  "no component keeps a valid row with an out-of-fold calibration")
+        return C1(names, r2c, float("nan"), (float("nan"), float("nan")), {}, {}, sp, sp_ci,
+                  slope, slope_ci, n_rows, "not testable", False, cal, slope_gl, gl_ci, inv_ci,
+                  int(rows.sum()), n_uncal, reason)
     stat = float(r2c[ok].mean())
     st_draws = draws[:, ok].mean(1)
     lo, hi = _ci(st_draws)
@@ -732,7 +786,7 @@ def c1(g: np.ndarray, lam: np.ndarray, outer: np.ndarray, w: np.ndarray, cluster
     if slope_boot == "always" or (slope_boot and decision == "confirm"):
         # the label's slope CIs (Section 12 decision 2), or every stratum's (descriptive)
         for k in np.flatnonzero(ok):
-            sel = rows & val[:, k]
+            sel = scored[:, k]
             ps = pooled_slopes(g[sel, k], lam[sel, k], w[sel], cluster[sel], counts,
                                direction[sel], bool(odd[k]))
             slope_ci[k] = _ci(ps["lg_draws"])
@@ -742,7 +796,7 @@ def c1(g: np.ndarray, lam: np.ndarray, outer: np.ndarray, w: np.ndarray, cluster
                  and np.all(gl_ci[ok, 0] >= SCALE_BAND[0])
                  and np.all(inv_ci[ok, 1] <= SCALE_BAND[1]))
     return C1(names, r2c, stat, (lo, hi), null_r2c, null_diff, sp, sp_ci, slope, slope_ci,
-              n_rows, decision, label, cal, slope_gl, gl_ci, inv_ci, int(rows.sum()))
+              n_rows, decision, label, cal, slope_gl, gl_ci, inv_ci, int(rows.sum()), n_uncal)
 
 
 # ------------------------------------------------------------------------- C1 secondaries
@@ -1109,18 +1163,22 @@ def c3_w(x: dict[str, float], y: dict[str, float], strata: dict[str, str] | None
            "upper_bound": ub, "null_sd": float(null.std()),
            "critical": float(np.quantile(null, 1.0 - alpha)), "decision": decision}
     if covariates:
-        out["partial"] = {name: _partial_c3(X, Y, np.array([cov.get(n, np.nan) for n in nets]),
-                                            idx, N) for name, cov in covariates.items()}
+        out["partial"] = {name: _partial_c3(X, Y, np.array([cov.get(n, np.nan) for n in nets],
+                                                           float), idx, nets)
+                          for name, cov in covariates.items()}
     return out
 
 
-def _partial_c3(X, Y, C, idx, N) -> dict:
+def _partial_c3(X, Y, C, idx, nets: Sequence[str]) -> dict:
     """Stratified partial Spearman: within each stratum the centred ranks of x and y
-    residualised on the centred ranks of the covariate (descriptive)."""
-    tot, ok = 0.0, True
-    for i in idx.values():
+    residualised on the centred ranks of the covariate, size-weighted over the strata it
+    scores (descriptive). A stratum with a network lacking the covariate (step 2 has no
+    fields-a2 rows for two base-v2 seeds, so no overlap) is skipped whole, the weights
+    renormalised over the scored strata, and the networks without it listed ('missing')."""
+    tot, n_scored, skipped = 0.0, 0, []
+    for s, i in idx.items():
         if not np.all(np.isfinite(C[i])):
-            ok = False
+            skipped.append(s)
             continue
         rx, ry, rc = _centred_ranks(X[i]), _centred_ranks(Y[i]), _centred_ranks(C[i])
         cc = rc @ rc
@@ -1128,8 +1186,11 @@ def _partial_c3(X, Y, C, idx, N) -> dict:
             rx = rx - (rx @ rc) / cc * rc
             ry = ry - (ry @ rc) / cc * rc
         den = np.sqrt((rx @ rx) * (ry @ ry))
-        tot += len(i) / N * (float(rx @ ry / den) if den > 0 else 0.0)
-    return {"rho": float(tot), "complete": ok}
+        tot += len(i) * (float(rx @ ry / den) if den > 0 else 0.0)
+        n_scored += len(i)
+    return {"rho": float(tot / n_scored) if n_scored else float("nan"),
+            "complete": not skipped, "n": n_scored, "strata_skipped": skipped,
+            "missing": [n for n, c in zip(nets, C, strict=True) if not np.isfinite(c)]}
 
 
 # ------------------------------------------------------------------------- C3-int
@@ -1389,7 +1450,8 @@ def strata_counts(tab, names: Sequence[str]) -> dict[str, int | None]:
 
 
 _C1_FIELDS = ("names", "r2c", "stat", "ci", "spearman", "spearman_ci", "slope", "slope_ci",
-              "slope_gl", "slope_gl_ci", "inv_slope_lg_ci", "n_rows", "null_diff", "reason")
+              "slope_gl", "slope_gl_ci", "inv_slope_lg_ci", "n_rows", "n_uncalibrated",
+              "null_diff", "reason")
 _C2_FIELDS = ("names", "passing", "r2_base", "r2_full", "gain", "raw", "partial", "stat", "ci",
               "scored_rows", "spearman_margin", "reason")
 

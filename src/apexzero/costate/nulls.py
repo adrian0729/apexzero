@@ -9,6 +9,18 @@ rows, clipped channels zeroed; critic.py's module docstring), and ``analysis.c1`
 them as it calibrates the critic. None reads a trained network; each reads one network's
 obs_rms (the input side, design Section 1: computed before the tag).
 
+**Per held-out fold** (review finding on the fold-dependent nulls; C2's standard,
+``states.Residuals.by_fold``). A null fitted on targets (the value fits, on V*inf or V*) or
+built from them (the far-geometry lambda) is stored as [F, n, 8] (``analysis.FOLD_NULLS``):
+slice f is what every row carries while outer fold f is held out, built without fold f's
+data, and ``analysis.calibrate`` fits fold f's calibration on slice f's training rows and
+predicts fold f's rows from slice f. One predictor per row, built without the row's own fold,
+let fold f's targets into the training rows' predictors that fit fold f's calibration, and
+calibrated a value fit on a mix of the other folds' fits (on the dry-run world the interior
+K_P-mean R2_c so built against per held-out fold: far-geometry lambda 0.585 and 0.591,
+G1's value-fit ridge 0.211 and 0.255; a weaker null made C1's paired rule easier to pass).
+The QSS and barrier values and the random critics read no target and stay [n, 8].
+
 - **Tail values** (``tail_values``): V*_t = sum_{tau >= t} gamma^(tau - t) r_tau of the key's
   plan, r_tau = (s_{tau+1} - s_tau)/10 - 0.02 ||a_tau - a_{tau-1}||^2 with a_{-1} = 0
   (window.py:470-490; the value the post-jump costate differentiates, targets.py's module
@@ -30,8 +42,9 @@ obs_rms (the input side, design Section 1: computed before the tag).
   does), z-scored by the weighted training SD with units below ``probes.MIN_SD`` dropped
   (``probes.scaler``), the penalty from ``probes.GRID`` by inner grouped CV on the frozen
   inner folds (``probes._select``, the probes' own selection); re-expressed on o as the
-  linear critic w'o + b (``critic.linear_critic``), and pulled back on the held-out fold's
-  rows (``fold_gradients``).
+  linear critic w'o + b (``critic.linear_critic``). Slice f pulls every row back through
+  fold f's fit (``fold_gradients``; no refit: a training row's slice-f gradient is that fit's
+  in-sample one, and no row of fold f entered it).
 - **Value-fit MLP** (``fit_value_mlp``): the 64-unit tanh MLP probe (``probes.mlp_fit``:
   weighted least squares on the standardised target, L-BFGS, penalty by inner CV over
   ``VALUE_MLP_ALPHAS``) on the same rows, as a JAX function of o (``_mlp_fn``).
@@ -61,9 +74,12 @@ obs_rms (the input side, design Section 1: computed before the tag).
   phi (approach 0-1 from the key's first T state to the optimum's brake onset s_b, braking
   1-2 to s_apex, corner 2-3 to s_c1, exit 3-4 over the 50 m after s_c1; ``phase_coordinate``);
   for every far geometry (``measures.far_geometry``: |ln R ratio| >= 0.4 or |delta theta| >=
-  45 deg) in the row's training folds, the key-weighted mean over its keys of their lambda
-  interpolated at phi (mirror-odd components sign-aligned to the row's direction); the
-  prediction is the median over those geometries. No held-out geometry lends its lambda.
+  45 deg) the key-weighted mean over its keys of their lambda interpolated at phi
+  (mirror-odd components sign-aligned to the row's direction); the prediction is the median
+  over those geometries. Slice f takes only far geometries outside fold f and outside the
+  row's own fold (``states.cross_fit``'s rule: a held-out row's slice is its own-fold-free
+  median, a training row's also leaves fold f out), so no geometry of fold f lends its lambda
+  to slice f.
 - **Random-init critics**: ``critic.random_critics`` (Section 5's 20 seeds of the network's
   own config, its obs_rms and sigma_R); ``analysis.c1`` takes their per-draw maximum.
 """
@@ -71,6 +87,7 @@ obs_rms (the input side, design Section 1: computed before the tag).
 from __future__ import annotations
 
 import functools
+import warnings
 from collections.abc import Sequence
 from dataclasses import dataclass
 
@@ -364,20 +381,24 @@ class Grads:
     g_held: np.ndarray
 
 
-def gradients(net_of_fold, keys: Sequence[KeyInput], fold_of_row: np.ndarray, n: int,
-              output: int = 0) -> Grads:
-    """Pull back, for each key, the net of the key's outer fold (``net_of_fold(f)``; a
-    CriticNet for every fold alike) on its rows (a key lies in one geometry, hence one fold)."""
+def gradients(net: CR.CriticNet, keys: Sequence[KeyInput], n: int, output: int = 0) -> Grads:
+    """Pull back one net on every key's rows."""
     y, g = np.full(n, np.nan), np.full((n, 8), np.nan)
     pi, gh = np.full((n, 2), np.nan), np.full((n, 8), np.nan)
     for k in keys:
-        f = int(fold_of_row[k.rows[0]])
-        net = net_of_fold(f) if callable(net_of_fold) else net_of_fold
         pb = CR.pullback(net, None, k.inp, k.oj)
         y[k.rows] = pb.value[:, output]
         g[k.rows], pi[k.rows], gh[k.rows] = pb.g[:, output], pb.pi[:, output], \
             pb.g_held[:, output]
     return Grads(y, g, pi, gh)
+
+
+def fold_gradients(fits: FoldNets, keys: Sequence[KeyInput], n: int, n_folds: int,
+                   output: int = 0) -> np.ndarray:
+    """[F, n, 8] a value fit's primary pullback per held-out fold (module docstring 'Per
+    held-out fold'): slice f pulls every key back through ``fits.net(f)``, fitted without
+    fold f."""
+    return np.stack([gradients(fits.net(f), keys, n, output).g for f in range(n_folds)])
 
 
 def z_rows(keys: Sequence[KeyInput], obs_rms: RunningMeanStd, n: int
@@ -417,9 +438,11 @@ def phase_coordinate(tab: io.Table) -> np.ndarray:
 
 
 def far_lambda(tab: io.Table, lam: np.ndarray, outer: np.ndarray, w: np.ndarray,
-               names: Sequence[str] = STATE_NAMES) -> np.ndarray:
-    """[n, m] the phase-matched far-geometry lambda of every row (module docstring)."""
+               names: Sequence[str] = STATE_NAMES, n_folds: int = ST.N_FOLDS) -> np.ndarray:
+    """[F, n, m] the phase-matched far-geometry lambda of every row per held-out fold (module
+    docstring): slice f from the far geometries in neither fold f nor the row's own fold."""
     lam = np.asarray(lam, float).reshape(len(w), -1)
+    outer = np.asarray(outer, int)
     phi = phase_coordinate(tab)
     key = np.asarray(tab["key_id"])
     t = np.asarray(tab["t"])
@@ -443,14 +466,15 @@ def far_lambda(tab: io.Table, lam: np.ndarray, outer: np.ndarray, w: np.ndarray,
     mean = acc / np.maximum(wsum, 1e-300)[:, None, None]             # [G, n, m]
     fold_g = np.array([int(outer[geo == g][0]) for g in range(G)])
     far = np.array([[FMS.far_geometry(gR[a], gR[b]) for b in range(G)] for a in range(G)])
-    use = far[geo] & (fold_g[None, :] != np.asarray(outer)[:, None])   # [n, G]
-    vals = np.where(use.T[:, :, None], mean, np.nan)
-    with np.errstate(all="ignore"):
-        import warnings
-
-        with warnings.catch_warnings():
+    own = far[geo] & (fold_g[None, :] != outer[:, None])              # [n, G]
+    out = np.full((n_folds, len(w), lam.shape[1]), np.nan)
+    for f in range(n_folds):
+        use = own & (fold_g[None, :] != f)
+        vals = np.where(use.T[:, :, None], mean, np.nan)
+        with np.errstate(all="ignore"), warnings.catch_warnings():
             warnings.simplefilter("ignore", RuntimeWarning)
-            return np.nanmedian(vals, axis=0)
+            out[f] = np.nanmedian(vals, axis=0)
+    return out
 
 
 # ------------------------------------------------------------------------- all nulls
@@ -465,12 +489,13 @@ def null_gradients(keys: Sequence[KeyInput], tab: io.Table, v_star: np.ndarray, 
                    mlp_alphas: Sequence[float] = VALUE_MLP_ALPHAS,
                    mlp_maxiter: int = PB.MLP_MAXITER,
                    v_star_inf: np.ndarray | None = None) -> dict:
-    """{null: g [n, 8]} (and 'fits': the value fits' penalties and training R2) for one
-    network's obs_rms on T (``keys`` cover T's rows; ``lam`` [n, 8] for the far-geometry
-    null). 'value_ridge' and 'value_mlp' fit ``v_star_inf`` (the horizon-corrected value;
-    default T's 'v_star_inf' column, else ``v_star``), 'value_ridge_window' fits ``v_star``
-    (module docstring). A float64 process."""
-    n = len(w)
+    """{null: g} (and 'fits': the value fits' penalties and training R2) for one network's
+    obs_rms on T (``keys`` cover T's rows; ``lam`` [n, 8] for the far-geometry null): g is
+    [F, n, 8] per held-out fold for the value fits and the far-geometry lambda, [n, 8] for QSS
+    and the barrier (module docstring 'Per held-out fold'). 'value_ridge' and 'value_mlp' fit
+    ``v_star_inf`` (the horizon-corrected value; default T's 'v_star_inf' column, else
+    ``v_star``), 'value_ridge_window' fits ``v_star`` (module docstring). A float64 process."""
+    n, F = len(w), fo.n_folds
     if v_star_inf is None:
         v_star_inf = np.asarray(tab["v_star_inf"], float) if "v_star_inf" in tab else v_star
     out: dict = {"fits": {}}
@@ -479,21 +504,21 @@ def null_gradients(keys: Sequence[KeyInput], tab: io.Table, v_star: np.ndarray, 
         z, _ = z_rows(keys, obs_rms, n)
     if "value_ridge" in which:
         fr = fit_value_ridge(z, v_star_inf, fo, w, obs_rms)
-        out["value_ridge"] = gradients(fr.net, keys, fo.outer, n).g
+        out["value_ridge"] = fold_gradients(fr, keys, n, F)
         out["fits"]["value_ridge"] = {"alpha": fr.alpha.tolist(), "r2_train": fr.r2_train.tolist()}
     if "value_ridge_window" in which:
         fr = fit_value_ridge(z, v_star, fo, w, obs_rms)
-        out["value_ridge_window"] = gradients(fr.net, keys, fo.outer, n).g
+        out["value_ridge_window"] = fold_gradients(fr, keys, n, F)
         out["fits"]["value_ridge_window"] = {"alpha": fr.alpha.tolist(),
                                              "r2_train": fr.r2_train.tolist()}
     if "value_mlp" in which:
         fm = fit_value_mlp(z, v_star_inf, fo, w, obs_rms, mlp_alphas, maxiter=mlp_maxiter)
-        out["value_mlp"] = gradients(fm.net, keys, fo.outer, n).g
+        out["value_mlp"] = fold_gradients(fm, keys, n, F)
         out["fits"]["value_mlp"] = {"alpha": fm.alpha.tolist(), "r2_train": fm.r2_train.tolist()}
     if "qss" in which:
-        out["qss"] = gradients(qss_critic(obs_rms), keys, fo.outer, n).g
+        out["qss"] = gradients(qss_critic(obs_rms), keys, n).g
     if "barrier" in which:
-        out["barrier"] = gradients(barrier_critic(obs_rms), keys, fo.outer, n).g
+        out["barrier"] = gradients(barrier_critic(obs_rms), keys, n).g
     if "far_geometry" in which and lam is not None:
-        out["far_geometry"] = far_lambda(tab, lam, fo.outer, w)
+        out["far_geometry"] = far_lambda(tab, lam, fo.outer, w, n_folds=F)
     return out

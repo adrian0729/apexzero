@@ -684,20 +684,69 @@ def test_nulls_are_named_as_the_analysis_reads_them():
         ["--network"]
     assert cs._partial(cs.build_parser().parse_args(["inputs", "--network", "G1"])) == \
         ["--network"]
-    good = {"networks": {n: {"finite": {"qss": True}, "sha256": "x"}
+    from apexzero.costate import states as ST
+
+    # every C1 null in its layout: the fold-dependent ones per held-out fold (review finding
+    # on the fold-dependent nulls), QSS and the barrier [n, 8]
+    shapes = {k: ([ST.N_FOLDS, 50, 8] if k in AN.FOLD_NULLS else [50, 8])
+              for k in AN.NULL_NAMES if k != "random_critics"}
+    good = {"networks": {n: {"finite": {"qss": True}, "sha256": "x", "shapes": shapes}
                          for n in PR.null_networks()}, "failed": []}
     assert PR._passes("nulls/summary.json", good)
     assert not PR._passes("nulls/summary.json", {"networks": {"G1": good["networks"][
         "runs/dr-pilot-200M"]}})
-    for bad in ({"sha256": None}, {"finite": {"qss": False}}):
+    for bad in ({"sha256": None}, {"finite": {"qss": False}}, {"shapes": None},
+                {"shapes": {**shapes, "far_geometry": [50, 8]}},
+                {"shapes": {**shapes, "value_mlp": [3, 50, 8]}},
+                {"shapes": {**shapes, "qss": [ST.N_FOLDS, 50, 8]}},
+                {"shapes": {**shapes, "barrier": [49, 8]}},
+                {"shapes": {k: v for k, v in shapes.items() if k != "value_ridge_window"}}):
         d = json.loads(json.dumps(good))
         d["networks"]["runs/dr-pilot-200M"].update(bad)
-        assert not PR._passes("nulls/summary.json", d)
+        assert not PR._passes("nulls/summary.json", d), bad
     # K1 binds on its planted bugs too, inputs only with K2's t_H
     assert not PR._passes("gates/k1.json", {"decision": {"pass": True, "plants_fail": False,
                                                          "pass_with_plants": False}})
     assert PR._passes("gates/k1.json", {"decision": {"pass": True, "pass_with_plants": True}})
     assert not PR._passes("inputs/summary.json", {"n": 3, "failed": [], "t_H": None})
+
+
+def test_stage_nulls_writes_the_per_fold_layout_prereg_binds(tmp_path, monkeypatch):
+    """Review finding (fold-dependent C1 nulls): stage_nulls writes the value fits and the
+    far-geometry lambda per held-out fold [F, n, 8] and QSS and the barrier [n, 8], and its
+    summary (shapes, finiteness, the far null's gaps recorded) passes prereg's check (the
+    null computation stubbed: no obs_rms is read)."""
+    cs = _script()
+    from apexzero.costate import analysis as AN
+    from apexzero.costate import inputs as IN
+    from apexzero.costate import nulls as NL
+    from apexzero.costate import states as ST
+
+    world, _ = _toy_world()
+    n = world.n
+    w = SimpleNamespace(tab=world.tab, n=n, keys=[], v_star=np.zeros(n), v_star_inf=np.zeros(n),
+                        lam=np.zeros((n, 8)))
+    monkeypatch.setattr(cs, "_load_world", lambda args: w)
+    monkeypatch.setattr(IN, "obs_rms_of", lambda name: (None, None))
+
+    def nulls(keys, tab, v_star, fo, w_, rms, lam, **kw):
+        out = {"fits": {}}
+        for k in NL.NULLS:
+            out[k] = np.zeros((fo.n_folds, n, 8) if k in AN.FOLD_NULLS else (n, 8))
+        out["far_geometry"][fo.n_folds - 1 - fo.outer[0], 0] = np.nan   # a training row's gap
+        return out
+
+    monkeypatch.setattr(NL, "null_gradients", nulls)
+    args = cs.build_parser().parse_args(["nulls", "--out", str(tmp_path)])
+    cs._use_provenance(cs.Provenance(args, "nulls"))
+    cs.stage_nulls(args)
+    summ = json.loads((tmp_path / "nulls" / "summary.json").read_text())
+    v = summ["networks"]["runs/dr-pilot-200M"]
+    assert v["shapes"]["far_geometry"] == [ST.N_FOLDS, n, 8] and v["shapes"]["qss"] == [n, 8]
+    assert v["far_geometry_nonfinite"] == {"slices": 1, "out_of_fold": 0}
+    assert PR._passes("nulls/summary.json", summ) and not PR._cross_problems(tmp_path)
+    with np.load(tmp_path / "nulls" / "runs_dr-pilot-200M.npz") as d:
+        assert d["value_mlp"].shape == (ST.N_FOLDS, n, 8) and d["barrier"].shape == (n, 8)
 
 
 def test_bound_arrays_and_cross_checks(tmp_path):
@@ -1080,11 +1129,13 @@ def test_every_pre_registered_variant_is_reported(tmp_path):
     crit = {"g": np.repeat((lam8 + rng.normal(size=lam8.shape))[:, None], 6, 1),
             "value": rng.normal(size=(n, 6)), "pi": rng.normal(size=(n, 6, 2)),
             "random_g": rng.normal(size=(2, n, 8)), "dV_dwin": rng.normal(size=n)}
-    nulls = {"qss": rng.normal(size=(n, 8)), "value_ridge": rng.normal(size=(n, 8))}
+    # a value fit's null per held-out fold [F, n, 8] (``analysis.FOLD_NULLS``), QSS [n, 8]
+    nulls = {"qss": rng.normal(size=(n, 8)), "value_ridge": rng.normal(size=(6, n, 8))}
     flags = {"observability": SimpleNamespace(s_unobservable=np.zeros(n, bool))}
     G = AN.geometry_clusters(world.tab)[1]
     out = cs.analyse_network("toy", world, frozen, crit, nulls, flags,
                              PB.cluster_counts(G, 50))
+    assert set(out["C1"]["null_diff"]) == {"qss", "value_ridge", "random_critics"}
     want = {f"partition{p}" for p in range(1, 11)} | {
         "weights:geometry", "weights:state", "drop_small", "drop_kappa_set", "braking_keys",
         "non_braking_keys"}

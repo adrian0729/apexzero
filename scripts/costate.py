@@ -29,7 +29,9 @@ is computed; refused once the tag exists):
     nulls       C1's input-side nulls per network obs_rms (default: the 9 decision networks;
                 fewer is partial): value-fit ridge and MLP on the horizon-corrected value, the
                 window value's ridge, QSS, barrier, far-geometry lambda (nulls/<run>.npz named
-                by run directory, nulls/summary.json with each array's sha256)
+                by run directory: the value fits and far-geometry lambda [6, n, 8] per
+                held-out fold, QSS and barrier [n, 8]; nulls/summary.json with each array's
+                sha256 and shapes)
     prereg      the pre-registration record src/apexzero/costate/prereg.json, from a clean
                 tree, binding the stamped passing outputs above: the last step before the tag
 
@@ -835,7 +837,10 @@ def stage_k6(args) -> None:
 
 
 def stage_nulls(args) -> None:
-    """C1's input-side nulls per network obs_rms (no network evaluated)."""
+    """C1's input-side nulls per network obs_rms (no network evaluated): the fold-dependent
+    ones per held-out fold (``analysis.FOLD_NULLS``, [F, n, 8]), the summary with their shapes
+    and whether every slice is finite (the far-geometry lambda's slices may hold rows without
+    a far geometry: recorded, not required)."""
     import numpy as np
 
     from apexzero.costate import analysis as AN
@@ -863,7 +868,13 @@ def stage_nulls(args) -> None:
         summ["networks"][name] = {"fits": res["fits"], "sha256": sha256_file(path),
                                   "code_hash": (read_stamp(path) or {}).get("code_hash"),
                                   "finite": {k: bool(np.isfinite(v).all()) for k, v in
-                                             arrays.items() if k != "far_geometry"}}
+                                             arrays.items() if k != "far_geometry"},
+                                  "shapes": {k: list(v.shape) for k, v in arrays.items()}}
+        if "far_geometry" in arrays:
+            fg = arrays["far_geometry"]
+            summ["networks"][name]["far_geometry_nonfinite"] = {
+                "slices": int((~np.isfinite(fg)).any(2).sum()),
+                "out_of_fold": int((~np.isfinite(fg[fo.outer, np.arange(len(w))])).any(1).sum())}
     _write(_out(args, "nulls") / "summary.json", summ)
 
 
@@ -1102,7 +1113,7 @@ def critic_of(agent, world, seeds=None, bank=None) -> dict:
         g[k.rows], pi[k.rows], gh[k.rows] = pb.g, pb.pi, pb.g_held
         y[k.rows], acc[k.rows] = pb.value, pb.accel_sens
     seeds = CR.RANDOM_SEEDS if seeds is None else seeds
-    rg = np.stack([NL.gradients(c, world.keys, np.zeros(n, int), n).g for c in
+    rg = np.stack([NL.gradients(c, world.keys, n).g for c in
                    CR.random_critics(agent.cfg, net.obs_rms, net.sigma, seeds)])
     out = {"g": g, "pi": pi, "g_held": gh, "value": y, "accel_sens": acc, "random_g": rg,
            "sigma": np.float64(net.sigma)}
@@ -1537,7 +1548,8 @@ def analyse_network(name: str, world, frozen: dict, crit: dict, nulls: dict, fla
     valid = ST.decision_mask(tab, ~flags["observability"].s_unobservable,
                              frozen.get("k2b_excluded"))
     g = crit["g"][:, 0, idx]
-    nl = {k: np.asarray(v)[:, idx] for k, v in nulls.items() if k != "fits"}
+    # [n, 8], or [F, n, 8] per held-out fold (``analysis.FOLD_NULLS``): K_P on the last axis
+    nl = {k: np.asarray(v)[..., idx] for k, v in nulls.items() if k != "fits"}
     nl["random_critics"] = [r[:, idx] for r in crit["random_g"]]
     c1 = AN.c1(g, lam, fo.outer, w_in, cl, G, tab["direction"], inner, nl, valid, TG.K_P,
                counts, slope_boot="always", bounds=bnd)
@@ -1607,7 +1619,10 @@ def analyse_network(name: str, world, frozen: dict, crit: dict, nulls: dict, fla
                                   ST.stratum_weights(tab, wall != 0), cl, G, wall, sd, TG.K_P,
                                   counts, direction=tab["direction"], valid=valid)
     out["sensitivity"] = {}
-    fold_nulls = ("value_ridge", "value_mlp", "value_ridge_window", "far_geometry")
+    # partition 0's per-fold nulls have no slices for partitions 1-10's folds (the random
+    # critics are a list of [n, 4] arrays, fold-free)
+    fold_nulls = set(AN.FOLD_NULLS) | {k for k, v in nl.items()
+                                       if isinstance(v, np.ndarray) and v.ndim == 3}
     done = {inner.tobytes(): out["C1"]}   # rows -> record (partition 0, key weights)
     for i, (vname, sp) in enumerate(variant_specs(tab, frozen, variants).items()):
         if vname == "primary":

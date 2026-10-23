@@ -15,9 +15,18 @@ v2.1, Section 6 with Section 12's decisions).
   and its decisions; C3-int's double centring and a planted pre-signed association; R18's
   variant rule; C2 'not testable' without a component above the power floor.
 
-Pure NumPy: no network, no key file."""
+- C1's per-fold nulls: a regressor [F, n, m] calibrated fold by fold on its own slice, the
+  far-geometry lambda and a value fit's pullback (stubbed) per held-out fold: perturbing fold
+  f's targets cannot change fold f's calibrated null predictions (the old one-predictor
+  layout let them); rows without an out-of-fold calibration dropped, not zero-filled, and a
+  one-geometry stratum 'not testable'; C3-w's partial covariate renormalised over the strata
+  it scores.
+
+Pure NumPy (the nulls module only for its far-geometry lambda and, with the pullback stubbed,
+its per-fold wiring): no network, no key file."""
 
 import itertools
+from types import SimpleNamespace
 
 import numpy as np
 import pytest
@@ -686,3 +695,220 @@ def test_a_component_mask_excludes_cells_from_the_decision(world):
     assert AN.c1(g, lam, outer, w, cl, G, d, rows, None, None, K_P, counts).decision != "confirm"
     mb = {**t2, "multi_basin": np.arange(n) < 12}
     assert not ST.decision_mask(mb)[:12].any() and ST.decision_mask(mb)[12:].all()
+
+
+def test_a_per_fold_regressor_keeps_the_held_out_fold_out_of_its_calibration(world):
+    """Review finding (fold-dependent C1 nulls): a null [F, n, m] per held-out fold is
+    calibrated fold by fold on its own slice, so fold f's fit and predictions read slice f
+    and the other folds' targets only; the old layout (one predictor per row, from its own
+    fold's slice) let the other slices into fold f's calibration."""
+    tab, lam, w, cl, G, outer, counts = world
+    rng = np.random.default_rng(30)
+    n, F = len(w), ST.N_FOLDS
+    d, odd = tab["direction"], AN._names_odd(K_P)
+    X = lam[None] * rng.uniform(0.5, 2.0, size=(F, 1, 4)) + 0.3 * rng.normal(size=(F, n, 4))
+    cal = AN.calibrate(X, lam, outer, w, direction=d, odd=odd)
+    assert np.all(np.isfinite(cal.pred)) and np.all(cal.b > 0)
+    for f in range(F):
+        lam2, X2 = lam.copy(), X.copy()
+        lam2[outer == f] += 50.0 * rng.normal(size=((outer == f).sum(), 4))
+        X2[np.arange(F) != f] = rng.normal(size=(F - 1, n, 4))
+        b = AN.calibrate(X2, lam2, outer, w, direction=d, odd=odd)
+        assert np.allclose(b.pred[outer == f], cal.pred[outer == f]), f
+        assert np.allclose(b.a[f], cal.a[f]) and np.allclose(b.b[f], cal.b[f]), f
+    # a 2-D regressor is the same in every slice
+    two = AN.calibrate(X[0], lam, outer, w, direction=d, odd=odd)
+    same = AN.calibrate(np.broadcast_to(X[0], X.shape), lam, outer, w, direction=d, odd=odd)
+    assert np.array_equal(two.pred, same.pred) and np.array_equal(two.b, same.b)
+    # the old layout: fold 0's rows keep their predictor, the training rows' change, and so
+    # does fold 0's calibration
+    X3 = X.copy()
+    X3[1:] = rng.normal(size=(F - 1, n, 4))
+    old = AN.calibrate(X[outer, np.arange(n)], lam, outer, w, direction=d, odd=odd)
+    old3 = AN.calibrate(X3[outer, np.arange(n)], lam, outer, w, direction=d, odd=odd)
+    assert not np.allclose(old.pred[outer == 0], old3.pred[outer == 0])
+    with pytest.raises(ValueError, match="per-fold regressor"):
+        AN.calibrate(X[:3], lam, outer, w)
+    # c1 takes it as a null: scored like a 2-D null when every slice is the same
+    g = lam + 0.2 * lam.std(0) * rng.normal(size=lam.shape)
+    rows = np.ones(n, bool)
+    c3 = AN.c1(g, lam, outer, w, cl, G, d, rows, {"far_geometry": np.broadcast_to(X[0], X.shape)},
+               None, K_P, counts)
+    c2 = AN.c1(g, lam, outer, w, cl, G, d, rows, {"far_geometry": X[0]}, None, K_P, counts)
+    assert c3.null_diff == c2.null_diff and np.array_equal(c3.null_r2c["far_geometry"],
+                                                           c2.null_r2c["far_geometry"])
+
+
+def _phase_tab(tab):
+    """The toy T with the columns the far-geometry lambda's phase coordinate reads (12 steps
+    of 10 m per key: approach to the brake onset at 30 m, braking to the apex at 60 m, the
+    corner to 80 m, then the exit)."""
+    t = np.tile(np.arange(12), len(tab["R"]) // 12)
+    n = len(t)
+    return {**tab, "t": t, "s": 10.0 * t, "s_b": np.full(n, 30.0), "s_c0": np.full(n, 25.0),
+            "s_apex": np.full(n, 60.0), "s_c1": np.full(n, 80.0)}
+
+
+def test_the_far_geometry_null_cannot_carry_the_held_out_folds_targets(world):
+    """Review finding (fold-dependent C1 nulls): slice f of the far-geometry lambda takes no
+    geometry of fold f (and, for a training row, none of its own fold, as
+    ``states.cross_fit``), so perturbing fold f's targets changes neither slice f nor fold
+    f's calibrated null predictions; under the old construction (each row's own-fold slice)
+    it changed them."""
+    from apexzero.costate import nulls as NL
+    from apexzero.costate.targets import STATE_NAMES
+
+    tab, lam, w, cl, G, outer, counts = world
+    t = _phase_tab(tab)
+    rng = np.random.default_rng(31)
+    n, F = len(w), ST.N_FOLDS
+    lam8 = np.concatenate([lam, rng.normal(size=(n, 4))], 1)        # K_P first, then 4 more
+    assert tuple(STATE_NAMES[:4]) == K_P
+    d, odd = tab["direction"], AN._names_odd(K_P)
+    far = NL.far_lambda(t, lam8, outer, w)
+    assert far.shape == (F, n, 8) and np.isfinite(far[outer, np.arange(n)]).all()
+    cal = AN.calibrate(far[..., :4], lam, outer, w, direction=d, odd=odd)
+    old = AN.calibrate(far[outer, np.arange(n), :4], lam, outer, w, direction=d, odd=odd)
+    for f in range(F):
+        lam2 = lam8.copy()
+        lam2[outer == f] += 10.0 * rng.normal(size=((outer == f).sum(), 8))
+        far2 = NL.far_lambda(t, lam2, outer, w)
+        assert np.allclose(far2[f], far[f], equal_nan=True), f
+        assert not np.allclose(far2, far, equal_nan=True)
+        # a training row's slice leaves its own fold out too: fold g's targets never reach
+        # slice f on fold g's rows
+        g_ = (f + 1) % F
+        lam3 = lam8.copy()
+        lam3[outer == g_] += 10.0 * rng.normal(size=((outer == g_).sum(), 8))
+        far3 = NL.far_lambda(t, lam3, outer, w)
+        assert np.allclose(far3[f][outer == g_], far[f][outer == g_], equal_nan=True), f
+        b = AN.calibrate(far2[..., :4], lam2[:, :4], outer, w, direction=d, odd=odd)
+        assert np.allclose(b.pred[outer == f], cal.pred[outer == f]), f
+        ob = AN.calibrate(far2[outer, np.arange(n), :4], lam2[:, :4], outer, w, direction=d,
+                          odd=odd)
+        assert not np.allclose(ob.pred[outer == f], old.pred[outer == f]), f
+
+
+def test_a_value_fit_null_is_pulled_back_through_each_folds_own_fit(world, monkeypatch):
+    """Review finding (fold-dependent C1 nulls): slice f of a value fit's gradient is every
+    row pulled back through the fit made without fold f (``nulls.fold_gradients``; the
+    pullback stubbed as the linear critic's closed form w'J), so fold f's value targets and
+    its lambda change neither slice f nor fold f's calibrated null predictions; under the
+    old construction (each row through its own fold's fit) they did."""
+    from apexzero.costate import critic as CR
+    from apexzero.costate import nulls as NL
+
+    tab, lam, w, cl, G, outer, counts = world
+    rng = np.random.default_rng(32)
+    n, F, p = len(w), ST.N_FOLDS, 12
+    fo = PB.folds(tab)
+    assert np.array_equal(fo.outer, outer)
+    z = rng.normal(size=(n, p))
+    J = rng.normal(size=(n, p, 8)) + 0.2 * lam[:, None, [0, 1, 2, 3, 0, 1, 2, 3]]
+
+    def pullback(net, tr, inp, oj):
+        g = np.einsum("kc,ncd->nkd", net.params[0][:, :p], inp)
+        return SimpleNamespace(value=np.zeros((len(inp), 1)), g=g, pi=np.zeros((len(inp), 1, 2)),
+                               g_held=g)
+
+    monkeypatch.setattr(CR, "pullback", pullback)
+    key = tab["key_id"]
+    keys = [NL.KeyInput(k, np.flatnonzero(key == k), J[key == k], None) for k in np.unique(key)]
+    v = z @ rng.uniform(0.5, 1.5, p) + 0.1 * rng.normal(size=n)
+    zz = np.concatenate([z, np.zeros((n, CR.OBS_DIM - p))], 1)
+    d, odd = tab["direction"], AN._names_odd(K_P)
+
+    def nulls_of(v_, lam_):
+        fr = NL.fit_value_ridge(zz, v_, fo, w, None)
+        g3 = NL.fold_gradients(fr, keys, n, F)[..., :4]
+        return g3, AN.calibrate(g3, lam_, outer, w, direction=d, odd=odd), AN.calibrate(
+            g3[outer, np.arange(n)], lam_, outer, w, direction=d, odd=odd)
+
+    g3, cal, old = nulls_of(v, lam)
+    assert g3.shape == (F, n, 4) and not np.allclose(g3[0], g3[1])
+    for f in range(F):
+        v2, lam2 = v.copy(), lam.copy()
+        v2[outer == f] += 5.0 * rng.normal(size=(outer == f).sum())
+        lam2[outer == f] += 5.0 * rng.normal(size=((outer == f).sum(), 4))
+        h3, b, ob = nulls_of(v2, lam2)
+        assert np.array_equal(h3[f], g3[f]), f
+        assert np.allclose(b.pred[outer == f], cal.pred[outer == f]), f
+        assert not np.allclose(ob.pred[outer == f], old.pred[outer == f]), f
+
+
+def test_rows_without_an_out_of_fold_calibration_are_dropped_not_zero_filled(world):
+    """Review finding (one-geometry strata scored against zero-filled predictions): a fold
+    with fewer than 3 training rows has no calibration, and its rows are dropped from the
+    scoring (and counted) instead of scored against 0; a stratum inside one geometry spans one
+    outer fold, so nothing is left and C1 is 'not testable' with that reason."""
+    tab, lam, w, cl, G, outer, counts = world
+    rng = np.random.default_rng(33)
+    n = len(w)
+    d = tab["direction"]
+    g = lam + 0.3 * lam.std(0) * rng.normal(size=lam.shape)
+    nl = {"qss": rng.normal(size=lam.shape)}
+    one = cl == 5
+    c = AN.c1(g, lam, outer, w, cl, G, d, one, nl, None, K_P, counts)
+    assert c.decision == "not testable" and "1 outer fold" in c.reason
+    assert np.all(c.n_rows == 0) and np.all(c.n_uncalibrated == one.sum())
+    r = AN.stratum_record("C1", c.record(), one, tab)
+    assert r["band"] == "not testable" and "1 outer fold" in r["reason"] and r["geometries"] == 1
+    # two geometries in two folds; fold A's calibration may train on 2 of B's rows only: A's
+    # rows are dropped, B's are scored by the fit on A's rows
+    ga = 5
+    gb = int(cl[np.flatnonzero(outer != outer[cl == ga][0])[0]])
+    A, B = cl == ga, cl == gb
+    fit = A | (B & (np.cumsum(B) <= 2))
+    rows = A | B
+    odd = AN._names_odd(K_P)
+    with np.errstate(invalid="ignore", divide="ignore"):    # draws without geometry B: nan
+        c2 = AN.c1(g, lam, outer, w, cl, G, d, rows, nl, None, K_P, counts, fit_rows=fit)
+        assert np.all(c2.n_rows == B.sum()) and np.all(c2.n_uncalibrated == A.sum())
+        assert np.all(np.isnan(c2.calibrated.pred[A]))
+        assert np.all(np.isfinite(c2.calibrated.pred[B]))
+        for k in range(4):
+            pt, _ = AN.boot_r2(lam[B, k], [c2.calibrated.pred[B, k]], w[B], cl[B], G, counts,
+                               d[B], bool(odd[k]))
+            assert c2.r2c[k] == pytest.approx(pt[0], rel=1e-12), k
+            zero = np.where(B, c2.calibrated.pred[:, k], 0.0)
+            pz, _ = AN.boot_r2(lam[rows, k], [zero[rows]], w[rows], cl[rows], G, counts,
+                               d[rows], bool(odd[k]))
+            assert pz[0] != pytest.approx(pt[0]), k                # the old zero-filled score
+    # rows spanning two folds with no fold calibrated: the generic reason
+    few = (A & (np.cumsum(A) <= 2)) | (B & (np.cumsum(B) <= 2))
+    c3 = AN.c1(g, lam, outer, w, cl, G, d, few, nl, None, K_P, counts)
+    assert c3.decision == "not testable" and "no component keeps" in c3.reason
+    # the primary record has no reason and counts no dropped row
+    full = AN.c1(g, lam, outer, w, cl, G, d, np.ones(n, bool), nl, None, K_P, counts)
+    assert "reason" not in full.record() and full.record()["n_uncalibrated"] == [0, 0, 0, 0]
+
+
+def test_the_partial_covariate_skips_and_renormalises_strata_without_it():
+    """Review finding (C3-w's overlap covariate is missing for 2 of the 31 generalists): a
+    stratum holding a network without the covariate is left out of the partial, the size
+    weights are renormalised over the strata scored (they were divided by all 31), and the
+    networks without it are listed."""
+    rng = np.random.default_rng(34)
+    xs = {k: float(rng.normal()) for k in AN.C3_STRATA}
+    ys = {k: xs[k] + float(rng.normal()) for k in AN.C3_STRATA}
+    gone = ("runs/dr-pilot-v2-tilt30-s3", "runs/dr-pilot-v2-tilt30-s4")
+    ov = {k: float(rng.normal()) for k in AN.C3_STRATA if k not in gone}
+    const = dict.fromkeys(AN.C3_STRATA, 1.0)      # no residualisation: the plain stratum rho
+    res = AN.c3_w(xs, ys, n_perm=200, rng=np.random.default_rng(35),
+                  covariates={"overlap": ov, "constant": const,
+                              "constant_gap": {k: 1.0 for k in ov}})
+    p = res["partial"]["overlap"]
+    assert p["missing"] == list(gone) and p["strata_skipped"] == ["base-v2"]
+    assert p["n"] == 26 and not p["complete"]
+    keep = {k: s for k, s in AN.C3_STRATA.items() if s != "base-v2"}
+    sub = AN.c3_w({k: xs[k] for k in keep}, {k: ys[k] for k in keep}, keep, n_perm=200,
+                  rng=np.random.default_rng(36), covariates={"overlap": ov})
+    assert p["rho"] == pytest.approx(sub["partial"]["overlap"]["rho"], abs=1e-12)
+    assert sub["partial"]["overlap"]["complete"] and sub["partial"]["overlap"]["missing"] == []
+    # a constant covariate gives the plain size-weighted rho, renormalised when a stratum goes
+    per = res["strata"]
+    assert res["partial"]["constant"]["rho"] == pytest.approx(res["rho"], abs=1e-12)
+    want = sum(v["n"] * v["rho"] for s, v in per.items() if s != "base-v2") / 26
+    assert res["partial"]["constant_gap"]["rho"] == pytest.approx(want, abs=1e-12)
+    none = AN.c3_w(xs, ys, n_perm=100, rng=np.random.default_rng(37), covariates={"x": {}})
+    assert np.isnan(none["partial"]["x"]["rho"]) and none["partial"]["x"]["n"] == 0

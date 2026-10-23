@@ -35,7 +35,8 @@ fields/prereg.py:1-60, simplified where idea 2 needs less):
 - **the bound pre-tag outputs** (``bind_outputs``): every ``BOUND_OUTPUTS`` file under
   outputs/costate with its sha256 and its stamp's code hash; each must carry a stamp of this
   code, not be partial, and pass (K1 on its ``pass_with_plants``; the nulls summary with
-  every decision network, every null finite and the sha256 of each array file; inputs with
+  every decision network, every C1 null in its layout (the fold-dependent ones per held-out
+  fold, ``_null_shapes_ok``) and finite, and the sha256 of each array file; inputs with
   K2's t_H); and the arrays the post-tag analysis reads (``bind_arrays``: inputs/world.npz
   and each decision network's nulls/<net>.npz, with their stamps' sha256);
 - **C3-w's inputs** (``c3w_inputs``): per generalist the sha256 of eval_rdev.json and
@@ -206,7 +207,13 @@ def constants() -> dict:
                   "barrier": [NL.BARRIER_SCALE, NL.BARRIER_EPS, NL.EDGE_MARGIN],
                   "qss_cv": 1.0, "value_mlp_alphas": list(NL.VALUE_MLP_ALPHAS),
                   "value_target": "horizon-corrected V*inf (value_ridge_window: V*_t)",
-                  "value_grid_min": NL.VALUE_GRID_MIN},
+                  "value_grid_min": NL.VALUE_GRID_MIN,
+                  "per_fold": list(AN.FOLD_NULLS),
+                  "per_fold_rule": "[F, n, 8]: slice f built without fold f (value fits: "
+                                   "every row through fold f's fit; far geometry: neither "
+                                   "fold f nor the row's own fold); fold f's calibration "
+                                   "fitted on slice f's training rows, predicting fold f "
+                                   "from slice f"},
         "critic": {"fd_tol": CR.FD_TOL, "plant_tol": CR.PLANT_TOL, "linear_tol": CR.LINEAR_TOL,
                    "random_seeds": list(CR.RANDOM_SEEDS), "pi_h": CR.PI_H,
                    "k3_min_states": CR.K3_MIN_STATES,
@@ -403,6 +410,28 @@ def stimulus_design_hash() -> str:
     return stimuli.design_hash(bank, cells)
 
 
+def _null_shapes_ok(shapes) -> bool:
+    """A network's nulls are every C1 null (``analysis.NULL_NAMES`` but the random critics,
+    which the critic stage computes) over the same rows: the fold-dependent ones
+    (``analysis.FOLD_NULLS``) [N_FOLDS, n, 8] per held-out fold, the others [n, 8]."""
+    from apexzero.costate import analysis as AN
+    from apexzero.costate import states as ST
+
+    if not isinstance(shapes, dict):
+        return False
+    rows = set()
+    for name in AN.NULL_NAMES:
+        if name == "random_critics":
+            continue
+        s = shapes.get(name)
+        want = 3 if name in AN.FOLD_NULLS else 2
+        if not isinstance(s, list) or len(s) != want or s[-1] != 8 or \
+                (want == 3 and s[0] != ST.N_FOLDS):
+            return False
+        rows.add(s[-2])
+    return len(rows) == 1
+
+
 def _passes(rel: str, d) -> bool:
     if not isinstance(d, dict):
         return False
@@ -414,7 +443,7 @@ def _passes(rel: str, d) -> bool:
         have = {net_file(n) for n in nets}
         return bool(need <= have and not d.get("failed")
                     and all(all(v.get("finite", {}).values()) and v.get("sha256")
-                            for v in nets.values()))
+                            and _null_shapes_ok(v.get("shapes")) for v in nets.values()))
     if rel == "gates/k1.json":
         dec = d.get("decision")
         return bool(isinstance(dec, dict) and dec.get("pass_with_plants"))
