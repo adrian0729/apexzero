@@ -1,6 +1,6 @@
-# Idea 2: does the network encode the costate? (design v2.3, not frozen)
+# Idea 2: does the network encode the costate? (design v2.4, not frozen)
 
-Status: 22 Oct 2026.
+Status: 23 Oct 2026.
 - **v1** was reviewed on four lenses (math, probing, feasibility, science): 42 findings were
   confirmed and 2 rejected.
 - **v2** applies the confirmed findings; Section 11 maps each one to its change.
@@ -12,6 +12,10 @@ Status: 22 Oct 2026.
 - **v2.3** records the decisions of a final pre-tag review of that code (Section 14): 21
   findings were confirmed, and each is resolved by a code change, a rule stated there or a
   deferral.
+- **v2.4** records the gate rules after the full-size pre-tag run (Section 15): K1's rule
+  written down, K5's wiring check, K4's PR-1b, PR-6, PR-6b and PR-6c, f̂_D's one k = 8, and
+  K4's no-gain plants as paired increments. A third full-size check passes every gate. The
+  rules are final from this version.
 
 Nothing here has been computed on a trained network: no activation, gradient or probe. The
 numbers come from step 1's key files, run metadata (`runs/*/config.json`, `runs/*/eval_rdev.json`,
@@ -713,6 +717,10 @@ separately, with no correction across them (as in step 2). C2-sw and C3-int are 
 
 ## 7. Gates and validation (before any trained network)
 
+*Reading guide.* Sections 13–15 record how these gates are applied as coded: K3's pass rule
+(13), the pre-tag review's rules (14), and K1, K4, K5 and f̂_D's k after the full-size pre-tag
+run (15).
+
 **K0, targets from files** (every key, no solves).
 - **x_0 identity, a convention and implementation check, exact by construction.**
   lam_x[0:8] = Φ_x(x_0, a*_0)ᵀlam_g[0:8] − e_s/10 to 10⁻¹² on all 481 A2 keys (all rebuild here
@@ -1192,6 +1200,8 @@ prereg binds them again, from code that did not change.
 - So C1, C1-own and C1-braking decide on {s, ξ}, and the strata tables are scored on them. C2's
   power floor passes s, n and ξ (vx fails), but n has no scored row, so C2 is scored on {s, ξ}.
   This is the decision set.
+- *Since v2.4* (Section 15.10): at f̂_D's k = 8, λ_n's interior residual share is 0.091, so the
+  power floor passes s and ξ only. The decision set is unchanged; the floor now decides it.
 - **C1-pattern.** As in C1, a component without a decision row drops out of its side's mean, so
   K_P's side is {s, ξ}. C1-pattern is 'not testable' if either side has no component left.
 - **C1-limit.** T has 482 wall-contact rows: approach 2, braking 174, corner 149 and exit 157.
@@ -1213,6 +1223,9 @@ prereg binds them again, from code that did not change.
 - **Value fits.** Slice f pulls every T row back through the value fit made without fold f. The
   fit is not refitted per row, so a training row's slice-f gradient is that fit's in-sample
   gradient.
+- *Since v2.4* (Section 15.9): the value fits are cross-fitted in full. A training row of fold
+  g carries the fit without folds f and g, so the bullet above is superseded, and the value
+  fits' "per held-out fold" numbers below are Section 15.9's "before".
 - **Far geometry.** Slice f is, for every row, the median over far geometries whose outer fold
   is neither f nor the row's own fold. For a held-out row of fold f this is the v2.2 predictor.
 - Fold f's calibration of such a null (slope and direction intercepts) is fitted on slice f's
@@ -1250,6 +1263,8 @@ prereg binds them again, from code that did not change.
 - Consequence: G2's, G2s1's and G2s2's descriptive 'interior&kappa_clipped' rows (23–24 rows in
   one geometry) are 'not testable', not 'refute'. No decision stratum is affected.
 - C1-pattern and C1-limit follow the same rule.
+- *Since v2.4* (Section 15.9): so do W1's calibrated agreement and C3-w's x, which zero-filled
+  such rows; C1-pattern counts the rows it drops.
 
 **C1's Spearman rule (#1).** For the mirror-odd components of K_P (n and ξ), the Spearman
 ρ(g_k, λ_k) in C1's confirm rule is the mean of the within-direction ρ, weighted by each
@@ -1564,6 +1579,7 @@ in the v2.2 code, and step 5 of Section 13's "Order before the tag".
   with. So, with this code on main, every pre-tag stage is re-run before prereg, in this order:
   inputs, K2, inputs again (binding t_H), K2b, K0, K1, K3, K3b, K4, K5, K6, the nulls.
 - The v2.2 smoke run is evidence only. Nothing it wrote is bound.
+- *Since v2.4* (Section 15.11): what this re-run must reproduce, gate by gate.
 
 **The rehearsal** (tests/test_costate_rehearsal.py). It runs every stage of scripts/costate.py
 through its `main()`, in order, on random-init stand-ins for the trained networks, before the
@@ -1601,6 +1617,8 @@ tag.
   K3b's trained analogue fails. tests/test_costate_stages.py scores them on planted own arrays.
   Nor the full T, the 34 networks and the 9 decision networks (R18's variants see one seed),
   their run time and memory, or K4's and K5's real verdicts.
+- *Since v2.4* (Section 15.11): K4's and K5's real verdicts at full size are recorded there. The
+  rehearsal was not re-run for v2.4.
 - **Re-run.** `COSTATE_REHEARSAL=1 uv run --no-sync pytest tests/test_costate_rehearsal.py -p
   no:cacheprovider`. Or run `uv run --no-sync python tests/test_costate_rehearsal.py --dir DIR`,
   which keeps DIR; `--from STEP` resumes there. Its report (report.json) lists each step's time.
@@ -1610,6 +1628,7 @@ tag.
   so about 50 minutes for the 9 decision networks. value_mlp's fits take 320 s; value_ridge
   0.8 s; value_ridge_window 0.8 s; QSS 4.4 s; the barrier 0.3 s; far_geometry 1.1 s. The per-fold
   pullbacks add about 3 s per network.
+- *Since v2.4* (Section 15.9): the value fits' nested fits add about a fifth to the nulls stage.
 - **K3 after the tag** was measured on random-init stand-ins at the real D (477 states). It took
   1.2 s for the first network (JIT compile), then 0.04–0.06 s per network: about 3–4 s for all 34
   in the critic stage. On those stand-ins both extractors matched Flax to at most 2·10⁻¹⁵, and
@@ -1642,3 +1661,768 @@ tag.
 | 19 | scripts/fields.py is outside the code hash, and the step tags were not checked against the record | Code: `step_tags_problems`, `frozen_steps_problems` (scripts/costate.py). Rule: "The record and the freeze" |
 | 20 | The fold-dependent C1 nulls let the held-out fold's targets into the calibration | Code: `nulls.far_lambda`, `nulls.fold_gradients`, `analysis.calibrate` and `FOLD_NULLS`, `prereg._null_shapes_ok`, `stage_nulls`. Rule: "C1's nulls per held-out fold" |
 
+## 15. Gate rules after the full-size pre-tag run (v2.4; before the tag, no trained network computed)
+
+23 Oct 2026. The full-size smoke run of the pre-tag stages at v2.2 (22 Oct, code 185c637;
+Section 14's evidence) failed K4 (PR-1b and PR-6) and K5. K1 passed only on a rule that Section
+7 does not state. K0, K2, K2b, K3 and K3b passed, and K6 counted. Each failure was diagnosed,
+and each diagnosis was verified adversarially on the same data (four items: K1, K4's PR-1b,
+K4's PR-6 and K5). Eight commits on costate-dev (d1ff055 to 428f51f) apply the results and the
+lead's later decisions. Three further full-size checks of the gates followed, and the third, at
+428f51f, passes every gate.
+
+This section states each rule as the code at 428f51f applies it. It also gives the history in
+rounds, the third check's numbers and what the canonical re-run must reproduce. The code's
+docstrings call these the v2.3 decisions before the tag; this section is their design record.
+**The rules are final from this version.** A gate that fails the canonical re-run is reported
+and blocks the tag. No rule, seed, grid, candidate or tolerance is chosen again.
+
+**Setting of every number below**, unless stated otherwise.
+- The smoke run's world: T has 9,887 states, 477 keys and 48 geometries, and the interior
+  3,951 states. Partition 0, key weights, G1's obs_rms and config.
+- Random-init actors of seeds 0–5. The plants' host is seed 0. K4's controls are seeds 1–3
+  (`gates.K4_N_CONTROLS`); C2's primary statistic inside K4 uses seeds 1–5 as its 5 controls.
+- C2's decision rows are the interior rows valid under K2b's exclusions and G1's
+  observability: s 1,643 and ξ 1,581, none for n or vx.
+- Only key files, the input side and random-init or planted networks enter. Component lists
+  are in the order (s, n, ξ, vx).
+
+### 15.1 The rounds
+
+**Round 0: the smoke run** (22 Oct; v2.2).
+- K1 passed with its plants, on the coded rule: zero comparisons pooled as 0, a floor ε_t, and
+  a noise term in the kink test. Section 7 states none of these.
+- K4 failed on PR-1b (partial R² 0.698–0.751 against 0.80 ± 0.03) and PR-6 (Δ2 −0.0118
+  against "within 0.01 of 0"). PR-1a, PR-2, PR-3, PR-4, PR-5 and PR-7 to PR-9 passed.
+- K5's wiring check failed: λ_s's and λ_n's CI upper ends were 0.0004 and 0.0032, and λ_ξ
+  scored −0.70.
+
+**Round 1: diagnosis, verification and the first fixes** (23 Oct; d1ff055 to 3e2242f).
+- One agent diagnosed each failure and an adversarial verifier checked the diagnosis.
+  - K1: the verdict held. The verifier refuted the diagnosis's "the literal rule fails δ":
+    Section 7's literal kink test makes every component descriptive (15.2). It also found the
+    floor's development history (15.2, "Disclosure").
+  - PR-1b: held (15.4).
+  - PR-6: did not hold. The verifier found that f̂_D at k = 15 leaks in a kNN-shaped
+    known-truth world. Gating on the smooth world alone would have kept the world that passes
+    (15.5–15.7).
+  - K5: held, with corrections: the null calibration's scheme, a false-fail rate of about 1–2%
+    per run, two blind spots and a new planted fault (15.3).
+- Commits: K1 (d1ff055); K5 (6fde947); f̂_D's k by nested grouped CV, the verifier's
+  target-side proposal and the lead's first decision on f̂_D (bac63d0); K4's PR-1b, PR-6,
+  PR-6b and PR-6c (778c06e); the value-fit nulls' full cross-fit and the zero-fill rule
+  (3e2242f; 15.9).
+- Measured after them: K1, K5 and PR-1b pass, re-scored offline or at full size. bac63d0
+  moved λ_n's interior residual share from 0.107 to 0.064, below the power floor.
+
+**Round 2: the first full-size check** (3e2242f; K4 also at 778c06e, with the same numbers).
+- K1, K2, K5 and every K4 plant but one passed. PR-6b failed on gate seed 0 at 0.0165 (CI
+  0.0039–0.0261), with 0.0095 and 0.0026 on seeds 1 and 2. The nested-CV rule took k = 15–30
+  for s and 30 for ξ in every fold on that smooth y.
+- A descriptive diagnostic on the same draws was known when the lead decided: a fixed k = 15
+  gives 0.0032, 0.0040 and 0.0059, and k = 5 gives 0.0010, −0.0013 and 0.0060.
+- **The lead's second decision**, on f̂_D (55b84c4). Grounds: what leaks into C2 is f̂_D's
+  bias, which a network holding the decoy function recovers; its variance only costs power. An
+  out-of-geometry SSE trades the two, so it is the wrong criterion. The decision: one fixed k,
+  chosen by a rule declared before any result, on 6 validation seeds disjoint from K4's gate
+  seeds (15.7). The rule chose k = 8.
+- π under the λ components' zero rule (b8001d6): the lead's decision, for consistency. The
+  K1 re-score had already shown π passing under either reading (15.2).
+
+**Round 3: the second full-size check** (55b84c4).
+- Every gate passed except K4's PR-3: its grouped Δ2 was 0.0108 against 0.01.
+- Traced by a diagnostic on that run's world: the random host alone scores +0.0069 against its
+  3 controls, and the codes add +0.0038. At k = 15 the same host scores −0.0001 and host +
+  codes −0.0062. The failure was the host's chance offset, which the change of f̂_D's k had
+  re-drawn.
+- **The lead's third decision** (428f51f): every K4 plant whose rule is a no-gain tolerance is
+  scored by its paired increment (15.8). Grounds: a plant's effect is the change it causes in
+  the same network. Tolerances, seeds and every-seed rules are unchanged. The k rule was
+  re-applied mechanically under the paired statistic and still gives k = 8.
+- Disclosure: this rule came after the PR-3 failure was seen. The verified write-ups cover
+  round 1's four items only. The decisions of rounds 2 and 3 rest on the grounds stated here
+  and on their tests.
+
+**Round 4: the third full-size check** (428f51f). Every gate passes (15.11). Only K4 differs
+from the second check: K1, K2, K2b, K5, the nulls' npz and every frozen value are identical
+apart from provenance.
+
+**Before and after each decision.**
+
+| Decision | Before | After |
+|---|---|---|
+| K1's rule written down (d1ff055) | δ with zeros pooled: n 235, median 4.8·10⁻⁶, p95 2.5·10⁻³ | n 184 (51 zero), median 2.2·10⁻⁵, p95 2.8·10⁻³ |
+| π's zero rule (b8001d6) | n 20, median 1.35·10⁻⁷, p95 6.5·10⁻⁶ | n 12 (8 zero), median 8.9·10⁻⁷, p95 7.0·10⁻⁶ |
+| K5's scheme and rule (6fde947) | upper ends s +0.0004, n +0.0032; ξ −0.70 | points −0.0017, −0.0028, −0.0013, −0.0012; passes |
+| PR-1b on one array (778c06e) | partial 0.698–0.751 | 0.795–0.812 (nested-CV k), 0.786–0.803 (k = 8) |
+| PR-6 one-sided (778c06e) | −0.0118, two-sided rule | −0.0097 (nested-CV k), −0.0013 (k = 8, unpaired), −0.0083 (paired) |
+| Nested-CV k (bac63d0) | k = 15: λ_n's interior share 0.107 | 0.064; PR-6b fails at 0.0165 |
+| One fixed k = 8 (55b84c4) | PR-6b 0.0165, 0.0095, 0.0026 | 0.0028, 0.0007, 0.0052 (unpaired) |
+| Paired increments (428f51f) | PR-3 grouped 0.0108 | 0.0037 |
+
+### 15.2 K1 (with π)
+
+**Smoke run.** K1 passed with its plants (50 keys, 2,008 comparisons, 20 π comparisons) on a
+rule that Section 7 does not state; Section 7's 'Pass' and 'Kinks' are its only statement.
+Read with Gate 1's 10⁻⁶ zero threshold, δ fails: median 5.4·10⁻⁵ and p95 0.037, zero
+comparisons pooled as 0.
+
+**Cause.**
+- At δ's step h = 10⁻⁶, a δ costate of 10⁻⁶ is a J difference of about 10⁻¹², which K1's warm
+  re-solves cannot resolve. On a full-throttle straight λ_δ is that small, and the coverage
+  rule puts 50 pedal-saturated states among δ's comparisons.
+- The 24 δ comparisons above 10⁻² are on 24 keys, 18 of them at pedal-saturated states with
+  the fold active. Their |λ_δ| runs from 9·10⁻⁷ to 2.7·10⁻⁵ and their absolute errors from
+  5·10⁻⁸ to 3.5·10⁻⁶, all below the coded floor. No comparison with |λ_δ| ≥ 3·10⁻⁵ exceeds
+  9·10⁻³.
+- At the worst one (key cb10d183, t = 70), J(c) is smooth with a biased slope. K1's difference
+  is 0.71–1.06·10⁻⁶ at c = 10⁻⁷ to 10⁻⁴, against 4.29·10⁻⁶ from a base re-converged at tol
+  10⁻¹² (4.22–4.27·10⁻⁶ at three steps). The warm re-solves settle along nearly flat
+  directions, by about 5·10⁻¹² in J(c) − J(−c).
+- Section 7's kink test cannot be passed under re-solve scatter. The one-sided estimates
+  contain the unshifted J(0) with weight 6/h, and the central pair does not.
+
+**The rule** (`gates.k1_error`, `k1_decision`, `targets.FD`, `fd_costate_k1`, `fd_pi`; the
+record's constants targets.k1_rule, kink_j_noise, shrink_rtol, max_shrink and pi_h).
+- Steps: 10⁻⁴ for s, n, vx and vy; 10⁻⁶ for ξ, r and δ; 10⁻⁵ for pedal, with the one-sided
+  ladder (10⁻³, 5·10⁻⁴, 2.5·10⁻⁴) at pedal-saturated states (Section 13). Richardson over (c,
+  c/2), re-solves at tol 10⁻¹⁰.
+- The difference's noise term is 6ε_J/(h·γ^t), with ε_J = `KINK_J_NOISE` = 10⁻¹¹, J's typical
+  spread between warm re-solves (not a bound). On the pedal ladder, ε_J is the rungs' own
+  spread where it exceeds 10⁻¹¹.
+- The floor is ε_t = max(10⁻⁶, 6ε_J/(h·γ^t)): 10⁻⁶ to 1.6·10⁻⁶ at the 10⁻⁴ steps, 6·10⁻⁶/γ^t
+  at pedal's, and 6·10⁻⁵/γ^t at the 10⁻⁶ steps (6.5·10⁻⁵ to 1.2·10⁻⁴ on K1's states, at most
+  1.6·10⁻⁴ on T). It is twice the largest error that J errors of size ε_J at the four stencil
+  points can give the central value (3ε_J/(h·γ^t)). Under independent scatter of that size the
+  error's p95 is about 3.7ε_J/(h·γ^t).
+- Error: err = |λ − FD| / max(|FD|, 3·disc, ε_t).
+- **Zero comparison:** |λ| and |FD| both below ε_t. It is counted ('n_zero', per component,
+  per plant and per reading) and never pooled (Gate 1's zero-field rule).
+- **Kink:** |forward − backward| > 10·max(disc, 6ε_J/(h·γ^t)). A kink does not count.
+- **Smaller c:** while the comparison is not a kink and its Richardson pair disagrees by more
+  than max(10⁻³·|FD|, 6ε_J/(h·γ^t)), c is divided by 10, at most twice. A comparison still
+  unresolved does not count.
+- **Pass per component:** over the non-zero comparisons that count, median < 10⁻³ and p95 <
+  10⁻². A component is descriptive when kinks and unresolved comparisons exceed 30% of its
+  converged ones, or when no non-zero comparison counts. K1 needs at least one decided
+  component, and every decided one must pass.
+- **π** (10 anchored keys, j = 0 and 1): `fd_pi` at h = `PI_H` = 10⁻⁵. It is the same central
+  stencil of four re-solves, without J(0) and without a kink test. J errors reach J_tail
+  divided by γ, so π's floor is max(10⁻⁶, 6ε_J/(h·γ)) = 6.03·10⁻⁶. The same zero rule applies
+  to π and to each π plant's comparison, and π needs a non-zero comparison.
+- **Plants** must fail the same rule on the same re-solves, none vacuously. Each required plant
+  must be scored on non-zero counted comparisons of a decided component and fail there; each π
+  plant must fail on its non-zero comparisons. The record binds K1 on `pass_with_plants`.
+- **Reported, binding nothing:** 'design_rule' (Gate 1's 10⁻⁶ with zero comparisons counted,
+  unresolved comparisons scored and the coded kink flag); 'design_rule_literal_kink' (the same
+  with Section 7's 10·disc kink test, from the one-sided estimates every row now stores); and
+  π's 'design_rule'.
+
+**Disclosure.** The floor was coded at the first implementation (c7d2285, 22 Oct 16:44),
+before K1's full-size run (23:13–23:31). It was coded after δ's comparison on the first sampled
+key (0005ec83, t = 72: target −9.7·10⁻⁷, FD −1.16·10⁻⁶, err 0.165 on the relative rule) had
+been seen to fail in development. That comparison is the floor's unit test
+(`test_k1_rules_with_known_answers`). The K1 sample is deterministic, so the floor was coded
+after a development row from this very sample had been seen. It rests here only on grounds
+that do not depend on K1's outcome:
+- ε_J is a property of the instrument (the J spread between warm re-solves), not of the
+  targets. At cb10d183, t = 70, the J(0) offsets are 2–8·10⁻¹² and the smooth-fit residuals up
+  to 6·10⁻¹¹.
+- The verdict is not knife-edge in ε_J. δ passes for any ε_J ≥ 10⁻¹² (p95 8.0·10⁻³ there) and
+  fails at 3·10⁻¹³ or less; r, ξ, n and vy pass for every ε_J down to 0.
+- The kink term only removes flags, and counting zero comparisons instead of pooling them
+  tightens the rule: δ's median rises from 4.8·10⁻⁶ to 2.2·10⁻⁵.
+- Every planted bug still fails (below).
+
+**Known truth.**
+- A synthetic J(c) = γ^t(λc + qc²) + noise through K1's stencil (20,000 draws, h = 10⁻⁶, γ^t =
+  0.7): Section 7's 10·disc flags 30.8–31.0% of smooth comparisons for independent scatter of
+  10⁻¹⁴ to 10⁻¹¹, and 83.9–99.9% when J(0) carries its own offset of 10⁻¹³ to 10⁻¹¹. The coded
+  test flags none of them. It still flags a planted kink whose one-sided slopes differ by
+  2·10⁻³, but not one at 6·10⁻⁴.
+- At cb10d183, t = 70, the correct target (confirmed by re-converging) scores 4.2 on the literal
+  rule. Under this rule it is a zero comparison.
+- On the real re-solves the literal kink test flags 40–49% of every component's comparisons
+  (third check: s 0.482, n 0.458, ξ 0.486, vx 0.478, vy 0.442, r 0.398, δ 0.466, pedal 0.442).
+  Under Section 7's literal reading every component is therefore descriptive, and K1 cannot
+  pass with any targets. (The smoke run's rows stored no one-sided estimates; the verifier
+  recomputed 1,423 of them, and the third check scores all 2,008.)
+
+**Planted faults that still fail** (third check; medians over the non-zero comparisons that
+count).
+- flip_sign 2.0 on all 8 components; no_discount 0.161–0.384; off_by_one on all 8 (n 0.0088 up
+  to δ 1.94); j_w on the 30 anchored decisions, 0.005 = 1 − γ, except s (4.60); no_es on s
+  (3.64); pre_jump on n (0.44), vx, vy, r and δ; unfolded on pedal (0.015 over 63 fold-active
+  rows).
+- π's plants, each scored on all 20 comparisons: j_w 1.0, plus_shift 0.934, r0_prev 1.0.
+- On K1's own comparisons (on the smoke run's rows, the recorded difference as truth): a gain
+  error (1 + ε)·λ_k at ε = 1.0–1.1·10⁻³ on every component, and an offset of 1.6·10⁻⁶ on λ_δ.
+- Passing by construction: no_es on every component but s, since it differs from λ only by
+  e_s/10 (if s were descriptive, no_es could not fail and K1 would fail); pre_jump on s, ξ and
+  pedal, which lie outside the active rows' gradients.
+
+**What the floor can hide.**
+- ε_t is at most 7.6·10⁻⁴ SD_T(λ_δ), 1.2·10⁻³ SD_T(λ_r), 2.8·10⁻⁴ SD_T(λ_pedal), and 3·10⁻⁵
+  SD_T or less for s, n, ξ, vx and vy.
+- Below it lie at most 0.2% of each K_P component's interior rows, 0.1% of vy's, 4.6% of
+  pedal's, 14% of r's and 43% of δ's. On those rows λ is checked in absolute terms only, to
+  about 3.5·10⁻⁶.
+- The targets carry the same inexactness as the differences. Re-converging 16 of K1's keys
+  moves T's targets by at most 1.3·10⁻⁵ (ξ), at most 5·10⁻⁶ SD_T for every component. K1
+  verifies the targets to about 10⁻⁵ absolute.
+
+**Consequence.** On K_P both readings give the same verdict and nearly the same numbers (p95
+≤ 3.5·10⁻³ under both), so no C1, C2 or C2-sw decision depends on the choice. C1-pattern's
+non-K_P side includes r and δ. Their rows below the floor are checked to about 3.5·10⁻⁶
+(at most 1.2·10⁻³ SD_T), which can move an R² on standardised targets by about 10⁻⁶ at most.
+
+### 15.3 K5's wiring check
+
+**Smoke run.** It failed. R²_wd was −0.0014, +0.0017, −0.698 and −0.0023, with CI upper ends
++0.0004, +0.0032, −0.602 and −0.0004, against "the R² CI must lie at or below 0".
+
+**Cause.** There was no leak, and nothing wrong in the probe pipeline that C1 and C2 use. An
+independent loop over the folds reproduces `ridge_cv`'s predictions exactly, and no held-out
+row enters a scaling, a penalty choice or a fit. The check had three problems.
+- **The rule.** "CI at or below 0" is an equivalence test with zero margin. Under correct
+  wiring the expected R²_wd is that of the unweighted leave-fold-out training mean, −0.002 to
+  −0.001 (the permutation moves targets between rows of unequal weight). One draw adds a
+  chance term that the geometry bootstrap holds fixed, and the CI half-widths are about 0.002
+  (0.018 for ξ). The rule failed 30 of 30 scratch draws of the old scheme and 39 of 40 single
+  draws of the new one; the exact no-information predictor cleared it by 3·10⁻⁵ on λ_n.
+- **Permuting within each training fold** kept each fold's mean, which carries an eighth of
+  each of its geometries' own mean: real signal that transfers. For λ_s it added +0.002 over a
+  pooled permutation (3.9 SE; the upper end was above 0 in 30 of 30 draws, against 13 of 30
+  pooled).
+- **Permuting across turn directions** held λ_ξ's R²_wd at −between/within = −0.41/0.59 ≈
+  −0.70 whatever the wiring, so a fault in ξ alone still scored −0.31.
+
+**The rule** (`probes.permuted_targets`, `wiring_null`; the record's probes.wiring = [10, 0.01]
+and probes.wiring_rule).
+- While outer fold f is held out, the training targets (every row outside f) are permuted
+  state by state across all training folds, never within one. λ_n and λ_ξ are permuted within
+  each turn direction (stream `costate_perm`, sub-stream (draw, f, 1 + j)); λ_s and λ_vx across
+  both (sub-stream (draw, f, 0)). Held-out rows keep their own targets. The direction is
+  required.
+- `WIRING_DRAWS` = 10 draws. Their out-of-fold predictions are averaged and scored by R²_wd
+  against the unpermuted held-out λ (raw λ, not λ_res), with the cluster-bootstrap percentile
+  CI on K5's own counts (k4_rng(12)).
+- Every K_P component needs a CI lower end ≤ 0 and a point ≤ `WIRING_TOL` = 0.01, K4's zero
+  tolerance. The per-draw points are reported. The control task stays descriptive.
+- The scheme, the 10 draws and the tolerance on the point were chosen after the smoke run's
+  failure, from null and planted runs, and before the corrected run on the real stream. They
+  are frozen. A tolerance on the upper end is infeasible for ξ, whose averaged upper end is
+  about +0.014 from geometry heterogeneity, not from the wiring.
+
+**Known truth and the false-fail rate.**
+- The 40 null draws behind the calibration permuted every column within direction. The
+  adopted scheme pools s and vx across directions, which roughly doubles vx's single-draw null
+  SD (from about 0.0018 to 0.0035).
+- Two fresh 10-draw replicates of the adopted scheme both passed. The closest was λ_n, with a
+  point of +0.0004 and a lower end of −0.0005. A Gaussian estimate from 30–60 single draws puts
+  **the false-fail rate at about 1–2% per run**, from the n and vx lower ends. A single draw can
+  break both bounds with no leak (one draw gave n's point 0.0098 with lower end +0.006), so the
+  average is required.
+- The probes test world (3,840 rows, base z): without a leak the points are −0.0101 to
+  −0.0009 and the check passes. Its s and vx upper ends are +0.0003, so the old rule would have
+  failed there.
+
+**Planted faults that still fail** (the diagnosis's and verifier's runs on the cached
+full-size K5 world; most under a scheme that permuted every column within direction, the
+first re-run with the adopted code):
+- one outer fold's model fitted on unpermuted targets: points 0.198–0.286, lower ends ≥ 0.039;
+- one training fold left unpermuted in every model: 0.17–0.25; the held-out rows in the fit:
+  0.21–0.29;
+- 5% of keys unpermuted: all four components fail; 2%: n, ξ and vx; 1% (one draw): n and ξ;
+- one held-out geometry per fold in the fit: n (lower end 0.0069), ξ (point 0.018) and vx
+  (lower end 0.0023);
+- ξ's column unpermuted for one model: 0.204, lower end 0.050;
+- the decoy fit outside the permutation: 0.84–0.97;
+- test-set tuning (penalties chosen by held-out SSE against the real targets): points 0.0126,
+  0.0138, 0.0236 and 0.0146, lower ends 0.0073, 0.0109, −0.0088 and 0.0114, so every component
+  fails;
+- in the unit tests, on the exact code: fold 0's model unpermuted, λ_n unpermuted for one model
+  (n alone fails), and test-set tuning.
+
+**Not seen** (stated limitations). A leak confined to the intercept or the fold means passes
+(averaged points ≤ 0.0002). It is bounded by the between-fold share of the target's variance,
+at most 0.002 for λ_s and about 0 for the others. A single leaked geometry sits near the floor
+(λ_n's lower end +0.0004 in one single-draw run). `Folds.check`, `ridge_cv`'s training masks
+and PR-3 guard both.
+
+**Consequence.** None for C1, C2 or C2-sw: only K5 uses `permuted_targets`. C2 scores the
+cross-fitted λ_res, whose D₁ contains σ, and C1's calibration has direction intercepts.
+
+### 15.4 K4's PR-1b
+
+**Smoke run.** It failed. The partial R² was 0.751, 0.744, 0.698 and 0.713 against 0.80 ±
+0.03, and Δ2 was 0.502, 0.638, 0.641 and 0.603, between 0.046 and 0.083 short of (1 − R²_b)·0.8.
+
+**Cause.** The plant and the probe used different target arrays. The plant's r came from each
+row's own-fold λ_res. While fold f is held out, C2's probe trains on λ − f̂_D^(−f,−g), which
+changes with f. One planted column cannot follow it, so on training rows it carried d =
+f̂_D^(−g) − f̂_D^(−f,−g), the held-out fold's share of the decoy fit. Var d/Var r was 0.24–0.48
+pooled and up to 1.4 in single folds, and the per-fold shortfall tracked it (Spearman 0.70 over
+24 fold × component cells). Every other candidate explains about 0.03 at most: ridge
+shrinkage, the penalty grid, one component at a time, the scale α, winsorisation and
+finite-sample loss. Removing h3 recovers up to 0.039 on s and n, but through d.
+
+**The rule** (`gates.k4`; the record's gates.k4_pr1b_rule).
+- One target array for the plant's baseline, the plant, the probe and the random controls:
+  each row's own-fold λ_res (`Residuals.oof`). SNR 4. The unit is u = α(r̃ + η), with Var η =
+  1/SNR and α the median h3 unit SD. All four K_P components are planted at once; one at a time
+  differs by at most about 0.008 (at k = 15).
+- The pass rule is unchanged: per component, the partial R² within 0.03 of 0.8, and Δ2 within
+  0.03 of (1 − R²_b)·0.8.
+- A limitation. That array's f̂_D for a training row was fitted with the held-out fold's
+  geometries, so PR-1b checks the ridge machinery (both penalties, inner CV, scaling), not the
+  cross-fit. At k = 15 it over-recovered by at most 0.022 over three plant seeds. The cross-fit
+  is covered instead by a `ridge_cv` unit test (it trains and scores fold f on slice f of
+  by-fold targets) and by the fold-consistent plant on C2's own by-fold targets
+  (`pr1b_by_fold`), reported beside PR-1b as descriptive.
+
+**Known truth.** With C2's by-fold targets kept and the plant made to follow them on training
+rows, recovery is 0.78–0.80 at k = 15, so the shortfall came from the plant's construction. A
+unit independent of the decoy variables is recovered at 1.01–1.21 of SNR/(1 + SNR) under the
+by-fold targets, as with one array or with no residualisation.
+
+**Planted faults that still fail** (at k = 15, not re-measured at k = 8): a hidden penalty
+floored at 1 (partial 0.46–0.55) or at 0.1 (0.76–0.79, with Δ2 on s 0.546 against 0.589); the
+network's rows permuted within geometry (−0.14 to −0.07). Not detected: a single shared penalty
+over [z, m, h3, u] (0.802–0.813), which is not a recovery fault; penalties chosen on the
+held-out fold fail on ξ only.
+
+**Third check** (k = 8). Partial 0.786, 0.791, 0.788 and 0.803. Δ2 0.718, 0.770, 0.826 and
+0.748 against 0.738, 0.781, 0.842 and 0.738, the largest gap 0.020 on s. R²_b 0.077, 0.024,
+−0.052 and 0.078. The by-fold plant lies within the tolerance (partial 0.780–0.799). PR-1b
+fails at k = 3 and 5 (λ_s's Δ2 is short by 0.037–0.038); that played no part in the choice of
+k (15.7).
+
+**Consequence.** C2 keeps the by-fold targets. A real h3 is a function of z and cannot carry
+d. A layer that encodes the decoy variables is not neutral (15.5).
+
+### 15.5 K4's PR-6
+
+**Smoke run.** It failed: Δ2 was −0.0118 against "within 0.01 of 0". The bisection ran to gain
+4.47, where the units' probe-alone R² was 0.364 against the decoy kNN's 0.798.
+
+**Cause.** The probe pipeline is not at fault.
+- Units that carry nothing beyond z, m and h3 lower the out-of-fold R², because coefficients
+  fitted on 40 training geometries do not transfer. On T, 32 noise units cost 0.004, PR-6's
+  units 0.011 and 32 random geometry codes 0.026. On a known-truth null (y = G(z) + an AR(1)
+  ε + a per-geometry effect), PR-6's units cost −0.006 to −0.007 and biased decoy units −0.005
+  to −0.016. The null expectation is negative, not 0.
+- Without a bias every unit is an odd function of the centred decoys, and a ridge on them
+  peaks at R² 0.36–0.37. With biases N(0, 1), 32 units peak at 0.50 (gain 2). The kNN's 0.80 is
+  above every reachable value, so any search runs to the grid's edge.
+- On λ the units are redundant with z, m and a random h3: with the residualisation off they
+  add only 0.005 (0.008 with biases). PR-6 alone has no power to fail a broken residualiser.
+
+**The rule** (`gates.pr6`, `probes.decoy_units`; the record's gates.k4_pr6 and k4_pr6_rule).
+- 32 units tanh(gain·(D̃A + b)) of the standardised (s − s_apex, vx, σ, log R), with A ~ N(0,
+  0.5²) and b ~ N(0, 1) (`K4_PR6_BIAS` = 1), appended to the host's h3.
+- The gain is the one from the fixed grid (0.25, 0.5, 1, 2, 4, 8) whose probe-alone R² (mean
+  over K_P) lies closest to the decoy kNN's. 'calibrated' (|difference| ≤ 0.02) is
+  descriptive.
+- Pass: the paired Δ2 (15.8) ≤ 0.01, one-sided, on C2's by-fold λ_res, on all of T and K_P,
+  with K4's 3 controls; and PR-1b passes. The negative part is reported as the plant's
+  over-fitting cost ('overfit_cost'), and the unresidualised Δ2 beside it.
+- Grounds for one-sided: the gate exists to catch a spurious positive gain, PR-3 was already
+  one-sided, and the known-truth null is negative.
+- PR-6 stays on the by-fold λ_res. One array would hide the C2 behaviour PR-6 measures: at k
+  = 15 the units scored −0.012 by fold, −0.007 on one array and about −0.001 with their rows
+  permuted.
+
+**Third check.** Paired Δ2 −0.0083 (CI −0.0328 to 0.0114); by component −0.0079, −0.0156,
+−0.0129 and 0.0031; cost 0.0083; unpaired −0.0013. Gain 2: the decoy units' R² 0.501 against
+the kNN's 0.794 (0.419–0.501 over the grid), so calibrated = False. With the residualisation
+off: paired 0.00999 (CI 0.0068–0.0152), unpaired 0.0080.
+
+**Planted faults.** On real λ, PR-6 cannot fail a broken residualiser. The residualisation off
+(paired 0.00999, just under 0.01), D₁ without s − s_apex (−0.003 at k = 15) and a partial
+residualisation (c = 0.8 or 0.9: −0.010) would all pass. The decoy-leak sensitivity therefore
+rests on PR-6b and PR-6c. Units holding a kNN of λ fitted on every other geometry (+0.240)
+carry λ information from held-out geometries; they are not a decoy fault and are not cited as
+one.
+
+**Consequence for C2.** A layer whose decoy-structured units its random controls lack loses
+about 0.01 of Δ2 (0.004–0.017 over seeds on T, 0.011–0.018 on the interior). C2 is therefore
+conservative for a confirm, and a refute near the band is slightly easier; hence the band note
+(15.10).
+
+### 15.6 K4's PR-6b and PR-6c (known truth)
+
+**Smoke run.** Neither existed. Both come from the PR-6 verification: two known-truth worlds,
+both required, so that the gate is not judged on the world that passes.
+
+**Construction** (`gates.pr6_world`, `pr6b_f`, `pr6c_f`, `hold_units`; the record's
+gates.k4_pr6).
+- F per K_P component. PR-6b's F is smooth: the weighted ridge (α = 10⁻², weights normalised,
+  intercept unpenalised) of λ on 256 biased tanh features of (s − s_apex, vx, σ, log R) (k4
+  sub-stream 13), fitted on every row. PR-6c's F matches the decoy kNN (Section 7's wording):
+  each geometry's rows are predicted by the k = 15 kNN of λ on D₁ fitted on every other
+  geometry (`K4_PR6C_K`, the world's own k, whatever f̂_D's). λ only shapes F.
+- y = std(F) + 0.5ε. ε is an AR(1) series (ρ = 0.9) along each key in t order, independent
+  across keys and components and weighted-standardised, so it is 20% of Var y. The gate seeds
+  are `K4_PR6_SEEDS` = (0, 1, 2) on k4 sub-stream (14, seed), one draw shared by both worlds.
+- 32 units hold F: tanh(F̃A + b), with A and b ~ N(0, 0.5²) (sub-stream (15, j)), appended to
+  the host's h3.
+- y is residualised by the pipeline's own `states.cross_fit` at f̂_D's k (8).
+- The statistic is C2's primary one (`c2_primary`, through `analysis.c2_network`): C2's
+  decision stratum (the interior, 3,951 rows), each component on its decision rows (s 1,643,
+  ξ 1,581), the frozen power floor's components ({s, ξ}), C2's 5 random-init controls and key
+  weights renormalised on the stratum. It is the units' paired increment over the host
+  (15.8).
+- **Pass per world:** on every seed Δ2 ≤ 0.01; on every seed Δ2 > 0.01 with the
+  residualisation turned off (y itself); and for PR-6b, on every seed, the units' probe-alone
+  R² at least the kNN's (means over K_P, on T). K4 needs both worlds.
+- Descriptive: the T-wide statistic (every row and component), the per-component gains, and two
+  planted faults on the first seed: the kNN at k = 300, and D₁ without s − s_apex at f̂_D's k.
+
+**History.**
+- Under the smoke run's k = 15, the verifier measured the kNN-shaped world at 0.0093–0.0155 on
+  T over 7 runs (6 above 0.01; λ_s's gain 0.036–0.055), and at 0.002, 0.018 and 0.017 on the
+  interior with 5 controls (λ_s's gain up to 0.083).
+- A leave-one-geometry-out residualiser still leaked 0.0118, so the leak is f̂_D's smoothing
+  bias, not interpolation across held-out geometries. k = 5 removed it (0.0010 and 0.0016 on
+  T, −0.002 on the interior).
+- Under the nested-CV k, PR-6b failed at full size (15.1). At k = 8 both worlds pass.
+
+**Third check** (k = 8, paired).
+- PR-6b: 0.0033 (CI 0.0001–0.0065), 0.0016 and 0.0032. Leak bound 0.0033 (unpaired 0.0052);
+  largest gains s 0.0063, ξ 0.0032. Off: 0.090, 0.097 and 0.070. Probe-alone R² 0.751–0.755
+  against the kNN's 0.631–0.645. T-wide −0.0015 to −0.0009.
+- PR-6c: 0.0069 (CI −0.0075 to 0.0217), 0.0069 (CI −0.0027 to 0.0171) and 0.0045. Leak bound
+  0.0069 (unpaired 0.0070); largest gains s 0.0135, ξ 0.0004. Off: 0.177, 0.217 and 0.215.
+  Probe-alone R² 0.764–0.767 against 0.678–0.685. T-wide −0.0024 to −0.0009.
+- The host's own offset on these rows is −0.0010 to 0.0020 for PR-6b and below 0.0002 in
+  absolute value for PR-6c.
+
+**Planted faults.**
+- Detected: the residualisation turned off, on every seed of both worlds (0.070–0.217); the kNN
+  at k = 300 (PR-6b 0.032, PR-6c 0.184); skipping the residualisation (a unit test).
+- **Not detected: D₁ without s − s_apex** (PR-6b 0.0014, PR-6c −0.0059 on seed 0). On the
+  validation seeds at k = 8 (unpaired) it was detected on 3 of 6 PR-6b seeds and on none of
+  PR-6c's. C2's decision rows score s on approach and exit interior rows and ξ on approach rows
+  only, and the T-wide +0.017 and +0.020 that the verifier saw at k = 15 did not reproduce
+  there. This is a stated limitation: K4 does not test that D₁ holds s − s_apex. A states test
+  pins D₁'s columns on a stored key (D₁[:, 0] = s − s_apex).
+
+**Margins.** PR-6c's leak bound is 0.0069, and its largest validation value at k = 8 is 0.0098,
+both against 0.01.
+
+### 15.7 f̂_D's k
+
+**Smoke run.** f̂_D was the k = 15 kNN (Section 4), and no gate tested k directly. The PR-6
+verification found that k = 15 over-smooths λ_s. It leaked 0.009–0.016 on T in the kNN-shaped
+world (15.6). On real λ, a training-fold kNN predicts about 19–25% of λ_res,s for a held-out
+geometry: the cross-fitted kNN's R² for λ_s is 0.772 at k = 5 against 0.720 at k = 15 on T,
+and 0.788 against 0.717 on the interior.
+
+**Round 1: a nested-CV k** (bac63d0; the verifier's target-side proposal).
+- k per (partition, outer fold, K_P component) from (3, 5, 8, 15, 30), by the weighted
+  out-of-geometry SSE over the frozen inner folds of the fold's training geometries.
+- On real λ it chose 3–15 for s by fold, 5 for n in every fold, 15–30 for ξ and 15 for vx.
+  λ_n's interior residual share fell from 0.107 to 0.064, below the floor.
+- In the known-truth worlds it left the kNN-shaped leak at 0.0085–0.0139 on T (6 of 7 above
+  0.01) and raised the smooth world to 0.0125. The SSE-optimal k trades the kNN's bias against
+  noise, and a plant that holds F exactly gains on the bias. At full size PR-6b failed (15.1).
+
+**The rule** (55b84c4, re-applied at 428f51f; `gates.decoy_k_choice`, `decoy_k_leaks`,
+`at_decoy_k`, `states.KNN_K` = 8; the record's states.knn_k, knn_k_candidates, knn_k_rule and
+knn_k_validation).
+- Grounds (the lead's): in C2 the residualiser serves validity. What leaks into C2 is f̂_D's
+  bias, which a network holding the decoy function recovers. Its variance (noise borrowed from
+  other geometries) no network can recover; it only costs power, in the conservative
+  direction. An out-of-geometry SSE trades the two, so it is the wrong criterion.
+- One k for every fit, outer fold, partition and K_P component. `cross_fit` refuses anything
+  but one positive integer, and the nested-CV code is removed.
+- The rule, declared before any result: among (3, 5, 8, 15), the largest k for which every one
+  of 6 validation seeds of both PR-6b and PR-6c gives C2's primary Δ2 ≤ 0.01, with y
+  residualised at k and C2's power floor recomputed at k (`frozen_values`' rule, on partition
+  0's own-fold residuals). If none qualifies: k = 3, as a blocker.
+- **Validation seeds.** Stream `costate_decoy_k` (index 311), sub-stream v = 0…5, one noise draw
+  shared by both worlds, and otherwise exactly K4's construction (`pr6_world`: the same F,
+  units, decision rows, controls and statistic). K4's gate seeds are on stream `costate_k4`
+  (310), sub-stream (14, s), s = 0, 1, 2, and none was computed at any candidate k for the
+  choice. Before it they had been scored under the nested-CV residualiser (the first check)
+  and, for PR-6b only, in that check's descriptive diagnostic at fixed k = 15 and 5 (both
+  passing there).
+- The statistic read is the units' paired increment over the host (15.8). The rule was first
+  applied to the unpaired statistic (55b84c4) and re-applied mechanically when the no-gain
+  plants became paired (428f51f). Both give k = 8.
+- The record freezes decoy_k = {k: 8, scope: every partition, outer fold and K_P component},
+  and the post-tag C2 (`probes_of`) cross-fits every partition at the frozen k.
+
+**Validation table.** Δ2 per world as max / mean / seeds ≤ 0.01 of 6. The per-seed values are
+`gates.DECOY_K_VALIDATION` (paired) and `DECOY_K_VALIDATION_UNPAIRED`.
+
+| k | PR-6b, paired (decides) | PR-6c, paired (decides) | PR-6b, unpaired | PR-6c, unpaired | Qualifies |
+|---|---|---|---|---|---|
+| 3 | 0.0035 / 0.0018 / 6 | 0.0130 / 0.0045 / 5 | 0.0061 / 0.0025 / 6 | 0.0130 / 0.0045 / 5 | no |
+| 5 | 0.0074 / 0.0018 / 6 | 0.0165 / 0.0083 / 3 | 0.0105 / 0.0032 / 5 | 0.0162 / 0.0081 / 3 | no |
+| 8 | 0.0035 / 0.0000 / 6 | 0.0098 / 0.0054 / 6 | 0.0053 / 0.0012 / 6 | 0.0096 / 0.0054 / 6 | yes |
+| 15 | 0.0113 / 0.0051 / 5 | 0.0114 / −0.0099 / 5 | 0.0114 / 0.0049 / 5 | 0.0089 / −0.0103 / 6 | no |
+
+The host's own offset on these rows (unpaired minus paired) is at most 0.0067 in absolute
+value over every k and seed, and 0.0042 at k = 8.
+
+**Descriptive, per k** (unpaired, computed after the first choice, not read by it).
+
+| k | Interior shares (s, n, ξ, vx) | Interior floor | D₁ without s − s_apex detected (PR-6b / PR-6c) | PR-1b | PR-6 Δ2 |
+|---|---|---|---|---|---|
+| 3 | 0.176, 0.063, 0.251, 0.070 | {s, ξ} | 1 / 0 of 6 | fails | −0.0089 |
+| 5 | 0.187, 0.064, 0.249, 0.070 | {s, ξ} | 3 / 0 of 6 | fails | −0.0060 |
+| 8 | 0.224, 0.091, 0.248, 0.076 | {s, ξ} | 3 / 0 of 6 | passes | −0.0013 |
+| 15 | 0.289, 0.107, 0.213, 0.070 | {s, n, ξ} | 4 / 0 of 6 | passes | −0.0020 |
+
+At every k the residualisation off and the k = 300 kNN are detected on 6 of 6 seeds (smallest
+0.074 and 0.044 on PR-6b, 0.186 and 0.178 on PR-6c), PR-6b's probe-alone condition holds on
+6 of 6, and the T-wide floor passes s, n and ξ.
+
+**Consequence.**
+- At k = 8 λ_n's interior share is 0.091 and vx's 0.076, both below the 0.10 floor (Section 12,
+  decision 5, unchanged). k = 15 would have kept n, but it fails the rule under both
+  statistics.
+- Section 4's k = 15 is superseded.
+- C2-sw's σ^ped is not residualised, and K5 scores raw λ, so neither depends on k.
+- The margin on PR-6c is thin (0.0098 on the validation seeds). A failing gate seed in the
+  canonical re-run is a finding, not a reason to choose again.
+
+### 15.8 K4's no-gain plants as paired increments (PR-2, PR-3, PR-6, PR-6b, PR-6c)
+
+**Smoke run.** At k = 15, unpaired, PR-2 passed (Δ2 −0.0002 for m, 0.0010 for a*_t) and PR-3
+passed (grouped −0.0060; by key 0.028, with the base's rise 0.074).
+
+**Second check** (k = 8). PR-3's grouped Δ2 was 0.0108 against 0.01, K4's one failure. PR-2's
+m variant was 0.0070, inside its tolerance.
+
+**Cause.** The unpaired statistic compares one random host plus the plant with other random
+networks, so it carries the host's own chance offset against its controls. On that run's world
+the host alone scored +0.0069 against its 3 controls, and the codes added +0.0038. At k = 15
+the same host scored −0.0001, and host + codes −0.0062. The offset is not a property of the
+plant, and any pipeline change re-draws it (here f̂_D's k).
+
+**The rule** (428f51f; `probes.c2_paired` and `paired`, `analysis.c2_network(host=...)`,
+`gates.c2_primary(host=...)`; the record's gates.k4_no_gain_rule).
+- A no-gain plant is scored by Δ2(host + plant) − Δ2(host). There is one fit of the base [z, m]
+  and of the random controls, and both gains use the same rows, components, mask and bootstrap
+  counts. The controls' median cancels, so per component the statistic is R²(host + plant) −
+  R²(host). The CI comes from the paired bootstrap draws.
+- Scored this way: PR-2 in both variants (|Δ2| ≤ 0.01); PR-3's grouped split (Δ2 ≤ 0.01);
+  PR-6 (≤ 0.01; 15.5); PR-6b and PR-6c (every seed ≤ 0.01), with their residualisation-off
+  checks (> 0.01) and their planted faults.
+- Unchanged: tolerances, seeds and every-seed rules; the recovery plants (PR-1a, PR-1b, PR-5
+  and PR-8); and PR-3's mis-grouped leak check. A leak is shown there when the codes' unpaired
+  gain by key or the base R²'s rise exceeds 0.01, and the paired leak ('by_key_paired') is
+  reported. A leak that raises the host's fit as much as the host + plant's cancels in a paired
+  increment, which is why that check stays unpaired.
+- Reported, descriptive: each plant's unpaired value, and the host's own offset per plant and
+  per seed (`host_offsets`; 'host_offset' in gates/k4.json), with every random network's own
+  gain and their SD.
+- PR-4 is read one-sided: h2's and h3's R² must each be at least the readout's minus 0.02,
+  since the probe also sees the layer's other units. It has been coded so since the first
+  implementation (c7d2285); 428f51f states it (the record's gates.k4_pr4_rule).
+- Tests. A host whose own offset exceeds 0.01 fails no no-gain plant (PR-2, PR-3, PR-6 and
+  PR-6b), while a planted gain still does. In the probes test world a plant that adds nothing
+  scores −0.00005 paired against 0.0438 unpaired, and a unit of ξ's residual at SNR 1 scores
+  0.109 paired, with a CI lower end above 0. The paired increment equals the difference of
+  c2's two gains exactly.
+
+**Third check.**
+- PR-2: m −0.0001 (CI −0.0007 to 0.0002), unpaired 0.0070; a*_t −0.0001 (CI −0.0005 to
+  0.0001), unpaired 0.0041.
+- PR-3: grouped 0.0037 (CI −0.0077 to 0.0292); unpaired 0.0108, the second check's failure
+  reproduced exactly. By key: unpaired 0.0222 and the base's rise 0.0823, so the leak is shown;
+  paired 0.0173.
+- The host's own offsets on T with K4's 3 controls: 0.0071 for the λ_res fit that PR-2's m
+  variant, PR-3's grouped split and PR-6 share (the four random networks' own gains have SD
+  0.0058 there), 0.0042 with a*_t in the base, and 0.0050 on the split by key.
+
+**Consequence.** K4 only. The real C2 and C2-sw on trained networks are unchanged: trained Δ2
+minus the median over 5 random-init actors, unpaired (`probes_of` never passes a host). The
+offsets are C2's between-random-network noise floor (15.10).
+
+### 15.9 The value-fit nulls' full cross-fit, and rows without a calibration
+
+**Value fits** (3e2242f; `nulls.FoldNets`, `fold_gradients`; the record's nulls.per_fold_rule
+and nulls.value_mlp_nested_seed). This replaces Section 14's "Value fits" bullet (#20).
+- Before, slice f pulled every row back through the fit without fold f. A training row's
+  slice-f gradient was therefore in-sample: fold f's calibration was fitted on in-sample
+  predictors and applied to out-of-sample ones.
+- Now each slice is cross-fitted as `states.cross_fit` cross-fits C2's decoys. In slice f, fold
+  f's rows carry the fit without fold f, and a training row of fold g carries the fit without
+  folds f and g.
+- Every nested fit serving slice f uses fold f's penalty (not chosen again per pair) and is
+  z-scored on its own training rows. One fit per unordered pair of folds and penalty serves both
+  slices: 15 extra fits when the penalties agree (both ridge fits) and 20 for G1's MLP.
+- The MLP's nested fit without folds a < b is seeded mlp_rng(partition, a, 99, N_INNER + 1 +
+  b), which no inner-CV or outer fit uses. Far geometry is unchanged (neither fold f nor the
+  row's own fold), and so are the shapes ([6, n, 8]; QSS and the barrier [n, 8]).
+- Remaining dependency: fold f's penalty was chosen by inner CV over rows that include fold
+  g's, so fold g's targets reach slice f's fold-g rows through that one scalar. The ridge
+  penalties are 0.01 in every fold.
+- **Measured** on the smoke run's world under G1's obs_rms, as the interior K_P-mean null R²_c,
+  before → after:
+  - every K_P component scored: value_ridge 0.2546 → 0.2172 (n 0.370 → 0.224; its in-sample
+    calibration slopes were 9.6–120 by fold, cross-fitted 2.4–9.5); value_ridge_window 0.3344 →
+    0.3328; value_mlp 0.4070 → 0.3978. On all of K_P the cross-fit weakens these nulls
+    slightly, the opposite direction to #20's change;
+  - G1's decision rows (s 1,643, ξ 1,581): both ridge fits' slopes clamp at 0 for s and ξ in
+    every fold either way (−0.0128); value_mlp −0.0278 → −0.0164 (s −0.045 → −0.022).
+- Cost: 283 → 345 s per network, single-threaded. In the third check G1's nulls stage took
+  413 s on 2 threads beside other stages.
+- Planted faults that fail the unit tests (ridge and MLP): the nested lookup returning the fit
+  without f (the previous layout), or the fit without g.
+
+**Rows without a calibration** (3e2242f; `analysis.calibrated_agreement`, `c3w_of`; the
+record's nulls.uncalibrated_rows). Section 14's rule (#10) now covers W1's calibrated agreement
+and C3-w's x.
+- They zero-filled (np.nan_to_num) the rows whose outer fold had no calibration. Now such rows
+  are dropped and counted ('n_uncalibrated'), and R²_c, the Spearman and the slope read the same
+  rows. With no row left, the record is 'not testable' with its reason, and C3-w leaves that
+  network out as missing ('x_not_testable').
+- C1-pattern already dropped such rows (since 58fe333); it now counts them per component.
+- Measured effect: none can be measured before the tag, since both read a trained critic's
+  width derivative. In the unit test (two geometries, one fold with 2 training rows), the
+  zero-filled score differs from the dropped one, and the old zero-fill, planted, fails.
+
+### 15.10 Consequences for C1, C2 and C2-sw
+
+**C1.**
+- K1's rule: no decision depends on it (15.2).
+- K4's and K5's changes and f̂_D's k do not enter C1. PR-5 is unchanged and passes (15.11).
+- C1's nulls: the value fits are cross-fitted in full (15.9). On the decision set the ridge
+  nulls stay at the clamp floor (−0.0128 for G1), and value_mlp moves from −0.0278 to −0.0164.
+  C1's rule (each null's paired CI lower end of R²_c minus the null > 0) is unchanged.
+- W1 (descriptive) and C3-w's x drop rows without a calibration (15.9).
+
+**C2.**
+- **Decided on s and ξ only, through the power floor.** At k = 8 the interior residual shares
+  are s 0.224, n 0.091, ξ 0.248 and vx 0.076, so the floor passes s and ξ. Under Section 14 the
+  floor passed n too, which dropped out only for want of a scored row (K2b). The decision set
+  is the same; the reason is now the floor. The T-wide floor (descriptive) passes s, n and ξ.
+  The floor's rule (Section 12, decision 5) is unchanged.
+- **The statistic** is unchanged: trained Δ2 minus the median over 5 random-init actors,
+  unpaired, at the frozen k = 8 and floor.
+- **The noise floor.** A random host's own Δ2 against random controls is what C2 gives a
+  network that holds nothing beyond a random one. It is 0.0069–0.0071 on T with K4's 3
+  controls, where the four random networks' own gains have SD 0.0058. On C2's decision rows
+  with 5 controls it is up to 0.0067 in absolute value over the validation seeds and every
+  candidate k (0.0042 at k = 8, and −0.0010 to 0.0020 on K4's gate seeds). So it is about
+  0.007, against C2's 0.05 band. The decision-row figures are on PR-6b's and PR-6c's synthetic
+  targets; on the real λ_res at C2's decision rows the offset was not measured. The offsets stay
+  in gates/k4.json. The analysis reads only the band notes from K4; the gates module
+  docstring's "the analysis cites the offsets as C2's noise floor" is not implemented.
+- **Band notes** (`gates.band_notes`, copied at prereg into frozen['k4_band_notes'];
+  `analysis.band_notes`, contained and descriptive; no decision changes). Beside any C2 or C2-sw
+  refute whose CI upper end is ≥ 0.03: PR-6's paired over-fitting cost (third check: 0.0083,
+  with Δ2's CI −0.0328 to 0.0114). Beside any confirm whose point is ≤ 0.07: PR-6c's paired
+  leak bound (0.0069, with λ_s's largest gain 0.0135 and ξ's 0.0004). The canonical re-run's
+  K4 binds the values.
+- **Limitations.** PR-1b checks the ridge machinery, not the cross-fit (15.4). PR-6's plant
+  reaches R² 0.50 against the kNN's 0.79 and its residualisation-off check is marginal
+  (0.00999), so the decoy-leak sensitivity rests on PR-6b and PR-6c. K4 does not detect a D₁
+  without s − s_apex (15.6). A decoy-encoding layer that its controls lack loses about 0.01 of
+  Δ2 (15.5).
+- The PR-6 diagnosis's "no evidence of upward bias" is replaced by the measured PR-6c leak: up
+  to 0.0069 on the gate seeds and 0.0098 on the validation seeds at k = 8.
+
+**C2-sw.** σ^ped is not residualised, so f̂_D's k does not enter. PR-8 is unchanged and passes
+(gain 0.0815 against 0.086, n 2,911). Its statistic is unpaired, like C2's, and the band notes
+and the noise floor apply to it as to C2.
+
+### 15.11 The third full-size check, and the canonical re-run
+
+428f51f, code hash a1d336d254dc…, stamped partial (--out; the nulls also --network). Every
+stage exited 0, on the default 2 threads, in 96.8 minutes of wall time with K2b, K5 and the
+nulls run in parallel.
+
+| Gate | Third check (428f51f) | Pass |
+|---|---|---|
+| K2 | t_H 267; drops_T False; extend_ok False (3 of 30 insurance solves: 2 in a different basin, 1 at 800 iterations), as in the smoke run | yes |
+| K2b | 26 keys; excluded: approach {n, vx}, braking and corner {s, n, ξ, vx}, exit {n, ξ, vx} | yes |
+| K1 | 2,008 rows, 0 failed solves. Non-zero n / zero / median / p95: s 203/32/1.7·10⁻⁷/3.8·10⁻⁶; n 212/23/1.5·10⁻⁷/2.3·10⁻⁵; ξ 236/0/3.5·10⁻⁷/3.5·10⁻³; vx 236/0/1.1·10⁻⁷/2.9·10⁻⁶; vy 236/0/4.0·10⁻⁷/1.7·10⁻³; r 188/47/1.65·10⁻⁶/8.8·10⁻⁵; δ 184/51/2.2·10⁻⁵/2.8·10⁻³; pedal 233/0/1.0·10⁻⁵/8.4·10⁻⁴. Kink shares 0.060–0.064; none descriptive; every plant fails, none missing. 'design_rule' fails on δ (p95 0.042); the literal-kink reading leaves all 8 descriptive | yes |
+| K1, π | 12 non-zero and 8 zero comparisons; median 8.9·10⁻⁷, p95 7.0·10⁻⁶; every plant fails on 20 rows | yes |
+| K4 PR-1a | partial / Δ2 at SNR 0.25, 1 and 4: 0.196 / 0.197, 0.498 / 0.498, 0.794 / 0.794 | yes |
+| K4 PR-1b | 15.4 | yes |
+| K4 PR-2, PR-3 | 15.8 | yes |
+| K4 PR-4 | readout 0.916; h2 0.979 and h3 0.978 (actor and critic) | yes |
+| K4 PR-5, PR-5e | 3,951 interior rows: SNR 0.25 0.198, 0.5 0.334 and 1 0.503 (inconclusive), 4 0.803 (confirm); −λ, zero, noise and direction-only −0.0033 to −0.0027 (refute); one component flipped 0.750; ×10 1.0; floors −0.0056 to −0.0012 | yes |
+| K4 PR-6 | 15.5 | yes |
+| K4 PR-6b, PR-6c | 15.6 | yes |
+| K4 PR-7, PR-8, PR-9 | scale changes 0; PR-8 0.0815 against 0.086; D_V 0, largest error 0 | yes |
+| K5 wiring | point (lower, upper): s −0.0017 (−0.0069, −0.0000); n −0.0028 (−0.0041, −0.0015); ξ −0.0013 (−0.0256, 0.0144); vx −0.0012 (−0.0034, −0.0005). Per-draw points −0.0168 to +0.0057 | yes |
+| K5 control task | descriptive: r* clipped at 0.95 for all four, ceilings 0.946–0.947; selectivity −0.045 to 0.041 | — |
+| Nulls (G1) | value_ridge, value_mlp, value_ridge_window and far_geometry [6, 9887, 8]; QSS and barrier [9887, 8]; all finite; ridge α 0.01 (training R² 0.938–0.951); MLP α 10⁻⁴, 10⁻³ in one fold (0.999); window 0.752–0.813 | yes |
+| Frozen values | decoy_k 8; interior shares 0.2238, 0.0911, 0.2483, 0.0760; floor {s, ξ}; T-wide shares 0.2473, 0.2034, 0.3116, 0.0626 | — |
+
+Stage times: inputs 103 s, K2 248 s, inputs again 96 s, K2b 3,174 s, K1 1,116 s, K5 2,692 s,
+K4 2,179 s (8 minutes at the smoke run), and G1's nulls 413 s.
+
+**Not covered by the third check.** K0, K3, K3b and K6 were not re-run in this round, and the
+nulls ran for G1 only.
+
+**The canonical re-run** (Section 14, "Where it runs"). Every pre-tag stage runs in the main
+checkout on this code, in Section 14's order: inputs, K2, inputs again (binding t_H), K2b, K0,
+K1, K3, K3b, K4, K5, K6 and the nulls for all 9 decision networks; then prereg. It must
+reproduce:
+- the frozen decoy_k = 8, the interior shares and the floor {s, ξ} above, t_H = 267 and K2b's
+  exclusions;
+- K1's, K4's and K5's numbers above, every plant's verdict, and K4's decoy_k = 8;
+- the band notes: pr6_cost 0.0083 and pr6c_leak 0.0069;
+- G1's null arrays: their shapes and finiteness (they were byte-identical in the second and
+  third checks).
+
+The stages are deterministic on the same code, keys and seeds. K1, K2, K2b, K5, the frozen
+values and G1's nulls were identical in the second and third checks apart from provenance, and
+K1's fresh re-solves reproduced the smoke run's stored errors. So a difference beyond round-off
+is a finding to report. A failing gate blocks the tag and is reported; nothing is chosen again.
+The code hash covers src, scripts/costate.py and scripts/_bootstrap.py, not this document; if
+main's copies equal 428f51f's, the re-run's hash is the third check's.
+- Expected cost on 2 threads: K2b about 53 minutes, K5 45, K4 36 and K1 19; the nulls about 7
+  minutes per network.
+- **The rehearsal** (tests/test_costate_rehearsal.py) was not re-run in this round. It still
+  forces K4's and K5's verdicts to pass, and its stated real-T power floor is the smoke run's
+  {s, n, ξ} (n has no decision row either way). Its 47 minutes predate K4's present cost. It
+  remains evidence of the post-tag path's crash safety only.
+- **Tests:** 169 test functions in tests/test_costate_*.py (141 at ed4d743).
+
+### 15.12 Earlier text read through this section
+
+| Where | Earlier text | Read as |
+|---|---|---|
+| Section 4, 'Decoys' | f̂_D is kNN (k = 15) | one k = 8 everywhere (15.7) |
+| Section 4, 'Decoys' | a component whose residual share is below 0.10 is descriptive in C2 | at k = 8: n (0.091) and vx (0.076) (15.10) |
+| Section 5 | the random controls | K4's plants use 3 of C2's 5; PR-6b and PR-6c use all 5 (15.6) |
+| Section 7, K1 | 'Pass', 'Kinks' and π | 15.2 |
+| Section 7, K4 PR-1b | one component at a time, r_k on the plant's own baseline | one target array, all four at once (15.4) |
+| Section 7, K4 PR-2 and PR-3 | Δ2 within 0.01 of 0; grouped gain ≤ 0.01 | the paired increment (15.8) |
+| Section 7, K4 PR-4 | recovered within 0.02 | one-sided (15.8) |
+| Section 7, K4 PR-6 | Δ2 within 0.01 of 0; units scaled to match the kNN | one-sided and paired, a fixed gain grid; PR-6b and PR-6c added (15.5, 15.6) |
+| Section 7, K5 | permuted within each training fold; the CI at or below 0 | 15.3 |
+| Section 7, 'Freeze' | f̂_D | the frozen decoy_k, its validation tables and K4's band notes |
+| Section 12, decision 5 | the power floor | its consequence at k = 8 (15.10) |
+| Section 14, 'What decides on T' | the floor passes s, n and ξ | s and ξ (15.10) |
+| Section 14, #20 'Value fits' | slice f through the fit without f | the full cross-fit (15.9) |
+| Section 14, #10 | C1, C1-pattern and C1-limit | also W1 and C3-w's x (15.9) |
+| Section 14, 'The rehearsal' | K4's and K5's verdicts forced | the real verdicts (15.11) |
+
+### 15.13 Smoke-run results and their resolutions
+
+| Smoke-run result (v2.2, 185c637) | Resolution | Commit |
+|---|---|---|
+| K1 passed with its plants, on a rule Section 7 does not state | The rule written down (15.2): zero comparisons counted, not pooled; a decided component needs a non-zero comparison; one-sided estimates stored and the literal reading reported; constants and rule in the record | d1ff055 |
+| K1's π: 8 of 20 zero comparisons pooled as 0 | π under the same zero rule, at its floor 6.03·10⁻⁶ | b8001d6 |
+| K4 PR-1a passed | Unchanged | — |
+| K4 PR-1b failed: partial 0.70–0.75, Δ2 0.046–0.083 short | One target array; all four components at once; the by-fold plant descriptive | 778c06e |
+| K4 PR-2 passed (unpaired) | Paired increment | 428f51f |
+| K4 PR-3 passed (unpaired; failed the second check at 0.0108) | Grouped split paired; mis-grouped leak check unchanged | 428f51f |
+| K4 PR-4 passed (one-sided as coded) | One-sided reading stated | 428f51f (coded at c7d2285) |
+| K4 PR-5, PR-7, PR-8 and PR-9 passed | Unchanged | — |
+| K4 PR-6 failed: Δ2 −0.0118; units' R² 0.36 against the kNN's 0.80 | Biased units, a fixed gain grid, one-sided; then paired | 778c06e, 428f51f |
+| None (found in PR-6's verification): f̂_D at k = 15 leaks in a kNN-shaped world | PR-6b and PR-6c; a nested-CV k, which failed PR-6b at full size; one fixed k = 8 by the validation rule, re-applied on the paired statistic | 778c06e, bac63d0, 55b84c4, 428f51f |
+| K5 failed: s's and n's CI upper ends +0.0004 and +0.0032; ξ −0.70 | Permuted across training folds, odd components within direction; 10 draws averaged; lower end ≤ 0 and point ≤ 0.01 | 6fde947 |
+| K0, K2, K2b, K3 and K3b passed; K6 counted | Unchanged; K2 and K2b re-run in the checks with the same results | — |
+| No gate: C1's value-fit nulls were in-sample on training rows | Full cross-fit | 3e2242f |
+| No gate: W1 and C3-w's x zero-filled uncalibrated rows | Dropped and counted | 3e2242f |
