@@ -6,12 +6,13 @@ architecture and on constructed data with known answers:
   trained networks refused before the tag; PR-4's planted readout in h2 and h3;
 - the two-penalty ridge against direct solves of its normal equations (alpha_H = inf: the
   baseline); the frozen folds (``states``' deal), strata subsets, and no held-out row in any
-  fit or penalty choice;
+  fit or penalty choice; by-fold targets [F, n, m] trained and scored on slice f;
 - R2_wd (within-direction SST for mirror-odd components), the direction-only floor, the
   cluster bootstrap against repeated rows, weighted Spearman;
 - K4 plants on a synthetic world (48 geometries, mirror pairs, smooth trajectories): PR-1a
   (one unit per target), PR-1b inside C2 (the plant is recovered and C2 confirms), PR-6 (a
-  decoy-only layer does not pass C2's residualised test), PR-2 (m in the layer adds nothing),
+  decoy-only layer does not pass C2's residualised test; the units' biases), PR-2 (m in the
+  layer adds nothing),
   PR-3 (no leak on the grouped split; the mis-grouped split leaks), PR-7 (scale invariance),
   PR-8 (C2-sw's planted switching unit);
 - K5: permuted targets (wiring null: held-out rows kept, the training rows permuted across
@@ -329,6 +330,48 @@ def test_held_out_rows_never_enter_a_fit_or_a_penalty_choice(world):
     # a column constant on the training rows (the context channels) is dropped
     assert np.all(pr.kept[:, 0] <= 40) and pr.alpha.shape == (6, 2, 2)
     assert P.ridge_cv(W["z"], Y, fo, w, None, None, GRID, H_GRID).kept[0, 0] == 216
+
+
+def test_by_fold_targets_train_and_score_fold_f_on_slice_f(world):
+    """Targets [F, n, m] (C2's cross-fitted lambda_res): while fold f is held out the probe
+    trains on slice f's training rows and scores fold f's rows against slice f. With slice f
+    a distinct known function of f, fold f's predictions, penalties and scored targets are
+    those of the same probe fitted on slice f alone (K4's PR-1b uses one array, so this is
+    the by-fold path's own check)."""
+    W = world
+    fo, w = W["fo"], W["w"]
+    y0 = W["lam"][:, :2]
+    base, H = W["z"][:, :40], W["h"]["h3"][:, :30]
+    Yf = np.stack([(1.0 + f) * y0 + 10.0 * f for f in range(fo.n_folds)])
+    pr = P.ridge_cv(base, Yf, fo, w, H, None, GRID, H_GRID)
+    for f in range(fo.n_folds):
+        held = fo.outer == f
+        one = P.ridge_cv(base, Yf[f], fo, w, H, None, GRID, H_GRID)
+        np.testing.assert_allclose(pr.pred[held], one.pred[held], rtol=0, atol=1e-10)
+        np.testing.assert_array_equal(pr.alpha[f], one.alpha[f])
+        np.testing.assert_array_equal(pr.y[held], Yf[f][held])
+        # and not slice f + 1's: the folds' slices differ by construction
+        assert not np.allclose(pr.pred[held], P.ridge_cv(
+            base, Yf[(f + 1) % fo.n_folds], fo, w, H, None, GRID, H_GRID).pred[held])
+
+
+def test_decoy_units_biases():
+    """PR-6's units: tanh(gain (Ds A + b)), b ~ N(0, bias^2) drawn after A; bias 0 gives odd
+    functions of the centred decoys, a bias does not."""
+    rng = np.random.default_rng(0)
+    D, w = rng.normal(size=(200, 4)), np.full(200, 1 / 200)
+    Ds = P.scaler(D, w).apply(D)
+    g = np.random.default_rng(5)
+    A = g.normal(0.0, 0.5, (4, 8))
+    b = g.normal(0.0, 1.0, 8)
+    np.testing.assert_allclose(P.decoy_units(D, w, np.random.default_rng(5), 8, 2.0),
+                               np.tanh(2.0 * (Ds @ A + b)), atol=1e-14)
+    U0 = P.decoy_units(D, w, np.random.default_rng(5), 8, 2.0, bias=0.0)
+    np.testing.assert_allclose(U0, np.tanh(2.0 * Ds @ A), atol=1e-14)
+    np.testing.assert_allclose(P.decoy_units(-D, w, np.random.default_rng(5), 8, 2.0, 0.0), -U0,
+                               atol=1e-14)
+    assert not np.allclose(P.decoy_units(-D, w, np.random.default_rng(5), 8, 2.0),
+                           -P.decoy_units(D, w, np.random.default_rng(5), 8, 2.0))
 
 
 # ------------------------------------------------------------------------- metrics, bootstrap

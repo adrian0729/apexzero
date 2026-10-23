@@ -13,7 +13,8 @@ v2.1, Section 6 with Section 12's decisions).
   anti-aligned and weak ones fail) and C1-own's standing; the strata tables' rows.
 - C3-w: the stratified permutation p against exact enumeration, the shift-inverted upper bound
   and its decisions; C3-int's double centring and a planted pre-signed association; R18's
-  variant rule; C2 'not testable' without a component above the power floor.
+  variant rule; C2 'not testable' without a component above the power floor; K4's notes
+  beside C2 and C2-sw decisions near the band.
 
 - C1's per-fold nulls: a regressor [F, n, m] calibrated fold by fold on its own slice, the
   far-geometry lambda and a value fit's pullback (stubbed) per held-out fold: perturbing fold
@@ -1007,3 +1008,35 @@ def test_only_the_designs_conditions_are_not_testable():
     assert AN.guarded(dict, a=1) == {"a": 1}
     r = AN.stratum_record("C2", {"error": "KeyError: 'x'"}, two, tab)
     assert r["band"] == "error" and r["error"] == "KeyError: 'x'" and r["n"] == int(two.sum())
+
+
+def test_k4_band_notes_beside_decisions_near_the_band():
+    """K4's notes (v2.3): beside a C2 or C2-sw refute whose CI upper end lies within 0.02 of
+    the band, K4's PR-6 over-fitting cost; beside a confirm whose point lies within 0.02 of
+    it, K4's PR-6c leak bound; nowhere else, every decision unchanged; through ``guarded``."""
+    notes = {"pr6_cost": {"cost": 0.012, "delta2": -0.012, "ci": [-0.03, -0.003]},
+             "pr6c_leak": {"bound": 0.009, "gain_max": [0.03, None, 0.004, None]}}
+    rec = {"C2": {"decision": "refute", "stat": 0.0, "ci": [-0.02, 0.04]},
+           "C2-sw": {"decision": "confirm", "stat": 0.06, "ci": [0.01, 0.1]},
+           "sensitivity": {"partition1": {"C2": {"decision": "refute", "stat": -0.01,
+                                                 "ci": [-0.03, 0.02]},
+                                          "C2-sw": {"decision": "confirm", "stat": 0.08,
+                                                    "ci": [0.02, 0.12]}},
+                           "geometry": {"C2": {"error": "KeyError: 'x'"}, "C2-sw": None}},
+           "by_stratum": {"C2": {"interior": {"band": "inconclusive", "stat": 0.05,
+                                              "ci": [0.0, 0.1]},
+                                 "contact": {"band": "confirm", "stat": 0.07,
+                                             "ci": [0.03, 0.1]}},
+                          "C2-sw": {"error": "ValueError: y"}}}
+    out = AN.guarded(AN.band_notes, rec, notes)
+    assert out["placed"] == ["C2", "by_stratum/C2/contact", "C2-sw"], out
+    assert rec["C2"]["k4_note"]["cost"] == 0.012 and "over-fitting" in rec["C2"]["k4_note"][
+        "note"]
+    assert rec["C2-sw"]["k4_note"]["bound"] == 0.009
+    assert rec["by_stratum"]["C2"]["contact"]["k4_note"]["note"] == "K4 PR-6c leak bound"
+    for r in (rec["sensitivity"]["partition1"]["C2"], rec["sensitivity"]["partition1"]["C2-sw"],
+              rec["by_stratum"]["C2"]["interior"]):
+        assert "k4_note" not in r                 # 0.02 < 0.03; 0.08 > 0.07; not a decision
+    assert rec["C2"]["decision"] == "refute" and rec["C2-sw"]["decision"] == "confirm"
+    assert AN.band_notes({}, None)["placed"] == []
+    assert "error" in AN.guarded(AN.band_notes, rec, {"pr6_cost": {}})   # malformed notes

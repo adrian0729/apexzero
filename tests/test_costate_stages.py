@@ -9,7 +9,8 @@ bodies (design v2.1, Section 7 'Freeze'), before the tag.
   step 1 or step 2 tag that is not the record's.
 - Pre-tag stages refuse after the tag (a deviation only into a root outside
   outputs/costate); post-tag stages refuse without it; stamps refuse a mid-run code change;
-  the confirmatory analysis runs once; partial options are stamped.
+  the confirmatory analysis runs once; partial options are stamped; k4 needs C2's decision
+  setup (inputs, k2b) and prereg freezes K4's band-edge notes.
 - The post-tag stage bodies (activations, critic gradients, C1 with its nulls, C2 and C2-sw)
   end to end in a float64 subprocess on a few stored keys, with random-init stand-ins for a
   trained snapshot (G1's config and obs_rms; no trained parameter is evaluated)."""
@@ -831,6 +832,30 @@ def test_options_that_change_a_bound_output_are_partial():
                       (("k0", "--limit", "0"), "--limit"),
                       (("inputs", "--limit", "0"), "--limit")):
         assert part(*argv) == [opt], argv
+
+
+def test_k4_reads_c2s_setup_and_prereg_freezes_its_band_notes(tmp_path):
+    """K4's PR-6b and PR-6c score C2's primary statistic, so k4 (every plant, or PR-6)
+    refuses before inputs and k2b have run; prereg copies K4's band-edge notes from the bound
+    gates/k4.json into the frozen values (the analysis reads them there)."""
+    cs = _script()
+    args = SimpleNamespace(out=str(tmp_path), which=None)
+    with pytest.raises(SystemExit, match="run inputs and k2b first"):
+        cs._probe_world(args, c2_setup=True)
+    with pytest.raises(SystemExit, match="no .*world.npz"):           # PR-2 alone: no setup
+        cs._probe_world(args, c2_setup=False)
+    (tmp_path / "gates").mkdir()
+    (tmp_path / "gates" / "k2b.json").write_text(json.dumps({"rule": {"excluded": {}}}))
+    (tmp_path / "gates" / "k2.json").write_text(json.dumps({"horizon": {"t_H": 100}}))
+    (tmp_path / "gates" / "k4.json").write_text(json.dumps({
+        "PR-6": {"overfit_cost": 0.011, "delta2": -0.011, "ci": [-0.03, 0.0]},
+        "PR-6c": {"leak_bound": 0.008, "gain_max": [0.03, None, 0.001, None],
+                  "seeds": [{}, {}, {}]}}))
+    fr = cs.prereg_frozen(tmp_path, {"power_floor": {"s": True}})
+    assert fr["power_floor"] == {"s": True} and fr["k2b_excluded"] == {}
+    assert fr["k4_band_notes"]["pr6_cost"]["cost"] == 0.011
+    assert fr["k4_band_notes"]["pr6c_leak"]["bound"] == 0.008
+    assert fr["k4_band_notes"]["pr6c_leak"]["seeds"] == 3
 
 
 def test_confirmatory_nulls_against_the_record_and_prereg_against_this_environment(

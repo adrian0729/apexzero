@@ -24,7 +24,8 @@ is computed; refused once the tag exists):
                 checked and recorded)
     k3b         K3b: the policy's own costate loop on step 2's linear driver, its accel-reading
                 plant and the hybrid, with the on-manifold check
-    k4          K4's planted representations through the probe pipeline on T (G1's obs_rms)
+    k4          K4's planted representations through the probe pipeline on T (G1's obs_rms;
+                PR-6b and PR-6c on C2's decision rows: run after inputs and k2b)
     k5          K5: the permuted-target wiring check and the control task
     k6          K6: coverage per component and reason
     nulls       C1's input-side nulls per network obs_rms (default: the 9 decision networks;
@@ -59,8 +60,10 @@ Post-tag stages (refused unless the freeze check passes: ``freeze_problems``):
     analyse     the analysis (C1 and its secondaries with the accel-held pullback, the
                 critic's value accuracy against its own policy's return, which with K3b's
                 trained analogue decides C1-own's standing, the per-network strata tables of
-                every hypothesis, C3-w and C3-R2c over the 31 generalists, and the
-                descriptive C1 and C1-heads of the networks outside the decision set; every
+                every hypothesis, C3-w and C3-R2c over the 31 generalists, the
+                descriptive C1 and C1-heads of the networks outside the decision set, and
+                K4's notes beside C2 and C2-sw decisions near the band
+                (``analysis.band_notes``); every
                 descriptive contained, ``analysis.guarded``; a network that failed K3's
                 after-the-tag checks is descriptive and missing from every decision,
                 ``analysis.k3_trained_failed``, and listed): --confirmatory runs once, into
@@ -813,20 +816,35 @@ def stage_k3b(args) -> None:
     _write(_out(args, "gates") / "k3b.json", res)
 
 
-def _probe_world(args):
+def _probe_world(args, c2_setup: bool = False):
+    """K4's and K5's probe world under G1's obs_rms; with ``c2_setup`` also C2's decision
+    mask (G1's observability and K2b's exclusions from gates/k2b.json) and the frozen power
+    floor (inputs/summary.json), which PR-6b and PR-6c score C2's primary statistic with."""
     from apexzero.costate import gates as GT
     from apexzero.costate import inputs as IN
+    from apexzero.costate import states as ST
 
+    summ = Path(args.out) / "inputs" / "summary.json"
+    k2b = Path(args.out) / "gates" / "k2b.json"
+    if c2_setup and (not summ.exists() or not k2b.exists()):
+        raise SystemExit("K4's PR-6b and PR-6c need C2's decision rows: run inputs and k2b "
+                         "first (inputs/summary.json, gates/k2b.json)")
     world = _load_world(args)
     rms, cfg = IN.obs_rms_of("G1")
     z, _, _ = IN.z_and_jz(world, rms)
-    return GT.probe_world(world.tab, z, cfg), cfg
+    if not c2_setup:
+        return GT.probe_world(world.tab, z, cfg), cfg
+    fl = IN.flags(world, rms)
+    mask = ST.decision_mask(world.tab, ~fl["observability"].s_unobservable,
+                            _json(k2b)["rule"]["excluded"])
+    return GT.probe_world(world.tab, z, cfg, mask=mask,
+                          power_floor=_json(summ)["frozen"]["power_floor"]), cfg
 
 
 def stage_k4(args) -> None:
     from apexzero.costate import gates as GT
 
-    pw, cfg = _probe_world(args)
+    pw, cfg = _probe_world(args, c2_setup=not args.which or "PR-6" in args.which)
     res = GT.k4(pw, which=args.which, readout_net=GT.pr4(cfg, pw) if (
         not args.which or "PR-4" in args.which) else None)
     _write(_out(args, "gates") / "k4.json", res)
@@ -917,10 +935,14 @@ def _json(path: Path) -> dict:
 
 def prereg_frozen(out_root: Path, frozen: dict) -> dict:
     """The record's frozen values: the inputs stage's, plus K2b's exclusion rule (and its
-    hash) and K2's horizon and insurance verdicts, read from the bound gate outputs."""
+    hash), K2's horizon and insurance verdicts and K4's band-edge notes (``gates.band_notes``,
+    which the analysis prints beside a C2 or C2-sw decision near the band), read from the
+    bound gate outputs."""
+    from apexzero.costate import gates as GT
     from apexzero.costate import prereg as PR
 
     out = dict(frozen)
+    out["k4_band_notes"] = GT.band_notes(_json(Path(out_root) / "gates" / "k4.json"))
     k2b = _json(Path(out_root) / "gates" / "k2b.json")["rule"]
     out["k2b_excluded"] = {p: list(v) for p, v in k2b["excluded"].items()}
     out["k2b_excluded_sha256"] = PR._canon(out["k2b_excluded"])
@@ -2388,6 +2410,8 @@ def stage_analyse(args) -> None:
         pp = Path(args.out) / "post" / "probes" / f"{f}.json"
         if pp.exists():
             merge_probes(rec_n, json.loads(pp.read_text()))
+        # K4's notes beside a C2 or C2-sw decision near the band (descriptive, contained)
+        rec_n["k4_band_notes"] = AN.guarded(AN.band_notes, rec_n, frozen.get("k4_band_notes"))
         if name in failed:
             AN.k3_trained_failed(rec_n, failed[name])
         res["networks"][name] = rec_n

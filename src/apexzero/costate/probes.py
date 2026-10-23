@@ -136,7 +136,7 @@ standardised target with an L2 penalty on the weights, L-BFGS from a seeded init
   ``ridge_cv``'s training masks guard both.
 
 **Plants** (Section 7 K4): ``plant_units`` (PR-1a, PR-1b, PR-8: a scaled unit u = t + eta per
-target), ``decoy_units`` (PR-6: tanh units of random mixes of decoy variables),
+target), ``decoy_units`` (PR-6: tanh units of random biased mixes of decoy variables),
 ``plant_readout`` (PR-4: a trained-architecture network whose h2 holds tanh of a linear
 readout of z and whose h3 holds it linearly), ``one_hot`` and ``grouped_folds`` (PR-3's codes
 and its deliberately mis-grouped split).
@@ -1410,14 +1410,18 @@ def plant_units(H: np.ndarray, targets: np.ndarray, snr, w: np.ndarray,
 
 
 def decoy_units(D: np.ndarray, w: np.ndarray, rng: np.random.Generator, n_units: int = 32,
-                gain: float = 1.0) -> np.ndarray:
-    """PR-6: tanh(gain Ds A) with Ds the weighted-standardised decoy variables (e.g. s -
-    s_apex, vx, sigma, log R) and A ~ N(0, 1/q); ``gain`` is set so a probe on these units
-    alone matches the decoy kNN's R2 (calibrated by the caller)."""
+                gain: float = 1.0, bias: float = 1.0) -> np.ndarray:
+    """PR-6: tanh(gain (Ds A + b)) with Ds the weighted-standardised decoy variables (e.g.
+    s - s_apex, vx, sigma, log R), A ~ N(0, 1/q) and b ~ N(0, bias^2) per unit (drawn after
+    A, so A does not depend on ``bias``; bias 0 gives tanh(gain Ds A)). Without b every unit
+    is an odd function of the centred decoys, and a ridge on 32 of them peaks at R2 0.36 on
+    lambda (K4's review). The probe z-scores each unit, so ``gain`` acts only through
+    saturation; the caller picks it (``gates.pr6``)."""
     w = np.asarray(w, np.float64)
     Ds = scaler(D, w).apply(D)
     A = rng.normal(0.0, 1.0 / np.sqrt(Ds.shape[1]), (Ds.shape[1], int(n_units)))
-    return np.tanh(gain * Ds @ A)
+    b = rng.normal(0.0, float(bias), int(n_units)) if bias else 0.0
+    return np.tanh(gain * (Ds @ A + b))
 
 
 def one_hot(labels: np.ndarray) -> np.ndarray:

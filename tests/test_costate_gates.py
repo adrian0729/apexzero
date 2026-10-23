@@ -14,7 +14,12 @@
   matches finite differences of the env's own return on step 2's linear driver, restarts
   match per-state VJPs, and the planted bugs fail.
 - K4's plants that need no network (PR-5 family through C1, PR-9's heads) and PR-1a/PR-7 on a
-  synthetic layer; K5's wiring record and its rule in the frozen constants; K6's counts."""
+  synthetic layer; on a world with T-like decoys: PR-1b on one target array with its
+  by-fold record, PR-6's one-sided rule and gain grid, PR-6b's known truth passing and its
+  planted faults failing (the residualisation off or skipped, an over-smoothed kNN, D1
+  without s - s_apex), PR-6c's record and rule, C2's primary statistic on C2's decision
+  rows, K4 needing PR-6b and PR-6c, and the rules in the frozen constants; K5's wiring record
+  and its rule in the frozen constants; K6's counts."""
 
 import dataclasses
 import json
@@ -631,6 +636,175 @@ def test_k4_plants_without_a_network(big_world):
     out = GT.k4(pw, counts, which=("PR-1a", "PR-7"))
     assert out["PR-7"]["pass"], out["PR-7"]
     assert out["PR-1a"]["pass"], out["PR-1a"]     # K4_TOL (0.03), partial and Delta2
+
+
+def _decoy_world(n_geo=48, keys=8, steps=16, seed=0):
+    """A world whose decoys are structured as T's (s - s_apex along each key, vx a function
+    of it and R, mirror pairs) and whose z reads them noisily, with 6 small random 'actors'
+    (the host and C2's 5 controls): the decoy kNN works here, so PR-6b's known truth has a
+    residualisation to test."""
+    rng = np.random.default_rng(seed)
+    R = np.round(np.exp(np.linspace(np.log(6.0), np.log(300.0), n_geo)), 2)
+    cols = {c: [] for c in ("R", "theta", "key_id", "direction", "t", "ds_apex", "vx",
+                            "pair_id")}
+    for g in range(n_geo):
+        vmin = min(np.sqrt(9.8 * 2.0 * R[g]), 80.0)
+        for k in range(keys):
+            ds = np.linspace(-150.0, 100.0, steps) + 15.0 * (k // 2)
+            for c, v in (("R", R[g]), ("theta", (90.0, 180.0)[g % 2]), ("key_id", f"g{g}k{k}"),
+                         ("direction", 1 if k % 2 == 0 else -1), ("pair_id", f"g{g}p{k // 2}")):
+                cols[c].append(np.full(steps, v))
+            cols["t"].append(5 * np.arange(steps))
+            cols["ds_apex"].append(ds)
+            cols["vx"].append(vmin + (85.0 - vmin) * (1.0 - np.exp(-(np.abs(ds) / 60.0) ** 2)))
+    tab = {c: np.concatenate(v) for c, v in cols.items()}
+    tab["width"] = np.full(len(tab["R"]), 12.0)
+    n = len(tab["R"])
+    ds, vx, sig, lR = tab["ds_apex"], tab["vx"], tab["direction"], np.log(tab["R"])
+    phi = np.stack([ds / 100, vx / 50, sig, np.tanh(ds / 60), sig * np.tanh(ds / 60), lR / 3,
+                    np.exp(-(ds / 50) ** 2)], 1)
+    z = phi @ rng.normal(0.0, 0.5, (phi.shape[1], 30)) + 0.3 * rng.normal(size=(n, 30))
+    lam = np.stack([np.exp(-((ds + 20) / 40) ** 2) * (1 + 0.3 * lR),
+                    sig * np.tanh(ds / 30) * np.exp(-(ds / 120) ** 2),
+                    sig * np.exp(-(ds / 25) ** 2) * (vx / 50),
+                    np.tanh((ds + 60) / 20) * (vx / 80)], 1) + 0.3 * rng.normal(size=(n, 4))
+    w = ST.weights(tab, "key")
+    fo = PB.folds(tab)
+    res = ST.cross_fit(ST.decoy_d1(tab), lam, fo.outer, w, inner=fo.inner)
+    h3 = [np.tanh(z @ rng.normal(size=(30, 24)) / 5) for _ in range(6)]
+    m = [h @ rng.normal(size=(24, 2)) for h in h3]
+    return GT.ProbeWorld(tab, z, fo, w, tab["direction"], lam, res.by_fold, h3, m)
+
+
+@pytest.fixture(scope="module")
+def decoy_world():
+    pw = _decoy_world()
+    G = int(pw.fo.cluster.max()) + 1
+    return pw, PB.cluster_counts(G, 300, np.random.default_rng(3))
+
+
+def test_k4_pr1b_one_target_array_and_its_by_fold_record(decoy_world):
+    """PR-1b on one target array (each row's own-fold lambda_res) for its baseline, probe and
+    controls, all four components at once, recovered within K4's band; the fold-consistent
+    plant on C2's by-fold targets is recorded beside it and binds nothing."""
+    pw, counts = decoy_world
+    rec = GT.k4(pw, counts, which=("PR-1b",))["PR-1b"]
+    assert rec["target"] == "each row's own-fold lambda_res"
+    assert rec["pass"], rec
+    bf = rec["by_fold"]
+    assert bf["descriptive"] and len(bf["partial_vs_own"]) == len(bf["delta2"]) == 4
+    assert np.allclose(bf["expected_delta2"], (1 - np.asarray(bf["r2_b"])) * 0.8)
+
+
+def test_k4_pr6_one_sided_rule_and_gain_grid(decoy_world):
+    """PR-6 on real lambda: biased decoy units, the grid's gain whose probe-alone R2 lies
+    closest to the kNN's (every gain's R2 recorded), Delta2 <= 0.01 one-sided (its negative
+    part the over-fitting cost) and PR-1b passing."""
+    pw, counts = decoy_world
+    r = GT.pr6(pw, counts, {"pass": True})
+    assert r["gains"] == list(GT.K4_PR6_GAINS) and len(r["r2_by_gain"]) == 6
+    i = int(np.argmin(np.abs(np.subtract(r["r2_by_gain"], r["knn_r2"]))))
+    assert r["gain"] == GT.K4_PR6_GAINS[i] and r["decoy_r2"] == r["r2_by_gain"][i]
+    assert r["calibrated"] == (abs(r["decoy_r2"] - r["knn_r2"]) <= GT.K4_CALIBRATION_TOL)
+    assert r["overfit_cost"] == max(0.0, -r["delta2"])
+    assert r["pass"] == (r["delta2"] <= GT.K4_ZERO_TOL), r
+    assert r["pass"], r                       # one-sided: a negative Delta2 passes
+    assert not GT.pr6(pw, counts, {"pass": False})["pass"]
+    assert not GT.pr6(pw, counts, None)["pass"]
+
+
+def test_k4_pr6b_known_truth_passes_and_its_planted_faults_fail(decoy_world, monkeypatch):
+    """PR-6b: units holding a smooth decoy function F of y = std(F) + 0.5 AR(1) eps gain at
+    most 0.01 on C2's statistic once y is residualised, beat the kNN alone, and gain more
+    than 0.01 when the residualisation is off, the kNN over-smoothed or s - s_apex left out of
+    D1; skipping the residualisation fails the plant."""
+    pw, _ = decoy_world
+    r = GT.pr6_world(pw, "smooth", seeds=(0,), t_wide=False)
+    s = r["seeds"][0]
+    assert r["pass"] and r["residualised_ok"] and r["off_detected"] and r["alone_ok"], s
+    assert s["delta2"] <= GT.K4_ZERO_TOL < s["off"]["delta2"]
+    assert s["alone_mean"] >= s["knn_mean"] and np.shape(s["k"]) == (6, 4)
+    assert all(f["detected"] for f in r["faults"].values()), r["faults"]
+    assert r["leak_bound"] == s["delta2"] and len(r["gain_max"]) == 4
+    assert r["n_controls"] == PB.N_RANDOM_ACTORS
+
+    def skipped(X, Y, fold, w=None, k=None, inner=None, grid=ST.KNN_K_GRID):
+        Y = np.asarray(Y, float)
+        F = int(np.max(fold)) + 1
+        return ST.Residuals(np.array(np.broadcast_to(Y, (F, *Y.shape))), np.asarray(fold),
+                            np.full((F, Y.shape[1]), 15))
+
+    monkeypatch.setattr(ST, "cross_fit", skipped)
+    bad = GT.pr6_world(pw, "smooth", seeds=(0,), t_wide=False, faults=False)
+    assert not bad["pass"] and not bad["residualised_ok"], bad["seeds"][0]
+
+
+def test_k4_pr6c_record_and_rule(decoy_world):
+    """PR-6c: F the leave-one-geometry-out k = 15 kNN of lambda on D1; its verdict is every
+    seed's residualised Delta2 <= 0.01 and every unresidualised one above it (the probe-alone
+    comparison is recorded, not required); the leak bound is the largest Delta2."""
+    pw, _ = decoy_world
+    F = GT.pr6c_f(pw)
+    geo = ST.geometry_index(pw.tab)
+    s0 = geo == geo[0]
+    D1 = ST.decoy_d1(pw.tab)
+    np.testing.assert_allclose(F[s0], ST.knn_fit(D1[~s0], pw.lam[~s0], pw.w[~s0], 15)
+                               .predict(D1[s0]))
+    r = GT.pr6_world(pw, "knn", seeds=(0, 1), t_wide=True, faults=False)
+    assert [s["seed"] for s in r["seeds"]] == [0, 1] and "faults" not in r
+    assert r["pass"] == (r["residualised_ok"] and r["off_detected"])
+    assert r["leak_bound"] == max(s["delta2"] for s in r["seeds"])
+    for s in r["seeds"]:
+        assert s["T"]["delta2"] is not None and len(s["T"]["gain"]) == 4
+        assert s["off"]["delta2"] > GT.K4_ZERO_TOL
+    notes = GT.band_notes({"PR-6": {"overfit_cost": 0.01, "delta2": -0.01, "ci": [-0.02, 0.0]},
+                           "PR-6c": r})
+    assert notes["pr6c_leak"]["bound"] == r["leak_bound"] and notes["pr6_cost"]["cost"] == 0.01
+
+
+def test_c2_primary_scores_c2s_decision_rows(decoy_world):
+    """PR-6b and PR-6c's statistic is C2's primary one: fitted on C2's decision stratum, each
+    component scored on its decision rows, averaged over the power floor's components."""
+    pw, _ = decoy_world
+    n = len(pw.w)
+    rows = np.asarray(pw.tab["ds_apex"] < 40.0)
+    mask = np.ones((n, 4), bool)
+    mask[:, 1] = False                         # n: no decision row
+    mask[pw.tab["ds_apex"] > 0, 0] = False     # s only before the apex
+    floor = {"s": True, "n": True, "xi": True, "vx": False}
+    pwc = dataclasses.replace(pw, rows_c2=rows, mask=mask, power_floor=floor)
+    rec = GT.c2_primary(pwc, pw.h3[0], pw.lam_res)
+    assert rec["n_stratum"] == rows.sum()
+    assert rec["scored_rows"] == (mask & rows[:, None]).sum(0).tolist()
+    assert rec["passing"] == [True, False, True, False]   # n has no row, vx is below the floor
+    assert rec["stat"] == pytest.approx(np.mean(np.asarray(rec["gain"])[[0, 2]]))
+
+
+def test_k4_needs_pr6b_and_pr6c(decoy_world, monkeypatch):
+    """K4 runs PR-6b and PR-6c with PR-6 and passes only when both do."""
+    pw, counts = decoy_world
+    for name in ("pr6", "pr1b_by_fold"):
+        monkeypatch.setattr(GT, name, lambda *a, **k: {"pass": True})
+    seen = []
+
+    def world(pw_, kind, **kw):
+        seen.append(kind)
+        return {"pass": kind == "smooth"}
+    monkeypatch.setattr(GT, "pr6_world", world)
+    out = GT.k4(pw, counts, which=("PR-6",))
+    assert seen == ["smooth", "knn"] and {"PR-1b", "PR-6", "PR-6b", "PR-6c"} <= set(out)
+    assert not out["pass"]
+
+
+def test_k4_pr6_constants_in_the_record():
+    from apexzero.costate import analysis as AN
+    from apexzero.costate import prereg as PR
+
+    g = PR.constants()["gates"]
+    assert g["k4_pr6"]["gains"] == [0.25, 0.5, 1.0, 2.0, 4.0, 8.0]
+    assert g["k4_pr6"]["seeds"] == [0, 1, 2] and g["k4_controls"] == 3
+    assert "one-sided" in g["k4_pr6_rule"] and "own-fold" in g["k4_pr1b_rule"]
+    assert g["band_note_margin"] == AN.BAND_NOTE_MARGIN == 0.02
 
 
 def test_k5_wiring_record_and_its_rule_in_the_frozen_constants(big_world):

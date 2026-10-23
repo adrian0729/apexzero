@@ -22,8 +22,9 @@ every other sensitivity and robustness variant (C1's and C2's), the strata table
 table and each row: an error row keeps its counts, band 'error'), the accel-held pullback and
 C1-own's accel-held form, C1-heads, W1, the value accuracy's heads, horizons, tails and its
 V*inf and horizon-corrected scores, the descriptive C1-pattern on the pedal-saturated states,
-the specialists' descriptive C1, C3-w's sensitivity variants and the covariates' partials of
-C3-w and C3-R2c (the other generalists' C1 without nulls gives C3-R2c's x, so it raises).
+the specialists' descriptive C1, C3-w's sensitivity variants, the covariates' partials of
+C3-w and C3-R2c (the other generalists' C1 without nulls gives C3-R2c's x, so it raises) and
+K4's band-edge notes (``band_notes``).
 
 **C1** (``c1``; Section 6 'C1'). Per component k of K_P = (s, n, xi, vx)
 (``targets.K_P``), a per-fold affine calibration of lambda_k on g_k (``calibrate``) on the
@@ -97,6 +98,15 @@ decision stratum, with the folds dealt on all of T and subset, ``probes.Folds.su
 C2's power floor from the pre-tag residual shares (``states.power_floor``; a component below
 it is descriptive, and with none passing C2 is 'not testable', Section 12 decision 5). C2-sw
 co-reports the weighted Spearman rho(m_pedal - 1, sigma^ped).
+
+**K4's band-edge notes** (``band_notes``, descriptive, through ``guarded``; v2.3, K4's
+review): beside every C2 or C2-sw record (the primary, each variant, each strata row) that
+refutes with its CI upper end within ``BAND_NOTE_MARGIN`` = 0.02 of the band, K4's measured
+PR-6 over-fitting cost (decoy-structured units the random controls lack lower Delta2); beside
+every one that confirms with its point within 0.02 of the band, K4's PR-6c leak bound (units
+holding a kNN-shaped decoy function exactly raise Delta2 by up to it). The numbers are the
+record's frozen 'k4_band_notes', copied at prereg from the bound gates/k4.json
+(``gates.band_notes``). They change no decision.
 
 **Per network and per variant** (``network_decisions``, ``variant_decisions``). C1, C2 and
 C2-sw are decided per network on the 9 step 1 generalist finals (``DECISION_NETWORKS``,
@@ -201,6 +211,7 @@ C1_REFUTE = 0.2               # ... and its CI upper end below this refutes
 SCALE_BAND = (0.5, 2.0)       # Section 12 decision 2: the "at scale" label only
 C2_BAND = PB.C2_BAND          # Section 6 C2 and C2-sw: 0.05
 PROBE_FIT = "stratum"         # probes fitted and scored on the decision stratum's rows
+BAND_NOTE_MARGIN = 0.02       # K4's band-edge notes: a C2 / C2-sw decision this near the band
 C3_PERMUTATIONS = 100_000     # Section 6 C3-w
 C3_ALPHA = 0.05
 C3_STRONG = 0.3               # 'rules out a strong association' below this upper bound
@@ -1198,6 +1209,42 @@ def network_decisions(c1_rec: dict | None, c2_rec: dict | None, c2sw_rec: dict |
     if excluded is not None:
         return {"C1": "missing", "C2": "missing", "C2-sw": "missing", "excluded": excluded}
     return {"C1": dec(c1_rec), "C2": dec(c2_rec), "C2-sw": dec(c2sw_rec)}
+
+
+def band_notes(rec_n: dict, notes: dict | None, band: float = C2_BAND,
+               margin: float = BAND_NOTE_MARGIN) -> dict:
+    """K4's band-edge notes (module docstring), in place on one network's analysis record:
+    'k4_note' beside each C2 and C2-sw record (the primary, each variant under
+    'sensitivity', each 'by_stratum' row) that refutes with its CI upper end at or above band
+    - margin (K4's PR-6 over-fitting cost, ``notes['pr6_cost']``) or confirms with its point
+    at or below band + margin (K4's PR-6c leak bound, ``notes['pr6c_leak']``). ``notes`` is
+    the record's frozen 'k4_band_notes' (``gates.band_notes``). Returns where notes were
+    placed. Descriptive: run through ``guarded``."""
+    if not notes:
+        return {"placed": [], "reason": "the record carries no K4 band notes"}
+    placed = []
+
+    def visit(where: str, r) -> None:
+        if not isinstance(r, dict) or "error" in r:
+            return
+        dec = r.get("decision", r.get("band"))
+        ci, stat = r.get("ci"), r.get("stat")
+        if dec == "refute" and ci is not None and float(ci[1]) >= band - margin:
+            r["k4_note"] = {"note": "K4 PR-6 over-fitting cost", **notes["pr6_cost"]}
+        elif dec == "confirm" and stat is not None and float(stat) <= band + margin:
+            r["k4_note"] = {"note": "K4 PR-6c leak bound", **notes["pr6c_leak"]}
+        else:
+            return
+        placed.append(where)
+
+    for h in ("C2", "C2-sw"):
+        visit(h, rec_n.get(h))
+        for v, sens in (rec_n.get("sensitivity") or {}).items():
+            visit(f"sensitivity/{v}/{h}", (sens or {}).get(h))
+        table = (rec_n.get("by_stratum") or {}).get(h)
+        for sname, row in (table.items() if isinstance(table, dict) else ()):
+            visit(f"by_stratum/{h}/{sname}", row)
+    return {"placed": placed, "band": band, "margin": margin}
 
 
 def k3_trained_failed(rec: dict, reason: str) -> dict:

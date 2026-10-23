@@ -104,18 +104,57 @@ on-manifold check, pooled by ``own.k3b_decision``.
 
 **K4** (``k4``): planted hidden layers through the whole probe pipeline on T's rows (z under
 G1's obs_rms, random-init actors of G1's own architecture, the frozen folds and key
-weights): PR-1a (i.i.d. targets; held-out R2 and Delta2 within 0.03 of SNR/(1 + SNR)), PR-1b
-(real lambda_res, partial R2 within 0.03 of SNR/(1 + SNR) and Delta2 of (1 - R2_b) SNR/(1 +
-SNR)), PR-2 (m and a*_t in the layer: Delta2 within 0.01 of 0), PR-3 (one-hot geometry and
-pair codes: gain <= 0.01 on the grouped split; dealt by key, on each row's out-of-fold
-lambda_res, a leak: the codes' gain or the base R2's rise above 0.01), PR-4 (a readout of
-z in h2 recovered from h2 and h3 within 0.02), PR-5, 5b, 5c, 5d (lambda + noise as the critic's
-gradient through C1 at SNR 0.25-4 on C1's decision rows, expected SNR / (1 + SNR)), PR-5e
-(the floor: zero, noise and -lambda gradients score about 0 per component, a direction-only
-one at most 0.02 on xi), PR-6 (decoy units matched to the kNN's R2: Delta2 within 0.01 of 0
-while PR-1b is recovered), PR-7 (scale invariance to 1e-6), PR-8 (C2-sw's gain within 0.03
-on C2-sw's stratum),
-PR-9 (heads sharing V: D_V = 0 and the planted D_grad recovered).
+weights; the host is actor seed 0, the controls seeds 1-3, ``K4_N_CONTROLS``, except
+PR-6b and PR-6c): PR-1a (i.i.d. targets; held-out R2 and Delta2 within 0.03 of SNR/(1 +
+SNR)), PR-1b (real lambda_res, all four K_P components planted at once; partial R2 within
+0.03 of SNR/(1 + SNR) and Delta2 of (1 - R2_b) SNR/(1 + SNR)), PR-2 (m and a*_t in the
+layer: Delta2 within 0.01 of 0), PR-3 (one-hot geometry and pair codes: gain <= 0.01 on the
+grouped split; dealt by key, on each row's out-of-fold lambda_res, a leak: the codes' gain
+or the base R2's rise above 0.01), PR-4 (a readout of z in h2 recovered from h2 and h3
+within 0.02), PR-5, 5b, 5c, 5d (lambda + noise as the critic's gradient through C1 at SNR
+0.25-4 on C1's decision rows, expected SNR / (1 + SNR)), PR-5e (the floor: zero, noise and
+-lambda gradients score about 0 per component, a direction-only one at most 0.02 on xi),
+PR-6, PR-6b and PR-6c (below), PR-7 (scale invariance to 1e-6), PR-8 (C2-sw's gain within
+0.03 on C2-sw's stratum), PR-9 (heads sharing V: D_V = 0 and the planted D_grad recovered).
+K4 passes when every plant does.
+
+**K4's PR-1b and PR-6 rules** (v2.3, fixed after the full-size pre-tag run of K4 on random
+and planted networks only, before the tag; the K4 review's verified write-up):
+
+- PR-1b plants on one target array for its baseline, the probe and the random controls:
+  each row's own-fold lambda_res (``states.Residuals.oof``). C2's probe trains, while fold f
+  is held out, on the cross-fitted lambda - f_D^(-f,-g), which changes with f; one planted
+  column cannot follow it and carried on training rows the held-out fold's share of the
+  decoy fit, which under-recovered it (partial R2 0.70-0.75). Its rule is unchanged, so it
+  checks the ridge machinery (both penalties, inner CV, scaling), not the cross-fit; the
+  plant on C2's by-fold targets made to follow them on training rows (``pr1b_by_fold``) is
+  reported beside it, descriptive. All four components are planted at once (the design's
+  one at a time differs by at most about 0.008 on T).
+- PR-6 (``pr6``, real lambda): 32 units tanh(gain (Ds A + b)) of the decoys (s - s_apex,
+  vx, sigma, log R) with random biases (``probes.decoy_units``), the gain from the fixed
+  grid ``K4_PR6_GAINS`` whose probe-alone R2 lies closest to the decoy kNN's (the R2 by gain
+  and 'calibrated', within ``K4_CALIBRATION_TOL``, recorded; no 32-unit family reaches the
+  kNN). Pass: Delta2 <= ``K4_ZERO_TOL`` one-sided on C2's by-fold lambda_res, and PR-1b
+  passes. Units carrying nothing beyond z, m and h3 cost out-of-fold R2 on held-out
+  geometries, so the null expectation is negative: the negative part is reported as the
+  plant's over-fitting cost ('overfit_cost'), the unresidualised Delta2 beside it.
+- PR-6b and PR-6c (``pr6_world``, known truth): y = std(F) + 0.5 eps per K_P component,
+  eps an AR(1) series (rho 0.9) along each key, independent across keys, 20% of Var y, on
+  ``K4_PR6_SEEDS`` (3 draws); 32 units hold F (tanh of random mixes of F, ``hold_units``),
+  appended to the host's h3. PR-6b's F is smooth (``pr6b_f``: a ridge of lambda on 256
+  biased tanh features of the PR-6 decoys); PR-6c's matches the decoy kNN (``pr6c_f``: the
+  leave-one-geometry-out k = 15 kNN of lambda on D1). y is residualised by the pipeline's
+  own cross-fit (``states.cross_fit``, f_D's k chosen on y by the rule). The statistic is
+  C2's primary one (``c2_primary``: C2's decision stratum, each component on its decision
+  rows, the frozen power floor's components, C2's 5 random-init controls). Pass per world:
+  on every seed Delta2 <= ``K4_ZERO_TOL``, and on every seed Delta2 > ``K4_ZERO_TOL`` with the
+  residualisation turned off; for PR-6b also the units' probe-alone R2 at least the kNN's on
+  every seed (mean over K_P on T). T-wide values (every row and component, C2's controls)
+  and per-component gains are descriptive, as are two planted faults on the first seed
+  (an over-smoothed kNN, k = ``K4_OVERSMOOTH_K``; D1 without s - s_apex).
+- ``band_notes``: PR-6's over-fitting cost and PR-6c's leak bound (its largest Delta2 over
+  the seeds), which the analysis prints beside a C2 or C2-sw decision near the band
+  (``analysis.band_notes``; copied into the record from the bound gates/k4.json).
 
 **K5** (``k5``): the permuted-target wiring check (``probes.wiring_null``: while each outer
 fold is held out the training targets are permuted state by state across all training rows,
@@ -125,8 +164,11 @@ against the unpermuted held-out lambda; every K_P component needs a CI lower end
 0 and a point at or below ``probes.WIRING_TOL`` = ``K4_ZERO_TOL``) and the control task
 (``probes.control_task``; descriptive). **K6** (``k6``): coverage per component and reason.
 
-Seeds: K4's planted noise uses ``K4_STREAM`` (310, ``costate.STREAMS``' 'costate_k4') and K2b's
-nothing random.
+Seeds: K4's planted noise uses ``K4_STREAM`` (310, ``costate.STREAMS``' 'costate_k4';
+``k4_rng`` sub-streams: 0 the bootstrap counts, (1, i) and (2, i) PR-1a, 3 PR-1b, 4 and 5
+PR-3, 6 PR-7, 7 PR-5, 8 PR-6's units, 9 and 10 PR-8, 11 PR-9, 12 K5's counts, 13 PR-6b's
+features, (14, seed) PR-6b and PR-6c's noise, (15, j) the units holding F, j = 0 PR-6b, 1
+PR-6c) and K2b's nothing random.
 """
 
 from __future__ import annotations
@@ -168,6 +210,19 @@ K4_TOL = 0.03
 K4_ZERO_TOL = 0.01
 K4_READOUT_TOL = 0.02
 K4_SCALE_TOL = 1e-6
+K4_N_CONTROLS = 3             # K4's random controls: 3 of C2's 5 (PR-6b and PR-6c use C2's 5)
+K4_PR6_UNITS = 32             # PR-6: decoy units
+K4_PR6_BIAS = 1.0             # PR-6: the units' biases b ~ N(0, bias^2)
+K4_PR6_GAINS = (0.25, 0.5, 1.0, 2.0, 4.0, 8.0)   # PR-6: the gain grid
+K4_CALIBRATION_TOL = 0.02     # PR-6: 'calibrated' (descriptive): |decoy R2 - kNN R2| <= this
+K4_PR6_SEEDS = (0, 1, 2)      # PR-6b, PR-6c: the noise draws (sub-stream (14, seed))
+K4_PR6_RHO = 0.9              # PR-6b, PR-6c: the noise's AR(1) coefficient along each key
+K4_PR6_NOISE = 0.5            # y = std(F) + 0.5 eps: eps is 20% of Var y
+K4_PR6B_FEATURES = 256        # PR-6b: F a ridge of lambda on this many biased tanh features
+K4_PR6B_ALPHA = 1e-2          # PR-6b: that ridge's penalty (weights normalised to sum 1)
+K4_HOLD_UNITS = 32            # PR-6b, PR-6c: the units holding F
+K4_HOLD_SD = 0.5              # their mixes and biases ~ N(0, 0.5^2)
+K4_OVERSMOOTH_K = 300         # PR-6b, PR-6c's planted fault: an over-smoothed decoy kNN
 SD_KP_PHASES = ST.PHASES
 
 
@@ -1114,7 +1169,8 @@ def k3b(cells: Sequence[tuple[str, int]], cfg, obs_rms, steps: int | None = None
 class ProbeWorld:
     """T's rows prepared for the probe pipeline: z (clipped), the folds, the weights, the
     direction, winsorised K_P targets, lambda_res, random-init actors' (h3, m) and the
-    decoys."""
+    decoys; for C2's primary statistic (``c2_primary``) its decision stratum, decision mask
+    and frozen power floor (None: every row, every row scored, every component)."""
 
     tab: io.Table
     z: np.ndarray
@@ -1126,12 +1182,18 @@ class ProbeWorld:
     h3: list[np.ndarray]       # random-init actors' h3 (seed 0 is the 'network')
     m: list[np.ndarray]
     names: tuple = tuple(f"lam_{c}" for c in K_P)
+    rows_c2: np.ndarray | None = None      # [n] C2's decision stratum (T's interior)
+    mask: np.ndarray | None = None         # [n, 4] states.decision_mask
+    power_floor: dict | None = None        # the frozen power floor's verdicts per component
 
 
-def probe_world(tab: io.Table, z: np.ndarray, cfg, seeds: Sequence[int] = range(4),
-                partition: int = 0) -> ProbeWorld:
+def probe_world(tab: io.Table, z: np.ndarray, cfg,
+                seeds: Sequence[int] = range(1 + PB.N_RANDOM_ACTORS), partition: int = 0,
+                mask: np.ndarray | None = None, power_floor: dict | None = None) -> ProbeWorld:
     """The probe pipeline's inputs on T's rows (random-init actors of ``cfg``; seed 0 is the
-    plants' host, the others the random controls: K4 uses 3 of C2's 5)."""
+    plants' host, the others the random controls: K4 uses 3 of C2's 5, ``K4_N_CONTROLS``,
+    PR-6b and PR-6c all 5). C2's decision stratum is T's interior where the table has it;
+    ``mask`` and ``power_floor`` are C2's decision mask and the frozen floor."""
     w = ST.weights(tab, "key")
     fo = PB.folds(tab, partition)
     lam = np.stack([np.asarray(tab[f"lam_{c}"], float) for c in K_P], 1)
@@ -1144,7 +1206,10 @@ def probe_world(tab: io.Table, z: np.ndarray, cfg, seeds: Sequence[int] = range(
         hid = PB.hidden(PB.random_actor(cfg, s), o)
         h3.append(hid["h3"])
         m.append(hid["m"])
-    return ProbeWorld(tab, o, fo, w, np.asarray(tab["direction"]), lam, res.by_fold, h3, m)
+    rows = np.asarray(tab["interior"], bool) if "interior" in tab else None
+    return ProbeWorld(tab, o, fo, w, np.asarray(tab["direction"]), lam, res.by_fold, h3, m,
+                      rows_c2=rows, mask=None if mask is None else np.asarray(mask, bool),
+                      power_floor=None if power_floor is None else dict(power_floor))
 
 
 def _std(y: np.ndarray, w: np.ndarray) -> np.ndarray:
@@ -1158,7 +1223,7 @@ def k4(pw: ProbeWorld, counts: np.ndarray | None = None, which: Sequence[str] | 
                           "PR-8", "PR-9"))
     out: dict = {}
     w, fo, z, n = pw.w, pw.fo, pw.z, len(pw.w)
-    h0, rand = pw.h3[0], pw.h3[1:]
+    h0, rand = pw.h3[0], pw.h3[1:1 + K4_N_CONTROLS]
     m0 = pw.m[0]
     G = int(fo.cluster.max()) + 1
     counts = PB.cluster_counts(G, rng=k4_rng(0)) if counts is None else counts
@@ -1183,19 +1248,25 @@ def k4(pw: ProbeWorld, counts: np.ndarray | None = None, which: Sequence[str] | 
         out["PR-1a"] = {"rows": rows, "pass": all(r["pass"] for r in rows)}
     if "PR-1b" in which or "PR-6" in which:
         snr = 4.0
-        base = PB.ridge_cv(np.hstack([h0, zm]), pw.lam_res, fo, w, None, pw.names)
+        # one target array for the plant's baseline, the probe and the random controls: each
+        # row's own-fold lambda_res (Residuals.oof). C2's by-fold training targets change
+        # with the held-out fold, which one planted column cannot follow (module docstring)
+        y1 = np.asarray(pw.lam_res)[fo.outer, np.arange(n)]
+        base = PB.ridge_cv(np.hstack([h0, zm]), y1, fo, w, None, pw.names)
         r = base.y - base.pred                       # residualised out of fold on the baseline
         H = PB.plant_units(h0, r, snr, w, k4_rng(3))
-        g = c2(H)
+        g = c2(H, Y=y1)
         exp = PB.expected_r2(snr)
         r2b = PB.probe_r2(base, w, pw.direction)
         rec = {"snr": snr, "expected": exp, "partial_vs_own": [], "delta2": g.gain.tolist(),
-               "r2_b": r2b.tolist(), "pass": True}
+               "r2_b": r2b.tolist(), "target": "each row's own-fold lambda_res",
+               "planted": "all K_P components at once", "pass": True}
         for k in range(len(pw.names)):
             pr = (g.r2_full[k] - r2b[k]) / (1.0 - r2b[k])
             rec["partial_vs_own"].append(float(pr))
             ok = abs(pr - exp) <= K4_TOL and abs(g.gain[k] - (1 - r2b[k]) * exp) <= K4_TOL
             rec["pass"] = bool(rec["pass"] and ok)
+        rec["by_fold"] = pr1b_by_fold(pw, counts, rand, snr)
         out["PR-1b"] = rec
     if "PR-2" in which:
         a_t = np.stack([np.asarray(pw.tab["a_steer"], float),
@@ -1227,7 +1298,9 @@ def k4(pw: ProbeWorld, counts: np.ndarray | None = None, which: Sequence[str] | 
     if "PR-5" in which:
         out["PR-5"] = pr5(pw, counts)
     if "PR-6" in which:
-        out["PR-6"] = pr6(pw, counts, out.get("PR-1b"))
+        out["PR-6"] = pr6(pw, counts, out.get("PR-1b"), rand)
+        out["PR-6b"] = pr6_world(pw, "smooth")
+        out["PR-6c"] = pr6_world(pw, "knn")
     if "PR-7" in which:
         g0 = c2(h0)
         rz = k4_rng(6).uniform(0.2, 5.0, z.shape[1])
@@ -1330,35 +1403,249 @@ def pr5_expected(snr: float, m: int) -> np.ndarray:
     return np.full(m, PB.expected_r2(snr))
 
 
-def pr6(pw: ProbeWorld, counts: np.ndarray, pr1b: dict | None) -> dict:
-    """PR-6: 32 tanh units of random mixes of (s - s_apex, vx, sigma, log R) added to h3,
-    their gain bisected so a probe on them alone matches the decoy kNN's R2."""
+def pr1b_by_fold(pw: ProbeWorld, counts: np.ndarray, rand: Sequence[np.ndarray] | None = None,
+                 snr: float = 4.0) -> dict:
+    """PR-1b's fold-consistent plant on C2's own by-fold targets (descriptive; module
+    docstring): the baseline [h3, z, m] fitted on lambda_res by fold, the unit u of its
+    residual r (``plant_units``, PR-1b's noise draw) and, on fold f's training rows,
+    u + alpha d^f / sd_r with d^f = lambda_res^(f) - each row's own-fold lambda_res (0 on fold
+    f's rows), so the unit follows the training target that changes with f. Fold f's probe
+    is fitted with its own block (one ``ridge_cv`` per fold, fold f's predictions kept);
+    partial R2 and Delta2 against SNR/(1 + SNR) and (1 - R2_b) SNR/(1 + SNR), and whether
+    they lie within ``K4_TOL`` (binding nothing)."""
+    w, fo, n = pw.w, pw.fo, len(pw.w)
+    h0, zm = pw.h3[0], np.hstack([pw.z, pw.m[0]])
+    rand = pw.h3[1:1 + K4_N_CONTROLS] if rand is None else rand
+    Y = np.asarray(pw.lam_res)
+    oof = Y[fo.outer, np.arange(n)]
+    base = PB.ridge_cv(np.hstack([h0, zm]), Y, fo, w, None, pw.names)
+    r = base.y - base.pred
+    u = PB.plant_units(h0, r, snr, w, k4_rng(3))[:, h0.shape[1]:]
+    scale = float(np.median(np.sqrt(ST.wvar(h0, w))))
+    sd_r = np.sqrt(ST.wvar(r, w))
+    parts = []
+    for f in range(fo.n_folds):
+        p = PB.ridge_cv(zm, Y, fo, w, np.hstack([h0, u + scale * (Y[f] - oof) / sd_r]),
+                        pw.names)
+        parts.append(p)
+    held = [fo.outer == f for f in range(fo.n_folds)]
+    pred = np.full_like(parts[0].pred, np.nan)
+    alpha, kept = np.array(parts[0].alpha), np.array(parts[0].kept)
+    for f, p in enumerate(parts):
+        pred[held[f]] = p.pred[held[f]]
+        alpha[f], kept[f] = p.alpha[f], p.kept[f]
+    full = dataclasses.replace(parts[0], pred=pred, alpha=alpha, kept=kept)
+    pb, randoms = PB.conditional(rand, zm, Y, fo, w, pw.names)
+    g = PB.gain(pb, full, randoms, w, fo, pw.direction, None, None, counts)
+    exp = PB.expected_r2(snr)
+    r2b = PB.probe_r2(base, w, pw.direction)
+    partial = (g.r2_full - r2b) / (1.0 - r2b)
+    want = (1.0 - r2b) * exp
+    return {"partial_vs_own": partial.tolist(), "delta2": g.gain.tolist(),
+            "expected_delta2": want.tolist(), "r2_b": r2b.tolist(),
+            "within_tol": bool(np.all(np.abs(partial - exp) <= K4_TOL)
+                               and np.all(np.abs(g.gain - want) <= K4_TOL)),
+            "descriptive": True}
+
+
+def decoy4(tab: io.Table) -> np.ndarray:
+    """[n, 4] PR-6's decoy variables (s - s_apex, vx, sigma, log R)."""
+    return np.stack([np.asarray(tab["ds_apex"], float), np.asarray(tab["vx"], float),
+                     np.asarray(tab["direction"], float), np.log(np.asarray(tab["R"], float))],
+                    1)
+
+
+def pr6(pw: ProbeWorld, counts: np.ndarray, pr1b: dict | None,
+        rand: Sequence[np.ndarray] | None = None) -> dict:
+    """PR-6 (module docstring 'K4's PR-1b and PR-6 rules'): ``K4_PR6_UNITS`` biased tanh
+    units of random mixes of the decoys (``decoy4``) appended to the host's h3, the gain from
+    ``K4_PR6_GAINS`` whose probe-alone R2 (mean over K_P) lies closest to the decoy kNN's;
+    C2's gain on the by-fold lambda_res against K4's controls. Pass: Delta2 <=
+    ``K4_ZERO_TOL`` (one-sided) and PR-1b passes; 'overfit_cost' is Delta2's negative part,
+    'delta2_unresidualised' the same units on lambda itself (descriptive)."""
     w, fo = pw.w, pw.fo
-    D = np.stack([np.asarray(pw.tab["ds_apex"], float), np.asarray(pw.tab["vx"], float),
-                  np.asarray(pw.tab["direction"], float), np.log(np.asarray(pw.tab["R"], float))],
-                 1)
+    rand = pw.h3[1:1 + K4_N_CONTROLS] if rand is None else rand
+    D = decoy4(pw.tab)
     knn_pred = pw.lam - np.asarray(pw.lam_res)[fo.outer, np.arange(len(w))]
     target = float(np.mean(PB.r2(pw.lam, knn_pred, w, pw.direction, pw.names)))
 
-    def r2_of(gain):
-        U = PB.decoy_units(D, w, k4_rng(8), 32, gain)
-        p = PB.ridge_cv(None, pw.lam, fo, w, U, pw.names)
-        return float(np.mean(PB.probe_r2(p, w, pw.direction))), U
+    def units(gain):
+        return PB.decoy_units(D, w, k4_rng(8), K4_PR6_UNITS, gain, K4_PR6_BIAS)
 
-    lo, hi = np.log(0.05), np.log(20.0)
-    best = None
-    for _ in range(6):
-        mid = 0.5 * (lo + hi)
-        r, U = r2_of(np.exp(mid))
-        if best is None or abs(r - target) < abs(best[0] - target):
-            best = (r, U, np.exp(mid))
-        lo, hi = (mid, hi) if r < target else (lo, mid)
-    r, U, gain = best
-    g = PB.c2(np.hstack([pw.h3[0], U]), pw.h3[1:], pw.z, pw.m[0], pw.lam_res, fo, w,
-              pw.direction, pw.names, None, None, counts)
-    ok = abs(g.stat) <= K4_ZERO_TOL and (pr1b is None or pr1b.get("pass", False))
-    return {"knn_r2": target, "decoy_r2": r, "gain": float(gain), "delta2": g.stat,
-            "pass": bool(ok)}
+    r2s = [float(np.mean(PB.probe_r2(PB.ridge_cv(None, pw.lam, fo, w, units(gn), pw.names),
+                                     w, pw.direction))) for gn in K4_PR6_GAINS]
+    i = int(np.argmin(np.abs(np.asarray(r2s) - target)))
+    H = np.hstack([pw.h3[0], units(K4_PR6_GAINS[i])])
+    g = PB.c2(H, rand, pw.z, pw.m[0], pw.lam_res, fo, w, pw.direction, pw.names, None, None,
+              counts)
+    g_raw = PB.c2(H, rand, pw.z, pw.m[0], pw.lam, fo, w, pw.direction, pw.names, None, None,
+                  counts)
+    pr1b_ok = bool(pr1b and pr1b.get("pass", False))
+    return {"knn_r2": target, "gains": list(K4_PR6_GAINS), "r2_by_gain": r2s,
+            "gain": float(K4_PR6_GAINS[i]), "decoy_r2": r2s[i],
+            "calibrated": bool(abs(r2s[i] - target) <= K4_CALIBRATION_TOL),
+            "delta2": g.stat, "ci": list(g.ci), "by_component": g.gain.tolist(),
+            "overfit_cost": float(max(0.0, -g.stat)),
+            "delta2_unresidualised": g_raw.stat, "ci_unresidualised": list(g_raw.ci),
+            "pr1b_pass": pr1b_ok, "pass": bool(g.stat <= K4_ZERO_TOL and pr1b_ok)}
+
+
+def _ar1(tab: io.Table, w: np.ndarray, m: int, rng: np.random.Generator,
+         rho: float = K4_PR6_RHO) -> np.ndarray:
+    """[n, m] AR(1) series (coefficient ``rho``, unit innovations) along each key's rows in t
+    order, independent across keys and columns, weighted-standardised per column."""
+    key, t = np.asarray(tab["key_id"]), np.asarray(tab["t"])
+    eps = np.zeros((len(key), int(m)))
+    c = np.sqrt(1.0 - rho * rho)
+    for k in np.unique(key):
+        idx = np.flatnonzero(key == k)
+        idx = idx[np.argsort(t[idx], kind="stable")]
+        e = rng.standard_normal((len(idx), int(m)))
+        for i in range(1, len(idx)):
+            e[i] = rho * e[i - 1] + c * e[i]
+        eps[idx] = e
+    return _std(eps, w)
+
+
+def pr6b_f(pw: ProbeWorld) -> np.ndarray:
+    """[n, 4] PR-6b's smooth decoy function: the weighted ridge (``K4_PR6B_ALPHA``, the
+    weights normalised to sum 1, an unpenalised intercept) of lambda on ``K4_PR6B_FEATURES``
+    biased tanh features of ``decoy4`` (``probes.decoy_units``, gain 1, sub-stream 13),
+    standardised, fitted on every row: lambda only shapes F."""
+    w = np.asarray(pw.w, float)
+    RF = PB.decoy_units(decoy4(pw.tab), w, k4_rng(13), K4_PR6B_FEATURES, 1.0, 1.0)
+    X = PB.scaler(RF, w).apply(RF)
+    wn = w / w.sum()
+    mu, yb = wn @ X, wn @ pw.lam
+    Xc = X - mu
+    G = (Xc * wn[:, None]).T @ Xc
+    c = (Xc * wn[:, None]).T @ (pw.lam - yb)
+    return Xc @ np.linalg.solve(G + K4_PR6B_ALPHA * np.eye(len(G)), c) + yb
+
+
+def pr6c_f(pw: ProbeWorld) -> np.ndarray:
+    """[n, 4] PR-6c's decoy function, matching the decoy kNN (Section 7's 'matches the decoy
+    kNN's R2'): each geometry's rows predicted by the ``states.KNN_K`` = 15 kNN of lambda on
+    D1 fitted on every other geometry."""
+    D1, geo = ST.decoy_d1(pw.tab), ST.geometry_index(pw.tab)
+    F = np.full(pw.lam.shape, np.nan)
+    for g in np.unique(geo):
+        s = geo == g
+        F[s] = ST.knn_fit(D1[~s], pw.lam[~s], pw.w[~s], ST.KNN_K).predict(D1[s])
+    return F
+
+
+def hold_units(F: np.ndarray, w: np.ndarray, rng: np.random.Generator,
+               n_units: int = K4_HOLD_UNITS, sd: float = K4_HOLD_SD) -> np.ndarray:
+    """[n, n_units] units holding F: tanh(F~ A + b), F~ F weighted-standardised, A and b
+    ~ N(0, sd^2)."""
+    Fz = PB.scaler(F, w).apply(F)
+    A = rng.normal(0.0, sd, (Fz.shape[1], int(n_units)))
+    b = rng.normal(0.0, sd, int(n_units))
+    return np.tanh(Fz @ A + b)
+
+
+def c2_primary(pw: ProbeWorld, H: np.ndarray, Y: np.ndarray, t_wide: bool = False) -> dict:
+    """C2's primary statistic of the layer ``H`` (with its host's m) on the targets ``Y``
+    ([F, n, 4] or [n, 4]) as the analysis computes it (``analysis.c2_network``): on C2's
+    decision stratum (``ProbeWorld.rows_c2``), each component scored on its decision rows
+    (``mask``), the mean over the frozen power floor's components (``power_floor``), against
+    C2's random-init controls (``h3[1:6]``), key weights renormalised on the stratum, C2's
+    own bootstrap counts. ``t_wide``: every row of T and every component (descriptive)."""
+    n = len(pw.w)
+    rows = np.ones(n, bool) if (t_wide or pw.rows_c2 is None) else np.asarray(pw.rows_c2,
+                                                                                 bool)
+    wr = ST.stratum_weights(pw.tab, rows)
+    try:
+        return AN.c2_network(H, pw.h3[1:1 + PB.N_RANDOM_ACTORS], pw.z, pw.m[0], Y, pw.fo,
+                             None, pw.direction, K_P, None if t_wide else pw.power_floor,
+                             rows, weights=wr[rows], mask=None if t_wide else pw.mask)
+    except PB.NotTestable as e:          # recorded as the analysis does; the plant fails
+        return {"decision": "not testable", "reason": str(e)}
+
+
+def _stat(rec: dict) -> dict:
+    return {"delta2": rec.get("stat"), "ci": rec.get("ci"), "gain": rec.get("gain"),
+            "decision": rec.get("decision")}
+
+
+def pr6_world(pw: ProbeWorld, kind: str, seeds: Sequence[int] = K4_PR6_SEEDS,
+              t_wide: bool = True, faults: bool = True) -> dict:
+    """PR-6b (``kind`` 'smooth', ``pr6b_f``) or PR-6c ('knn', ``pr6c_f``): the known-truth
+    world of the module docstring on each noise seed (sub-stream (14, seed)), the units
+    holding F on sub-stream (15, j). Per seed: C2's primary Delta2 (``c2_primary``) on y
+    residualised by ``states.cross_fit`` (f_D's k by the rule) and on y itself (the
+    residualisation turned off), the units' probe-alone R2 and the kNN's on T; with
+    ``t_wide`` the T-wide statistic, with ``faults`` (first seed) the over-smoothed kNN and D1
+    without s - s_apex. Pass: every seed's Delta2 <= ``K4_ZERO_TOL`` and every seed's
+    unresidualised Delta2 > it, and for PR-6b every seed's probe-alone R2 >= the kNN's (means
+    over K_P). 'leak_bound' is the largest Delta2 over the seeds, 'gain_max' each component's
+    largest gain."""
+    j = {"smooth": 0, "knn": 1}[kind]
+    w, fo = pw.w, pw.fo
+    F = pr6b_f(pw) if kind == "smooth" else pr6c_f(pw)
+    U = hold_units(F, w, k4_rng(15, j))
+    H = np.hstack([pw.h3[0], U])
+    D1 = ST.decoy_d1(pw.tab)
+    Fs = _std(F, w)
+    out: dict = {"kind": kind, "F": "pr6b_f" if kind == "smooth" else "pr6c_f",
+                 "n_controls": len(pw.h3[1:1 + PB.N_RANDOM_ACTORS]),
+                 "rows": int(np.sum(pw.rows_c2)) if pw.rows_c2 is not None else len(w),
+                 "passing": None if pw.power_floor is None else dict(pw.power_floor),
+                 "seeds": []}
+    for s in seeds:
+        y = Fs + K4_PR6_NOISE * _ar1(pw.tab, w, F.shape[1], k4_rng(14, s))
+        res = ST.cross_fit(D1, y, fo.outer, w, inner=fo.inner)
+        on, off = c2_primary(pw, H, res.by_fold), c2_primary(pw, H, y)
+        alone = PB.probe_r2(PB.ridge_cv(None, y, fo, w, U, pw.names), w, pw.direction)
+        knn = PB.r2(y, y - res.oof, w, pw.direction, pw.names)
+        rec = {"seed": int(s), "k": res.k.tolist(), **_stat(on),
+               "scored_rows": on.get("scored_rows"), "off": _stat(off),
+               "alone_r2": alone.tolist(), "knn_r2": knn.tolist(),
+               "alone_mean": float(np.mean(alone)), "knn_mean": float(np.mean(knn))}
+        if t_wide:
+            tw = c2_primary(pw, H, res.by_fold, t_wide=True)
+            rec["T"] = _stat(tw)
+        out["seeds"].append(rec)
+        if faults and s == seeds[0]:
+            bad = {"knn_k300": ST.cross_fit(D1, y, fo.outer, w, k=K4_OVERSMOOTH_K),
+                   "d1_without_ds_apex": ST.cross_fit(D1[:, 1:], y, fo.outer, w,
+                                                      inner=fo.inner)}
+            out["faults"] = {}
+            for lab, rf in bad.items():
+                st = _stat(c2_primary(pw, H, rf.by_fold))
+                out["faults"][lab] = {**st, "detected": _gt(st["delta2"], K4_ZERO_TOL),
+                                      "descriptive": True}
+    rs = out["seeds"]
+    d2 = [_num(r["delta2"]) for r in rs]
+    out["leak_bound"] = float(max(d2)) if rs and np.all(np.isfinite(d2)) else None
+    gains = [[_num(v) for v in (r["gain"] or [])] for r in rs]
+    out["gain_max"] = None
+    if gains and all(len(g) == len(K_P) for g in gains):
+        col = np.asarray(gains).T
+        out["gain_max"] = [float(np.max(c[np.isfinite(c)])) if np.isfinite(c).any() else None
+                           for c in col]
+    out["residualised_ok"] = all(_le(r["delta2"], K4_ZERO_TOL) for r in rs)
+    out["off_detected"] = all(_gt(r["off"]["delta2"], K4_ZERO_TOL) for r in rs)
+    out["alone_ok"] = all(r["alone_mean"] >= r["knn_mean"] for r in rs)
+    out["pass"] = bool(rs and out["residualised_ok"] and out["off_detected"]
+                       and (kind != "smooth" or out["alone_ok"]))
+    return out
+
+
+def band_notes(rec: dict) -> dict:
+    """K4's two numbers for the C2 and C2-sw band-edge notes (``analysis.band_notes``), from
+    a K4 record: PR-6's over-fitting cost (its Delta2's negative part, with the Delta2 and its
+    CI: T, the mean over K_P, K4's controls) and PR-6c's leak bound (its largest Delta2 over
+    the noise seeds on C2's primary statistic, with each component's largest gain)."""
+    p6, p6c = rec.get("PR-6") or {}, rec.get("PR-6c") or {}
+    return {"pr6_cost": {"cost": p6.get("overfit_cost"), "delta2": p6.get("delta2"),
+                         "ci": p6.get("ci"),
+                         "scope": "K4 PR-6: T, the mean over K_P, K4's random controls"},
+            "pr6c_leak": {"bound": p6c.get("leak_bound"), "gain_max": p6c.get("gain_max"),
+                          "seeds": len(p6c.get("seeds") or []),
+                          "scope": "K4 PR-6c: C2's primary statistic, the largest over "
+                                   "its noise seeds"}}
 
 
 def pr8(pw: ProbeWorld, counts: np.ndarray, snr: float = 4.0) -> dict:
@@ -1376,7 +1663,7 @@ def pr8(pw: ProbeWorld, counts: np.ndarray, snr: float = 4.0) -> dict:
     r = base.y - base.pred
     H = PB.plant_units(h0, r, snr, w, k4_rng(9))
     G = len(np.unique(sub.cluster))         # the stratum's geometries (a subset of T's)
-    g = PB.c2_sw(H, [h[rows] for h in pw.h3[1:]], zr, sig, sub, w, None,
+    g = PB.c2_sw(H, [h[rows] for h in pw.h3[1:1 + K4_N_CONTROLS]], zr, sig, sub, w, None,
                  PB.cluster_counts(G, rng=k4_rng(10)))
     r2b = float(PB.probe_r2(base, w)[0])
     exp = (1.0 - r2b) * PB.expected_r2(snr)

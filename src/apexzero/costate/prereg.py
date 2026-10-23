@@ -307,7 +307,32 @@ def constants() -> dict:
         "gates": {"k1_kink_share": GT.K1_KINK_SHARE, "k2_tol": GT.K2_TOL,
                   "k2b": [GT.K2B_MARGIN, GT.K2B_SEVERITIES, list(GT.K2B_RAMP), GT.K2B_TOL],
                   "k4": [list(GT.K4_SNR), GT.K4_TOL, GT.K4_ZERO_TOL, GT.K4_READOUT_TOL],
-                  "k4_c1": [list(GT.K4_C1_SNR), list(GT.K4_FLOOR), GT.K4_DIRECTION_FLOOR]},
+                  "k4_c1": [list(GT.K4_C1_SNR), list(GT.K4_FLOOR), GT.K4_DIRECTION_FLOOR],
+                  "k4_controls": GT.K4_N_CONTROLS,
+                  "k4_pr1b_rule": "PR-1b's baseline, plant, probe and random controls on one "
+                                  "target array, each row's own-fold lambda_res; every K_P "
+                                  "component planted at once; the plant on C2's by-fold "
+                                  "targets reported beside it, descriptive",
+                  "k4_pr6": {"units": GT.K4_PR6_UNITS, "bias": GT.K4_PR6_BIAS,
+                             "gains": list(GT.K4_PR6_GAINS),
+                             "calibration_tol": GT.K4_CALIBRATION_TOL,
+                             "seeds": list(GT.K4_PR6_SEEDS), "rho": GT.K4_PR6_RHO,
+                             "noise": GT.K4_PR6_NOISE, "features": GT.K4_PR6B_FEATURES,
+                             "alpha": GT.K4_PR6B_ALPHA,
+                             "hold": [GT.K4_HOLD_UNITS, GT.K4_HOLD_SD],
+                             "oversmooth_k": GT.K4_OVERSMOOTH_K},
+                  "k4_pr6_rule": "PR-6: Delta2 <= k4[2] (one-sided) on C2's by-fold lambda_res "
+                                 "with K4's controls, the decoy units' gain the grid's whose "
+                                 "probe-alone R2 lies closest to the decoy kNN's, and PR-1b "
+                                 "passing; PR-6b (smooth F) and PR-6c (F the leave-one-"
+                                 "geometry-out k = 15 kNN of lambda on D1): y = std(F) + "
+                                 "noise AR(1) eps, the units holding F appended to h3, y "
+                                 "residualised by states.cross_fit; C2's primary statistic "
+                                 "(its decision rows, power floor and 5 random-init "
+                                 "controls) <= k4[2] on every seed, > k4[2] on every seed "
+                                 "with the residualisation off, and for PR-6b the units' "
+                                 "probe-alone R2 >= the kNN's on every seed; K4 needs both",
+                  "band_note_margin": AN.BAND_NOTE_MARGIN},
         "streams": dict(STREAMS), "kappa_set_r": KAPPA_SET_R}
 
 
