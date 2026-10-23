@@ -114,7 +114,7 @@ K2B_EXCLUDED = {"approach": ["n", "vx"], "braking": ["s", "n", "xi", "vx"],
 # kept beside it ('pass_computed').
 FORCE_PASS = ("k4", "decoy-k", "k5")
 DECOY_K_REDUCED = {"candidates": [8], "seeds": [0]}   # f_D's k re-derived: one k, one seed
-C2_NULL_REDUCED = (5, 6)       # C2's random-only null on two of its 20 actors
+C2_NULL_REDUCED = (20, 21)     # C2's random-only null on two of its 20 actors (20-39)
 K5_MLP_MAXITER = 25            # K5's MLP ceilings (descriptive) at 25 L-BFGS iterations, not 500:
                                # 19 minutes on the reduced T, about one with the cap
 STAND_IN_SEED = 101            # + index: never one of the random controls' seeds (0-19)

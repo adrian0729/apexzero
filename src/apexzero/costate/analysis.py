@@ -115,12 +115,23 @@ the bound gates/k4.json (``gates.band_notes``). They change no decision. They ar
 beside C2-sw: both were measured on C2's setup (lambda_res through f_D, the base [z, m]), and
 C2-sw's sigma^ped is not residualised, so neither bounds anything there.
 
-**C2's random-only null** (``c2_null_note``, descriptive, through ``guarded``; v2.5): beside
-each network's primary C2, the record's frozen 'c2_null' (``gates.c2_null``: C2's primary
-statistic of 20 random-init actors scored as the network against C2's controls, copied at
-prereg from the bound gates/c2_null.json) with the share of its statistics at or above the
-network's. C2's CI bootstraps geometries with the networks fixed, so it leaves out this
-between-network spread. It changes no decision.
+**C2's control pool** (``c2_network``'s and ``c2_sw_network``'s ``pool``; the lead's decision
+before the tag, on random-init evidence only; ``probes`` module docstring 'Two-level CI').
+The records that enter a decision, the primary C2 and C2-sw of each decision network
+(``network_decisions``, then R18 in ``variant_decisions``; nothing else reads a C2 or C2-sw
+decision), are scored against the pool of ``probes.N_POOL`` = 20 random-init actors (seeds
+0-19), the point with the median over the 20 and the CI two-level (``C2_TWO_LEVEL_CI``),
+with the network's rank among the controls' own gains beside it (descriptive). Every other C2
+and C2-sw record decides nothing and keeps the 5 controls (seeds 0-4) and the geometry-only
+CI (``C2_GEOMETRY_CI``): the sensitivity and robustness variants, the robustness summary and
+the strata tables' rows, apart from each table's primary row, which is the decision's own
+record. Every record says which ('controls', ``controls_label``).
+
+**C2's random-only null** (``c2_null_note``, descriptive, through ``guarded``; v2.5, with the
+pool): beside each network's primary C2, the record's frozen 'c2_null' (``gates.c2_null``:
+C2's primary statistic of 20 random-init actors, seeds 20-39, scored as the network against
+the pool with the two-level CI, copied at prereg from the bound gates/c2_null.json) with the
+share of its statistics at or above the network's. It changes no decision.
 
 **Per network and per variant** (``network_decisions``, ``variant_decisions``). C1, C2 and
 C2-sw are decided per network on the 9 step 1 generalist finals (``DECISION_NETWORKS``,
@@ -225,6 +236,13 @@ C1_REFUTE = 0.2               # ... and its CI upper end below this refutes
 SCALE_BAND = (0.5, 2.0)       # Section 12 decision 2: the "at scale" label only
 C2_BAND = PB.C2_BAND          # Section 6 C2 and C2-sw: 0.05
 PROBE_FIT = "stratum"         # probes fitted and scored on the decision stratum's rows
+# C2's and C2-sw's reference sets (module docstring 'C2's control pool'): the records that
+# enter a decision against the pool, every other one against the 5 controls
+C2_TWO_LEVEL_CI = ("the median over the pool of random-init controls; a two-level percentile "
+                   "bootstrap: each draw resamples the geometry clusters and, independently "
+                   "(stream costate_c2_pool), the controls with replacement")
+C2_GEOMETRY_CI = ("the median over the random-init controls; the geometry-cluster bootstrap "
+                  "with the controls fixed (descriptive: decides nothing)")
 BAND_NOTE_MARGIN = 0.02       # K4's band-edge notes: a C2 / C2-sw decision this near the band
 C3_PERMUTATIONS = 100_000     # Section 6 C3-w
 C3_ALPHA = 0.05
@@ -1115,11 +1133,20 @@ def probe_cv_problem(fo: PB.Folds, rows: np.ndarray) -> str | None:
     return None
 
 
+def controls_label(seeds: Sequence[int], two_level: bool) -> dict:
+    """The reference set of a C2 or C2-sw record (module docstring 'C2's control pool'): the
+    random-init controls' seeds and the kind of CI ('two-level' or 'geometry')."""
+    return {"seeds": [int(s) for s in seeds], "n": len(seeds),
+            "ci": "two-level" if two_level else "geometry",
+            "rule": C2_TWO_LEVEL_CI if two_level else C2_GEOMETRY_CI}
+
+
 def c2_network(h3: np.ndarray, random_h3: Sequence[np.ndarray], z: np.ndarray, m: np.ndarray,
                lam_res: np.ndarray, fo: PB.Folds, w_all, direction: np.ndarray,
                names: Sequence[str], passing: dict, rows: np.ndarray, weights=None,
                counts: np.ndarray | None = None, grid=PB.GRID, h_grid=PB.H_GRID,
-               mask: np.ndarray | None = None, host: np.ndarray | None = None) -> dict:
+               mask: np.ndarray | None = None, host: np.ndarray | None = None,
+               pool: np.ndarray | None = None, controls: Sequence[int] | None = None) -> dict:
     """C2 on the stratum ``rows`` (``PROBE_FIT``): ``lam_res`` [F, n, m] (or [n, m]) over all
     of T, the folds dealt on T. ``w_all`` is a callable giving the metric's weights of a row
     subset (``states.weights`` of the subset table) or the weights of the stratum's rows.
@@ -1129,7 +1156,12 @@ def c2_network(h3: np.ndarray, random_h3: Sequence[np.ndarray], z: np.ndarray, m
     cross-validation (``probe_cv_problem``); ``probes.NotTestable`` when no component passing
     keeps a scored row (the caller records it). ``host`` (K4's planted layers only): ``h3``
     is a host with a plant, and the record is the plant's paired increment over ``host``
-    alone (``probes.c2_paired``: its unpaired gain and the host's beside it)."""
+    alone (``probes.c2_paired``: its unpaired gain and the host's beside it). ``pool`` [B,
+    J]: the two-level CI's control draws (``probes.pool_draws`` over the J controls
+    ``random_h3``; not with ``host``); ``controls``: the controls' seeds, recorded with the
+    kind of CI as 'controls' (``controls_label``)."""
+    if host is not None and pool is not None:
+        raise ValueError("a paired increment's controls cancel: it takes no control pool")
     rows = np.asarray(rows, bool)
     cols = [f"lam_{n}" for n in names]
     pas = PB._passing(passing, tuple(cols))
@@ -1146,7 +1178,7 @@ def c2_network(h3: np.ndarray, random_h3: Sequence[np.ndarray], z: np.ndarray, m
     if host is None:
         gn = PB.c2(h3[rows], [r[rows] for r in random_h3], z[rows], m[rows], Y, sub, w,
                    np.asarray(direction)[rows], cols, passing, None, counts, grid, h_grid,
-                   mask=mk)
+                   mask=mk, pool=pool)
     else:
         gn = PB.c2_paired(h3[rows], np.asarray(host)[rows], [r[rows] for r in random_h3],
                           z[rows], m[rows], Y, sub, w, np.asarray(direction)[rows], cols,
@@ -1155,29 +1187,34 @@ def c2_network(h3: np.ndarray, random_h3: Sequence[np.ndarray], z: np.ndarray, m
     rec["n_stratum"] = int(rows.sum())
     if mk is not None:
         rec["scored_rows"] = mk.sum(0).tolist()
+    if controls is not None:
+        rec["controls"] = controls_label(controls, pool is not None)
     return rec
 
 
 def c2_sw_network(h3: np.ndarray, random_h3: Sequence[np.ndarray], z: np.ndarray,
                   sigma_pedal: np.ndarray, m_pedal: np.ndarray, fo: PB.Folds, w: np.ndarray,
                   rows: np.ndarray, counts: np.ndarray | None = None, grid=PB.GRID,
-                  h_grid=PB.H_GRID) -> dict:
+                  h_grid=PB.H_GRID, pool: np.ndarray | None = None,
+                  controls: Sequence[int] | None = None) -> dict:
     """C2-sw on its stratum ``rows`` (``states.SW_STRATUM``: the folded pedal-command
     multiplier active, where sigma^ped is nonzero; the raw pedal-saturated flag is a
     descriptive stratum), with the co-reported Spearman rho(m_pedal - 1, sigma^ped)
     (weighted); 'not testable' when the stratum has no row or its folds allow no inner
-    cross-validation (``probe_cv_problem``)."""
+    cross-validation (``probe_cv_problem``). ``pool`` and ``controls`` as ``c2_network``'s."""
     rows = np.asarray(rows, bool)
     why = "no row" if not rows.any() else probe_cv_problem(fo, rows)
     if why:
         return {"decision": "not testable", "reason": why, "n_stratum": int(rows.sum())}
     sub = stratum_folds(fo, rows)
     gn = PB.c2_sw(h3[rows], [r[rows] for r in random_h3], z[rows], sigma_pedal[rows], sub, w,
-                  None, counts, grid, h_grid)
+                  None, counts, grid, h_grid, pool=pool)
     rec = gn.record()
     rec["n_stratum"] = int(rows.sum())
     rec["spearman_margin"] = PB.wspearman(np.asarray(m_pedal)[rows] - 1.0,
                                           np.asarray(sigma_pedal)[rows], w)
+    if controls is not None:
+        rec["controls"] = controls_label(controls, pool is not None)
     return rec
 
 
@@ -1711,7 +1748,8 @@ _C1_FIELDS = ("names", "r2c", "stat", "ci", "spearman", "spearman_ci", "slope", 
               "slope_gl", "slope_gl_ci", "inv_slope_lg_ci", "n_rows", "n_uncalibrated",
               "null_diff", "reason", "error")
 _C2_FIELDS = ("names", "passing", "r2_base", "r2_full", "gain", "raw", "partial", "stat", "ci",
-              "scored_rows", "spearman_margin", "reason", "error")
+              "scored_rows", "spearman_margin", "controls", "ci_kind", "ci_geometry", "pool",
+              "reason", "error")
 
 
 def stratum_record(hypothesis: str, rec: dict, rows: np.ndarray | None, tab,

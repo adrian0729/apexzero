@@ -48,11 +48,12 @@ TAG = "costate-prereg-v1"
 STREAMS = {"costate_folds": 301, "costate_inner": 302, "costate_horizon": 303,
            "costate_perm": 304, "costate_control": 305, "costate_c3": 306,
            "costate_mlp": 307, "costate_boot": 308, "costate_k3": 309, "costate_k4": 310,
-           "costate_decoy_k": 311}
+           "costate_decoy_k": 311, "costate_c2_pool": 312}
 # 307, 308 and 310 are the indices probes.MLP_STREAM, probes.BOOT_STREAM and
 # gates.K4_STREAM already seed with this rule (named here, their draws unchanged); 309 is
 # K3's key sample (critic._dry_keys); 311 the validation seeds of f_D's k
-# (gates.decoy_k_rng), disjoint from K4's gate seeds on 310.
+# (gates.decoy_k_rng), disjoint from K4's gate seeds on 310; 312 the control pool's
+# resampling in C2's and C2-sw's two-level CI (probes.POOL_STREAM, probes.pool_draws).
 
 
 def stream_rng(name: str, *ids: int) -> np.random.Generator:

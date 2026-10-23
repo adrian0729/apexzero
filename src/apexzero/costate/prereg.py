@@ -253,7 +253,23 @@ def constants() -> dict:
                                   "draws averaged and scored by R2_wd against the unpermuted "
                                   "held-out targets; every K_P component needs a cluster-"
                                   "bootstrap CI lower end <= 0 and a point <= wiring[1]",
-                   "streams": [PB.BOOT_STREAM, PB.MLP_STREAM]},
+                   "streams": [PB.BOOT_STREAM, PB.MLP_STREAM, PB.POOL_STREAM],
+                   "c2_pool": {"seeds": list(PB.POOL_SEEDS), "stream": "costate_c2_pool",
+                               "rule": AN.C2_TWO_LEVEL_CI,
+                               "scope": "the primary C2 and C2-sw of each decision network "
+                                        "(the records that enter network_decisions and "
+                                        "R18); the network's rank among the pool's control "
+                                        "gains beside each (descriptive)",
+                               "five_controls": {"seeds": list(range(PB.N_RANDOM_ACTORS)),
+                                                 "rule": AN.C2_GEOMETRY_CI,
+                                                 "scope": "every other C2 and C2-sw record: "
+                                                          "the sensitivity and robustness "
+                                                          "variants, the robustness summary "
+                                                          "and the strata tables' rows but "
+                                                          "each table's primary row"},
+                               "k4": "unchanged: K4's plants keep their own controls "
+                                     "(gates.k4_controls of the 5; PR-6b and PR-6c the 5) "
+                                     "and paired increments"}},
         "analysis": {"huber_c": AN.HUBER_C, "cal_slope": AN.CAL_SLOPE, "k_lev": AN.K_LEV,
                      "c3w_rows": AN.C3W_ROWS, "w1_rows": AN.W1_ROWS,
                      "c1": [AN.C1_CONFIRM, AN.C1_REFUTE],
@@ -398,13 +414,16 @@ def constants() -> dict:
                                             "every per-seed Delta2, paired and unpaired, is "
                                             "within reproduce_tol of states.knn_k_validation"},
                   "c2_null": {"seeds": list(GT.C2_NULL_SEEDS),
-                              "controls": list(range(PB.N_RANDOM_ACTORS)),
+                              "controls": list(PB.POOL_SEEDS), "ci": "two-level",
                               "rule": "descriptive: C2's primary statistic of each seed's "
                                       "random-init actor (G1's architecture and obs_rms) as "
-                                      "the network against the controls, as the probes "
-                                      "stage scores a trained network; the summary frozen "
-                                      "and printed beside each primary C2; no decision "
-                                      "reads it"}},
+                                      "the network against the control pool with the "
+                                      "two-level CI, as the probes stage scores a trained "
+                                      "network; the summary frozen and printed beside each "
+                                      "primary C2; no decision reads it",
+                              "five_controls_v25": {k: list(v) if isinstance(v, tuple) else v
+                                                    for k, v in
+                                                    GT.C2_NULL_FIVE_CONTROLS.items()}}},
         "streams": dict(STREAMS), "kappa_set_r": KAPPA_SET_R}
 
 

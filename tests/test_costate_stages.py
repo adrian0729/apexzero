@@ -13,7 +13,11 @@ bodies (design v2.1, Section 7 'Freeze'), before the tag.
   setup (inputs, k2b) and prereg freezes K4's band-edge notes.
 - The post-tag stage bodies (activations, critic gradients, C1 with its nulls, C2 and C2-sw)
   end to end in a float64 subprocess on a few stored keys, with random-init stand-ins for a
-  trained snapshot (G1's config and obs_rms; no trained parameter is evaluated)."""
+  trained snapshot (G1's config and obs_rms; no trained parameter is evaluated).
+- C2's control pool: the primary C2 and C2-sw against the 20 random-init actors with the
+  two-level CI, every other record (variants, robustness, strata rows but the primary) against
+  the 5 controls with the geometry-only CI, each labelled; the probes stage refuses
+  activations without the pool."""
 
 import importlib.util
 import json
@@ -28,6 +32,7 @@ import pytest
 
 from apexzero.costate import data_dirs
 from apexzero.costate import prereg as PR
+from apexzero.costate.probes import POOL_SEEDS as POOL
 from apexzero.interp import agents
 
 REPO = Path(__file__).resolve().parents[1]
@@ -306,7 +311,7 @@ snap = SimpleNamespace(actor=NW.random_actor_params(cfg, 3), critic=CR.random_cr
                        ret_rms=RunningMeanStd(np.zeros(()), np.float32(4.0), np.float32(1.0)))
 agent = SimpleNamespace(agent_id="stand-in", timesteps=0, cfg=cfg, obs_rms=rms, snapshot=snap)
 PB.unlock_trained(); CR.unlock_trained()
-acts = cs.activations_of(agent, world, n_random=5)
+acts = cs.activations_of(agent, world, n_random=PB.N_POOL)
 crit = cs.critic_of(agent, world, seeds=(0, 1, 2), bank=bank)
 # the width derivative against a central difference of V_c on the tangent-perturbed road
 from apexzero.fields import perturb as PT
@@ -397,6 +402,7 @@ def test_post_tag_bodies_end_to_end_on_random_stand_ins(tmp_path):
     n = out["n"]
     assert out["acts"]["actor_h3"] == [n, 256] and out["acts"]["heads"] == [n, 5]
     assert out["acts"]["head_units"] == [5, n, 64] and out["acts"]["random4_h3"] == [n, 256]
+    assert out["acts"]["random19_h3"] == [n, 256] and "random20_h3" not in out["acts"]
     assert out["crit_g"] == [n, 6, 8] and out["random_g"] == [3, n, 8]
     assert out["sigma"] == pytest.approx(2.0, rel=1e-6)
     assert all(out["nulls"][k] for k in ("value_ridge", "qss", "barrier"))
@@ -412,6 +418,9 @@ def test_post_tag_bodies_end_to_end_on_random_stand_ins(tmp_path):
         want = np.subtract(g["r2_full"], g["r2_base"]) - np.median(
             np.subtract(g["r2_random"], g["r2_base"]), axis=0)
         assert np.allclose(g["gain"], want, rtol=0, atol=1e-12), key
+        # the primary against the control pool (seeds 0-19) with the two-level CI
+        assert len(g["r2_random"]) == 20 and g["controls"]["seeds"] == list(range(20)), key
+        assert g["ci_kind"] == "two-level" and g["pool"]["n_tied"] >= 1, key
     assert out["sw_rows"] > 0 and out["sens"] == ["braking_keys", "pullback:held"]
     # the accel-held pullback on the critic stage's own g_held (Section 3.2): scored as C1,
     # every null left out; C1-own's held form beside C1-own (Section 13)
@@ -1345,7 +1354,7 @@ def test_every_pre_registered_variant_is_reported(tmp_path):
     assert out["decision_rows"]["vx"] < out["decision_rows"]["s"]      # K2b's frozen rule
     acts = {"z": rng.normal(size=(n, 6)), "m": rng.normal(size=(n, 2)),
             "actor_h3": rng.normal(size=(n, 5)),
-            **{f"random{s}_h3": rng.normal(size=(n, 5)) for s in range(5)}}
+            **{f"random{s}_h3": rng.normal(size=(n, 5)) for s in POOL}}
     pr = cs.probes_of(acts, world, frozen, world.tab["interior"], world.tab["pedal_switching"],
                       np.ones((n, 4), bool))
     assert set(pr["sensitivity"]) == want and "C2" in pr and "C2-sw" in pr
@@ -1373,6 +1382,32 @@ def test_every_pre_registered_variant_is_reported(tmp_path):
     assert c3["x_not_testable"] == {gone: "no row"}
 
 
+def test_the_probes_stage_needs_the_control_pool_in_each_activations_file(tmp_path):
+    """The primary C2 and C2-sw are scored against the control pool (random-init actors
+    0-19), so the probes stage refuses, before any network is probed, an activations file
+    that is missing or holds only the 5 controls' h3 (``pool_problems``); a paired
+    increment (K4's plants) takes no pool."""
+    cs = _script()
+    from apexzero.costate import analysis as AN
+
+    d = tmp_path / "post" / "activations"
+    d.mkdir(parents=True)
+    np.savez(d / f"{PR.net_file('G1')}.npz", **{f"random{s}_h3": np.zeros((2, 3))
+                                                 for s in POOL})
+    np.savez(d / f"{PR.net_file('G2')}.npz", **{f"random{s}_h3": np.zeros((2, 3))
+                                                 for s in range(5)})
+    assert cs.pool_problems(tmp_path, ["G1"]) == []
+    probs = cs.pool_problems(tmp_path, ["G1", "G2", "G3"])
+    assert len(probs) == 2 and "lacks the control pool's h3 of seeds [5, 6" in probs[0]
+    assert probs[1].endswith("is missing")
+    with pytest.raises(ValueError, match="no control pool"):
+        AN.c2_network(None, [], None, None, None, None, None, None, ("s",), {"s": True},
+                      np.ones(2, bool), host=np.zeros(2), pool=np.zeros((1, 1), int))
+    lab = AN.controls_label(POOL, True)
+    assert lab["seeds"] == list(range(20)) and lab["ci"] == "two-level" and lab["n"] == 20
+    assert AN.controls_label(range(5), False)["ci"] == "geometry"
+
+
 def test_c2_cross_fits_with_the_frozen_decoy_k():
     """f_D's one k (``states.KNN_K``) is frozen in the record; probes_of cross-fits every
     partition at the frozen k ('frozen'), at ``states.KNN_K`` where the frozen values lack it
@@ -1385,7 +1420,7 @@ def test_c2_cross_fits_with_the_frozen_decoy_k():
     rng = np.random.default_rng(5)
     acts = {"z": rng.normal(size=(n, 6)), "m": rng.normal(size=(n, 2)),
             "actor_h3": rng.normal(size=(n, 5)),
-            **{f"random{s}_h3": rng.normal(size=(n, 5)) for s in range(5)}}
+            **{f"random{s}_h3": rng.normal(size=(n, 5)) for s in POOL}}
     other = 3 if ST.KNN_K != 3 else 5
     fz = {**frozen, "decoy_k": {"k": other, "scope": "every partition"}}
     fk = {**frozen, "decoy_k": {"k": ST.KNN_K, "scope": "every partition"}}
@@ -1549,12 +1584,27 @@ def test_value_accuracy_decides_c1_own_and_every_strata_table_is_reported():
     # C2's and C2-sw's tables from probes_of, then merged beside C1's
     acts = {"z": rng.normal(size=(n, 6)), "m": rng.normal(size=(n, 2)),
             "actor_h3": rng.normal(size=(n, 5)),
-            **{f"random{s}_h3": rng.normal(size=(n, 5)) for s in range(5)}}
+            **{f"random{s}_h3": rng.normal(size=(n, 5)) for s in POOL}}
     pr = cs.probes_of(acts, world, frozen, tab["interior"], tab["pedal_switching"],
                       np.ones((n, 4), bool), variants=["braking_keys"], kappa_clipped=kc)
     t2, tsw = pr["by_stratum"]["C2"], pr["by_stratum"]["C2-sw"]
     assert list(t2) == list(AN.C2_STRATA) and list(tsw) == list(AN.C2SW_STRATA)
     assert t2["interior"]["primary"] and t2["interior"]["stat"] == pr["C2"]["stat"]
+    # the decisions against the control pool with the two-level CI; every other record (the
+    # variants, the robustness summary, the strata tables' other rows) against the 5
+    # controls with the geometry-only CI, each labelled
+    pool, five = AN.controls_label(POOL, True), AN.controls_label(range(5), False)
+    for h, tb, prim in (("C2", t2, "interior"), ("C2-sw", tsw, "pedal_switching")):
+        assert pr[h]["controls"] == pool and pr[h]["ci_kind"] == "two-level", h
+        assert len(pr[h]["r2_random"]) == 20 and pr[h]["pool"]["of"] == 21, h
+        assert pr[h]["ci_geometry"] != pr[h]["ci"], h
+        assert pr["sensitivity"]["braking_keys"][h]["controls"] == five, h
+        assert len(pr["sensitivity"]["braking_keys"][h]["r2_random"]) == 5, h
+        assert "ci_kind" not in pr["sensitivity"]["braking_keys"][h], h
+        assert tb[prim]["controls"] == pool and tb[prim]["pool"] == pr[h]["pool"], h
+        assert all(r["controls"] == five for k, r in tb.items()      # a row on the decided
+                   if k != prim and "controls" in r), h                 # rows included
+        assert sum("controls" in r for k, r in tb.items() if k != prim) >= 3, h
     assert tsw["pedal_switching"]["primary"] and tsw["pedal_switching"]["stat"] == \
         pr["C2-sw"]["stat"]
     assert t2["interior&braking_key"]["stat"] == pr["sensitivity"]["braking_keys"]["C2"]["stat"]
@@ -1563,10 +1613,15 @@ def test_value_accuracy_decides_c1_own_and_every_strata_table_is_reported():
     assert all("band" in r and "stat" in r for r in (*t2.values(), *tsw.values())
                if r["band"] != "not testable")
     # a recomputed row is computed on its own rows (one direct run covers both hypotheses)
+    # (its decision against the pool; the row's gain is the same fits' against the 5 controls)
     dr = cs.probes_of(acts, world, frozen, tab["near_limit"], tab["pedal_saturated"],
                       np.ones((n, 4), bool), variants=["primary"], strata={})
-    assert t2["near_limit"]["stat"] == dr["C2"]["stat"] != t2["interior"]["stat"]
-    assert tsw["pedal_saturated"]["stat"] == dr["C2-sw"]["stat"]
+    for row_, d in ((t2["near_limit"], dr["C2"]), (tsw["pedal_saturated"], dr["C2-sw"])):
+        assert row_["r2_base"] == d["r2_base"] and row_["raw"] == d["raw"]
+        five_gain = np.subtract(d["raw"], np.median(np.subtract(
+            np.asarray(d["r2_random"])[:5], d["r2_base"]), axis=0))
+        np.testing.assert_allclose(row_["gain"], five_gain, rtol=0, atol=1e-15)
+    assert t2["near_limit"]["stat"] != t2["interior"]["stat"]
     assert all(max(r["scored_rows"]) == r["n"] for r in t2.values() if "scored_rows" in r)
     # the kappa-clipped strata: a row on 2 geometries, not an exception; without the flags
     # 'not testable'
@@ -1606,7 +1661,7 @@ def _toy_inputs(world, seed: int = 5):
              "kappa_clipped": np.zeros(n, bool)}
     acts = {"z": rng.normal(size=(n, 6)), "m": rng.normal(size=(n, 2)),
             "actor_h3": rng.normal(size=(n, 5)),
-            **{f"random{s}_h3": rng.normal(size=(n, 5)) for s in range(5)}}
+            **{f"random{s}_h3": rng.normal(size=(n, 5)) for s in POOL}}
     return crit, {"qss": rng.normal(size=(n, 8))}, flags, acts
 
 
@@ -1687,7 +1742,8 @@ def test_a_raising_descriptive_is_recorded_and_a_raising_decision_propagates(mon
             else:
                 pr = cs.probes_of(acts, world, frozen, primary_rows, tab["pedal_switching"],
                                   variants=["primary"], strata={})
-                assert pr["C2"] == {"decision": "not testable", "reason": str(exc)}
+                assert pr["C2"] == {"decision": "not testable", "reason": str(exc),
+                                    "controls": AN.controls_label(PB.POOL_SEEDS, True)}
 
     def c2_fails_off_the_interior(h3, rnd, z, m_, res, fo, w_all, d, names, passing, rows,
                                   *a, **k):

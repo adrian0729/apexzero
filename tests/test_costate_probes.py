@@ -20,7 +20,12 @@ architecture and on constructed data with known answers:
   the training folds, mirror-odd columns within direction), the wiring check's 10-draw rule
   passing and failing on each planted fault (a fold's model on unpermuted targets, an odd
   column left unpermuted, test-set tuning), the control task's calibration and selectivity;
-  the FWL two-stage check; the MLP probe; the decision bands.
+  the FWL two-stage check; the MLP probe; the decision bands;
+- C2's control pool on a population of random networks whose gains vary: the two-level CI
+  wider than the geometry-only one, a gain planted 0.08 over the population's median
+  confirmed and one at the median not, the CI's coverage of the offset from the population's
+  median near nominal (a Monte Carlo over fresh worlds and pools), the network's rank among
+  the controls, and the pool and its resampling deterministic on their own stream.
 
 No trained network is loaded or evaluated (design Section 1: nothing before the tag
 costate-prereg-v1); only G1's config.json is read. NumPy float64 in this process (x64 stays
@@ -823,3 +828,146 @@ def test_a_component_mask_scores_each_component_on_its_own_rows():
         present = np.unique(cl[m])
         want = P.boot_r2(sub, counts[:, present])
         np.testing.assert_allclose(got[:, :, k], want[:, :, 0], rtol=1e-12, atol=1e-12)
+
+
+# ------------------------------------------------------------------------- C2's control pool
+
+
+POP_G, POP_ROWS = 48, 10        # the population world: 48 geometries of 10 rows each
+POP_K2 = 0.5                    # the base's residual share: R2(base) is about 1 - POP_K2
+POP_MU, POP_TAU, POP_EPS = 0.5, 0.06, 0.10   # each network's share of the base's residual
+
+
+def _population(rng: np.random.Generator, mu_net: float, n_pool: int = P.N_POOL):
+    """C2's statistic on a world whose random 'networks' vary (the lead's decision: the
+    control pool and the two-level CI). One target column; the base's prediction leaves the
+    residual r = sqrt(POP_K2) y. A network with parameter mu removes the share u_g = mu +
+    eps_g (eps_g ~ N(0, POP_EPS^2), fresh per network and geometry) of r's squared error in
+    geometry g (its prediction base + t r, (1 - t)^2 = 1 - u), so its gain over the base is
+    about POP_K2 mu in expectation over geometries. The pool's controls draw mu from N(POP_MU,
+    POP_TAU^2): their gains vary with SD POP_K2 POP_TAU = 0.03 (C2's null had 0.028), and the
+    population's median gain is POP_K2 POP_MU. Returns the base, the network's and the
+    controls' probes (the network first), the folds and the weights."""
+    n = POP_G * POP_ROWS
+    cl = np.repeat(np.arange(POP_G), POP_ROWS)
+    y = rng.standard_normal((n, 1))
+    base = y * (1.0 - np.sqrt(POP_K2))
+    mus = np.r_[mu_net, POP_MU + POP_TAU * rng.standard_normal(n_pool)]
+    preds = []
+    for mu in mus:
+        u = np.clip(mu + POP_EPS * rng.standard_normal(POP_G), 0.0, 1.0)[cl]
+        preds.append(base + (1.0 - np.sqrt(1.0 - u))[:, None] * (y - base))
+
+    def probe(p):
+        return P.Probe(p, y, np.zeros((1, 1, 2)), np.zeros((1, 2), int), ("lam_s",))
+
+    fo = P.Folds(np.zeros(n, int), np.zeros((1, n), int), cl)
+    return probe(base), [probe(p) for p in preds], fo, np.ones(n)
+
+
+def _pool_gain(rng, mu_net, n_boot=500, pool=True):
+    b, fs, fo, w = _population(rng, mu_net)
+    counts = P.cluster_counts(POP_G, n_boot, rng)
+    draws = P.pool_draws(P.N_POOL, n_boot, rng) if pool else None
+    return P.gain(b, fs[0], fs[1:], w, fo, counts=counts, pool=draws)
+
+
+def test_the_two_level_ci_carries_the_controls_spread():
+    """(a) On a population of random networks whose gains vary (``_population``), the
+    two-level CI (the geometry clusters and the 20 controls resampled together) is wider
+    than the same point's geometry-only CI, which it records beside it; the point is the
+    median over all 20 controls either way, and with every draw's controls the whole pool
+    the two-level CI is the geometry-only one exactly."""
+    g = _pool_gain(np.random.default_rng(1), POP_MU)
+    geo = _pool_gain(np.random.default_rng(1), POP_MU, pool=False)
+    assert g.stat == geo.stat and g.ci_geometry == geo.ci
+    assert g.ci[1] - g.ci[0] > geo.ci[1] - geo.ci[0]
+    assert g.ci[0] < geo.ci[0] and g.ci[1] > geo.ci[1]
+    rec = g.record()
+    assert rec["ci_kind"] == "two-level" and rec["ci_geometry"] == list(geo.ci)
+    assert "ci_kind" not in geo.record() and geo.record().keys() == {
+        "names", "passing", "r2_base", "r2_full", "r2_random", "gain", "raw", "partial",
+        "stat", "ci", "decision", "band"}       # K4's records are unchanged
+    # draw b's statistic: the network's gain minus the median over its resampled controls
+    b, fs, fo, w = _population(np.random.default_rng(2), POP_MU)
+    counts = P.cluster_counts(POP_G, 40, np.random.default_rng(3))
+    draws = P.pool_draws(P.N_POOL, 40, np.random.default_rng(4))
+    got = P.gain(b, fs[0], fs[1:], w, fo, counts=counts, pool=draws)
+    bs = P.boot_sums(b.y, np.stack([b.pred] + [f.pred for f in fs]), w, fo.cluster)
+    rb = P.boot_r2(bs, counts)[:, :, 0]
+    want = [rb[i, 1] - rb[i, 0] - np.median(rb[i, 2 + draws[i]] - rb[i, 0])
+            for i in range(40)]
+    np.testing.assert_allclose(got.boot, want, rtol=0, atol=1e-14)
+    whole = np.tile(np.arange(P.N_POOL), (40, 1))
+    same = P.gain(b, fs[0], fs[1:], w, fo, counts=counts, pool=whole)
+    assert same.ci == same.ci_geometry
+    with pytest.raises(ValueError, match="indices of the 20 controls"):
+        P.gain(b, fs[0], fs[1:], w, fo, counts=counts, pool=draws[:, :] + P.N_POOL)
+    with pytest.raises(ValueError, match="indices of the 20 controls"):
+        P.gain(b, fs[0], fs[1:], w, fo, counts=counts, pool=draws[:10])
+
+
+def test_a_planted_gain_over_the_population_median_is_confirmed():
+    """(b) A network planted with a true gain of 0.08 over the population's median gain is
+    confirmed (CI lower end > 0, point >= 0.05), and one at the median is not; its rank
+    among the 20 controls' own gains is reported."""
+    hi = _pool_gain(np.random.default_rng(5), POP_MU + 0.08 / POP_K2)
+    mid = _pool_gain(np.random.default_rng(5), POP_MU)
+    assert hi.decision == "confirm" and hi.ci[0] > 0 and hi.stat >= 0.05, hi.record()
+    assert mid.decision != "confirm" and abs(mid.stat) < 0.03, mid.record()
+    assert hi.pool["rank"] <= 2 and hi.pool["of"] == P.N_POOL + 1     # the controls' SD 0.03
+    assert 1 < mid.pool["rank"] < P.N_POOL + 1
+    ctl = np.asarray(mid.pool["control_gains"])
+    assert ctl.shape == (P.N_POOL,) and mid.pool["network_gain"] == pytest.approx(mid.raw[0])
+    np.testing.assert_allclose(ctl, (mid.r2_random - mid.r2_base)[:, 0], rtol=0, atol=1e-15)
+    assert mid.pool["rank"] == 1 + int((ctl > mid.raw[0]).sum())
+    assert mid.pool["n_above"] + mid.pool["n_below"] + mid.pool["n_tied"] == P.N_POOL
+    # over fresh worlds and pools: the planted network is confirmed nearly always, the one at
+    # the median never
+    rng = np.random.default_rng(6)
+    dec_hi = [_pool_gain(rng, POP_MU + 0.08 / POP_K2, 300).decision for _ in range(60)]
+    dec_mid = [_pool_gain(rng, POP_MU, 300).decision for _ in range(60)]
+    assert dec_hi.count("confirm") >= 55 and "confirm" not in dec_mid
+
+
+def test_the_two_level_ci_covers_the_offset_from_the_population_median():
+    """(c) A cheap Monte Carlo: over 400 fresh worlds and pools of 20 controls, the two-level
+    95% CI covers the network's true offset from the population's median gain (0 at the
+    median, 0.08 planted) near nominally; the geometry-only CI, which holds the controls
+    fixed, under-covers (about 0.85 in a 2,000-draw check) and is narrower on average."""
+    for mu, seed in ((POP_MU, 7), (POP_MU + 0.08 / POP_K2, 8)):
+        truth = POP_K2 * (mu - POP_MU)
+        rng = np.random.default_rng(seed)
+        two = geo = 0
+        width = []
+        for _ in range(400):
+            g = _pool_gain(rng, mu)
+            two += g.ci[0] <= truth <= g.ci[1]
+            geo += g.ci_geometry[0] <= truth <= g.ci_geometry[1]
+            width.append((g.ci[1] - g.ci[0]) / (g.ci_geometry[1] - g.ci_geometry[0]))
+        assert 0.92 <= two / 400 <= 0.99, (mu, two / 400)
+        assert geo / 400 <= two / 400 - 0.05, (mu, geo / 400, two / 400)
+        assert np.mean(width) > 1.2 and np.min(width) >= 1.0, (mu, np.mean(width))
+
+
+def test_the_pool_and_its_resampling_are_deterministic():
+    """(d) The pool is seeds 0-19 (the 5 controls among them); its resampling draws on its own
+    named stream ('costate_c2_pool'), the same for every call and independent of the
+    geometry bootstrap's, so a record repeats exactly."""
+    from apexzero.costate import STREAMS, stream_rng
+
+    assert P.POOL_SEEDS == tuple(range(20)) and P.N_POOL == 20
+    assert set(range(P.N_RANDOM_ACTORS)) <= set(P.POOL_SEEDS)
+    assert STREAMS["costate_c2_pool"] == P.POOL_STREAM
+    assert list(STREAMS.values()).count(P.POOL_STREAM) == 1
+    a, b = P.pool_draws(P.N_POOL), P.pool_draws(P.N_POOL)
+    assert a.shape == (P.N_BOOT, P.N_POOL) and a.min() >= 0 and a.max() < P.N_POOL
+    np.testing.assert_array_equal(a, b)
+    np.testing.assert_array_equal(
+        a, stream_rng("costate_c2_pool").integers(0, P.N_POOL, size=(P.N_BOOT, P.N_POOL)))
+    # the geometry bootstrap's stream draws other numbers
+    assert not np.array_equal(a, P.pool_draws(P.N_POOL, rng=P.boot_rng()))
+    b0, fs, fo, w = _population(np.random.default_rng(9), POP_MU)
+    r1 = P.gain(b0, fs[0], fs[1:], w, fo, pool=P.pool_draws(P.N_POOL)).record()
+    r2 = P.gain(b0, fs[0], fs[1:], w, fo, pool=P.pool_draws(P.N_POOL)).record()
+    assert json.dumps(r1) == json.dumps(r2)

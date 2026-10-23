@@ -172,7 +172,10 @@ and planted networks only, before the tag; the K4 review's verified write-up):
   at f_D's one k, ``states.KNN_K``). The statistic is
   C2's primary one (``c2_primary``: C2's decision stratum, each component on its decision
   rows, the frozen power floor's components, C2's 5 random-init controls), the units'
-  paired increment over the host. Pass per world: on every seed Delta2 <= ``K4_ZERO_TOL``,
+  paired increment over the host. K4 keeps the 5 controls (and its other plants the 3):
+  the decisions' control pool and two-level CI (``probes`` module docstring 'Two-level
+  CI') do not enter K4, whose no-gain plants are paired increments, in which the controls'
+  median cancels. Pass per world: on every seed Delta2 <= ``K4_ZERO_TOL``,
   and on every seed Delta2 > ``K4_ZERO_TOL`` with the residualisation turned off; for PR-6b
   also the units' probe-alone R2 at least the kNN's on every seed (mean over K_P on T).
   T-wide values (every row and component, C2's controls) and per-component gains are
@@ -215,15 +218,19 @@ blocker) and every value reproduces, so the record's table is the tagged world's
 
 **C2's random-only null** (``c2_null``; descriptive, the pre-tag stage 'c2-null'). C2's
 primary statistic of networks that hold nothing beyond a random one: each of
-``C2_NULL_SEEDS`` (20 random-init actors of G1's architecture, seeds 5-24, disjoint from C2's
-controls) is scored as the network exactly as the probes stage scores a trained one
-(``analysis.c2_network``: its own m in the base [z, m], the random-init actors 0-4 as the
-controls, partition 0's by-fold lambda_res at f_D's k, C2's decision stratum with key weights
-renormalised on it, the decision mask and the frozen power floor), on z under G1's obs_rms.
-The spread of the 20 statistics is the between-network variance that C2's CI leaves out (the
-cluster bootstrap resamples geometries with the networks fixed). The summary
-(``c2_null_frozen``) is copied into the record and printed beside each network's primary C2
-(``analysis.c2_null_note``); no decision reads it.
+``C2_NULL_SEEDS`` (20 random-init actors of G1's architecture, seeds 20-39, disjoint from C2's
+control pool) is scored as the network exactly as the probes stage scores a trained one
+(``analysis.c2_network``: its own m in the base [z, m], the pool of random-init actors 0-19
+as the controls with the two-level CI, ``probes`` module docstring 'Two-level CI', partition
+0's by-fold lambda_res at f_D's k, C2's decision stratum with key weights renormalised on
+it, the decision mask and the frozen power floor), on z under G1's obs_rms. The spread of the
+20 statistics is the between-network variance; the two-level CI carries the controls' share
+of it. Each seed's geometry-only CI and the decision under it are recorded beside it
+(descriptive). The summary (``c2_null_frozen``) is copied into the record and printed beside
+each network's primary C2 (``analysis.c2_null_note``); no decision reads it. v2.5's null,
+before the pool (seeds 5-24 against the 5 controls 0-4, the geometry-only CI: mean -0.0192,
+SD 0.0282, 7 of 20 refuting, none confirming), is the constant ``C2_NULL_FIVE_CONTROLS``,
+kept for the design's comparison.
 
 **K5** (``k5``): the permuted-target wiring check (``probes.wiring_null``: while each outer
 fold is held out the training targets are permuted state by state across all training rows,
@@ -238,8 +245,9 @@ Seeds: K4's planted noise uses ``K4_STREAM`` (310, ``costate.STREAMS``' 'costate
 PR-3, 6 PR-7, 7 PR-5, 8 PR-6's units, 9 and 10 PR-8, 11 PR-9, 12 K5's counts, 13 PR-6b's
 features, (14, seed) PR-6b and PR-6c's noise, (15, j) the units holding F, j = 0 PR-6b, 1
 PR-6c); the validation seeds of f_D's k draw on ``costate_decoy_k`` (311, sub-stream v);
-C2's random-only null uses the random-init actors of seeds 5-24 (``probes.random_actor``, as
-C2's controls 0-4 do); K2b draws nothing random.
+C2's random-only null uses the random-init actors of seeds 20-39 (``probes.random_actor``, as
+C2's control pool 0-19 does) and the pool's resampling on ``costate_c2_pool`` (312,
+``probes.pool_draws``); K2b draws nothing random.
 """
 
 from __future__ import annotations
@@ -301,8 +309,17 @@ DECOY_K_CANDIDATES = (3, 5, 8, 15)   # f_D's k: the candidates (module docstring
 DECOY_K_SEEDS = (0, 1, 2, 3, 4, 5)   # its validation seeds (stream costate_decoy_k)
 DECOY_K_REPRODUCE_TOL = 1e-6  # the decoy-k stage: each value against the table (rounded 1e-6)
 # C2's random-only null (module docstring): the random-init actors scored as the network,
-# disjoint from C2's controls (seeds 0 to probes.N_RANDOM_ACTORS - 1)
-C2_NULL_SEEDS = tuple(range(PB.N_RANDOM_ACTORS, PB.N_RANDOM_ACTORS + 20))
+# disjoint from C2's control pool (seeds 0 to probes.N_POOL - 1)
+C2_NULL_SEEDS = tuple(range(PB.N_POOL, PB.N_POOL + 20))
+# v2.5's null, before the pool (descriptive, for the design's comparison): seeds 5-24 against
+# the 5 controls 0-4 with the geometry-only CI, the fourth full-size run (e14865d; G1's
+# obs_rms, C2's 3,951 decision-stratum rows, the floor {s, xi}, f_D at k = 8)
+C2_NULL_FIVE_CONTROLS = {
+    "seeds": tuple(range(5, 25)), "controls": tuple(range(5)), "ci": "geometry",
+    "n": 20, "mean": -0.019198, "sd": 0.028184, "min": -0.090123, "max": 0.031410,
+    "p05": -0.063637, "p50": -0.011245, "p95": 0.016757,
+    "decisions": {"refute": 7, "inconclusive": 13, "confirm": 0},
+    "ci_above_0": 0, "ci_below_0": 4}
 # the choice's record: C2's primary Delta2, the units' paired increment over the host alone,
 # per candidate k on the validation seeds (PR-6b 'smooth', PR-6c 'knn'; decoy_k_leaks on the
 # full-size T, G1's obs_rms, random-init actors, C2's decision rows and the power floor at
@@ -1732,7 +1749,8 @@ def c2_primary(pw: ProbeWorld, H: np.ndarray, Y: np.ndarray, t_wide: bool = Fals
     ([F, n, 4] or [n, 4]) as the analysis computes it (``analysis.c2_network``): on C2's
     decision stratum (``ProbeWorld.rows_c2``), each component scored on its decision rows
     (``mask``), the mean over the frozen power floor's components (``power_floor``), against
-    C2's random-init controls (``h3[1:6]``), key weights renormalised on the stratum, C2's
+    C2's 5 random-init controls (``h3[1:6]``; K4's, not the decisions' control pool: module
+    docstring 'K4's PR-1b and PR-6 rules'), key weights renormalised on the stratum, C2's
     own bootstrap counts. ``t_wide``: every row of T and every component (descriptive).
     ``host``: ``H`` is that host with a plant, and the record is the plant's paired
     increment over the host alone (module docstring 'K4's no-gain plants')."""
@@ -1991,38 +2009,46 @@ def c2_null(pw: ProbeWorld, cfg, seeds: Sequence[int] = C2_NULL_SEEDS,
             progress: Callable | None = None) -> dict:
     """C2's random-only null (module docstring): each of ``seeds`` a random-init actor of
     ``cfg`` scored as the network through C2's primary statistic as the probes stage scores
-    a trained network (``analysis.c2_network`` with its own h3 and m, the random-init actors
-    0 to ``probes.N_RANDOM_ACTORS`` - 1 as the controls, on ``pw``'s z, by-fold lambda_res,
-    folds, decision stratum, mask and frozen power floor, key weights renormalised on the
-    stratum), and the summary (``c2_null_summary``). Descriptive; 'pass': every seed's
-    statistic is finite."""
+    a trained network (``analysis.c2_network`` with its own h3 and m, the pool of random-init
+    actors ``probes.POOL_SEEDS`` as the controls with the two-level CI's draws
+    ``probes.pool_draws``, on ``pw``'s z, by-fold lambda_res, folds, decision stratum, mask
+    and frozen power floor, key weights renormalised on the stratum), and the summary
+    (``c2_null_summary``), with v2.5's 5-control summary beside it (``C2_NULL_FIVE_CONTROLS``,
+    descriptive). Descriptive; 'pass': every seed's statistic is finite."""
     if pw.rows_c2 is None or pw.mask is None or pw.power_floor is None:
         raise ValueError("C2's random-only null needs C2's decision stratum, mask and power "
                          "floor")
-    controls = tuple(range(PB.N_RANDOM_ACTORS))
+    controls = tuple(PB.POOL_SEEDS)
     clash = sorted(set(map(int, seeds)) & set(controls))
     if clash:
-        raise ValueError(f"the null's seeds {clash} are C2's random controls")
+        raise ValueError(f"the null's seeds {clash} are in C2's control pool")
     rows = np.asarray(pw.rows_c2, bool)
     wr = ST.stratum_weights(pw.tab, rows)
     ctrl = [PB.hidden(PB.random_actor(cfg, s), pw.z)["h3"] for s in controls]
+    draws = PB.pool_draws(len(ctrl))
     nets = []
     for s in seeds:
         hid = PB.hidden(PB.random_actor(cfg, int(s)), pw.z)
         try:
             rec = AN.c2_network(hid["h3"], ctrl, pw.z, hid["m"], pw.lam_res, pw.fo, None,
                                 pw.direction, K_P, pw.power_floor, rows, weights=wr[rows],
-                                mask=pw.mask)
+                                mask=pw.mask, pool=draws, controls=controls)
         except PB.NotTestable as e:
             rec = {"decision": "not testable", "reason": str(e)}
+        ci_g = rec.get("ci_geometry")
         nets.append({"seed": int(s), **{k: rec.get(k) for k in (
-            "stat", "ci", "gain", "raw", "decision", "reason", "n_stratum", "scored_rows")}})
+            "stat", "ci", "ci_geometry", "gain", "raw", "decision", "reason", "n_stratum",
+            "scored_rows", "pool")},
+            "decision_geometry_ci": None if ci_g is None else PB.decide(
+                float(rec["stat"]), float(ci_g[0]), float(ci_g[1]))})
         if progress:
-            progress(f"seed {int(s)}: {rec.get('stat')} {rec.get('decision')}")
+            progress(f"seed {int(s)}: {rec.get('stat')} {rec.get('ci')} {rec.get('decision')}")
     summ = c2_null_summary(nets)
-    return {"seeds": [int(s) for s in seeds], "controls": list(controls),
+    return {"seeds": [int(s) for s in seeds], "controls": list(controls), "ci": "two-level",
             "decoy_k": ST.KNN_K, "passing": dict(pw.power_floor), "rows": int(rows.sum()),
             "obs_rms": "G1", "networks": nets, "summary": summ,
+            "five_controls_v25": {k: list(v) if isinstance(v, tuple) else v
+                                  for k, v in C2_NULL_FIVE_CONTROLS.items()},
             "pass": bool(nets and summ["n_finite"] == len(nets))}
 
 
@@ -2040,14 +2066,27 @@ def c2_null_summary(nets: Sequence[dict]) -> dict:
     def q(p):
         return float(np.quantile(fin, p)) if fin.size else None
 
-    return {"n": len(nets), "n_finite": int(fin.size),
-            "mean": float(fin.mean()) if fin.size else None,
-            "sd": float(fin.std(ddof=1)) if fin.size > 1 else None,
-            "min": float(fin.min()) if fin.size else None,
-            "max": float(fin.max()) if fin.size else None,
-            "p05": q(0.05), "p50": q(0.5), "p95": q(0.95), "decisions": dec,
-            "ci_above_0": int(sum(_num(c[0]) > 0 for c in cis)),
-            "ci_below_0": int(sum(_num(c[1]) < 0 for c in cis))}
+    out = {"n": len(nets), "n_finite": int(fin.size),
+           "mean": float(fin.mean()) if fin.size else None,
+           "sd": float(fin.std(ddof=1)) if fin.size > 1 else None,
+           "min": float(fin.min()) if fin.size else None,
+           "max": float(fin.max()) if fin.size else None,
+           "p05": q(0.05), "p50": q(0.5), "p95": q(0.95), "decisions": dec,
+           "ci_above_0": int(sum(_num(c[0]) > 0 for c in cis)),
+           "ci_below_0": int(sum(_num(c[1]) < 0 for c in cis))}
+    geo = [r.get("ci_geometry") for r in nets if r.get("ci_geometry") is not None]
+    if geo:                   # the two-level null: the same points' geometry-only CIs beside it
+        dg: dict = {}
+        for r in nets:
+            if r.get("decision_geometry_ci") is not None:
+                dg[r["decision_geometry_ci"]] = dg.get(r["decision_geometry_ci"], 0) + 1
+        out["ci_width_mean"] = float(np.mean([_num(c[1]) - _num(c[0]) for c in cis]))
+        out["geometry_ci"] = {"decisions": dg,
+                              "ci_above_0": int(sum(_num(c[0]) > 0 for c in geo)),
+                              "ci_below_0": int(sum(_num(c[1]) < 0 for c in geo)),
+                              "ci_width_mean": float(np.mean([_num(c[1]) - _num(c[0])
+                                                              for c in geo]))}
+    return out
 
 
 def c2_null_frozen(rec: dict) -> dict:
@@ -2060,7 +2099,8 @@ def c2_null_frozen(rec: dict) -> dict:
             "decisions": [r.get("decision") for r in nets],
             "scope": (f"C2's primary statistic of {len(nets)} random-init actors (seeds "
                       f"{rec.get('seeds')}) as the network against the random-init controls "
-                      f"{rec.get('controls')}: {rec.get('obs_rms')}'s obs_rms, C2's decision "
+                      f"{rec.get('controls')} ({rec.get('ci', 'geometry')} CI): "
+                      f"{rec.get('obs_rms')}'s obs_rms, C2's decision "
                       f"stratum ({rec.get('rows')} rows) and mask, the frozen power floor "
                       f"{rec.get('passing')}, partition 0, key weights, f_D at k = "
                       f"{rec.get('decoy_k')}; descriptive")}

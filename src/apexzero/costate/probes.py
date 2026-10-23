@@ -100,7 +100,23 @@ controls' median cancels: per component R2(host + plant) - R2(host), the CI from
 draws. The host's own gain (its chance offset against the other random networks) is kept
 beside it. **C2-sw** (``c2_sw``): the
 same gain with the base [z] (not conditioned on m) on sigma^ped over the pedal-saturated rows;
-``wspearman`` gives the co-reported rho(m_pedal - 1, sigma^ped). ``fwl`` is Section 4's
+``wspearman`` gives the co-reported rho(m_pedal - 1, sigma^ped).
+
+**Two-level CI** (``gain``'s ``pool``; the lead's decision before the tag, on random-init
+evidence only: C2's random-only null on its decision rows had mean -0.019 and SD 0.028 over
+20 random networks against 5 fixed controls, 7 refuting, none confirming). The primary C2 and
+C2-sw score each decision network against a pool of ``N_POOL`` = 20 random-init actors
+(``POOL_SEEDS`` 0-19, built as the 5 controls are: on the network's own z, the base given the
+network's m). The point is the statistic above with the median over the 20 in place of the
+median over 5. Each of the ``N_BOOT`` draws resamples the geometry clusters as before (the
+same counts) and, independently, the 20 controls with replacement (``pool_draws`` on stream
+``POOL_STREAM``, 'costate_c2_pool'), and its statistic takes the median over the resampled
+controls under the draw's geometry counts. The CI is the percentile interval of those draws,
+so it carries the controls' own spread (the between-network variance that the
+geometry-only CI, controls fixed, leaves out) as well as the geometries'. The bands do not
+change. Two descriptives stand beside it in the record: ``ci_geometry``, the same point's
+geometry-only CI, and ``pool`` (``pool_rank``), the network's rank among the 20 controls'
+own gains over the base. ``fwl`` is Section 4's
 two-stage (Frisch-Waugh-Lovell) check: within each training fold, the target and every H
 column residualised on B by ridge at the full model's alpha_B, then a ridge of the residual
 target on the residual H at its alpha_H; with alpha_B -> 0 it reproduces the full model
@@ -148,10 +164,10 @@ readout of z and whose h3 holds it linearly), ``one_hot`` and ``grouped_folds`` 
 and its deliberately mis-grouped split).
 
 **Streams**: ``costate_inner``, ``costate_perm`` and ``costate_control`` are idea 2's
-(``stream_rng``, costate/__init__.py:52-55). The bootstrap and the MLP inits need streams the
-package does not name yet; they use ``BOOT_STREAM`` = 308 and ``MLP_STREAM`` = 307 with the
-same seeding (ROOT_SEED, STREAM_OFFSET + index, ids; interp/constants.py:51-56), until
-``STREAMS`` lists them.
+(``stream_rng``, costate/__init__.py:52-55). The bootstrap, the MLP inits and the control
+pool's resampling use ``BOOT_STREAM`` = 308, ``MLP_STREAM`` = 307 and ``POOL_STREAM`` = 312
+with the same seeding (ROOT_SEED, STREAM_OFFSET + index, ids; interp/constants.py:51-56);
+``STREAMS`` names them 'costate_boot', 'costate_mlp' and 'costate_c2_pool'.
 """
 
 from __future__ import annotations
@@ -192,6 +208,8 @@ N_BOOT = 2000                   # Section 4 'Metrics': cluster bootstrap over ge
 CI_LEVEL = 0.95
 C2_BAND = 0.05                  # Section 6 C2 (and C2-sw): the band
 N_RANDOM_ACTORS = 5             # Section 5: random-init actors per trained network (seeds 0-4)
+N_POOL = 20                     # C2's and C2-sw's primary controls: a pool of random-init actors
+POOL_SEEDS = tuple(range(N_POOL))   # ... seeds 0-19 (0-4 are the N_RANDOM_ACTORS controls)
 N_RANDOM_CRITICS = 20           # Section 5: random-init critics (seeds 0-19)
 MLP_HIDDEN = 64                 # Section 4: one hidden layer of 64 tanh units
 MLP_ALPHAS = (1e-4, 1e-3, 1e-2)  # L2 on the MLP's weights (provisional: fixed at the tag)
@@ -204,6 +222,7 @@ WIRING_DRAWS = 10               # K5: permutation draws whose out-of-fold predic
 WIRING_TOL = 0.01               # K5: the largest permuted-target R2_wd point (gates.K4_ZERO_TOL)
 BOOT_STREAM = 308               # costate.STREAMS['costate_boot']
 MLP_STREAM = 307                # costate.STREAMS['costate_mlp']
+POOL_STREAM = 312               # costate.STREAMS['costate_c2_pool']: the pool's resampling
 
 
 def _rng(index: int, *ids: int) -> np.random.Generator:
@@ -213,6 +232,12 @@ def _rng(index: int, *ids: int) -> np.random.Generator:
 def boot_rng(*ids: int) -> np.random.Generator:
     """The bootstrap's generator (``BOOT_STREAM``; ids: e.g. network, partition)."""
     return _rng(BOOT_STREAM, *ids)
+
+
+def pool_rng(*ids: int) -> np.random.Generator:
+    """The control pool's resampling generator in the two-level bootstrap (``POOL_STREAM``),
+    independent of the geometry resampling (``boot_rng``)."""
+    return _rng(POOL_STREAM, *ids)
 
 
 def mlp_rng(*ids: int) -> np.random.Generator:
@@ -931,6 +956,16 @@ def cluster_counts(n_clusters: int, n_boot: int = N_BOOT,
     return rng.multinomial(G, np.full(G, 1.0 / G), size=int(n_boot))
 
 
+def pool_draws(n_controls: int, n_boot: int = N_BOOT,
+               rng: np.random.Generator | None = None) -> np.ndarray:
+    """[B, J] indices of J controls drawn with replacement, B times: the control level of
+    the two-level bootstrap (``gain``'s ``pool``; default stream ``POOL_STREAM``, drawn the
+    same way for every network, as ``cluster_counts`` draws the geometries)."""
+    rng = pool_rng() if rng is None else rng
+    J = int(n_controls)
+    return rng.integers(0, J, size=(int(n_boot), J))
+
+
 @dataclass(frozen=True)
 class BootSums:
     """Per-(cluster, direction) weighted sums of one target set and K prediction sets."""
@@ -1028,7 +1063,10 @@ class Gain:
     docstring 'C2'). Per component: ``r2_base``, ``r2_full``, ``r2_random`` [J, m],
     ``gain`` (the statistic's components), ``raw`` (network's own gain), ``partial``
     (raw / (1 - r2_base)); ``stat`` the mean of ``gain`` over ``passing``, ``boot`` its
-    bootstrap draws, ``ci`` its interval, ``decision`` the band's verdict."""
+    bootstrap draws, ``ci`` its interval, ``decision`` the band's verdict. With a control
+    pool (module docstring 'Two-level CI'): ``ci_geometry`` the interval of the same
+    statistic with the controls fixed (descriptive) and ``pool`` the network's rank among
+    the controls' own gains (``pool_rank``; descriptive)."""
 
     names: tuple
     passing: np.ndarray
@@ -1043,22 +1081,49 @@ class Gain:
     ci: tuple[float, float]
     decision: str
     band: float
+    ci_geometry: tuple[float, float] | None = None
+    pool: dict | None = None
 
     def record(self) -> dict:
-        return {"names": list(self.names), "passing": self.passing.tolist(),
-                "r2_base": self.r2_base.tolist(), "r2_full": self.r2_full.tolist(),
-                "r2_random": self.r2_random.tolist(), "gain": self.gain.tolist(),
-                "raw": self.raw.tolist(), "partial": self.partial.tolist(),
-                "stat": self.stat, "ci": list(self.ci), "decision": self.decision,
-                "band": self.band}
+        out = {"names": list(self.names), "passing": self.passing.tolist(),
+               "r2_base": self.r2_base.tolist(), "r2_full": self.r2_full.tolist(),
+               "r2_random": self.r2_random.tolist(), "gain": self.gain.tolist(),
+               "raw": self.raw.tolist(), "partial": self.partial.tolist(),
+               "stat": self.stat, "ci": list(self.ci), "decision": self.decision,
+               "band": self.band}
+        if self.ci_geometry is not None:
+            out.update(ci_kind="two-level", ci_geometry=list(self.ci_geometry),
+                       pool=self.pool)
+        return out
 
 
-def _gain_of(r: np.ndarray, passing: np.ndarray) -> np.ndarray:
-    """From R2 [..., 2 + J, m] (base, full, randoms): per-component gains [..., m]."""
+def _gain_of(r: np.ndarray, passing: np.ndarray, pick: np.ndarray | None = None
+             ) -> np.ndarray:
+    """From R2 [..., 2 + J, m] (base, full, randoms): per-component gains [..., m]. ``pick``
+    [B, J'] (with r [B, 2 + J, m]): the controls whose median draw b uses (the two-level
+    bootstrap's resampled pool); None: every control."""
     own = r[..., 1, :] - r[..., 0, :]
     if r.shape[-2] > 2:
-        own = own - np.median(r[..., 2:, :] - r[..., :1, :], axis=-2)
+        rand = r[..., 2:, :] - r[..., :1, :]
+        if pick is not None:
+            rand = np.take_along_axis(rand, np.asarray(pick)[:, :, None], axis=-2)
+        own = own - np.median(rand, axis=-2)
     return own
+
+
+def pool_rank(raw: np.ndarray, r2_random: np.ndarray, r2_base: np.ndarray,
+              passing: np.ndarray) -> dict:
+    """The network's rank among its controls (descriptive): each one's own gain over the
+    base, R2(control + base) - R2(base), and the network's, each the mean over the
+    statistic's components ``passing``; 'rank' 1 is the largest of the J + 1 ('of'), with
+    'n_above' controls strictly above the network, 'n_below' strictly below and 'n_tied'."""
+    p = np.asarray(passing, bool)
+    net = float(np.mean(np.asarray(raw, float)[p]))
+    ctl = (np.asarray(r2_random, float) - np.asarray(r2_base, float)[None])[:, p].mean(1)
+    above, below = int((ctl > net).sum()), int((ctl < net).sum())
+    return {"rank": 1 + above, "of": len(ctl) + 1, "n_above": above, "n_below": below,
+            "n_tied": len(ctl) - above - below, "network_gain": net,
+            "control_gains": ctl.tolist()}
 
 
 def _passing(passing, names: tuple) -> np.ndarray:
@@ -1087,11 +1152,15 @@ class NotTestable(ValueError):
 def gain(base: Probe, full: Probe, randoms: Sequence[Probe], w: np.ndarray, fo: Folds,
          direction: np.ndarray | None = None, passing=None, rows: np.ndarray | None = None,
          counts: np.ndarray | None = None, band: float = C2_BAND,
-         mask: np.ndarray | None = None) -> Gain:
+         mask: np.ndarray | None = None, pool: np.ndarray | None = None) -> Gain:
     """The gain statistic of probes fitted on the same rows and targets (``rows``: the
     stratum scored, e.g. the interior; ``counts`` [B, G] over ``fo.cluster``'s clusters;
-    ``mask`` [n, m] each component's own scored rows within them). ``NotTestable`` when no
-    component passes the power floor or none passing it keeps a scored row."""
+    ``mask`` [n, m] each component's own scored rows within them). ``pool`` [B, J] (the
+    two-level CI, module docstring; ``pool_draws``): draw b's statistic takes the median
+    over the controls ``randoms[pool[b]]`` under draw b's geometry counts, and the point
+    stays the median over all J; None: the geometry-only CI with the controls fixed.
+    ``NotTestable`` when no component passes the power floor or none passing it keeps a
+    scored row."""
     m = np.ones(len(w), bool) if rows is None else np.asarray(rows, bool)
     names = base.names
     for p in (full, *randoms):
@@ -1117,10 +1186,24 @@ def gain(base: Probe, full: Probe, randoms: Sequence[Probe], w: np.ndarray, fo: 
     g0 = _gain_of(r0, passing)
     gb = _gain_of(rb, passing)[:, passing].mean(1)
     stat = float(g0[passing].mean())
-    lo, hi = ci(gb)
     raw = r0[1] - r0[0]
+    ci_geo, rank = None, None
+    if pool is not None:
+        pool = np.asarray(pool)
+        J = len(randoms)
+        if (pool.ndim != 2 or pool.shape[0] != counts.shape[0] or not J
+                or not np.issubdtype(pool.dtype, np.integer)
+                or pool.min() < 0 or pool.max() >= J):
+            raise ValueError(f"the pool's draws {pool.shape} are not [{counts.shape[0]}, J] "
+                             f"indices of the {J} controls")
+        lo_g, hi_g = ci(gb)
+        ci_geo = (float(lo_g), float(hi_g))
+        gb = _gain_of(rb, passing, pool)[:, passing].mean(1)
+        rank = pool_rank(raw, r0[2:], r0[0], passing)
+    lo, hi = ci(gb)
     return Gain(names, passing, r0[0], r0[1], r0[2:], g0, raw, raw / (1.0 - r0[0]), stat, gb,
-                (float(lo), float(hi)), decide(stat, float(lo), float(hi), band), band)
+                (float(lo), float(hi)), decide(stat, float(lo), float(hi), band), band,
+                ci_geo, rank)
 
 
 def conditional(hidden_layers: Sequence[np.ndarray], base: np.ndarray, Y: np.ndarray,
@@ -1136,14 +1219,15 @@ def c2(h3: np.ndarray, random_h3: Sequence[np.ndarray], z: np.ndarray, m: np.nda
        y_res: np.ndarray, fo: Folds, w: np.ndarray, direction: np.ndarray, names,
        passing=None, rows: np.ndarray | None = None, counts: np.ndarray | None = None,
        grid: Sequence[float] = GRID, h_grid: Sequence[float] = H_GRID,
-       mask: np.ndarray | None = None) -> Gain:
+       mask: np.ndarray | None = None, pool: np.ndarray | None = None) -> Gain:
     """C2 (design Section 6): ``y_res`` lambda_res (``states.Residuals.by_fold`` [F, n, m] or
     [n, m]), the base [z, m] of the network, the network's h3 and the random-init actors'
     h3 on the same z; the probes are fitted on every row given and component k is scored on
-    ``mask[:, k]`` (default all)."""
+    ``mask[:, k]`` (default all); ``pool``: the two-level CI's control draws (``gain``)."""
     base = np.hstack([_as2d(z, len(w)), _as2d(m, len(w))])
     pb, fulls = conditional([h3, *random_h3], base, y_res, fo, w, names, grid, h_grid)
-    return gain(pb, fulls[0], fulls[1:], w, fo, direction, passing, rows, counts, mask=mask)
+    return gain(pb, fulls[0], fulls[1:], w, fo, direction, passing, rows, counts, mask=mask,
+                pool=pool)
 
 
 @dataclass(frozen=True)
@@ -1206,11 +1290,12 @@ def c2_paired(h3: np.ndarray, host: np.ndarray, random_h3: Sequence[np.ndarray],
 def c2_sw(h3: np.ndarray, random_h3: Sequence[np.ndarray], z: np.ndarray, sigma: np.ndarray,
           fo: Folds, w: np.ndarray, rows: np.ndarray | None = None,
           counts: np.ndarray | None = None, grid: Sequence[float] = GRID,
-          h_grid: Sequence[float] = H_GRID) -> Gain:
+          h_grid: Sequence[float] = H_GRID, pool: np.ndarray | None = None) -> Gain:
     """C2-sw (design Section 6): Delta_sw = [R2(h3 + z) - R2(z)] on sigma^ped, not conditioned
-    on m, on the pedal-saturated rows given (with their ``Folds.subset``)."""
+    on m, on the pedal-saturated rows given (with their ``Folds.subset``); ``pool``: the
+    two-level CI's control draws (``gain``)."""
     pb, fulls = conditional([h3, *random_h3], z, sigma, fo, w, ("sigma_pedal",), grid, h_grid)
-    return gain(pb, fulls[0], fulls[1:], w, fo, None, None, rows, counts)
+    return gain(pb, fulls[0], fulls[1:], w, fo, None, None, rows, counts, pool=pool)
 
 
 # ------------------------------------------------------------------------- MLP probe

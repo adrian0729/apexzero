@@ -29,8 +29,9 @@ is computed; refused once the tag exists):
     decoy-k     f_D's k re-derived on this world: PR-6b's and PR-6c's validation seeds at
                 every candidate k, the rule's choice, and the reproduction of the record's
                 table (``gates.decoy_k``; gates/decoy_k.json; after inputs and k2b)
-    c2-null     C2's random-only null, descriptive: 20 random-init actors scored as the
-                network through C2's primary statistic against C2's controls (``gates.c2_null``;
+    c2-null     C2's random-only null, descriptive: 20 random-init actors (seeds 20-39)
+                scored as the network through C2's primary statistic against C2's control
+                pool (seeds 0-19) with the two-level CI (``gates.c2_null``;
                 gates/c2_null.json; after inputs and k2b)
     k5          K5: the permuted-target wiring check and the control task
     k6          K6: coverage per component and reason
@@ -46,7 +47,8 @@ is computed; refused once the tag exists):
 Post-tag stages (refused unless the freeze check passes: ``freeze_problems``):
 
     activations the actors' h1-h3 and m and the critics' layers and heads at T, with the
-                random-init actors' h3 and m on each network's z
+                random-init actors' h3 and m on each network's z (a decision network's: the
+                control pool's 20, seeds 0-19; every other network's: the 5 controls)
     critic      first K3's after-the-tag checks on each network at D, T's t = 0 rows
                 (``k3_trained``, post/critic/<net>.k3.json: the extractor's float64
                 self-consistency against Actor.apply and Critic.apply(with_heads=True) to
@@ -62,7 +64,9 @@ Post-tag stages (refused unless the freeze check passes: ``freeze_problems``):
                 robustness variants (partitions 1-10, geometry and state weights, the small
                 geometries and the kappa set dropped, braking and non-braking sub-scores)
                 and their descriptive strata tables (a primary entry is 'not testable' only
-                on ``probes.NotTestable``)
+                on ``probes.NotTestable``); the primary C2 and C2-sw against the control
+                pool with the two-level CI, every other record against the 5 controls with
+                the geometry-only CI (``probes_of``)
     analyse     the analysis (C1 and its secondaries with the accel-held pullback, the
                 critic's value accuracy against its own policy's return, which with K3b's
                 trained analogue decides C1-own's standing, the per-network strata tables of
@@ -1152,7 +1156,9 @@ def _load_world_frozen(args, rec: dict):
 
 def activations_of(agent, world, n_random: int = 5) -> dict:
     """The actor's h1-h3 and m, the critic's h1-h3, V and heads at T (z under the agent's own
-    obs_rms), and the random-init actors' h3 and m on the same z."""
+    obs_rms), and the random-init actors' h3 and m on the same z (seeds 0 to ``n_random`` -
+    1: the stage gives a decision network the control pool, ``probes.N_POOL``, and every
+    other network the 5 controls, ``probes.N_RANDOM_ACTORS``)."""
     import numpy as np
 
     from apexzero.costate import inputs as IN
@@ -1215,14 +1221,25 @@ def critic_of(agent, world, seeds=None, bank=None) -> dict:
 
 
 def stage_activations(args) -> None:
+    """Each network's activations (``activations_of``): a decision network's with the
+    control pool's random-init actors (``probes.POOL_SEEDS``, which its primary C2 and C2-sw
+    are scored against), every other network's with the 5 controls, stored as before (one
+    compressed npz per network). Measured at T's 9,887 rows on a random-init stand-in: the
+    pool's h3 is 20 x 9,887 x 256 float64 (405 MB; 575 MB with every array), the npz 535 MB
+    against 242 MB with the 5 controls (4.8 GB over the 9 decision networks, 2.6 GB more),
+    the process' peak resident memory 1.4 GB, about 16 s per network."""
+    from apexzero.costate import analysis as AN
     from apexzero.costate import prereg as PR
+    from apexzero.costate import probes as PB
 
     rec = _post_tag(args, "activations")
     world = _load_world_frozen(args, rec)
+    decided = {PR.net_file(a) for a in AN.DECISION_NETWORKS}
     for name in args.network or list(rec["networks"]):
         ag = load_agent(name, rec["networks"][name])
+        n = PB.N_POOL if PR.net_file(name) in decided else PB.N_RANDOM_ACTORS
         _write_npz(_out(args, "post") / "activations" / f"{PR.net_file(name)}.npz",
-                   activations_of(ag, world))
+                   activations_of(ag, world, n_random=n))
 
 
 def d_rows(world):
@@ -1476,7 +1493,12 @@ def probes_of(acts: dict, world, frozen: dict, rows_c2, rows_sw, valid=None,
     them). The primary C2 and C2-sw record 'not testable' only for ``probes.NotTestable`` (no
     component passes the power floor or keeps a scored row; no row): any other error
     propagates. The variants, the strata tables and the robustness summary are descriptive
-    (``analysis.guarded``: an error is recorded in place of the record)."""
+    (``analysis.guarded``: an error is recorded in place of the record). Only the primary C2
+    and C2-sw enter a decision, so only they are scored against the control pool
+    (``probes.POOL_SEEDS``, 'random0_h3' to 'random19_h3' in ``acts``) with the two-level CI
+    (``probes.pool_draws``); every other record keeps the 5 controls and the geometry-only CI
+    (``analysis`` module docstring 'C2's control pool'), and each says which ('controls').
+    A strata table's primary row is the decision's own record."""
     import numpy as np
 
     from apexzero.costate import analysis as AN
@@ -1487,7 +1509,9 @@ def probes_of(acts: dict, world, frozen: dict, rows_c2, rows_sw, valid=None,
 
     tab = world.tab
     lam = _winsorised(tab, frozen, TG.K_P)
-    rnd = [acts[f"random{s}_h3"] for s in range(PB.N_RANDOM_ACTORS)]
+    five = tuple(range(PB.N_RANDOM_ACTORS))
+    rnd = [acts[f"random{s}_h3"] for s in five]
+    pool = [acts[f"random{s}_h3"] for s in PB.POOL_SEEDS]     # the decisions' controls
     z = np.clip(acts["z"], -10, 10)
     sig = ST.winsorise(np.asarray(tab["sigma_pedal"], float),
                        frozen["winsor_bounds"]["sigma_pedal"])
@@ -1510,39 +1534,52 @@ def probes_of(acts: dict, world, frozen: dict, rows_c2, rows_sw, valid=None,
             fo_by_p[p] = PB.folds(tab, p)
         return fo_by_p[p]
 
-    def c2_on(r2, fo, res, scheme="key") -> dict:
+    def refs(primary: bool) -> dict:
+        """The controls (and, for a decision, the two-level CI's draws) of one record."""
+        if primary:
+            return {"random_h3": pool, "pool": PB.pool_draws(len(pool)),
+                    "controls": PB.POOL_SEEDS}
+        return {"random_h3": rnd, "pool": None, "controls": five}
+
+    def c2_on(r2, fo, res, scheme="key", primary=False) -> dict:
         w2 = ST.stratum_weights(tab, r2, scheme)
+        rf = refs(primary)
         try:
-            return AN.c2_network(acts["actor_h3"], rnd, z, acts["m"], res.by_fold, fo, None,
-                                 tab["direction"], TG.K_P, frozen["power_floor"], r2,
-                                 weights=w2[r2], mask=valid)
+            return AN.c2_network(acts["actor_h3"], rf["random_h3"], z, acts["m"], res.by_fold,
+                                 fo, None, tab["direction"], TG.K_P, frozen["power_floor"],
+                                 r2, weights=w2[r2], mask=valid, pool=rf["pool"],
+                                 controls=rf["controls"])
         except PB.NotTestable as e:
-            return {"decision": "not testable", "reason": str(e)}
+            return {"decision": "not testable", "reason": str(e),
+                    "controls": AN.controls_label(rf["controls"], primary)}
 
-    def sw_on(rs, fo, scheme="key") -> dict:
+    def sw_on(rs, fo, scheme="key", primary=False) -> dict:
         ws = ST.stratum_weights(tab, rs, scheme)
+        rf = refs(primary)
         try:
-            return AN.c2_sw_network(acts["actor_h3"], rnd, z, sig, acts["m"][:, 1], fo, ws[rs],
-                                    rs)
+            return AN.c2_sw_network(acts["actor_h3"], rf["random_h3"], z, sig, acts["m"][:, 1],
+                                    fo, ws[rs], rs, pool=rf["pool"], controls=rf["controls"])
         except PB.NotTestable as e:
-            return {"decision": "not testable", "reason": str(e)}
+            return {"decision": "not testable", "reason": str(e),
+                    "controls": AN.controls_label(rf["controls"], primary)}
 
-    def on(h: str, sp: dict, rows) -> dict:
+    def on(h: str, sp: dict, rows, primary: bool = False) -> dict:
         fo = folds(sp["partition"])
         if h == "C2":
-            return c2_on(rows, fo, residuals(sp["partition"], fo), sp["scheme"])
-        return sw_on(rows, fo, sp["scheme"])
+            return c2_on(rows, fo, residuals(sp["partition"], fo), sp["scheme"], primary)
+        return sw_on(rows, fo, sp["scheme"], primary)
 
-    done: dict = {}            # (hypothesis, rows) -> record, partition 0 under key weights
+    # (hypothesis, rows) -> a 5-control record, partition 0 under key weights (the decisions,
+    # against the pool, are reused by their own strata row only)
+    done: dict = {}
     for vname, sp in specs.items():
         keep = np.ones(world.n, bool) if sp["keep"] is None else np.asarray(sp["keep"], bool)
         rows = {"C2": np.asarray(rows_c2, bool) & keep, "C2-sw": np.asarray(rows_sw, bool) & keep}
-        if vname == "primary":                          # the decisions: they raise
-            rec = {h: on(h, sp, r) for h, r in rows.items()}
-            out.update(rec)
-        else:
-            rec = {h: AN.guarded(on, h, sp, r) for h, r in rows.items()}
-            out["sensitivity"][vname] = rec
+        if vname == "primary":            # the decisions: the control pool; they raise
+            out.update({h: on(h, sp, r, primary=True) for h, r in rows.items()})
+            continue
+        rec = {h: AN.guarded(on, h, sp, r) for h, r in rows.items()}
+        out["sensitivity"][vname] = rec
         if sp["partition"] == 0 and sp["scheme"] == "key":
             for h, r in rows.items():
                 done.setdefault((h, r.tobytes()), rec[h])
@@ -1556,13 +1593,13 @@ def probes_of(acts: dict, world, frozen: dict, rows_c2, rows_sw, valid=None,
         if rows is None:
             return AN.stratum_record(h, {"reason": "no per-network column " + ", ".join(
                 AN.missing_columns(tab_s, sname))}, None, tab_s)
-        rec_s = done.get((h, rows.tobytes()))
+        primary = bool(sname == AN.PRIMARY_STRATUM[h] and np.array_equal(rows, decided[h]))
+        rec_s = out[h] if primary else done.get((h, rows.tobytes()))
         if rec_s is None and not rows.any():
             rec_s = {"decision": "not testable", "reason": "no row"}
         if rec_s is None:
             rec_s = done[(h, rows.tobytes())] = AN.guarded(on, h, canon, rows)
-        return AN.stratum_record(h, rec_s, rows, tab_s, primary=bool(
-            sname == AN.PRIMARY_STRATUM[h] and np.array_equal(rows, decided[h])))
+        return AN.stratum_record(h, rec_s, rows, tab_s, primary=primary)
 
     def table(h: str) -> dict:
         names = AN.STRATA[h] if strata is None else strata.get(h, ())
@@ -1575,8 +1612,33 @@ def probes_of(acts: dict, world, frozen: dict, rows_c2, rows_sw, valid=None,
     parts = [v for v in parts if v is not None]
     if parts:
         out["robustness_C2"] = AN.guarded(lambda: {
-            "stat": parts, "min": min(parts), "max": max(parts), "sd": float(np.std(parts))})
+            "stat": parts, "min": min(parts), "max": max(parts), "sd": float(np.std(parts)),
+            "controls": AN.controls_label(five, False)})
     return out
+
+
+def pool_problems(out_root: Path, names) -> list[str]:
+    """Why the probes stage cannot score these networks' primary C2 and C2-sw against the
+    control pool: an activations file missing, or without every pool actor's h3
+    ('random0_h3' to 'random19_h3', ``probes.POOL_SEEDS``; an activations file written for
+    the 5 controls). Checked before any network is probed."""
+    import numpy as np
+
+    from apexzero.costate import prereg as PR
+    from apexzero.costate import probes as PB
+
+    probs = []
+    for name in names:
+        p = Path(out_root) / "post" / "activations" / f"{PR.net_file(name)}.npz"
+        if not p.exists():
+            probs.append(f"{p.relative_to(out_root)} is missing")
+            continue
+        with np.load(p) as d:
+            lacks = [s for s in PB.POOL_SEEDS if f"random{s}_h3" not in d.files]
+        if lacks:
+            probs.append(f"{p.relative_to(out_root)} lacks the control pool's h3 of seeds "
+                         f"{lacks} (run activations again)")
+    return probs
 
 
 def stage_probes(args) -> None:
@@ -1593,7 +1655,12 @@ def stage_probes(args) -> None:
     tab = world.tab
     inner = np.asarray(tab["interior"], bool)
     sw = np.asarray(tab[ST.SW_STRATUM], bool)
-    for name in args.network or [AN.network_of(a) for a in AN.DECISION_NETWORKS]:
+    names = args.network or [AN.network_of(a) for a in AN.DECISION_NETWORKS]
+    probs = pool_problems(Path(args.out), names)
+    if probs:
+        raise SystemExit("the probes stage scores each primary C2 and C2-sw against the "
+                         "control pool: " + "; ".join(probs))
+    for name in names:
         p = Path(args.out) / "post" / "activations" / f"{PR.net_file(name)}.npz"
         with np.load(p) as d:
             acts = {k: d[k] for k in d.files}

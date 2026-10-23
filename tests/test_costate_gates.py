@@ -1127,11 +1127,14 @@ def test_decoy_k_stage_rederives_the_choice_and_the_table(decoy_world, monkeypat
 
 def test_c2_null_scores_random_actors_as_c2_scores_a_network(decoy_world, monkeypatch):
     """C2's random-only null (``c2_null``): each null seed's actor is the network, with its
-    own h3 and m, against the random-init actors 0-4 as controls, through
-    ``analysis.c2_network`` on C2's decision stratum, mask and power floor with key weights
-    renormalised on the stratum (the probes stage's call); the summary is the seeds'
-    distribution; the null's seeds may not be the controls', and it needs C2's setup."""
+    own h3 and m, against the control pool (random-init actors 0-19) with the two-level CI,
+    through ``analysis.c2_network`` on C2's decision stratum, mask and power floor with key
+    weights renormalised on the stratum (the probes stage's call for a primary C2); each
+    seed's geometry-only CI and its decision beside it; the summary is the seeds'
+    distribution, with v2.5's 5-control null beside it; the null's seeds may not be in the
+    pool, and it needs C2's setup."""
     from apexzero.costate import analysis as AN
+    from apexzero.costate import prereg as PR
     from apexzero.costate.targets import K_P
 
     pw, _ = decoy_world
@@ -1143,34 +1146,51 @@ def test_c2_null_scores_random_actors_as_c2_scores_a_network(decoy_world, monkey
     pwc = dataclasses.replace(pw, rows_c2=rows, mask=mask, power_floor=floor)
     rng = np.random.default_rng(5)
     acts = {s: (np.tanh(pw.z @ rng.normal(size=(30, 24)) / 5), rng.normal(size=(n, 2)))
-            for s in range(12)}
+            for s in range(PB.N_POOL + 3)}
     monkeypatch.setattr(PB, "random_actor", lambda cfg, s: int(s))
     monkeypatch.setattr(PB, "hidden", lambda net, z: {"h3": acts[net][0], "m": acts[net][1]})
-    rec = GT.c2_null(pwc, None, seeds=(5, 7, 9))
-    assert rec["controls"] == [0, 1, 2, 3, 4] and rec["seeds"] == [5, 7, 9] and rec["pass"]
-    assert rec["rows"] == rows.sum() and rec["passing"] == floor
+    seeds = (PB.N_POOL, PB.N_POOL + 2)
+    rec = GT.c2_null(pwc, None, seeds=seeds)
+    assert rec["controls"] == list(range(20)) and rec["seeds"] == list(seeds) and rec["pass"]
+    assert rec["rows"] == rows.sum() and rec["passing"] == floor and rec["ci"] == "two-level"
     wr = ST.stratum_weights(pw.tab, rows)
     for r in rec["networks"]:
-        want = AN.c2_network(acts[r["seed"]][0], [acts[s][0] for s in range(5)], pw.z,
+        want = AN.c2_network(acts[r["seed"]][0], [acts[s][0] for s in PB.POOL_SEEDS], pw.z,
                              acts[r["seed"]][1], pw.lam_res, pw.fo, None, pw.direction, K_P,
-                             floor, rows, weights=wr[rows], mask=mask)
+                             floor, rows, weights=wr[rows], mask=mask,
+                             pool=PB.pool_draws(PB.N_POOL), controls=PB.POOL_SEEDS)
         assert r["stat"] == want["stat"] and r["ci"] == want["ci"]
+        assert r["ci_geometry"] == want["ci_geometry"] and r["pool"] == want["pool"]
         assert r["scored_rows"] == want["scored_rows"] and r["decision"] == want["decision"]
+        assert want["controls"]["ci"] == "two-level" and want["controls"]["n"] == 20
+        assert r["decision_geometry_ci"] == PB.decide(r["stat"], *r["ci_geometry"])
+        # the geometry-only CI is the same statistic's with the pool held fixed
+        fixed = AN.c2_network(acts[r["seed"]][0], [acts[s][0] for s in PB.POOL_SEEDS], pw.z,
+                              acts[r["seed"]][1], pw.lam_res, pw.fo, None, pw.direction, K_P,
+                              floor, rows, weights=wr[rows], mask=mask)
+        assert fixed["stat"] == r["stat"] and fixed["ci"] == r["ci_geometry"]
     st = np.array([r["stat"] for r in rec["networks"]])
     s = rec["summary"]
-    assert (s["n"], s["n_finite"]) == (3, 3)
+    assert (s["n"], s["n_finite"]) == (2, 2)
     assert s["mean"] == pytest.approx(st.mean()) and s["sd"] == pytest.approx(st.std(ddof=1))
     assert s["p95"] == pytest.approx(np.quantile(st, 0.95)) and s["max"] == st.max()
-    assert sum(s["decisions"].values()) == 3
+    assert sum(s["decisions"].values()) == 2 and sum(s["geometry_ci"]["decisions"].values()) == 2
+    assert s["ci_width_mean"] >= s["geometry_ci"]["ci_width_mean"] > 0
+    old = rec["five_controls_v25"]
+    assert old["seeds"] == list(range(5, 25)) and old["controls"] == list(range(5))
+    assert (old["mean"], old["sd"], old["max"]) == (-0.019198, 0.028184, 0.031410)
+    assert old["decisions"] == {"refute": 7, "inconclusive": 13, "confirm": 0}
+    assert PR.constants()["gates"]["c2_null"]["five_controls_v25"] == old
     fz = GT.c2_null_frozen(json.loads(json.dumps(rec)))
-    assert fz["stats"] == st.tolist() and fz["seeds"] == [5, 7, 9]
-    assert "3 random-init actors" in fz["scope"] and "descriptive" in fz["scope"]
-    with pytest.raises(ValueError, match="random controls"):
-        GT.c2_null(pwc, None, seeds=(4, 5))
+    assert fz["stats"] == st.tolist() and fz["seeds"] == list(seeds)
+    assert "2 random-init actors" in fz["scope"] and "descriptive" in fz["scope"]
+    assert "two-level CI" in fz["scope"]
+    with pytest.raises(ValueError, match="control pool"):
+        GT.c2_null(pwc, None, seeds=(19, 20))
     with pytest.raises(ValueError, match="decision stratum"):
-        GT.c2_null(pw, None, seeds=(5,))
-    assert GT.C2_NULL_SEEDS == tuple(range(5, 25))
-    assert not set(GT.C2_NULL_SEEDS) & set(range(PB.N_RANDOM_ACTORS))
+        GT.c2_null(pw, None, seeds=(20,))
+    assert GT.C2_NULL_SEEDS == tuple(range(20, 40))
+    assert not set(GT.C2_NULL_SEEDS) & set(PB.POOL_SEEDS)
 
 
 def test_k5_wiring_record_and_its_rule_in_the_frozen_constants(big_world):
