@@ -1,4 +1,4 @@
-# Idea 2: does the network encode the costate? (design v2.4, not frozen)
+# Idea 2: does the network encode the costate? (design v2.5, not frozen)
 
 Status: 23 Oct 2026.
 - **v1** was reviewed on four lenses (math, probing, feasibility, science): 42 findings were
@@ -16,6 +16,13 @@ Status: 23 Oct 2026.
   written down, K5's wiring check, K4's PR-1b, PR-6, PR-6b and PR-6c, f̂_D's one k = 8, and
   K4's no-gain plants as paired increments. A third full-size check passes every gate. The
   rules are final from this version.
+- **v2.5** records a review of v2.4 (Section 15.14): 10 findings were confirmed. C2's
+  random-only null is measured and frozen in the record (its SD on C2's decision rows is about
+  0.03, not the 0.007 v2.4 stated). Two pre-tag stages are added: decoy-k re-derives f̂_D's k
+  and its validation table on the canonical world, and c2-null computes the null. The inputs
+  that K4 and the new stages read are bound at prereg, K4's band notes stand beside C2 only,
+  and Section 15's record of the code and the rehearsal is brought up to date. No gate rule,
+  tolerance, seed or k changes.
 
 Nothing here has been computed on a trained network: no activation, gradient or probe. The
 numbers come from step 1's key files, run metadata (`runs/*/config.json`, `runs/*/eval_rdev.json`,
@@ -1580,6 +1587,8 @@ in the v2.2 code, and step 5 of Section 13's "Order before the tag".
   inputs, K2, inputs again (binding t_H), K2b, K0, K1, K3, K3b, K4, K5, K6, the nulls.
 - The v2.2 smoke run is evidence only. Nothing it wrote is bound.
 - *Since v2.4* (Section 15.11): what this re-run must reproduce, gate by gate.
+- *Since v2.5* (Sections 15.11 and 15.14): the stages decoy-k and c2-null run after K4 (both
+  need inputs and K2b), and prereg binds their outputs.
 
 **The rehearsal** (tests/test_costate_rehearsal.py). It runs every stage of scripts/costate.py
 through its `main()`, in order, on random-init stand-ins for the trained networks, before the
@@ -1619,6 +1628,8 @@ tag.
   their run time and memory, or K4's and K5's real verdicts.
 - *Since v2.4* (Section 15.11): K4's and K5's real verdicts at full size are recorded there. The
   rehearsal was not re-run for v2.4.
+- *Since v2.5* (Section 15.11): the rehearsal was re-run at 6d901a4 and again at v2.5's code.
+  It still forces K4's verdict (and now decoy-k's) and K5's, so it shows crash safety only.
 - **Re-run.** `COSTATE_REHEARSAL=1 uv run --no-sync pytest tests/test_costate_rehearsal.py -p
   no:cacheprovider`. Or run `uv run --no-sync python tests/test_costate_rehearsal.py --dir DIR`,
   which keeps DIR; `--from STEP` resumes there. Its report (report.json) lists each step's time.
@@ -1674,6 +1685,10 @@ lead's later decisions. Three further full-size checks of the gates followed, an
 This section states each rule as the code at 428f51f applies it. It also gives the history in
 rounds, the third check's numbers and what the canonical re-run must reproduce. The code's
 docstrings call these the v2.3 decisions before the tag; this section is their design record.
+Two later changes touch the code. 6d901a4 caps the over-smoothed fault's k at the cross-fit's
+smallest training set (15.6), which does not bind on the full T. v2.5 (15.14) adds the
+pre-tag stages decoy-k and c2-null, binds the inputs K4 reads, restricts K4's band notes to C2
+and corrects 15.10's noise floor. Neither changes a gate rule or a number of the third check.
 **The rules are final from this version.** A gate that fails the canonical re-run is reported
 and blocks the tag. No rule, seed, grid, candidate or tolerance is chosen again.
 
@@ -1746,6 +1761,11 @@ and blocks the tag. No rule, seed, grid, candidate or tolerance is chosen again.
 **Round 4: the third full-size check** (428f51f). Every gate passes (15.11). Only K4 differs
 from the second check: K1, K2, K2b, K5, the nulls' npz and every frozen value are identical
 apart from provenance.
+
+**After round 4.** 6d901a4 capped the over-smoothed fault's k, after the rehearsal crashed on
+it (15.6, 15.11). A review of v2.4 confirmed 10 findings, one a blocker: 15.10's noise floor
+was about 4 times too small in SD (0.028 measured). v2.5 resolves them (15.14), with a fourth
+full-size run of the stages its code changes touch (15.11).
 
 **Before and after each decision.**
 
@@ -2078,6 +2098,11 @@ gates.k4_pr6).
   R² at least the kNN's (means over K_P, on T). K4 needs both worlds.
 - Descriptive: the T-wide statistic (every row and component), the per-component gains, and two
   planted faults on the first seed: the kNN at k = 300, and D₁ without s − s_apex at f̂_D's k.
+- The over-smoothed fault's k is min(300, the cross-fit's smallest training set: the rows
+  outside two outer folds), `gates.oversmooth_k` (6d901a4). Each fault records its k. On the
+  full T the smallest training set is 5,614 rows (partition 0), so the cap does not bind and the
+  fault is the k = 300 kNN. It binds on the rehearsal's reduced T (283 training rows), where
+  k = 300 crashed the cross-fit.
 
 **History.**
 - Under the smoke run's k = 15, the verifier measured the kNN-shaped world at 0.0093–0.0155 on
@@ -2147,12 +2172,23 @@ knn_k_validation).
   (310), sub-stream (14, s), s = 0, 1, 2, and none was computed at any candidate k for the
   choice. Before it they had been scored under the nested-CV residualiser (the first check)
   and, for PR-6b only, in that check's descriptive diagnostic at fixed k = 15 and 5 (both
-  passing there).
+  passing there). When the rule was re-applied (428f51f), both worlds' gate seeds had also
+  been scored at k = 8, unpaired, in the second check (55b84c4: leak bounds 0.0052 and
+  0.0070), and PR-3 at k = 15 in that check's diagnostic. The re-application read only the
+  validation seeds on stream 311 and kept k = 8.
 - The statistic read is the units' paired increment over the host (15.8). The rule was first
   applied to the unpaired statistic (55b84c4) and re-applied mechanically when the no-gain
   plants became paired (428f51f). Both give k = 8.
 - The record freezes decoy_k = {k: 8, scope: every partition, outer fold and K_P component},
   and the post-tag C2 (`probes_of`) cross-fits every partition at the frozen k.
+- **Re-derived before the tag** (v2.5; the pre-tag stage decoy-k, `gates.decoy_k`, writing
+  gates/decoy_k.json, which prereg binds). It runs `decoy_k_leaks` at every candidate on the
+  canonical world and applies the rule. It passes when the choice is `states.KNN_K` (not a
+  blocker) and every per-seed value, paired and unpaired, is within 10⁻⁶ of
+  `DECOY_K_VALIDATION` and `DECOY_K_VALIDATION_UNPAIRED` (`decoy_k_reproduction`). Without it
+  the table was design-time evidence that no stage computed. With it, a canonical world that
+  differs (PR-6c's margin is 0.0002) blocks prereg instead of leaving a table that describes
+  another world.
 
 **Validation table.** Δ2 per world as max / mean / seeds ≤ 0.01 of 6. The per-seed values are
 `gates.DECOY_K_VALIDATION` (paired) and `DECOY_K_VALIDATION_UNPAIRED`.
@@ -2241,7 +2277,9 @@ plant, and any pipeline change re-draws it (here f̂_D's k).
 
 **Consequence.** K4 only. The real C2 and C2-sw on trained networks are unchanged: trained Δ2
 minus the median over 5 random-init actors, unpaired (`probes_of` never passes a host). The
-offsets are C2's between-random-network noise floor (15.10).
+offsets are K4's: on T or on the plants' rows, against K4's 3 controls or C2's 5 with a
+synthetic target, the random host's own m in the base. They are not C2's noise floor on its
+decision rows, which is measured separately (15.10).
 
 ### 15.9 The value-fit nulls' full cross-fit, and rows without a calibration
 
@@ -2305,21 +2343,46 @@ and C3-w's x.
   The floor's rule (Section 12, decision 5) is unchanged.
 - **The statistic** is unchanged: trained Δ2 minus the median over 5 random-init actors,
   unpaired, at the frozen k = 8 and floor.
-- **The noise floor.** A random host's own Δ2 against random controls is what C2 gives a
-  network that holds nothing beyond a random one. It is 0.0069–0.0071 on T with K4's 3
-  controls, where the four random networks' own gains have SD 0.0058. On C2's decision rows
-  with 5 controls it is up to 0.0067 in absolute value over the validation seeds and every
-  candidate k (0.0042 at k = 8, and −0.0010 to 0.0020 on K4's gate seeds). So it is about
-  0.007, against C2's 0.05 band. The decision-row figures are on PR-6b's and PR-6c's synthetic
-  targets; on the real λ_res at C2's decision rows the offset was not measured. The offsets stay
-  in gates/k4.json. The analysis reads only the band notes from K4; the gates module
-  docstring's "the analysis cites the offsets as C2's noise floor" is not implemented.
+- **The noise floor** (v2.5; it replaces v2.4's "about 0.007", which was wrong). What C2 gives
+  a network that holds nothing beyond a random one is now measured directly: C2's random-only
+  null (the pre-tag stage c2-null, `gates.c2_null`, writing gates/c2_null.json, which prereg
+  binds). Each of 20 random-init actors of G1's architecture (seeds 5–24, disjoint from C2's
+  controls) is scored as the network, exactly as `probes_of` scores a trained one: its own m
+  in the base [z, m], the random-init actors 0–4 as controls, z under G1's obs_rms, the real
+  λ_res at k = 8 on partition 0, C2's 3,951 interior rows with key weights renormalised there,
+  the decision mask (s 1,643 rows, ξ 1,581) and the floor {s, ξ}.
+- **The null** (the fourth run, 15.11). Mean −0.0192, SD 0.0282, median −0.0112, range
+  −0.0901 to +0.0314, 5th and 95th percentiles −0.0636 and +0.0168. 7 of the 20 refute and 13
+  are inconclusive; none confirms. 4 CIs lie wholly below 0 and none wholly above it. By
+  component, the gain's SD over the 20 is 0.047 for both λ_s and λ_ξ, and the random networks'
+  own gains over the base run from 0.008 to 0.183 for λ_s. (The review's 12 points, seeds
+  5–16, are these to the digits it gave.)
+- **What v2.4's 0.007 was.** K4's host offsets: on T with K4's 3 controls, and on PR-6b's and
+  PR-6c's synthetic targets on the decision rows. Neither is C2's statistic on the real λ_res
+  at its decision rows, which v2.4 said it had not measured. Under the design's own definition
+  the floor is about 4 times larger in SD, and its mean is negative.
+- **Consequences.** C2's CI is the cluster bootstrap over geometries (`probes.gain`), with the
+  network and its controls fixed. It does not carry the between-network variance above, so a
+  CI that excludes 0 says less about a network's distance from a random one than it seems: 4
+  of the 20 random networks have CIs wholly below 0. The confirm rule (point ≥ 0.05 and CI lower
+  end > 0) is unchanged and is not broken: the null's largest point is 0.031 and no null
+  network confirms. A refute comes easily, since the null's mean is negative and 7 of 20 random
+  networks refute. Adding a condition, such as a point above the null's 95th percentile, is the
+  lead's decision before the tag. v2.5 does not make it.
+- **In the record and the analysis.** prereg copies the null into frozen['c2_null']: the
+  summary, each seed's statistic, CI and decision, and its scope. The analysis prints it beside
+  each network's primary C2 with the share of null statistics at or above the network's
+  (`analysis.c2_null_note`, contained and descriptive). No decision reads it. Its scope is G1's
+  obs_rms; each trained network's z is under its own.
+- K4's host offsets stay in gates/k4.json, descriptive, and nothing in the analysis reads them.
+  The gates docstring's claim that the analysis cites them as C2's noise floor is removed.
 - **Band notes** (`gates.band_notes`, copied at prereg into frozen['k4_band_notes'];
-  `analysis.band_notes`, contained and descriptive; no decision changes). Beside any C2 or C2-sw
-  refute whose CI upper end is ≥ 0.03: PR-6's paired over-fitting cost (third check: 0.0083,
-  with Δ2's CI −0.0328 to 0.0114). Beside any confirm whose point is ≤ 0.07: PR-6c's paired
-  leak bound (0.0069, with λ_s's largest gain 0.0135 and ξ's 0.0004). The canonical re-run's
-  K4 binds the values.
+  `analysis.band_notes`, contained and descriptive; no decision changes). Beside any C2 refute
+  (the primary, a variant or a strata row) whose CI upper end is ≥ 0.03: PR-6's paired
+  over-fitting cost (third check: 0.0083, with Δ2's CI −0.0328 to 0.0114). Beside any C2
+  confirm whose point is ≤ 0.07: PR-6c's paired leak bound (0.0069, with λ_s's largest gain
+  0.0135 and ξ's 0.0004). The canonical re-run's K4 binds the values. Both are measured on C2's
+  setup, so v2.5 no longer prints them beside C2-sw (below).
 - **Limitations.** PR-1b checks the ridge machinery, not the cross-fit (15.4). PR-6's plant
   reaches R² 0.50 against the kNN's 0.79 and its residualisation-off check is marginal
   (0.00999), so the decoy-leak sensitivity rests on PR-6b and PR-6c. K4 does not detect a D₁
@@ -2329,8 +2392,12 @@ and C3-w's x.
   to 0.0069 on the gate seeds and 0.0098 on the validation seeds at k = 8.
 
 **C2-sw.** σ^ped is not residualised, so f̂_D's k does not enter. PR-8 is unchanged and passes
-(gain 0.0815 against 0.086, n 2,911). Its statistic is unpaired, like C2's, and the band notes
-and the noise floor apply to it as to C2.
+(gain 0.0815 against 0.086, n 2,911). Its statistic is unpaired, like C2's. K4's band notes do
+not carry over (v2.5). PR-6's cost and PR-6c's leak bound were measured on C2's setup: λ_res
+through f̂_D, the base [z, m], K_P's components. C2-sw's base is [z] alone on σ^ped, which is
+not residualised, so there is no residualiser bias for a leak bound to bound, and units that
+hold the decoys could raise its gain by their whole predictive share. C2-sw's between-network
+noise floor was not measured: C2's random-only null is not C2-sw's.
 
 ### 15.11 The third full-size check, and the canonical re-run
 
@@ -2363,14 +2430,36 @@ K4 2,179 s (8 minutes at the smoke run), and G1's nulls 413 s.
 **Not covered by the third check.** K0, K3, K3b and K6 were not re-run in this round, and the
 nulls ran for G1 only.
 
+**The fourth run** (v2.5; a fresh root, the default 2 threads per stage). Inputs, K2, inputs
+again and K2b ran at 8392864; K4, decoy-k and c2-null then ran in parallel at e14865d.
+- Inputs, K2 and K2b match the third check exactly: the world's sha256 (b5130c418642…), every
+  frozen value, K2's record and K2b's record.
+- K4 at v2.5's code passes, and its record equals the third check's in every value (0
+  differences, compared leaf by leaf apart from provenance, the new 'inputs' and each fault's
+  new 'k', which is 300 and 8 as before). The band notes are unchanged: pr6_cost 0.0083,
+  pr6c_leak 0.0069.
+- decoy-k passes. The rule's choice is k = 8 (qualifying: 8 only), and every per-seed value
+  reproduces the table: the largest differences are 4.9·10⁻⁷ paired and 4.9·10⁻⁷ unpaired,
+  within the table's rounding. Its per-k interior shares and floors are 15.7's (at k = 8: s
+  0.2238, n 0.0911, ξ 0.2483, vx 0.0760; floor {s, ξ}), and the host's offset is at most
+  0.0067 in absolute value.
+- c2-null: the null of 15.10, every statistic finite. A pre-check of `gates.c2_null` on the
+  cached world of the earlier checks gave the same 20 statistics and CIs to the last digit.
+- prereg's cross check (`prereg.probe_world_problems`) finds every output's recorded inputs
+  equal to the bound ones.
+- Stage times: K2b 3,170 s; K4 2,483 s, decoy-k 6,777 s and c2-null 1,206 s, in parallel with
+  each other and the rehearsal.
+
 **The canonical re-run** (Section 14, "Where it runs"). Every pre-tag stage runs in the main
-checkout on this code, in Section 14's order: inputs, K2, inputs again (binding t_H), K2b, K0,
-K1, K3, K3b, K4, K5, K6 and the nulls for all 9 decision networks; then prereg. It must
-reproduce:
+checkout on this code, in Section 14's order with v2.5's two stages after K4: inputs, K2,
+inputs again (binding t_H), K2b, K0, K1, K3, K3b, K4, decoy-k, c2-null, K5, K6 and the nulls
+for all 9 decision networks; then prereg. It must reproduce:
 - the frozen decoy_k = 8, the interior shares and the floor {s, ξ} above, t_H = 267 and K2b's
   exclusions;
 - K1's, K4's and K5's numbers above, every plant's verdict, and K4's decoy_k = 8;
 - the band notes: pr6_cost 0.0083 and pr6c_leak 0.0069;
+- decoy-k's choice k = 8 and its validation table (its pass requires the table to 10⁻⁶);
+- C2's random-only null as the fourth run gives it (15.10);
 - G1's null arrays: their shapes and finiteness (they were byte-identical in the second and
   third checks).
 
@@ -2378,15 +2467,27 @@ The stages are deterministic on the same code, keys and seeds. K1, K2, K2b, K5, 
 values and G1's nulls were identical in the second and third checks apart from provenance, and
 K1's fresh re-solves reproduced the smoke run's stored errors. So a difference beyond round-off
 is a finding to report. A failing gate blocks the tag and is reported; nothing is chosen again.
-The code hash covers src, scripts/costate.py and scripts/_bootstrap.py, not this document; if
-main's copies equal 428f51f's, the re-run's hash is the third check's.
-- Expected cost on 2 threads: K2b about 53 minutes, K5 45, K4 36 and K1 19; the nulls about 7
-  minutes per network.
-- **The rehearsal** (tests/test_costate_rehearsal.py) was not re-run in this round. It still
-  forces K4's and K5's verdicts to pass, and its stated real-T power floor is the smoke run's
-  {s, n, ξ} (n has no decision row either way). Its 47 minutes predate K4's present cost. It
-  remains evidence of the post-tag path's crash safety only.
-- **Tests:** 169 test functions in tests/test_costate_*.py (141 at ed4d743).
+The code hash covers src, scripts/costate.py and scripts/_bootstrap.py, not this document.
+6d901a4 and v2.5 changed src and scripts/costate.py after 428f51f, so the canonical re-run's
+hash is the tagged code's, not the third check's a1d336d254dc…. Its numbers must still match
+the third check's: 6d901a4's cap does not bind on the full T (15.6), and v2.5 adds records
+(each output's 'inputs', each fault's 'k') and two stages but changes no computation of an
+existing gate, as the fourth run shows for K4.
+- Expected cost on 2 threads: K2b about 53 minutes, K5 45, K4 36, K1 19, decoy-k 113 (one
+  process, about 28 per candidate; it can run beside K5 and the nulls) and c2-null 20; the nulls about 7 minutes per network.
+- **The rehearsal** (tests/test_costate_rehearsal.py). At bb96c61 it crashed in K4's PR-6b
+  fault ("283 training states < k = 300" on the reduced T); 6d901a4 capped the fault's k
+  (15.6). The re-run at 6d901a4 completed in 4,421 s (about 74 minutes: K4 1,922 s, the probes
+  stage 1,441 s), every stage exiting 0, with the stand-in floor {s, ξ}, the real interior
+  floor at k = 8 (bb96c61). At v2.5's code (e14865d) it ran again with decoy-k (one candidate,
+  one validation seed) and c2-null (two of its actors). It completed in 4,999 s (about 83
+  minutes: K4 1,922 s, the probes stage 1,622 s, decoy-k 270 s, c2-null 113 s), every stage
+  exiting 0, with no contained error and no decision on a non-finite CI; prereg bound the new
+  outputs and their recorded inputs, and the analysis placed the null's note beside G1's
+  stand-in's primary C2. It still forces K4's, decoy-k's and K5's verdicts to pass. Their
+  computed verdicts on the reduced T are False, False and True; decoy-k cannot reproduce the
+  full-size table there. It remains evidence of the post-tag path's crash safety only.
+- **Tests:** 174 test functions in tests/test_costate_*.py (141 at ed4d743, 170 at 6d901a4).
 
 ### 15.12 Earlier text read through this section
 
@@ -2401,12 +2502,13 @@ main's copies equal 428f51f's, the re-run's hash is the third check's.
 | Section 7, K4 PR-4 | recovered within 0.02 | one-sided (15.8) |
 | Section 7, K4 PR-6 | Δ2 within 0.01 of 0; units scaled to match the kNN | one-sided and paired, a fixed gain grid; PR-6b and PR-6c added (15.5, 15.6) |
 | Section 7, K5 | permuted within each training fold; the CI at or below 0 | 15.3 |
-| Section 7, 'Freeze' | f̂_D | the frozen decoy_k, its validation tables and K4's band notes |
+| Section 7, 'Freeze' | f̂_D | the frozen decoy_k, its validation tables (re-derived by decoy-k, 15.7), K4's band notes and C2's random-only null (15.10) |
 | Section 12, decision 5 | the power floor | its consequence at k = 8 (15.10) |
 | Section 14, 'What decides on T' | the floor passes s, n and ξ | s and ξ (15.10) |
 | Section 14, #20 'Value fits' | slice f through the fit without f | the full cross-fit (15.9) |
 | Section 14, #10 | C1, C1-pattern and C1-limit | also W1 and C3-w's x (15.9) |
-| Section 14, 'The rehearsal' | K4's and K5's verdicts forced | the real verdicts (15.11) |
+| Section 14, 'Where it runs' | the pre-tag order | decoy-k and c2-null after K4 (15.11) |
+| Section 14, 'The rehearsal' | K4's and K5's verdicts forced | still forced, with decoy-k's; the computed verdicts beside them. K4's and K5's real verdicts are the full-size checks' (15.11) |
 
 ### 15.13 Smoke-run results and their resolutions
 
@@ -2426,3 +2528,25 @@ main's copies equal 428f51f's, the re-run's hash is the third check's.
 | K0, K2, K2b, K3 and K3b passed; K6 counted | Unchanged; K2 and K2b re-run in the checks with the same results | — |
 | No gate: C1's value-fit nulls were in-sample on training rows | Full cross-fit | 3e2242f |
 | No gate: W1 and C3-w's x zero-filled uncalibrated rows | Dropped and counted | 3e2242f |
+
+### 15.14 The review of v2.4, and v2.5's resolutions
+
+23 Oct 2026, before the tag. A review of v2.4 on three lenses (forking paths, statistics,
+integrity) confirmed 10 findings: one blocker and nine minor, three of which repeat a
+finding from another lens. No finding showed a defect in a gate rule, tolerance, seed or the choice of k, and
+none is changed. v2.5's code is e14865d. Its full-size run (the fourth) is in 15.11.
+
+| # | Finding (lens; severity) | Resolution |
+|---|---|---|
+| 1 | C2's noise floor on its decision statistic is about 0.03 SD, not the 0.007 that 15.10 stated; C2's CI does not carry it (forking paths; blocker) | Measured and frozen: the pre-tag stage c2-null (`gates.c2_null`; 20 random-init actors: mean −0.0192, SD 0.0282, largest +0.0314), the record's 'c2_null', `analysis.c2_null_note` beside each primary C2 (descriptive). 15.10 rewritten. No confirm condition is added; that is the lead's decision |
+| 2 | 15.11 stale at HEAD: 6d901a4, the rehearsal's crash and re-run, its 74 minutes and floor {s, ξ}, the test count; 15.12's rehearsal row (forking paths; minor) | 15.6, 15.11 and 15.12 updated |
+| 3 | The gates docstring says the analysis cites the host offsets as C2's noise floor; nothing does (forking paths; minor) | Clause replaced: the offsets are descriptive and read by nothing; C2's noise floor is `c2_null`'s |
+| 4 | 15.7's disclosure leaves out that both worlds' gate seeds had been scored at k = 8 before the rule was re-applied (forking paths; minor) | Sentence added to 15.7 |
+| 5 | K4's band notes beside C2-sw, where no K4 measurement supports them (statistics; minor) | `analysis.band_notes` on C2's records only; 15.10's C2-sw paragraph rewritten; the record's constants state the scope |
+| 6 | Section 15 describes 428f51f, but 6d901a4 changed gates.py; the code-hash expectation is stale (statistics; minor) | As #2. 15.11 states that the canonical re-run's hash is the tagged code's, and why its numbers still match the third check's |
+| 7 | f̂_D's validation table is a hand-copied constant that no pre-tag stage computes or checks (integrity; minor) | The pre-tag stage decoy-k (`gates.decoy_k`), bound by prereg: it passes only when the rule's choice is 8 and every per-seed value reproduces the table to 10⁻⁶ (15.7). In the fourth run it passes (largest difference 4.9·10⁻⁷) |
+| 8 | K4 reads the power floor and C2's mask from inputs/summary.json and gates/k2b.json, and prereg never checks k4.json against them (integrity; minor) | K4, decoy-k, c2-null and K5 record their 'inputs'; `prereg.probe_world_problems` refuses an output computed on other inputs than the bound ones ('rerun k4') |
+| 9 | As #6 (integrity; minor) | As #2 and #6; the record's constants also state the cap rule ('oversmooth_k_rule') |
+| 10 | As #3 (integrity; minor) | As #3 |
+
+Also corrected: the gates docstring's host offset at k = 8 (0.0042, as 15.7, not 0.0043).

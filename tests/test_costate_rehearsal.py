@@ -2,8 +2,8 @@
 and a crash voids the tag): every stage of scripts/costate.py through its ``main()``, in
 order, on random-init stand-ins for the trained networks, before the tag.
 
-Opt-in (about 74 minutes on 2 threads; K4 takes 32 of them on the reduced T, PR-6b and PR-6c
-most of it, the probes stage 24): ``COSTATE_REHEARSAL=1 uv run --no-sync pytest
+Opt-in (about 83 minutes on 2 threads; K4 takes 32 of them on the reduced T, PR-6b and PR-6c
+most of it, the probes stage 27, decoy-k and c2-null 6): ``COSTATE_REHEARSAL=1 uv run --no-sync pytest
 tests/test_costate_rehearsal.py -p no:cacheprovider``, or ``uv run --no-sync python
 tests/test_costate_rehearsal.py --dir DIR`` (keeps DIR; ``--from STEP`` resumes there).
 
@@ -502,7 +502,7 @@ def _have_inputs() -> bool:
 
 
 @pytest.mark.skipif(not os.environ.get("COSTATE_REHEARSAL"),
-                    reason="the full post-tag rehearsal (about 74 min): COSTATE_REHEARSAL=1")
+                    reason="the full post-tag rehearsal (about 83 min): COSTATE_REHEARSAL=1")
 @pytest.mark.skipif(not _have_inputs(), reason="step 1's keys or the runs are missing")
 def test_every_stage_through_main_on_random_init_stand_ins(tmp_path):
     build(tmp_path)
