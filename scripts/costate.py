@@ -7,8 +7,9 @@ is computed; refused once the tag exists):
 
     inputs      T's rows over the A2 keys with their targets (re-polished), tail values and
                 the network-independent observation maps (inputs/world.npz), the frozen
-                values (winsorisation bounds, residual shares, power floor, folds) and, per
-                --network (default G1), the observability and kappa flags (inputs/summary.json).
+                values (winsorisation bounds, f_D's k, residual shares, power floor, folds)
+                and, per --network (default G1), the observability and kappa flags
+                (inputs/summary.json).
                 The 4 multi-basin keys are left out of T (design Section 3.2) and listed;
                 run it after k2 (its t_H is bound) and again before prereg
     k0          K0 on the A2 keys and N's anchored finals (--kinds a2: the A2 keys only, a
@@ -1398,9 +1399,11 @@ def probes_of(acts: dict, world, frozen: dict, rows_c2, rows_sw, valid=None,
     """C2 and C2-sw of one network from its activations (``costate.analysis``), with
     ``valid`` [n, 4] each K_P component's decision rows (``states.decision_mask``), the
     pre-registered variants (``variant_specs``; the decoy residuals re-cross-fitted on each
-    partition's folds; weights renormalised on each variant's stratum), and C2's and C2-sw's
-    descriptive strata tables (``by_stratum``: ``analysis.STRATA``, or ``strata`` {'C2': names,
-    'C2-sw': names}; partition 0, key weights renormalised on each stratum; a stratum whose
+    partition's folds with f_D's frozen k, ``prereg.decoy_k``, or the rule where the frozen
+    values lack the partition, recorded under 'decoy_k'; weights renormalised on each
+    variant's stratum), and C2's and C2-sw's descriptive strata tables (``by_stratum``:
+    ``analysis.STRATA``, or ``strata`` {'C2': names, 'C2-sw': names}; partition 0, key
+    weights renormalised on each stratum; a stratum whose
     rows a variant already scored reuses that record; ``kappa_clipped`` [n] the network's own
     kappa flags, ``inputs.flags``, for the kappa-clipped strata, 'not testable' without
     them). The primary C2 and C2-sw record 'not testable' only for ``probes.NotTestable`` (no
@@ -1410,6 +1413,7 @@ def probes_of(acts: dict, world, frozen: dict, rows_c2, rows_sw, valid=None,
     import numpy as np
 
     from apexzero.costate import analysis as AN
+    from apexzero.costate import prereg as PR
     from apexzero.costate import probes as PB
     from apexzero.costate import states as ST
     from apexzero.costate import targets as TG
@@ -1426,8 +1430,13 @@ def probes_of(acts: dict, world, frozen: dict, rows_c2, rows_sw, valid=None,
     fo_by_p: dict = {}
 
     def residuals(p: int, fo):
+        # f_D's k: the record's frozen choice for partition p ('decoy_k'), else the rule
         if p not in res_by_p:
-            res_by_p[p] = ST.cross_fit(ST.decoy_d1(tab), lam, fo.outer, ST.weights(tab, "key"))
+            k = PR.decoy_k(frozen, p)
+            res_by_p[p] = ST.cross_fit(ST.decoy_d1(tab), lam, fo.outer, ST.weights(tab, "key"),
+                                       k=k, inner=fo.inner)
+            out.setdefault("decoy_k", {})[str(p)] = {
+                "k": res_by_p[p].k.tolist(), "source": "rule" if k is None else "frozen"}
         return res_by_p[p]
 
     def folds(p: int):

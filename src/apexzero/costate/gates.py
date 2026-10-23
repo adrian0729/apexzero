@@ -1137,7 +1137,7 @@ def probe_world(tab: io.Table, z: np.ndarray, cfg, seeds: Sequence[int] = range(
     lam = np.stack([np.asarray(tab[f"lam_{c}"], float) for c in K_P], 1)
     lam = np.stack([ST.winsorise(lam[:, k], ST.winsor_bounds(lam[:, k], w))
                     for k in range(lam.shape[1])], 1)
-    res = ST.cross_fit(ST.decoy_d1(tab), lam, fo.outer, w)
+    res = ST.cross_fit(ST.decoy_d1(tab), lam, fo.outer, w, inner=fo.inner)
     o = np.clip(z, -10.0, 10.0)
     h3, m = [], []
     for s in seeds:

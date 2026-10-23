@@ -595,7 +595,7 @@ def _synthetic_world(n_geo=24, keys=4, steps=12, seed=0):
                     tab["direction"] * z[:, 2], z[:, 3] ** 2], 1)
     w = ST.weights(tab, "key")
     fo = PB.folds(tab)
-    res = ST.cross_fit(ST.decoy_d1(tab), lam, fo.outer, w)
+    res = ST.cross_fit(ST.decoy_d1(tab), lam, fo.outer, w, inner=fo.inner)
     h3 = [np.tanh(z @ rng.normal(size=(30, 24)) / 5) for _ in range(3)]
     m = [h @ rng.normal(size=(24, 2)) for h in h3]
     return GT.ProbeWorld(tab, z, fo, w, tab["direction"], lam, res.by_fold, h3, m)

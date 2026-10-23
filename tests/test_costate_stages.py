@@ -380,7 +380,8 @@ print(json.dumps({"n": world.n, "keys": len(pick),
   "n_inner": int(inner.sum()), "n_asked": int(asked.sum()), "resolved": resolved,
   "sw_parts": sw_parts, "n_kappa": int(np.asarray(fl["kappa_clipped"]).sum()),
   "va_vstar": an["value_accuracy_vstar"], "held": an["sensitivity"]["pullback:held"],
-  "own_held": an["C1-own_held"], "c1_stat": an["C1"]["stat"]}, default=float))
+  "own_held": an["C1-own_held"], "c1_stat": an["C1"]["stat"],
+  "decoy_k": frozen["decoy_k"], "pr_decoy_k": pr["decoy_k"]}, default=float))
 """
 
 
@@ -447,6 +448,13 @@ def test_post_tag_bodies_end_to_end_on_random_stand_ins(tmp_path):
     assert sc["interior"][1] != "confirm"
     assert out["strata_c2"] == ["contact", "interior"]
     assert out["strata_sw"] == ["pedal_saturated", "pedal_switching"]
+    # f_D's k (states.knn_k_cv): frozen per (partition, fold, component) with its curve, and
+    # read by the post-tag C2 (probes_of: 'frozen')
+    dk = out["decoy_k"]
+    assert dk["grid"] == [3, 5, 8, 15, 30] and dk["names"] == ["s", "n", "xi", "vx"]
+    assert np.array(dk["k"]).shape == (1, 6, 4) and np.array(dk["sse"]).shape == (1, 6, 5, 4)
+    assert set(np.ravel(dk["k"]).tolist()) <= set(dk["grid"])
+    assert out["pr_decoy_k"] == {"0": {"k": dk["k"][0], "source": "frozen"}}
 
 
 _OWN = r"""
@@ -1249,6 +1257,46 @@ def test_every_pre_registered_variant_is_reported(tmp_path):
     c3 = cs.c3w_of(tmp_path, world, PB.cluster_counts(G, 50), rec)
     assert c3["n"] == 31 and set(c3["partial"]) == {"competence", "overlap"}
     assert not c3["critic_missing"]
+
+
+def test_c2_cross_fits_with_the_frozen_decoy_k():
+    """f_D's k (``states.knn_k_cv``) is frozen per partition, fold and component; probes_of
+    cross-fits with the frozen k ('frozen', in the record's component order whatever the
+    stored order) and applies the rule where the frozen values lack a partition ('rule'), and
+    records which."""
+    cs = _script()
+    from apexzero.costate import probes as PB
+    from apexzero.costate import states as ST
+    from apexzero.costate import targets as TG
+
+    world, frozen = _toy_world()
+    n = world.n
+    rng = np.random.default_rng(5)
+    acts = {"z": rng.normal(size=(n, 6)), "m": rng.normal(size=(n, 2)),
+            "actor_h3": rng.normal(size=(n, 5)),
+            **{f"random{s}_h3": rng.normal(size=(n, 5)) for s in range(5)}}
+    kk = np.array([[3, 5, 8, 15]] * 6)
+    fz = {**frozen, "decoy_k": {"grid": list(ST.KNN_K_GRID), "names": ["vx", "xi", "n", "s"],
+                                "k": [kk[:, ::-1].tolist()]}}
+    np.testing.assert_array_equal(PR.decoy_k(fz, 0), kk)
+    assert PR.decoy_k(fz, 1) is None and PR.decoy_k(frozen, 0) is None
+    args = (acts, world)
+    rows = (world.tab["interior"], world.tab["pedal_switching"])
+    opts = {"variants": ["partition1"], "strata": {"C2": (), "C2-sw": ()}}
+    got = cs.probes_of(*args, fz, *rows, **opts)
+    ref = cs.probes_of(*args, frozen, *rows, **opts)
+    assert got["decoy_k"]["0"] == {"k": kk.tolist(), "source": "frozen"}
+    assert got["decoy_k"]["1"]["source"] == ref["decoy_k"]["0"]["source"] == "rule"
+    # the rule: knn_k_cv on the frozen lambda and D1 over each partition's folds
+    lam = np.stack([world.tab[f"lam_{c}"] for c in TG.K_P], 1)
+    w = ST.weights(world.tab, "key")
+    for p in (0, 1):
+        fo = PB.folds(world.tab, p)
+        want = ST.knn_k_cv(ST.decoy_d1(world.tab), lam, fo.outer, fo.inner, w)[0]
+        assert (got if p else ref)["decoy_k"][str(p)]["k"] == want.tolist()
+    assert ref["decoy_k"]["0"]["k"] != kk.tolist()
+    assert got["C2"]["r2_base"] != ref["C2"]["r2_base"]          # the frozen k is the one used
+    assert got["sensitivity"]["partition1"]["C2"] == ref["sensitivity"]["partition1"]["C2"]
 
 
 def _own_returns(tab, v, rng, crash_share: float = 0.1) -> dict:
