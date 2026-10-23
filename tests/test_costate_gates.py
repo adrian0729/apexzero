@@ -1073,6 +1073,106 @@ def test_decoy_k_is_the_rules_choice_on_its_own_validation_seeds(decoy_world, mo
     assert out["k"] == 8 and len(out["smooth"]["faults"]) == len(GT.DECOY_K_SEEDS)
 
 
+def test_decoy_k_stage_rederives_the_choice_and_the_table(decoy_world, monkeypatch):
+    """The decoy-k stage (``decoy_k``): decoy_k_leaks at every candidate, the rule's choice
+    and the reproduction of the record's table (paired and unpaired, to 1e-6; a missing or
+    non-finite value does not reproduce). It passes only when the choice is states.KNN_K
+    and every value reproduces: a value 2e-6 off, or a k = 8 seed above the tolerance (the
+    choice then a blocker), fails it."""
+    tab, tabu = GT.DECOY_K_VALIDATION, GT.DECOY_K_VALIDATION_UNPAIRED
+    assert GT.decoy_k_reproduction(tab, tabu) == {
+        "tol": 1e-6, "max_abs_diff": 0.0, "max_abs_diff_unpaired": 0.0, "ok": True}
+
+    def moved(t, k, kind, i, dv):
+        out = {kk: {w: list(v) for w, v in d.items()} for kk, d in t.items()}
+        out[k][kind][i] = out[k][kind][i] + dv if dv is not None else None
+        return out
+
+    near = GT.decoy_k_reproduction(moved(tab, 3, "knn", 2, 4e-7), tabu)
+    assert near["ok"] and near["max_abs_diff"] == pytest.approx(4e-7)
+    off = GT.decoy_k_reproduction(tab, moved(tabu, 15, "smooth", 5, -2e-6))
+    assert not off["ok"] and off["max_abs_diff_unpaired"] == pytest.approx(2e-6)
+    assert GT.decoy_k_reproduction(moved(tab, 8, "smooth", 0, None), tabu)["max_abs_diff"] \
+        is None
+    assert not GT.decoy_k_reproduction({k: v for k, v in tab.items() if k != 5}, tabu)["ok"]
+    assert not GT.decoy_k_reproduction({str(k): {w: [*v, 0.0] for w, v in d.items()}
+                                        for k, d in tab.items()}, tabu)["ok"]
+    assert GT.decoy_k_reproduction({str(k): v for k, v in tab.items()}, tabu)["ok"]  # JSON
+    pw, _ = decoy_world
+    calls = []
+
+    def leaks(t, u):
+        def f(pw_, k, seeds=GT.DECOY_K_SEEDS, faults=False):
+            calls.append((k, tuple(seeds), faults))
+            return {"k": k, "real": {"k": k}, "delta2": t[k], "delta2_unpaired": u[k],
+                    "host_offset": {"smooth": [0.0], "knn": [0.0]},
+                    "smooth": {"seeds": [{"seed": 0}]}, "knn": {"seeds": [{"seed": 0}]}}
+        return f
+
+    monkeypatch.setattr(GT, "decoy_k_leaks", leaks(tab, tabu))
+    rec = GT.decoy_k(pw)
+    assert [c[0] for c in calls] == list(GT.DECOY_K_CANDIDATES)
+    assert all(c[1] == GT.DECOY_K_SEEDS and not c[2] for c in calls)
+    assert rec["pass"] and rec["choice"]["k"] == ST.KNN_K == rec["knn_k"]
+    assert rec["reproduces"]["ok"] and rec["delta2"]["8"] == tab[8]
+    assert json.loads(json.dumps(rec))["real"]["15"] == {"k": 15}
+    monkeypatch.setattr(GT, "decoy_k_leaks", leaks(moved(tab, 3, "smooth", 1, 2e-6), tabu))
+    rec = GT.decoy_k(pw)
+    assert rec["choice"]["k"] == ST.KNN_K and not rec["reproduces"]["ok"] and not rec["pass"]
+    hi = moved(tab, 8, "knn", 5, 0.001)          # 0.009811 -> 0.010811 > K4_ZERO_TOL
+    monkeypatch.setattr(GT, "decoy_k_leaks", leaks(hi, tabu))
+    rec = GT.decoy_k(pw)
+    assert rec["choice"]["blocker"] and rec["choice"]["k"] == 3 and not rec["pass"]
+
+
+def test_c2_null_scores_random_actors_as_c2_scores_a_network(decoy_world, monkeypatch):
+    """C2's random-only null (``c2_null``): each null seed's actor is the network, with its
+    own h3 and m, against the random-init actors 0-4 as controls, through
+    ``analysis.c2_network`` on C2's decision stratum, mask and power floor with key weights
+    renormalised on the stratum (the probes stage's call); the summary is the seeds'
+    distribution; the null's seeds may not be the controls', and it needs C2's setup."""
+    from apexzero.costate import analysis as AN
+    from apexzero.costate.targets import K_P
+
+    pw, _ = decoy_world
+    n = len(pw.w)
+    rows = np.asarray(pw.tab["ds_apex"] < 40.0)
+    mask = np.ones((n, 4), bool)
+    mask[:, 1] = False
+    floor = {"s": True, "n": True, "xi": True, "vx": False}
+    pwc = dataclasses.replace(pw, rows_c2=rows, mask=mask, power_floor=floor)
+    rng = np.random.default_rng(5)
+    acts = {s: (np.tanh(pw.z @ rng.normal(size=(30, 24)) / 5), rng.normal(size=(n, 2)))
+            for s in range(12)}
+    monkeypatch.setattr(PB, "random_actor", lambda cfg, s: int(s))
+    monkeypatch.setattr(PB, "hidden", lambda net, z: {"h3": acts[net][0], "m": acts[net][1]})
+    rec = GT.c2_null(pwc, None, seeds=(5, 7, 9))
+    assert rec["controls"] == [0, 1, 2, 3, 4] and rec["seeds"] == [5, 7, 9] and rec["pass"]
+    assert rec["rows"] == rows.sum() and rec["passing"] == floor
+    wr = ST.stratum_weights(pw.tab, rows)
+    for r in rec["networks"]:
+        want = AN.c2_network(acts[r["seed"]][0], [acts[s][0] for s in range(5)], pw.z,
+                             acts[r["seed"]][1], pw.lam_res, pw.fo, None, pw.direction, K_P,
+                             floor, rows, weights=wr[rows], mask=mask)
+        assert r["stat"] == want["stat"] and r["ci"] == want["ci"]
+        assert r["scored_rows"] == want["scored_rows"] and r["decision"] == want["decision"]
+    st = np.array([r["stat"] for r in rec["networks"]])
+    s = rec["summary"]
+    assert (s["n"], s["n_finite"]) == (3, 3)
+    assert s["mean"] == pytest.approx(st.mean()) and s["sd"] == pytest.approx(st.std(ddof=1))
+    assert s["p95"] == pytest.approx(np.quantile(st, 0.95)) and s["max"] == st.max()
+    assert sum(s["decisions"].values()) == 3
+    fz = GT.c2_null_frozen(json.loads(json.dumps(rec)))
+    assert fz["stats"] == st.tolist() and fz["seeds"] == [5, 7, 9]
+    assert "3 random-init actors" in fz["scope"] and "descriptive" in fz["scope"]
+    with pytest.raises(ValueError, match="random controls"):
+        GT.c2_null(pwc, None, seeds=(4, 5))
+    with pytest.raises(ValueError, match="decision stratum"):
+        GT.c2_null(pw, None, seeds=(5,))
+    assert GT.C2_NULL_SEEDS == tuple(range(5, 25))
+    assert not set(GT.C2_NULL_SEEDS) & set(range(PB.N_RANDOM_ACTORS))
+
+
 def test_k5_wiring_record_and_its_rule_in_the_frozen_constants(big_world):
     """K5's verdict is the wiring check's: 10 draws averaged, each draw's point recorded, a
     component passing with its CI lower end <= 0 and point <= K4_ZERO_TOL; the record states

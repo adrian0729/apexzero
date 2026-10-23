@@ -27,11 +27,13 @@ tests/test_costate_rehearsal.py --dir DIR`` (keeps DIR; ``--from STEP`` resumes 
   draws its insurance solves from the full A2 list (30 of them, as in the real run). The
   power floor and K2b's exclusions on the reduced T are replaced by the real T's
   (``POWER_FLOOR``, ``K2B_EXCLUDED``; the reduced T's own are kept beside them as
-  'power_floor_reduced' and 'excluded_reduced'), K4's and K5's verdicts are forced to
-  pass (``FORCE_PASS``; 'pass_computed' beside them), and K5's descriptive MLP ceilings stop
-  at ``K5_MLP_MAXITER`` iterations.
-- **The sequence** (``STEPS``): inputs, k2, inputs, k2b, k0, k1, k3, k3b, k4, k5, k6, nulls,
-  prereg; the record committed, annotated-tagged and pushed; a pre-tag stage refused;
+  'power_floor_reduced' and 'excluded_reduced'), K4's, decoy-k's and K5's verdicts are
+  forced to pass (``FORCE_PASS``; 'pass_computed' beside them: decoy-k cannot reproduce the
+  full-size table on the reduced T), K5's descriptive MLP ceilings stop at
+  ``K5_MLP_MAXITER`` iterations, decoy-k runs one candidate on one validation seed
+  (``DECOY_K_REDUCED``) and c2-null two null actors (``C2_NULL_REDUCED``).
+- **The sequence** (``STEPS``): inputs, k2, inputs, k2b, k0, k1, k3, k3b, k4, decoy-k,
+  c2-null, k5, k6, nulls, prereg; the record committed, annotated-tagged and pushed; a pre-tag stage refused;
   activations, tag.json committed, critic, own, probes, a non-confirmatory analyse
   (coverage only), analyse --confirmatory, its decisions committed; a second analyse
   --confirmatory refused; a non-confirmatory analyse unlocked by the committed decisions.
@@ -45,7 +47,7 @@ so no own run is valid: C1-own, its held form and value accuracy record 'not tes
 them on planted own arrays). Every stand-in passes K3's after-the-tag checks (the failing
 network is planted there too). Nor the full T (9,887 rows), the 34 networks and the 9
 decision networks (R18's variants see one seed), their run time and memory, C1-dev's 16
-snapshots per network (one here), or K4's and K5's real verdicts.
+snapshots per network (one here), or K4's, decoy-k's and K5's real verdicts.
 """
 
 from __future__ import annotations
@@ -107,15 +109,18 @@ POWER_FLOOR = {"s": True, "n": False, "xi": True, "vx": False}
 K2B_EXCLUDED = {"approach": ["n", "vx"], "braking": ["s", "n", "xi", "vx"],
                 "corner": ["s", "n", "xi", "vx"], "exit": ["n", "xi", "vx"]}
 # K4's planted recoveries fail on so small a T and K5's wiring check can (on the real T both
-# pass at 428f51f, a pre-tag matter): their verdicts are forced to pass so that prereg
-# binds them, the computed one kept beside it ('pass_computed').
-FORCE_PASS = ("k4", "k5")
+# pass at 428f51f, a pre-tag matter), and decoy-k cannot reproduce the full-size validation
+# table on it: their verdicts are forced to pass so that prereg binds them, the computed one
+# kept beside it ('pass_computed').
+FORCE_PASS = ("k4", "decoy-k", "k5")
+DECOY_K_REDUCED = {"candidates": [8], "seeds": [0]}   # f_D's k re-derived: one k, one seed
+C2_NULL_REDUCED = (5, 6)       # C2's random-only null on two of its 20 actors
 K5_MLP_MAXITER = 25            # K5's MLP ceilings (descriptive) at 25 L-BFGS iterations, not 500:
                                # 19 minutes on the reduced T, about one with the cap
 STAND_IN_SEED = 101            # + index: never one of the random controls' seeds (0-19)
 COPIED = ("config.json", "eval_rdev.json", "metrics.csv")
-STEPS = ("inputs", "k2", "inputs-cut", "k2b", "k0", "k1", "k3", "k3b", "k4", "k5", "k6",
-         "nulls", "prereg", "tag", "refuse-pre-tag", "activations", "pin", "critic", "own",
+STEPS = ("inputs", "k2", "inputs-cut", "k2b", "k0", "k1", "k3", "k3b", "k4", "decoy-k",
+         "c2-null", "k5", "k6", "nulls", "prereg", "tag", "refuse-pre-tag", "activations", "pin", "critic", "own",
          "probes", "analyse-coverage", "analyse", "commit-decisions", "analyse-again",
          "analyse-dry")
 POST = ("activations", "critic", "own", "probes", "analyse")
@@ -173,8 +178,25 @@ if argv[0] == "inputs":
         return out
 
     PR.frozen_values = frozen_values
+if argv[0] == "decoy-k":
+    _dk = GT.decoy_k
+
+    def decoy_k(pw, *args, **kwargs):
+        kwargs.update(candidates=tuple(conf["decoy_k"]["candidates"]),
+                      seeds=tuple(conf["decoy_k"]["seeds"]))
+        return _dk(pw, *args, **kwargs)
+
+    GT.decoy_k = decoy_k
+if argv[0] == "c2-null":
+    _cn = GT.c2_null
+
+    def c2_null(pw, cfg, *args, **kwargs):
+        kwargs["seeds"] = tuple(conf["c2_null_seeds"])
+        return _cn(pw, cfg, *args, **kwargs)
+
+    GT.c2_null = c2_null
 if argv[0] in conf["force_pass"]:
-    _gate = getattr(GT, argv[0])
+    _gate = getattr(GT, argv[0].replace("-", "_"))
 
     def forced(*args, **kwargs):
         out = _gate(*args, **kwargs)
@@ -182,7 +204,7 @@ if argv[0] in conf["force_pass"]:
         out["pass"] = True
         return out
 
-    setattr(GT, argv[0], forced)
+    setattr(GT, argv[0].replace("-", "_"), forced)
 if argv[0] == "k5":
     from apexzero.costate import probes as PB
 
@@ -286,7 +308,8 @@ def build(scratch: Path, rev: str = "HEAD") -> Path:
     conf = {"a2": list(A2), "n": {a: list(v) for a, v in N.items()}, "k1": list(K1),
             **{k: list(v) for k, v in NETWORKS.items()}, "power_floor": POWER_FLOOR,
             "k2b_excluded": K2B_EXCLUDED, "force_pass": list(FORCE_PASS),
-            "k5_mlp_maxiter": K5_MLP_MAXITER}
+            "k5_mlp_maxiter": K5_MLP_MAXITER, "decoy_k": DECOY_K_REDUCED,
+            "c2_null_seeds": list(C2_NULL_REDUCED)}
     (scratch / "rehearsal.json").write_text(json.dumps(conf, indent=1) + "\n")
     (scratch / "stand_ins.json").write_text(json.dumps(made, indent=1) + "\n")
     return repo
@@ -454,8 +477,8 @@ def report(repo: Path, state: dict) -> dict:
     secondaries = {n: {k: (v.get("decision") if isinstance(v, dict) else None)
                        for k, v in rec.items() if k.startswith(("C1", "C2", "W1"))}
                    for n, rec in nets.items()}
-    forced = {g: json.loads((out / "gates" / f"{g}.json").read_text()).get("pass_computed")
-              for g in FORCE_PASS}
+    forced = {g: json.loads((out / "gates" / f"{g.replace('-', '_')}.json").read_text()).get(
+        "pass_computed") for g in FORCE_PASS}
     return {"times": state["times"], "total_s": round(sum(state["times"].values()), 1),
             "networks": {n: sorted(v) for n, v in nets.items()},
             "descriptive_networks": sorted(dec["descriptive_networks"]),

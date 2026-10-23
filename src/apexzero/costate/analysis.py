@@ -23,8 +23,9 @@ table and each row: an error row keeps its counts, band 'error'), the accel-held
 C1-own's accel-held form, C1-heads, W1, the value accuracy's heads, horizons, tails and its
 V*inf and horizon-corrected scores, the descriptive C1-pattern on the pedal-saturated states,
 the specialists' descriptive C1, C3-w's sensitivity variants, the covariates' partials of
-C3-w and C3-R2c (the other generalists' C1 without nulls gives C3-R2c's x, so it raises) and
-K4's band-edge notes (``band_notes``).
+C3-w and C3-R2c (the other generalists' C1 without nulls gives C3-R2c's x, so it raises),
+K4's band-edge notes (``band_notes``) and C2's random-only null beside the primary C2
+(``c2_null_note``).
 
 **C1** (``c1``; Section 6 'C1'). Per component k of K_P = (s, n, xi, vx)
 (``targets.K_P``), a per-fold affine calibration of lambda_k on g_k (``calibrate``) on the
@@ -103,14 +104,23 @@ it is descriptive, and with none passing C2 is 'not testable', Section 12 decisi
 co-reports the weighted Spearman rho(m_pedal - 1, sigma^ped).
 
 **K4's band-edge notes** (``band_notes``, descriptive, through ``guarded``; v2.3, K4's
-review): beside every C2 or C2-sw record (the primary, each variant, each strata row) that
-refutes with its CI upper end within ``BAND_NOTE_MARGIN`` = 0.02 of the band, K4's measured
-PR-6 over-fitting cost (decoy-structured units the random controls lack lower Delta2); beside
+review): beside every C2 record (the primary, each variant, each strata row) that refutes
+with its CI upper end within ``BAND_NOTE_MARGIN`` = 0.02 of the band, K4's measured PR-6
+over-fitting cost (decoy-structured units the random controls lack lower Delta2); beside
 every one that confirms with its point within 0.02 of the band, K4's PR-6c leak bound (units
 holding a kNN-shaped decoy function exactly raise Delta2 by up to it). Both are paired
 increments, the change the plant causes in its own host (``gates`` module docstring 'K4's
 no-gain plants'). The numbers are the record's frozen 'k4_band_notes', copied at prereg from
-the bound gates/k4.json (``gates.band_notes``). They change no decision.
+the bound gates/k4.json (``gates.band_notes``). They change no decision. They are not placed
+beside C2-sw: both were measured on C2's setup (lambda_res through f_D, the base [z, m]), and
+C2-sw's sigma^ped is not residualised, so neither bounds anything there.
+
+**C2's random-only null** (``c2_null_note``, descriptive, through ``guarded``; v2.5): beside
+each network's primary C2, the record's frozen 'c2_null' (``gates.c2_null``: C2's primary
+statistic of 20 random-init actors scored as the network against C2's controls, copied at
+prereg from the bound gates/c2_null.json) with the share of its statistics at or above the
+network's. C2's CI bootstraps geometries with the networks fixed, so it leaves out this
+between-network spread. It changes no decision.
 
 **Per network and per variant** (``network_decisions``, ``variant_decisions``). C1, C2 and
 C2-sw are decided per network on the 9 step 1 generalist finals (``DECISION_NETWORKS``,
@@ -1230,7 +1240,7 @@ def network_decisions(c1_rec: dict | None, c2_rec: dict | None, c2sw_rec: dict |
 def band_notes(rec_n: dict, notes: dict | None, band: float = C2_BAND,
                margin: float = BAND_NOTE_MARGIN) -> dict:
     """K4's band-edge notes (module docstring), in place on one network's analysis record:
-    'k4_note' beside each C2 and C2-sw record (the primary, each variant under
+    'k4_note' beside each C2 record (the primary, each variant under
     'sensitivity', each 'by_stratum' row) that refutes with its CI upper end at or above band
     - margin (K4's PR-6 over-fitting cost, ``notes['pr6_cost']``) or confirms with its point
     at or below band + margin (K4's PR-6c leak bound, ``notes['pr6c_leak']``). ``notes`` is
@@ -1253,14 +1263,37 @@ def band_notes(rec_n: dict, notes: dict | None, band: float = C2_BAND,
             return
         placed.append(where)
 
-    for h in ("C2", "C2-sw"):
-        visit(h, rec_n.get(h))
-        for v, sens in (rec_n.get("sensitivity") or {}).items():
-            visit(f"sensitivity/{v}/{h}", (sens or {}).get(h))
-        table = (rec_n.get("by_stratum") or {}).get(h)
-        for sname, row in (table.items() if isinstance(table, dict) else ()):
-            visit(f"by_stratum/{h}/{sname}", row)
+    h = "C2"                      # measured on C2's setup only (module docstring)
+    visit(h, rec_n.get(h))
+    for v, sens in (rec_n.get("sensitivity") or {}).items():
+        visit(f"sensitivity/{v}/{h}", (sens or {}).get(h))
+    table = (rec_n.get("by_stratum") or {}).get(h)
+    for sname, row in (table.items() if isinstance(table, dict) else ()):
+        visit(f"by_stratum/{h}/{sname}", row)
     return {"placed": placed, "band": band, "margin": margin}
+
+
+def c2_null_note(rec_n: dict, null: dict | None) -> dict:
+    """C2's random-only null (module docstring), in place on one network's analysis record:
+    'c2_null_note' beside the primary C2 (``rec_n['C2']``) when it has a statistic, with the
+    null's summary, scope and number of statistics, and the share of them at or above the
+    network's ('share_at_or_above'). ``null`` is the record's frozen 'c2_null'
+    (``gates.c2_null_frozen``). Returns where the note was placed. Descriptive: run through
+    ``guarded``."""
+    if not null:
+        return {"placed": [], "reason": "the record carries no C2 null"}
+    r = rec_n.get("C2")
+    if not isinstance(r, dict) or "error" in r or r.get("stat") is None:
+        return {"placed": [], "reason": "no primary C2 statistic"}
+    st = np.asarray([v for v in null["stats"] if v is not None], float)
+    st = st[np.isfinite(st)]
+    if not st.size:
+        return {"placed": [], "reason": "the C2 null holds no finite statistic"}
+    r["c2_null_note"] = {"note": "C2's random-only null (descriptive)",
+                         "summary": null["summary"], "scope": null["scope"],
+                         "n": int(st.size),
+                         "share_at_or_above": float(np.mean(st >= float(r["stat"])))}
+    return {"placed": ["C2"]}
 
 
 def k3_trained_failed(rec: dict, reason: str) -> dict:

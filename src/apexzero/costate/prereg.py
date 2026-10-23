@@ -40,7 +40,13 @@ fields/prereg.py:1-60, simplified where idea 2 needs less):
   code, not be partial, and pass (K1 on its ``pass_with_plants``; the nulls summary with
   every decision network, every C1 null in its layout (the fold-dependent ones per held-out
   fold, ``_null_shapes_ok``) and finite, and the sha256 of each array file; inputs with
-  K2's t_H); and the arrays the post-tag analysis reads (``bind_arrays``: inputs/world.npz
+  K2's t_H; decoy-k on its pass: the rule's choice is ``states.KNN_K`` and the record's
+  validation table reproduces on this world; c2-null, descriptive, on every statistic
+  finite), consistent with each other (``_cross_problems``: inputs' t_H is K2's, the nulls
+  summary's hashes are the arrays', and each output computed on the probe world,
+  ``PROBE_WORLD_OUTPUTS``, records the bound inputs/world.npz and, where it scores C2's
+  primary statistic, the bound inputs' power floor and f_D's k and gates/k2b.json's
+  exclusions); and the arrays the post-tag analysis reads (``bind_arrays``: inputs/world.npz
   and each decision network's nulls/<net>.npz, with their stamps' sha256);
 - **C3-w's inputs** (``c3w_inputs``): per generalist the sha256 of eval_rdev.json and
   metrics.csv and the computed y (completion) and competence, which the post-tag C3-w reads
@@ -81,7 +87,13 @@ STAMP_SUFFIX = FP.STAMP_SUFFIX
 # The pre-tag outputs the record binds (relative to outputs/costate) and their pass keys.
 BOUND_OUTPUTS = ("inputs/summary.json", "gates/k0.json", "gates/k1.json", "gates/k2.json",
                  "gates/k2b.json", "gates/k3.json", "gates/k3b.json", "gates/k4.json",
-                 "gates/k5.json", "gates/k6.json", "nulls/summary.json")
+                 "gates/decoy_k.json", "gates/c2_null.json", "gates/k5.json", "gates/k6.json",
+                 "nulls/summary.json")
+# The bound outputs computed on the probe world (scripts/costate.py's ``_probe_world``), each
+# recording its 'inputs': {output: (its stage, whether it scores C2's primary statistic, so
+# also records the power floor, f_D's k and K2b's exclusions it read)}
+PROBE_WORLD_OUTPUTS = {"gates/k4.json": ("k4", True), "gates/decoy_k.json": ("decoy-k", True),
+                       "gates/c2_null.json": ("c2-null", True), "gates/k5.json": ("k5", False)}
 BOUND_ARRAYS = ("inputs/world.npz",)   # plus nulls/<net>.npz per decision network
 # Design Section 13 'Deferred': the analyses that are not part of costate-prereg-v1 (if run
 # later, they are exploratory), as (name, what, the record's items kept for them, which pin
@@ -345,7 +357,11 @@ def constants() -> dict:
                              "noise": GT.K4_PR6_NOISE, "features": GT.K4_PR6B_FEATURES,
                              "alpha": GT.K4_PR6B_ALPHA,
                              "hold": [GT.K4_HOLD_UNITS, GT.K4_HOLD_SD],
-                             "oversmooth_k": GT.K4_OVERSMOOTH_K, "pr6c_k": GT.K4_PR6C_K},
+                             "oversmooth_k": GT.K4_OVERSMOOTH_K,
+                             "oversmooth_k_rule": "the planted fault's k is min(oversmooth_k, "
+                                                  "the smallest training set of "
+                                                  "states.cross_fit's fits); descriptive",
+                             "pr6c_k": GT.K4_PR6C_K},
                   "k4_pr6_rule": "PR-6: Delta2 <= k4[2] (one-sided) on C2's by-fold lambda_res "
                                  "with K4's controls, the decoy units' gain the grid's whose "
                                  "probe-alone R2 lies closest to the decoy kNN's, and PR-1b "
@@ -372,7 +388,23 @@ def constants() -> dict:
                   "k4_pr4_rule": "PR-4 one-sided: h2's and h3's R2 each >= the readout's R2 "
                                  "- k4[3] (the probe on either layer also sees its other "
                                  "units and can exceed the readout)",
-                  "band_note_margin": AN.BAND_NOTE_MARGIN},
+                  "band_note_margin": AN.BAND_NOTE_MARGIN,
+                  "band_note_scope": "C2's records only (the primary, each variant, each "
+                                     "strata row): both notes were measured on C2's setup, "
+                                     "and C2-sw's sigma^ped is not residualised",
+                  "decoy_k_stage": {"reproduce_tol": GT.DECOY_K_REPRODUCE_TOL,
+                                    "rule": "pass: decoy_k_choice on this world's validation "
+                                            "seeds gives states.knn_k (not a blocker) and "
+                                            "every per-seed Delta2, paired and unpaired, is "
+                                            "within reproduce_tol of states.knn_k_validation"},
+                  "c2_null": {"seeds": list(GT.C2_NULL_SEEDS),
+                              "controls": list(range(PB.N_RANDOM_ACTORS)),
+                              "rule": "descriptive: C2's primary statistic of each seed's "
+                                      "random-init actor (G1's architecture and obs_rms) as "
+                                      "the network against the controls, as the probes "
+                                      "stage scores a trained network; the summary frozen "
+                                      "and printed beside each primary C2; no decision "
+                                      "reads it"}},
         "streams": dict(STREAMS), "kappa_set_r": KAPPA_SET_R}
 
 
@@ -637,9 +669,10 @@ def bind_outputs(out_root: Path, code_hash_now: str) -> tuple[dict, list[str]]:
 
 
 def _cross_problems(root: Path) -> list[str]:
-    """Consistency between bound outputs: inputs' t_H is K2's, and the nulls summary's array
-    hashes are the files on disk."""
-    out = []
+    """Consistency between bound outputs: inputs' t_H is K2's, the nulls summary's array
+    hashes are the files on disk, and each probe-world output (``PROBE_WORLD_OUTPUTS``) was
+    computed on the bound inputs (``probe_world_problems``)."""
+    out = probe_world_problems(root)
     try:
         inp = json.loads((root / "inputs/summary.json").read_text())
         k2 = json.loads((root / "gates/k2.json").read_text())
@@ -656,6 +689,51 @@ def _cross_problems(root: Path) -> list[str]:
                 out.append(f"nulls/{net_file(n)}.npz is not the array its summary hashed")
     except (OSError, ValueError, TypeError):
         pass
+    return out
+
+
+def probe_world_inputs(root: Path) -> dict | None:
+    """What a probe-world output must record as its 'inputs' (scripts/costate.py's
+    ``_probe_world``) under ``root``: the sha256 of inputs/world.npz, the power floor and f_D's
+    k of inputs/summary.json's frozen values and the canonical hash of gates/k2b.json's
+    exclusions; None when one of those files is missing or unreadable (reported by
+    ``bind_outputs`` and ``bind_arrays``)."""
+    root = Path(root)
+    try:
+        fr = json.loads((root / "inputs/summary.json").read_text())["frozen"]
+        exc = json.loads((root / "gates/k2b.json").read_text())["rule"]["excluded"]
+        return {"world_sha256": sha256_file(root / "inputs/world.npz"),
+                "power_floor": fr["power_floor"], "decoy_k": (fr.get("decoy_k") or {}).get("k"),
+                "k2b_excluded_sha256": _canon({p: list(v) for p, v in exc.items()})}
+    except (OSError, ValueError, KeyError, TypeError, AttributeError):
+        return None
+
+
+def probe_world_problems(root: Path) -> list[str]:
+    """Each probe-world output under ``root`` (``PROBE_WORLD_OUTPUTS``) whose recorded inputs
+    are not the bound ones (``probe_world_inputs``): the world for every output, and the power
+    floor, f_D's k and K2b's exclusions for those that score C2's primary statistic (a
+    missing output is reported by ``bind_outputs``)."""
+    want = probe_world_inputs(root)
+    if want is None:
+        return []
+    out = []
+    for rel, (stage, c2) in PROBE_WORLD_OUTPUTS.items():
+        p = Path(root) / rel
+        if not p.exists():
+            continue
+        try:
+            got = json.loads(p.read_text()).get("inputs")
+        except (OSError, ValueError, AttributeError):
+            continue                       # reported by bind_outputs
+        keys = list(want) if c2 else ["world_sha256"]
+        if not isinstance(got, dict):
+            out.append(f"{rel} records no inputs: rerun {stage}")
+            continue
+        bad = [k for k in keys if got.get(k) != want[k]]
+        if bad:
+            out.append(f"{rel} was computed on other inputs than the bound ones "
+                       f"({', '.join(bad)}): rerun {stage}")
     return out
 
 

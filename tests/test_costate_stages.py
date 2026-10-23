@@ -659,8 +659,8 @@ def test_pre_tag_stages_refuse_through_main_once_the_tag_exists(tmp_path, monkey
     cs = _script()
     monkeypatch.setattr(cs.F, "_tag_object", lambda *a, **k: ("0" * 40, "tag"))
     for stage in cs.PRE_TAG:
-        monkeypatch.setattr(cs, f"stage_{stage}", lambda args: (_ for _ in ()).throw(
-            AssertionError("the stage ran")))
+        monkeypatch.setattr(cs, f"stage_{stage.replace('-', '_')}", lambda args: (
+            _ for _ in ()).throw(AssertionError("the stage ran")))
         with pytest.raises(SystemExit, match="after the tag"):
             cs.main([stage, "--out", str(tmp_path / "o")])
 
@@ -849,11 +849,93 @@ def test_k4_reads_c2s_setup_and_prereg_freezes_its_band_notes(tmp_path):
         "PR-6": {"overfit_cost": 0.011, "delta2": -0.011, "ci": [-0.03, 0.0]},
         "PR-6c": {"leak_bound": 0.008, "gain_max": [0.03, None, 0.001, None],
                   "seeds": [{}, {}, {}]}}))
+    with pytest.raises(FileNotFoundError, match="c2_null.json"):   # the null is bound too
+        cs.prereg_frozen(tmp_path, {"power_floor": {"s": True}})
+    (tmp_path / "gates" / "c2_null.json").write_text(json.dumps({
+        "seeds": [5, 6], "controls": [0, 1, 2, 3, 4], "rows": 10, "obs_rms": "G1",
+        "passing": {"s": True}, "decoy_k": 8, "summary": {"n": 2, "mean": -0.01},
+        "networks": [{"seed": 5, "stat": -0.02, "ci": [-0.1, 0.0], "decision": "refute"},
+                     {"seed": 6, "stat": 0.0, "ci": [-0.05, 0.05],
+                      "decision": "inconclusive"}]}))
     fr = cs.prereg_frozen(tmp_path, {"power_floor": {"s": True}})
     assert fr["power_floor"] == {"s": True} and fr["k2b_excluded"] == {}
     assert fr["k4_band_notes"]["pr6_cost"]["cost"] == 0.011
     assert fr["k4_band_notes"]["pr6c_leak"]["bound"] == 0.008
     assert fr["k4_band_notes"]["pr6c_leak"]["seeds"] == 3
+    assert fr["c2_null"]["stats"] == [-0.02, 0.0] and fr["c2_null"]["summary"]["n"] == 2
+    assert fr["c2_null"]["decisions"] == ["refute", "inconclusive"]
+    # decoy-k and c2-null score C2's primary statistic too: they need C2's setup
+    for stage in ("decoy-k", "c2-null"):
+        with pytest.raises(SystemExit, match=f"{stage} scores C2's primary statistic.*run "
+                                             "inputs and k2b first"):
+            cs._probe_world(SimpleNamespace(out=str(tmp_path / "none"), stage=stage),
+                            c2_setup=True)
+    assert cs.PRE_TAG.index("k4") < cs.PRE_TAG.index("decoy-k") < cs.PRE_TAG.index("prereg")
+    assert cs.PRE_TAG.index("c2-null") < cs.PRE_TAG.index("prereg")
+    assert {"gates/decoy_k.json", "gates/c2_null.json"} <= set(PR.BOUND_OUTPUTS)
+
+
+def test_probe_world_outputs_record_and_bind_their_inputs(tmp_path, monkeypatch):
+    """Review finding (stale inputs): K4, decoy-k and c2-null read C2's decision mask from
+    gates/k2b.json and the power floor from inputs/summary.json, and K5 reads the world, so
+    each records what it read ('inputs': the world's sha256 and, for those that score C2's
+    primary statistic, the floor, f_D's k and K2b's exclusions' hash), and prereg's cross
+    check refuses an output computed on other inputs than the bound ones (a K4 on a partial
+    K2b's mask, a world rebuilt after K5) or one that records none."""
+    cs = _script()
+    from apexzero.costate import gates as GT
+    from apexzero.costate import inputs as IN
+    from apexzero.costate import states as ST
+
+    root = tmp_path
+    (root / "inputs").mkdir()
+    (root / "gates").mkdir()
+    (root / "inputs" / "world.npz").write_bytes(b"world-1")
+    floor = {"s": True, "n": False, "xi": True, "vx": False}
+    (root / "inputs" / "summary.json").write_text(json.dumps(
+        {"frozen": {"power_floor": floor, "decoy_k": {"k": 8}}}))
+    exc = {"approach": ["n", "vx"], "braking": ["s"]}
+    (root / "gates" / "k2b.json").write_text(json.dumps({"rule": {"excluded": exc}}))
+    seen = {}
+    monkeypatch.setattr(cs, "_load_world", lambda args: SimpleNamespace(tab={"t": [0]}))
+    monkeypatch.setattr(IN, "obs_rms_of", lambda name: (None, "cfg"))
+    monkeypatch.setattr(IN, "z_and_jz", lambda world, rms: (np.zeros((1, 2)), None, None))
+    monkeypatch.setattr(IN, "flags", lambda world, rms: {"observability": SimpleNamespace(
+        s_unobservable=np.zeros(1, bool))})
+    monkeypatch.setattr(ST, "decision_mask", lambda tab, obs, e: seen.setdefault("exc", e))
+    monkeypatch.setattr(GT, "probe_world", lambda *a, **k: ("pw", k.get("power_floor")))
+    args = SimpleNamespace(out=str(root), stage="k4")
+    pw, cfg, ins = cs._probe_world(args, c2_setup=True)
+    assert pw == ("pw", floor) and cfg == "cfg" and seen["exc"] == exc
+    assert ins == PR.probe_world_inputs(root)
+    assert ins["decoy_k"] == 8 and ins["power_floor"] == floor
+    _, _, ins5 = cs._probe_world(SimpleNamespace(out=str(root), stage="k5"))
+    assert ins5 == {"world_sha256": ins["world_sha256"]}
+    for rel in ("gates/k4.json", "gates/decoy_k.json", "gates/c2_null.json"):
+        (root / rel).write_text(json.dumps({"pass": True, "inputs": ins}))
+    (root / "gates" / "k5.json").write_text(json.dumps({"pass": True, "inputs": ins5}))
+    assert PR.probe_world_problems(root) == [] and PR._cross_problems(root) == []
+    # K2b re-run in full after K4 ran on a partial K2b's mask: K4, decoy-k, c2-null are stale
+    (root / "gates" / "k2b.json").write_text(json.dumps(
+        {"rule": {"excluded": {**exc, "exit": ["n"]}}}))
+    probs = PR.probe_world_problems(root)
+    assert len(probs) == 3 and all("k2b_excluded_sha256" in p for p in probs)
+    assert any(p.endswith("rerun k4") for p in probs)
+    assert any(p.endswith("rerun decoy-k") for p in probs)
+    (root / "gates" / "k2b.json").write_text(json.dumps({"rule": {"excluded": exc}}))
+    # the world rebuilt after the gates: every probe-world output, K5 included
+    (root / "inputs" / "world.npz").write_bytes(b"world-2")
+    probs = PR.probe_world_problems(root)
+    assert len(probs) == 4 and any(p.endswith("rerun k5") for p in probs)
+    (root / "inputs" / "world.npz").write_bytes(b"world-1")
+    # another floor: the C2-setup outputs only; an output that records no inputs
+    (root / "inputs" / "summary.json").write_text(json.dumps(
+        {"frozen": {"power_floor": {**floor, "n": True}, "decoy_k": {"k": 8}}}))
+    assert len(PR.probe_world_problems(root)) == 3
+    (root / "inputs" / "summary.json").write_text(json.dumps(
+        {"frozen": {"power_floor": floor, "decoy_k": {"k": 8}}}))
+    (root / "gates" / "k4.json").write_text(json.dumps({"pass": True}))
+    assert PR.probe_world_problems(root) == ["gates/k4.json records no inputs: rerun k4"]
 
 
 def test_confirmatory_nulls_against_the_record_and_prereg_against_this_environment(

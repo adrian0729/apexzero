@@ -136,9 +136,11 @@ random networks, so it carries the host's own chance offset against the controls
 Tolerances, seeds and every-seed rules are unchanged. Each plant's unpaired value
 ('unpaired') and the host's own offset ('host_offset': the host alone against that plant's
 controls on its rows, with every random network's own gain and their SD; per plant and per
-seed in the record's 'host_offset', ``host_offsets``) are descriptive; the analysis cites the
-offsets as C2's noise floor. The recovery plants (PR-1a, PR-1b, PR-5, PR-8) keep their
-rules, and so does PR-3's mis-grouped leak check (its paired leak 'by_key_paired' reported).
+seed in the record's 'host_offset', ``host_offsets``) are descriptive and stay in
+gates/k4.json; nothing in the analysis reads them. They are K4's offsets (T, K4's controls,
+the plants' rows), not C2's noise floor on its decision rows, which is ``c2_null``'s. The
+recovery plants (PR-1a, PR-1b, PR-5, PR-8) keep their rules, and so does PR-3's mis-grouped
+leak check (its paired leak 'by_key_paired' reported).
 
 **K4's PR-1b and PR-6 rules** (v2.3, fixed after the full-size pre-tag run of K4 on random
 and planted networks only, before the tag; the K4 review's verified write-up):
@@ -182,8 +184,10 @@ and planted networks only, before the tag; the K4 review's verified write-up):
   approach and exit rows and xi on approach rows only; the T-wide +0.017 and +0.020 the K4
   review saw did not reproduce there).
 - ``band_notes``: PR-6's over-fitting cost and PR-6c's leak bound (its largest Delta2 over
-  the seeds), both paired, which the analysis prints beside a C2 or C2-sw decision near the
-  band (``analysis.band_notes``; copied into the record from the bound gates/k4.json).
+  the seeds), both paired, which the analysis prints beside a C2 decision near the band
+  (``analysis.band_notes``; copied into the record from the bound gates/k4.json). Both are
+  measured on C2's setup (lambda_res through f_D, the base [z, m]), so they are not printed
+  beside C2-sw, whose sigma^ped is not residualised.
 
 **f_D's k** (v2.3, the second decision before the tag; ``states`` module docstring for the
 grounds): one k for every fit, fold, partition and K_P component, chosen on synthetic known
@@ -201,9 +205,25 @@ the units' paired increment. The full-size run's paired Delta2 per seed is
 descriptive) and its choice ``states.KNN_K`` = 8, as under the unpaired statistic: k = 3, 5
 and 15 each have a PR-6c or PR-6b seed above 0.01 (largest 0.0130, 0.0165 and 0.0114), k = 8
 none (largest 0.0035 on PR-6b, 0.0098 on PR-6c). The host's own offset on C2's decision rows
-was at most 0.0067 in absolute value on any validation seed (0.0043 at k = 8). The choice
+was at most 0.0067 in absolute value on any validation seed (0.0042 at k = 8). The choice
 read the validation seeds alone, and K4's gate seeds are left to K4's own run at the chosen
-k.
+k. The pre-tag stage 'decoy-k' (``decoy_k``) re-derives the table on the run's own world:
+``decoy_k_leaks`` at every candidate, the choice, and whether every per-seed value (paired
+and unpaired) reproduces ``DECOY_K_VALIDATION`` and ``DECOY_K_VALIDATION_UNPAIRED`` to
+``DECOY_K_REPRODUCE_TOL`` = 1e-6. It passes when the choice is ``states.KNN_K`` (not a
+blocker) and every value reproduces, so the record's table is the tagged world's.
+
+**C2's random-only null** (``c2_null``; descriptive, the pre-tag stage 'c2-null'). C2's
+primary statistic of networks that hold nothing beyond a random one: each of
+``C2_NULL_SEEDS`` (20 random-init actors of G1's architecture, seeds 5-24, disjoint from C2's
+controls) is scored as the network exactly as the probes stage scores a trained one
+(``analysis.c2_network``: its own m in the base [z, m], the random-init actors 0-4 as the
+controls, partition 0's by-fold lambda_res at f_D's k, C2's decision stratum with key weights
+renormalised on it, the decision mask and the frozen power floor), on z under G1's obs_rms.
+The spread of the 20 statistics is the between-network variance that C2's CI leaves out (the
+cluster bootstrap resamples geometries with the networks fixed). The summary
+(``c2_null_frozen``) is copied into the record and printed beside each network's primary C2
+(``analysis.c2_null_note``); no decision reads it.
 
 **K5** (``k5``): the permuted-target wiring check (``probes.wiring_null``: while each outer
 fold is held out the training targets are permuted state by state across all training rows,
@@ -218,7 +238,8 @@ Seeds: K4's planted noise uses ``K4_STREAM`` (310, ``costate.STREAMS``' 'costate
 PR-3, 6 PR-7, 7 PR-5, 8 PR-6's units, 9 and 10 PR-8, 11 PR-9, 12 K5's counts, 13 PR-6b's
 features, (14, seed) PR-6b and PR-6c's noise, (15, j) the units holding F, j = 0 PR-6b, 1
 PR-6c); the validation seeds of f_D's k draw on ``costate_decoy_k`` (311, sub-stream v);
-K2b draws nothing random.
+C2's random-only null uses the random-init actors of seeds 5-24 (``probes.random_actor``, as
+C2's controls 0-4 do); K2b draws nothing random.
 """
 
 from __future__ import annotations
@@ -278,6 +299,10 @@ K4_OVERSMOOTH_K = 300         # PR-6b, PR-6c's planted fault: an over-smoothed d
 K4_PR6C_K = 15                # PR-6c's F: the k of its leave-one-geometry-out kNN (the world)
 DECOY_K_CANDIDATES = (3, 5, 8, 15)   # f_D's k: the candidates (module docstring 'f_D's k')
 DECOY_K_SEEDS = (0, 1, 2, 3, 4, 5)   # its validation seeds (stream costate_decoy_k)
+DECOY_K_REPRODUCE_TOL = 1e-6  # the decoy-k stage: each value against the table (rounded 1e-6)
+# C2's random-only null (module docstring): the random-init actors scored as the network,
+# disjoint from C2's controls (seeds 0 to probes.N_RANDOM_ACTORS - 1)
+C2_NULL_SEEDS = tuple(range(PB.N_RANDOM_ACTORS, PB.N_RANDOM_ACTORS + 20))
 # the choice's record: C2's primary Delta2, the units' paired increment over the host alone,
 # per candidate k on the validation seeds (PR-6b 'smooth', PR-6c 'knn'; decoy_k_leaks on the
 # full-size T, G1's obs_rms, random-init actors, C2's decision rows and the power floor at
@@ -1820,8 +1845,8 @@ def pr6_world(pw: ProbeWorld, kind: str, seeds: Sequence[int] = K4_PR6_SEEDS,
 
 
 def band_notes(rec: dict) -> dict:
-    """K4's two numbers for the C2 and C2-sw band-edge notes (``analysis.band_notes``), from
-    a K4 record: PR-6's over-fitting cost (its paired Delta2's negative part, with the Delta2
+    """K4's two numbers for C2's band-edge notes (``analysis.band_notes``; not C2-sw's,
+    module docstring), from a K4 record: PR-6's over-fitting cost (its paired Delta2's negative part, with the Delta2
     and its CI: T, the mean over K_P, K4's controls) and PR-6c's leak bound (its largest
     paired Delta2 over the noise seeds on C2's primary statistic, with each component's
     largest gain). Both are the plant's paired increment in its host (module docstring 'K4's
@@ -1899,6 +1924,146 @@ def decoy_k_choice(delta2: dict, candidates: Sequence[int] = DECOY_K_CANDIDATES,
     good = [k for k, v in ok.items() if v]
     return {"k": max(good) if good else min(ok), "qualifying": good, "blocker": not good,
             "candidates": [int(k) for k in candidates], "tol": tol}
+
+
+def decoy_k_reproduction(delta2: dict, delta2_unpaired: dict,
+                         table: dict | None = None, table_unpaired: dict | None = None,
+                         tol: float = DECOY_K_REPRODUCE_TOL) -> dict:
+    """Whether a run's per-seed Delta2 (``delta2`` and ``delta2_unpaired``, {k: {kind: [per
+    seed]}}) reproduce the record's table (``DECOY_K_VALIDATION`` and
+    ``DECOY_K_VALIDATION_UNPAIRED`` by default): the largest absolute difference over every
+    candidate, world and seed the table holds (None when a value is missing or not finite),
+    and 'ok' when both are at most ``tol``."""
+    table = DECOY_K_VALIDATION if table is None else table
+    table_unpaired = DECOY_K_VALIDATION_UNPAIRED if table_unpaired is None else table_unpaired
+
+    def diff(got: dict, want: dict) -> float | None:
+        worst = 0.0
+        for k, kinds in want.items():
+            rec = got.get(k, got.get(str(k))) or {}
+            for kind, vals in kinds.items():
+                have = list(rec.get(kind) or [])
+                if len(have) != len(vals):
+                    return None
+                for x, v in zip(have, vals, strict=True):
+                    if not np.isfinite(_num(x)):
+                        return None
+                    worst = max(worst, abs(_num(x) - float(v)))
+        return float(worst)
+
+    d, du = diff(delta2, table), diff(delta2_unpaired, table_unpaired)
+    return {"tol": tol, "max_abs_diff": d, "max_abs_diff_unpaired": du,
+            "ok": bool(d is not None and du is not None and d <= tol and du <= tol)}
+
+
+def decoy_k(pw: ProbeWorld, candidates: Sequence[int] = DECOY_K_CANDIDATES,
+            seeds: Sequence[int] = DECOY_K_SEEDS, progress: Callable | None = None) -> dict:
+    """The pre-tag stage 'decoy-k' (module docstring 'f_D's k'): ``decoy_k_leaks`` on ``pw``
+    (C2's decision stratum, mask and frozen power floor) at every candidate on the validation
+    seeds, the rule's choice (``decoy_k_choice``) and the reproduction of the record's table
+    (``decoy_k_reproduction``), with each k's residual shares and floors ('real'). Pass: the
+    choice is ``states.KNN_K``, not a blocker, and every value reproduces the table."""
+    by_k = {}
+    for k in candidates:
+        by_k[int(k)] = decoy_k_leaks(pw, int(k), seeds)
+        if progress:
+            progress(f"k = {int(k)}: {by_k[int(k)]['delta2']}")
+    delta2 = {k: r["delta2"] for k, r in by_k.items()}
+    unpaired = {k: r["delta2_unpaired"] for k, r in by_k.items()}
+    choice = decoy_k_choice(delta2, candidates)
+    rep = decoy_k_reproduction(delta2, unpaired)
+    return {"candidates": [int(k) for k in candidates], "seeds": [int(v) for v in seeds],
+            "stream": "costate_decoy_k", "statistic": K4_PAIRED,
+            "delta2": {str(k): v for k, v in delta2.items()},
+            "delta2_unpaired": {str(k): v for k, v in unpaired.items()},
+            "host_offset": {str(k): r["host_offset"] for k, r in by_k.items()},
+            "real": {str(k): r["real"] for k, r in by_k.items()},
+            "records": {str(k): {kind: r[kind]["seeds"] for kind in ("smooth", "knn")}
+                        for k, r in by_k.items()},
+            "choice": choice, "knn_k": ST.KNN_K, "reproduces": rep,
+            "pass": bool(choice["k"] == ST.KNN_K and not choice["blocker"] and rep["ok"])}
+
+
+# ------------------------------------------------------------------------- C2's null
+
+
+def c2_null(pw: ProbeWorld, cfg, seeds: Sequence[int] = C2_NULL_SEEDS,
+            progress: Callable | None = None) -> dict:
+    """C2's random-only null (module docstring): each of ``seeds`` a random-init actor of
+    ``cfg`` scored as the network through C2's primary statistic as the probes stage scores
+    a trained network (``analysis.c2_network`` with its own h3 and m, the random-init actors
+    0 to ``probes.N_RANDOM_ACTORS`` - 1 as the controls, on ``pw``'s z, by-fold lambda_res,
+    folds, decision stratum, mask and frozen power floor, key weights renormalised on the
+    stratum), and the summary (``c2_null_summary``). Descriptive; 'pass': every seed's
+    statistic is finite."""
+    if pw.rows_c2 is None or pw.mask is None or pw.power_floor is None:
+        raise ValueError("C2's random-only null needs C2's decision stratum, mask and power "
+                         "floor")
+    controls = tuple(range(PB.N_RANDOM_ACTORS))
+    clash = sorted(set(map(int, seeds)) & set(controls))
+    if clash:
+        raise ValueError(f"the null's seeds {clash} are C2's random controls")
+    rows = np.asarray(pw.rows_c2, bool)
+    wr = ST.stratum_weights(pw.tab, rows)
+    ctrl = [PB.hidden(PB.random_actor(cfg, s), pw.z)["h3"] for s in controls]
+    nets = []
+    for s in seeds:
+        hid = PB.hidden(PB.random_actor(cfg, int(s)), pw.z)
+        try:
+            rec = AN.c2_network(hid["h3"], ctrl, pw.z, hid["m"], pw.lam_res, pw.fo, None,
+                                pw.direction, K_P, pw.power_floor, rows, weights=wr[rows],
+                                mask=pw.mask)
+        except PB.NotTestable as e:
+            rec = {"decision": "not testable", "reason": str(e)}
+        nets.append({"seed": int(s), **{k: rec.get(k) for k in (
+            "stat", "ci", "gain", "raw", "decision", "reason", "n_stratum", "scored_rows")}})
+        if progress:
+            progress(f"seed {int(s)}: {rec.get('stat')} {rec.get('decision')}")
+    summ = c2_null_summary(nets)
+    return {"seeds": [int(s) for s in seeds], "controls": list(controls),
+            "decoy_k": ST.KNN_K, "passing": dict(pw.power_floor), "rows": int(rows.sum()),
+            "obs_rms": "G1", "networks": nets, "summary": summ,
+            "pass": bool(nets and summ["n_finite"] == len(nets))}
+
+
+def c2_null_summary(nets: Sequence[dict]) -> dict:
+    """The null's distribution over its networks' statistics: their number (and how many are
+    finite), mean, SD (ddof 1), minimum, maximum and 5th, 50th and 95th percentiles (linear),
+    the decisions' counts, and how many CIs lie above 0 or below 0."""
+    st = np.array([_num(r.get("stat")) for r in nets], float)
+    fin = st[np.isfinite(st)]
+    cis = [r.get("ci") for r in nets if r.get("ci") is not None]
+    dec: dict = {}
+    for r in nets:
+        dec[str(r.get("decision"))] = dec.get(str(r.get("decision")), 0) + 1
+
+    def q(p):
+        return float(np.quantile(fin, p)) if fin.size else None
+
+    return {"n": len(nets), "n_finite": int(fin.size),
+            "mean": float(fin.mean()) if fin.size else None,
+            "sd": float(fin.std(ddof=1)) if fin.size > 1 else None,
+            "min": float(fin.min()) if fin.size else None,
+            "max": float(fin.max()) if fin.size else None,
+            "p05": q(0.05), "p50": q(0.5), "p95": q(0.95), "decisions": dec,
+            "ci_above_0": int(sum(_num(c[0]) > 0 for c in cis)),
+            "ci_below_0": int(sum(_num(c[1]) < 0 for c in cis))}
+
+
+def c2_null_frozen(rec: dict) -> dict:
+    """The record's copy of C2's random-only null (a ``c2_null`` record, the bound
+    gates/c2_null.json): the summary, each seed's statistic, CI and decision, and its scope,
+    which ``analysis.c2_null_note`` prints beside each network's primary C2."""
+    nets = rec.get("networks") or []
+    return {"summary": rec.get("summary"), "seeds": [r.get("seed") for r in nets],
+            "stats": [r.get("stat") for r in nets], "ci": [r.get("ci") for r in nets],
+            "decisions": [r.get("decision") for r in nets],
+            "scope": (f"C2's primary statistic of {len(nets)} random-init actors (seeds "
+                      f"{rec.get('seeds')}) as the network against the random-init controls "
+                      f"{rec.get('controls')}: {rec.get('obs_rms')}'s obs_rms, C2's decision "
+                      f"stratum ({rec.get('rows')} rows) and mask, the frozen power floor "
+                      f"{rec.get('passing')}, partition 0, key weights, f_D at k = "
+                      f"{rec.get('decoy_k')}; descriptive")}
 
 
 def pr8(pw: ProbeWorld, counts: np.ndarray, snr: float = 4.0) -> dict:

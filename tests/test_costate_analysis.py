@@ -1154,32 +1154,63 @@ def test_only_the_designs_conditions_are_not_testable():
 
 
 def test_k4_band_notes_beside_decisions_near_the_band():
-    """K4's notes (v2.3): beside a C2 or C2-sw refute whose CI upper end lies within 0.02 of
-    the band, K4's PR-6 over-fitting cost; beside a confirm whose point lies within 0.02 of
-    it, K4's PR-6c leak bound; nowhere else, every decision unchanged; through ``guarded``."""
+    """K4's notes (v2.3): beside a C2 refute whose CI upper end lies within 0.02 of the band,
+    K4's PR-6 over-fitting cost; beside a C2 confirm whose point lies within 0.02 of it, K4's
+    PR-6c leak bound; nowhere else, every decision unchanged; through ``guarded``. Never
+    beside C2-sw (review finding: both notes are measured on C2's setup, and C2-sw's
+    sigma^ped is not residualised)."""
     notes = {"pr6_cost": {"cost": 0.012, "delta2": -0.012, "ci": [-0.03, -0.003]},
              "pr6c_leak": {"bound": 0.009, "gain_max": [0.03, None, 0.004, None]}}
     rec = {"C2": {"decision": "refute", "stat": 0.0, "ci": [-0.02, 0.04]},
            "C2-sw": {"decision": "confirm", "stat": 0.06, "ci": [0.01, 0.1]},
            "sensitivity": {"partition1": {"C2": {"decision": "refute", "stat": -0.01,
                                                  "ci": [-0.03, 0.02]},
-                                          "C2-sw": {"decision": "confirm", "stat": 0.08,
-                                                    "ci": [0.02, 0.12]}},
+                                          "C2-sw": {"decision": "refute", "stat": 0.0,
+                                                    "ci": [-0.02, 0.04]}},
+                           "partition2": {"C2": {"decision": "confirm", "stat": 0.065,
+                                                 "ci": [0.02, 0.12]}},
                            "geometry": {"C2": {"error": "KeyError: 'x'"}, "C2-sw": None}},
            "by_stratum": {"C2": {"interior": {"band": "inconclusive", "stat": 0.05,
                                               "ci": [0.0, 0.1]},
                                  "contact": {"band": "confirm", "stat": 0.07,
                                              "ci": [0.03, 0.1]}},
-                          "C2-sw": {"error": "ValueError: y"}}}
+                          "C2-sw": {"interior": {"band": "confirm", "stat": 0.06,
+                                                 "ci": [0.01, 0.1]}}}}
     out = AN.guarded(AN.band_notes, rec, notes)
-    assert out["placed"] == ["C2", "by_stratum/C2/contact", "C2-sw"], out
+    assert out["placed"] == ["C2", "sensitivity/partition2/C2", "by_stratum/C2/contact"], out
     assert rec["C2"]["k4_note"]["cost"] == 0.012 and "over-fitting" in rec["C2"]["k4_note"][
         "note"]
-    assert rec["C2-sw"]["k4_note"]["bound"] == 0.009
+    assert rec["sensitivity"]["partition2"]["C2"]["k4_note"]["bound"] == 0.009
     assert rec["by_stratum"]["C2"]["contact"]["k4_note"]["note"] == "K4 PR-6c leak bound"
-    for r in (rec["sensitivity"]["partition1"]["C2"], rec["sensitivity"]["partition1"]["C2-sw"],
-              rec["by_stratum"]["C2"]["interior"]):
-        assert "k4_note" not in r                 # 0.02 < 0.03; 0.08 > 0.07; not a decision
+    for r in (rec["sensitivity"]["partition1"]["C2"], rec["by_stratum"]["C2"]["interior"],
+              rec["C2-sw"], rec["sensitivity"]["partition1"]["C2-sw"],
+              rec["by_stratum"]["C2-sw"]["interior"]):
+        assert "k4_note" not in r       # 0.02 < 0.03; not a decision; C2-sw never
     assert rec["C2"]["decision"] == "refute" and rec["C2-sw"]["decision"] == "confirm"
     assert AN.band_notes({}, None)["placed"] == []
     assert "error" in AN.guarded(AN.band_notes, rec, {"pr6_cost": {}})   # malformed notes
+
+
+def test_c2_null_note_beside_the_primary_c2():
+    """C2's random-only null (v2.5, review finding): the record's frozen 'c2_null' beside the
+    network's primary C2, with the share of the null's statistics at or above the network's;
+    nowhere else (not a variant, a stratum row or C2-sw), no decision changed; nothing placed
+    without the null or without a primary statistic; through ``guarded``."""
+    null = {"summary": {"n": 4, "mean": -0.02, "sd": 0.03}, "seeds": [5, 6, 7, 8],
+            "stats": [-0.06, -0.01, 0.02, None], "ci": [None] * 4, "decisions": [None] * 4,
+            "scope": "C2's primary statistic of 4 random-init actors; descriptive"}
+    rec = {"C2": {"decision": "inconclusive", "stat": 0.0, "ci": [-0.05, 0.06]},
+           "C2-sw": {"decision": "confirm", "stat": 0.07, "ci": [0.01, 0.1]},
+           "sensitivity": {"partition1": {"C2": {"decision": "inconclusive", "stat": 0.0}}}}
+    out = AN.guarded(AN.c2_null_note, rec, null)
+    assert out == {"placed": ["C2"]}
+    note = rec["C2"]["c2_null_note"]
+    assert note["n"] == 3 and note["share_at_or_above"] == pytest.approx(1 / 3)
+    assert note["summary"] == null["summary"] and "descriptive" in note["scope"]
+    assert rec["C2"]["decision"] == "inconclusive" and "c2_null_note" not in rec["C2-sw"]
+    assert "c2_null_note" not in rec["sensitivity"]["partition1"]["C2"]
+    assert AN.c2_null_note(rec, None)["placed"] == []
+    assert AN.c2_null_note({"C2": {"decision": "not testable"}}, null)["placed"] == []
+    assert AN.c2_null_note({"C2": {"error": "KeyError: 'x'"}}, null)["placed"] == []
+    assert AN.c2_null_note({"C2": {"stat": 0.1}}, {**null, "stats": [None]})["placed"] == []
+    assert "error" in AN.guarded(AN.c2_null_note, {"C2": {"stat": 0.1}}, {"x": 1})
