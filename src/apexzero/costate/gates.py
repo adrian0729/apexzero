@@ -20,20 +20,28 @@ pedal-saturated state, the middle of each kind's steps within T's range), every 
 (``targets.fd_costate_k1``: Richardson over (c, c/2) of pinned-prefix re-solves at tol 1e-10,
 K1's steps ``targets.FD_H``, a smaller c where the pair disagrees; at pedal-saturated states
 the pedal component one-sided from below on its own ladder from c = 1e-3,
-``targets.fd_pedal_below``, the share of those rows that count reported). Pass per component:
-over the comparisons that
-count (re-solves converged and not a kink, ``FD.kink``), median relative error
-(``k1_error``: Gate 1's zero rule and denominator at the re-solves' noise floor) < 1e-3 and
-p95 < 1e-2; a comparison whose Richardson pair still disagrees after the smaller c
-(``unresolved``) does not count either, and a component with more than 30% kinks or
-unresolved comparisons (``K1_KINK_SHARE``) is descriptive. The design's literal rule
-(``targets.fd_error``, kinks alone excluded) is reported beside it ('design_rule'). Planted
-bugs must fail the same rule on the same re-solves (``targets.PLANTS``; the pre-jump form
-scored on contact states only, 'unfolded' on the pedal rows whose fold is active; on anchored
-decisions also 'j_w', J_W read as J_tail: gamma lambda_1 + e_s/10); none may pass vacuously
-(every required plant scored on a decided component). pi on the anchored keys (``k1_pi``):
-``targets.fd_pi`` with its planted bugs (``targets.PI_PLANTS``), required whenever anchored
-keys are checked. The record binds K1 on ``pass_with_plants``.
+``targets.fd_pedal_below``, the share of those rows that count reported). Pass per
+component: over the comparisons that count (re-solves converged and not a kink, ``FD.kink``:
+|forward - backward| > 10 max(discrepancy, ``FD.noise``), ``FD.noise`` = 6 KINK_J_NOISE / (h
+gamma^t)), median relative error (``k1_error``: Gate 1's score with its zero rule and
+denominator at the difference's floor eps_t = max(1e-6, ``FD.noise``)) < 1e-3 and p95 <
+1e-2; a comparison whose Richardson pair still disagrees after the smaller c
+(``unresolved``) does not count either. A zero comparison (|lambda| and |FD| both below the
+floor) is Gate 1's zero field: counted per component, per plant and per reading ('n_zero')
+and never pooled. A component with more than 30% kinks or unresolved comparisons
+(``K1_KINK_SHARE``), or with no non-zero comparison that counts, is descriptive. Two
+readings are reported beside it and bind nothing ('design_rule' and
+'design_rule_literal_kink', each per component and as a verdict over its own decided
+components): Section 7's zero rule to the letter (``k1_design_error``: Gate 1's 1e-6, zero
+comparisons counted, unresolved comparisons scored) with the coded kink flag, and the same
+with Section 7's kink rule to the letter too (``literal_kink``: |forward - backward| > 10
+discrepancy, from the one-sided estimates every row stores). Planted bugs must fail the same
+rule on the same re-solves (``targets.PLANTS``; the pre-jump form scored on contact states
+only, 'unfolded' on the pedal rows whose fold is active; on anchored decisions also 'j_w',
+J_W read as J_tail: gamma lambda_1 + e_s/10); none may pass vacuously (every required plant
+scored on a non-zero comparison of a decided component). pi on the anchored keys
+(``k1_pi``): ``targets.fd_pi`` with its planted bugs (``targets.PI_PLANTS``), required
+whenever anchored keys are checked. The record binds K1 on ``pass_with_plants``.
 
 **K2, horizon** (``twin_pairs``, ``k2_twins``, ``k2_horizon``, ``k2_extend``). On each tier
 V twin pair (the W = 400 and W = 800 nominal keys of one cell), |lambda^400_t -
@@ -292,8 +300,9 @@ def _plant_lam(prob, cs: TG.Costate, plant: str, t: int) -> np.ndarray:
 
 def k1_key(ref: K.KeyRef, bank=None, components: Sequence[int] = range(8),
            states: dict[str, int] | None = None, kt: TG.KeyTargets | None = None) -> list[dict]:
-    """One row per (state, component) of one key: target, Richardson FD, error, kink and the
-    planted targets' errors."""
+    """One row per (state, component) of one key: target, Richardson FD and its one-sided
+    estimates (Section 7's literal kink rule, ``literal_kink``), error (None for a zero
+    comparison), kink and the planted targets' errors."""
     if bank is None:
         bank, _ = K.design(stimuli_dir())
     kt = TG.key_targets(ref, bank=bank) if kt is None else kt
@@ -322,10 +331,11 @@ def k1_key(ref: K.KeyRef, bank=None, components: Sequence[int] = range(8),
                    "saturated": side == "below",
                    "fold_active": bool(t < cs.W and abs(cs.fold.c[t]) > TG.ACTIVE_TOL),
                    "h": fd.h, "discrepancy": fd.discrepancy, "noise": fd.noise, "ok": fd.ok,
+                   "forward": fd.forward, "backward": fd.backward,
                    "kink": fd.kink, "unresolved": unresolved(fd),
                    "ladder": [list(v) for v in fd.ladder],
                    "iterations": fd.iterations, "err": k1_error(target, fd),
-                   "err_design": TG.fd_error(target, fd),
+                   "err_design": k1_design_error(target, fd),
                    "plants": {p: k1_error(float(v[t][i]), fd) for p, v in planted.items()
                               if p != "j_w" or label == "decision"}}
             rows.append(row)
@@ -334,20 +344,52 @@ def k1_key(ref: K.KeyRef, bank=None, components: Sequence[int] = range(8),
 
 def unresolved(fd: TG.FD) -> bool:
     """The Richardson pair still disagrees after K1's smaller c: beyond ``SHRINK_RTOL`` of
-    the estimate and beyond the re-solves' round-off (``FD.noise``). Such a comparison does
-    not count (as a kink does not), and is reported with its share."""
+    the estimate and beyond the difference's floor (``FD.noise``, ``k1_error``). Such a
+    comparison does not count (as a kink does not), and is reported with its share."""
     return bool(fd.discrepancy > max(TG.SHRINK_RTOL * abs(fd.value), fd.noise))
 
 
-def k1_error(target: float, fd: TG.FD) -> float:
-    """``targets.fd_error`` with the zero rule and the denominator at the re-solves' noise
-    floor (``FD.noise`` = 6 KINK_J_NOISE / (h gamma^t), at least Gate 1's ZERO_ATOL): with
-    J's spread of about 1e-11 between re-solves, a component of |lambda| below that floor
-    (delta's at h = 1e-6 late in the window: ~1e-4) is not resolved by the difference."""
+def k1_error(target: float, fd: TG.FD) -> float | None:
+    """``targets.fd_error`` with the zero rule and the denominator at the difference's floor
+    eps_t = max(ZERO_ATOL, ``FD.noise``) = max(1e-6, 6 eps_J / (h gamma^t)); None for a zero
+    comparison (|target| and |FD| both below eps_t), which ``k1_decision`` counts and never
+    pools (Gate 1's zero-field rule).
+
+    eps_J = ``targets.KINK_J_NOISE`` = 1e-11 is J's typical spread between warm tol-1e-10
+    re-solves, not a bound (on the pedal-saturated ladder, the rungs' own spread). eps_t is
+    twice the largest error that J errors of size eps_J at the four stencil points can give
+    the central value (3 eps_J / (h gamma^t)); under independent scatter of that size the
+    error's p95 is about 3.7 eps_J / (h gamma^t). At small |lambda| the warm re-solves' error
+    is a smooth slope bias, not round-off: they settle along nearly flat directions by an
+    amount proportional to c (at delta's worst comparison, key cb10d183 at t = 70, about
+    5e-12 in J(c) - J(-c) at c = h, about the same slope from c = 1e-7 to 1e-4 and at
+    re-solve tolerances 1e-8 to 1e-10). At delta's step that is within eps_J at the stencil,
+    so eps_t bounds it; at the 1e-4 steps it would not (lambda_n there fails either way)."""
     floor = max(TG.ZERO_ATOL, float(fd.noise))
     if abs(target) < floor and abs(fd.value) < floor:
-        return 0.0
+        return None
     return abs(target - fd.value) / max(abs(fd.value), 3.0 * fd.discrepancy, floor)
+
+
+def k1_design_error(target: float, fd: TG.FD) -> float | None:
+    """Section 7's error to the letter ('design_rule'): ``targets.fd_error`` with Gate 1's
+    ZERO_ATOL; None for a zero comparison (counted, never pooled)."""
+    if abs(target) < TG.ZERO_ATOL and abs(fd.value) < TG.ZERO_ATOL:
+        return None
+    return TG.fd_error(target, fd)
+
+
+def literal_kink(r: dict) -> bool | None:
+    """Section 7's kink rule to the letter on a K1 row: the one-sided estimates disagree by
+    more than ``targets.KINK_FACTOR`` x the Richardson discrepancy (``FD.kink`` without its
+    noise term; a one-sided row has no kink test). None when the row carries no one-sided
+    estimates (a row written before they were stored)."""
+    if r.get("side", "central") != "central":
+        return False
+    f, b = r.get("forward"), r.get("backward")
+    if f is None or b is None or not np.isfinite(f) or not np.isfinite(b):
+        return None
+    return bool(abs(f - b) > TG.KINK_FACTOR * r["discrepancy"])
 
 
 def k1_pi(ref: K.KeyRef, bank=None, kt: TG.KeyTargets | None = None) -> list[dict]:
@@ -373,12 +415,31 @@ def k1_pi(ref: K.KeyRef, bank=None, kt: TG.KeyTargets | None = None) -> list[dic
     return rows
 
 
-def _pass_rule(errs: np.ndarray) -> dict:
-    if not len(errs):
-        return {"n": 0, "median": None, "p95": None, "pass": True}
-    med, p95 = float(np.median(errs)), float(np.quantile(errs, 0.95))
-    return {"n": len(errs), "median": med, "p95": p95,
+def _pass_rule(errs: Sequence) -> dict:
+    """K1's median and p95 rule on the non-zero errors; zero comparisons (None) are counted
+    ('n_zero') and never pooled (Gate 1's zero-field rule, fields/gates.py:345-357). With no
+    non-zero error nothing passes (a decided component needs one: ``k1_decision``)."""
+    errs = list(errs)
+    e = np.array([v for v in errs if v is not None], float)
+    n_zero = len(errs) - len(e)
+    if not len(e):
+        return {"n": 0, "n_zero": n_zero, "median": None, "p95": None, "pass": False}
+    med, p95 = float(np.median(e)), float(np.quantile(e, 0.95))
+    return {"n": len(e), "n_zero": n_zero, "median": med, "p95": p95,
             "pass": bool(med < TG.K1_MEDIAN and p95 < TG.K1_P95)}
+
+
+def _reading(good: list[dict], kinks: list) -> dict | None:
+    """One component under a reported reading (``k1_decision``): Section 7's error to the
+    letter ('err_design') over the converged rows that are not kinks by ``kinks`` (unresolved
+    ones scored), the kink share, and descriptive above ``K1_KINK_SHARE`` or with no non-zero
+    comparison. None when a row's kink cannot be read (``literal_kink``)."""
+    if any(k is None for k in kinks):
+        return None
+    rec = _pass_rule([r.get("err_design", r["err"]) for r, k in zip(good, kinks) if not k])
+    share = sum(kinks) / max(len(good), 1)
+    rec.update(kink_share=share, descriptive=bool(share > K1_KINK_SHARE or not rec["n"]))
+    return rec
 
 
 def _plant_rows(p: str, c: str, r: dict) -> bool:
@@ -402,12 +463,17 @@ def required_plants(rows: list[dict]) -> list[str]:
 
 def k1_decision(rows: list[dict], pi_rows: list[dict] | None = None,
                 require_pi: bool | None = None) -> dict:
-    """K1's verdict (module docstring). The plants cannot pass vacuously: each required one
-    (``required_plants``) must be present and fail on at least one decided component with
-    counted rows; pi is required (``require_pi``, default: whenever an anchored key is in
-    the rows) and its plants must fail too. The share of the pedal-saturated pedal rows that
-    count is reported (``saturated_counted_share``); such rows left unresolved count toward
-    pedal's 30% share like any other."""
+    """K1's verdict (module docstring). Zero comparisons (None errors) are counted per
+    component, per plant and per reading ('n_zero') and never pooled; a component with no
+    non-zero comparison that counts is descriptive. The plants cannot pass vacuously: each
+    required one (``required_plants``) must be present and fail on at least one decided
+    component with non-zero counted rows; pi is required (``require_pi``, default: whenever
+    an anchored key is in the rows) and its plants must fail too. The share of the
+    pedal-saturated pedal rows that count is reported (``saturated_counted_share``); such
+    rows left unresolved count toward pedal's 30% share like any other. The two reported
+    readings ('design_rule', 'design_rule_literal_kink'; None for rows without one-sided
+    estimates) give each component's numbers and, at the top, their own decided components
+    and verdict; they bind nothing."""
     comp = {}
     plants: dict[str, dict] = {}
     names = sorted({p for r in rows for p in r["plants"]})
@@ -420,13 +486,13 @@ def k1_decision(rows: list[dict], pi_rows: list[dict] | None = None,
         unres = [r for r in good if not r["kink"] and r.get("unresolved")]
         counted = [r for r in good if not r["kink"] and not r.get("unresolved")]
         share = (len(kinks) + len(unres)) / max(len(good), 1)
-        rec = _pass_rule(np.array([r["err"] for r in counted]))
-        literal = _pass_rule(np.array([r.get("err_design", r["err"]) for r in good
-                                       if not r["kink"]]))
+        rec = _pass_rule([r["err"] for r in counted])
         rec.update(kink_share=len(kinks) / max(len(good), 1),
                    unresolved_share=len(unres) / max(len(good), 1),
                    n_failed_solves=len(mine) - len(good),
-                   descriptive=bool(share > K1_KINK_SHARE), design_rule=literal)
+                   descriptive=bool(share > K1_KINK_SHARE or not rec["n"]),
+                   design_rule=_reading(good, [bool(r["kink"]) for r in good]),
+                   design_rule_literal_kink=_reading(good, [literal_kink(r) for r in good]))
         comp[c] = rec
         if c == "pedal":
             sat = [r for r in good if r.get("saturated")]
@@ -437,14 +503,23 @@ def k1_decision(rows: list[dict], pi_rows: list[dict] | None = None,
         comp[c] = rec
         for p in names:
             sel = [r for r in counted if p in r["plants"] and _plant_rows(p, c, r)]
-            plants.setdefault(p, {})[c] = _pass_rule(np.array([r["plants"][p] for r in sel]))
+            plants.setdefault(p, {})[c] = _pass_rule([r["plants"][p] for r in sel])
     decided = [c for c, v in comp.items() if not v["descriptive"]]
     out = {"components": comp, "pass": bool(decided and all(comp[c]["pass"] for c in decided)),
            "descriptive": [c for c in comp if c not in decided],
            "plants": {p: {"fails": bool(any(not v["pass"] for c, v in d.items()
                                             if c in decided and v["n"])),
                           "scored": bool(any(v["n"] for c, v in d.items() if c in decided)),
+                          "n_zero": sum(v["n_zero"] for v in d.values()),
                           "components": d} for p, d in plants.items()}}
+    for name in ("design_rule", "design_rule_literal_kink"):
+        recs = {c: v[name] for c, v in comp.items()}
+        if not recs or any(v is None for v in recs.values()):
+            out[name] = None
+            continue
+        dec = [c for c, v in recs.items() if not v["descriptive"]]
+        out[name] = {"decided": dec, "descriptive": [c for c in recs if c not in dec],
+                     "pass": bool(dec and all(recs[c]["pass"] for c in dec))}
     need = required_plants(rows)
     out["plants_missing"] = [p for p in need if not out["plants"].get(p, {}).get("scored")]
     out["plants_fail"] = bool(not out["plants_missing"]

@@ -3,9 +3,10 @@
 - K0 on stored keys (a W = 400 key, a W = 800 key and an anchored final): every identity
   within its tolerance and the record 'ok'.
 - K1: the sample is step 2's Gate 1 stratification; the pass rule (kinks and unresolved
-  comparisons left out, the re-solves' noise floor, the descriptive share, planted bugs that
-  must fail) on rows with known answers; one stored key's states against real re-solves,
-  with every planted bug failing.
+  comparisons left out, the difference's floor, zero comparisons counted and never pooled,
+  the descriptive share and no vacuous pass, planted bugs that must fail) on rows with known
+  answers; the literal kink reading beside it; the rule in the frozen constants; one stored
+  key's states against real re-solves, with every planted bug failing.
 - K2: the twin pairs, the retention rule t_H, the twins' discrepancies on T; K2b's second
   corner (its total turn) and the exclusion rule.
 - K3's judge fails on every planted defect of a passing report.
@@ -15,6 +16,7 @@
 - K4's plants that need no network (PR-5 family through C1, PR-9's heads) and PR-1a/PR-7 on a
   synthetic layer; K6's counts."""
 
+import dataclasses
 import json
 import os
 import subprocess
@@ -131,13 +133,103 @@ def test_k1_rules_with_known_answers():
     ds = GT.k1_decision(sat)
     assert ds["components"]["pedal"]["saturated_counted_share"] == pytest.approx(0.5)
     assert ds["components"]["pedal"]["unresolved_share"] == pytest.approx(0.5)
-    # the noise floor: two values under the re-solves' noise are a zero field
+    # the difference's floor: two values under it are a zero comparison (None, not 0)
     fd = TG.FD(value=-1.16e-6, fd_h=0, fd_h2=0, discrepancy=5e-9, side="central", h=1e-6,
                ok=True, iterations=1, forward=0, backward=0, noise=8.6e-5)
-    assert GT.k1_error(-9.7e-7, fd) == 0.0 and TG.fd_error(-9.7e-7, fd) > 0.1
+    assert GT.k1_error(-9.7e-7, fd) is None and TG.fd_error(-9.7e-7, fd) > 0.1
+    assert GT.k1_design_error(-9.7e-7, fd) > 0.1
     fd2 = TG.FD(value=1.94, fd_h=0, fd_h2=0, discrepancy=0.96, side="below", h=1e-7, ok=True,
                 iterations=1, noise=6.5e-4)
     assert GT.unresolved(fd2) and not GT.unresolved(fd)
+
+
+def test_k1_zero_comparisons_are_counted_not_pooled():
+    """Gate 1's zero-field rule taken literally (the smoke run's K1 review): a zero
+    comparison (None) is counted per component, per plant and per reading and never pooled
+    as 0, and a component with no non-zero comparison that counts is descriptive, not a
+    vacuous pass."""
+    # 30 comparisons at 5e-3 fail the median; 40 zeros pooled as 0 would have passed it
+    rows = [_row("s", 5e-3, err_design=5e-3) for _ in range(30)] \
+        + [_row("s", None, err_design=None, plants=_all_plants(no_es=None))
+           for _ in range(40)] + [_row("n", 1e-5) for _ in range(40)]
+    d = GT.k1_decision(rows)
+    s = d["components"]["s"]
+    assert (s["n"], s["n_zero"]) == (30, 40) and s["median"] == pytest.approx(5e-3)
+    assert not s["descriptive"] and not s["pass"] and not d["pass"]
+    assert (s["design_rule"]["n"], s["design_rule"]["n_zero"]) == (30, 40)
+    assert not s["design_rule"]["pass"]
+    ps = d["plants"]["no_es"]["components"]["s"]
+    assert (ps["n"], ps["n_zero"]) == (30, 40) and d["plants"]["no_es"]["n_zero"] == 40
+    # every comparison of s a zero one: s is descriptive and n decides; nothing decided, no pass
+    allzero = [_row("s", None, err_design=None) for _ in range(10)] \
+        + [_row("n", 1e-5) for _ in range(40)]
+    dz = GT.k1_decision(allzero)
+    sz = dz["components"]["s"]
+    assert (sz["n"], sz["n_zero"]) == (0, 10) and sz["descriptive"] and not sz["pass"]
+    assert dz["descriptive"] == ["s"] and dz["pass"]
+    assert dz["design_rule"] == {"decided": ["n"], "descriptive": ["s"], "pass": True}
+    assert not GT.k1_decision(allzero[:10])["pass"]
+    # a plant scored only on zero comparisons is not scored, so K1's plants do not fail
+    good = [_row("s", 1e-5) for _ in range(40)] \
+        + [_row("n", 1e-5, contact=True, plants=_all_plants(pre_jump=0.3)) for _ in range(5)] \
+        + [_row("pedal", 1e-5, saturated=True, fold_active=True,
+                plants=_all_plants(unfolded=0.3)) for _ in range(5)]
+    assert GT.k1_decision(good)["plants_fail"]
+    zp = GT.k1_decision([{**r, "plants": {**r["plants"], "pre_jump": None}} for r in good])
+    assert zp["plants_missing"] == ["pre_jump"] and not zp["plants_fail"]
+    assert zp["plants"]["pre_jump"]["n_zero"] == 5 and not zp["pass_with_plants"]
+
+
+def _central(c, err, fwd, bwd, disc=1e-9, **kw):
+    return _row(c, err, side="central", forward=fwd, backward=bwd, discrepancy=disc,
+                err_design=err, **kw)
+
+
+def test_k1_literal_kink_reading():
+    """Section 7's kink rule to the letter (|forward - backward| > 10 discrepancy) is
+    reported beside the coded one, from the one-sided estimates each row stores; it binds
+    nothing. Here 40% of s's comparisons are kinks by it and none by the coded rule, so s is
+    descriptive under that reading alone."""
+    smooth = [_central("s", 1e-5, 1.0, 1.0 + 5e-9) for _ in range(60)]      # 5 x disc
+    split = [_central("s", 1e-5, 1.0, 1.0 + 5e-8) for _ in range(40)]       # 50 x disc
+    d = GT.k1_decision(smooth + split)
+    s = d["components"]["s"]
+    assert s["pass"] and not s["descriptive"] and s["kink_share"] == 0.0
+    lk = s["design_rule_literal_kink"]
+    assert lk["kink_share"] == pytest.approx(0.4) and lk["descriptive"] and lk["n"] == 60
+    assert d["design_rule_literal_kink"] == {"decided": [], "descriptive": ["s"], "pass": False}
+    assert d["design_rule"] == {"decided": ["s"], "descriptive": [], "pass": True}
+    assert d["pass"]
+    # the coded rule's noise term only removes flags: a J(0) offset within KINK_J_NOISE
+    fd = TG.FD(value=1.0, fd_h=1.0, fd_h2=1.0, discrepancy=1e-9, side="central", h=1e-6,
+               ok=True, iterations=1, forward=1.0, backward=1.0 + 5e-8, noise=6e-5)
+    row = {"side": fd.side, "forward": fd.forward, "backward": fd.backward,
+           "discrepancy": fd.discrepancy}
+    assert not fd.kink and GT.literal_kink(row)
+    big = dataclasses.replace(fd, backward=1.0 + 1e-3)
+    assert big.kink and GT.literal_kink({**row, "backward": big.backward})
+    # a one-sided (pedal-saturated) row has no kink test; a row without its one-sided
+    # estimates (written before they were stored) leaves the literal reading unread
+    assert GT.literal_kink({"side": "below", "forward": None, "backward": None,
+                            "discrepancy": 0.5}) is False
+    assert GT.literal_kink(_row("s", 1e-5, discrepancy=1e-9)) is None
+    old = GT.k1_decision(smooth + [_row("s", 1e-5, discrepancy=1e-9)])
+    assert old["design_rule_literal_kink"] is None and old["design_rule"]["pass"]
+    assert old["components"]["s"]["design_rule_literal_kink"] is None and old["pass"]
+
+
+def test_k1_rule_in_the_frozen_constants():
+    """The record states K1's rule as coded: the floor's KINK_J_NOISE, the smaller c's
+    SHRINK_RTOL and MAX_SHRINK, and the floor's formula, so zero_atol alone does not read as
+    K1's zero threshold."""
+    from apexzero.costate import prereg as PR
+
+    t = PR.constants()["targets"]
+    assert (t["kink_j_noise"], t["shrink_rtol"], t["max_shrink"]) \
+        == (TG.KINK_J_NOISE, TG.SHRINK_RTOL, TG.MAX_SHRINK) == (1e-11, 1e-3, 2)
+    assert (t["zero_atol"], t["kink_factor"]) == (TG.ZERO_ATOL, TG.KINK_FACTOR) == (1e-6, 10.0)
+    assert "eps_t = max(zero_atol, 6 kink_j_noise / (h gamma^t))" in t["k1_rule"]
+    assert "never pooled" in t["k1_rule"]
 
 
 @needs_keys
@@ -147,12 +239,19 @@ def test_k1_on_a_stored_key_with_planted_bugs(bank):
                      states={"decision": 0, "braking": 20, "contact": 55})
     assert len(rows) == 9 and all(r["ok"] for r in rows)
     counted = [r for r in rows if not r["kink"] and not r["unresolved"]]
-    assert counted and max(r["err"] for r in counted) < 1e-3
+    scored = [r for r in counted if r["err"] is not None]
+    assert scored and max(r["err"] for r in scored) < 1e-3
     contact = [r for r in rows if r["state"] == "contact"]
     assert contact and all(r["contact"] for r in contact)
     for p in ("no_es", "no_discount", "flip_sign", "off_by_one"):
-        assert max(r["plants"][p] for r in counted) > 1e-2, p
-    assert max(r["plants"]["pre_jump"] for r in contact) > 1e-2
+        assert max(r["plants"][p] for r in counted if r["plants"][p] is not None) > 1e-2, p
+    assert max(r["plants"]["pre_jump"] for r in contact if r["plants"]["pre_jump"] is not None) \
+        > 1e-2
+    # the one-sided estimates are stored (Section 7's literal kink rule), and a coded kink is
+    # a literal one
+    assert all(np.isfinite(r["forward"]) and np.isfinite(r["backward"]) for r in rows)
+    assert all(GT.literal_kink(r) is not None for r in rows)
+    assert all(GT.literal_kink(r) for r in rows if r["kink"])
 
 
 @needs_keys

@@ -873,15 +873,22 @@ class FD:
     iterations: int
     forward: float = float("nan")    # Richardson one-sided estimates (central side only)
     backward: float = float("nan")
-    noise: float = 0.0        # the one-sided estimates' round-off: 6 KINK_J_NOISE / (h gamma^t)
+    noise: float = 0.0        # K1's floor and kink noise term: 6 KINK_J_NOISE / (h gamma^t)
     ladder: tuple = ()        # pedal-saturated rows: (h, value, discrepancy, ok) per c tried
 
     @property
     def kink(self) -> bool:
-        """K1's kink rule: the one-sided estimates disagree by more than KINK_FACTOR x the
-        Richardson discrepancy (or x their own round-off, a J offset of KINK_J_NOISE between
-        re-solves moves forward - backward by 6 KINK_J_NOISE / h); such a comparison does not
-        count toward the pass."""
+        """K1's kink rule: the one-sided estimates disagree by more than KINK_FACTOR x
+        max(Richardson discrepancy, ``noise``); such a comparison does not count toward the
+        pass. Forward and backward contain the unshifted re-solve J(0) with weight 6/h
+        (forward - backward = (4 J(h/2) - J(h) - 6 J(0) + 4 J(-h/2) - J(-h)) / (h gamma^t))
+        and the central pair does not, so a J(0) offset of KINK_J_NOISE between re-solves
+        moves forward - backward by ``noise`` = 6 KINK_J_NOISE / (h gamma^t). Section 7's
+        KINK_FACTOR x discrepancy alone is no kink test under re-solve scatter, since both
+        statistics scale with it: on a smooth J(c) with K1's stencil it flags about 31% of
+        comparisons for independent J scatter of any size, and 84% or more when J(0) carries an
+        offset of its own (``gates.literal_kink`` reports that reading). The noise term only
+        removes flags: every kink by this rule is one by Section 7's."""
         if self.side != "central":
             return False
         return bool(abs(self.forward - self.backward)

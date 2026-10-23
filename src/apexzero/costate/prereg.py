@@ -177,7 +177,20 @@ def constants() -> dict:
                     "fd_h": TG.FD_H, "pedal_ladder": list(TG.PEDAL_LADDER),
                     "pedal_up": TG.PEDAL_UP, "pedal_min_h": TG.PEDAL_MIN_H,
                     "k1": [TG.K1_MEDIAN, TG.K1_P95], "plants": list(TG.PLANTS),
-                    "kink_factor": TG.KINK_FACTOR, "zero_atol": TG.ZERO_ATOL},
+                    "kink_factor": TG.KINK_FACTOR, "zero_atol": TG.ZERO_ATOL,
+                    "kink_j_noise": TG.KINK_J_NOISE, "shrink_rtol": TG.SHRINK_RTOL,
+                    "max_shrink": TG.MAX_SHRINK,
+                    "k1_rule": "K1's zero threshold and denominator floor eps_t = max(zero_atol, "
+                               "6 kink_j_noise / (h gamma^t)) (gates.k1_error; on the pedal-"
+                               "saturated ladder the rungs' J spread where it exceeds "
+                               "kink_j_noise); zero comparisons counted per component, plant "
+                               "and reading, never pooled, and a decided component needs a "
+                               "non-zero one; a kink: |forward - backward| > kink_factor "
+                               "max(discrepancy, 6 kink_j_noise / (h gamma^t)); c / 10 at most "
+                               "max_shrink times while the Richardson pair disagrees by more "
+                               "than shrink_rtol |FD| and 6 kink_j_noise / (h gamma^t), and "
+                               "still so: unresolved, not counted, in the 30% share; zero_atol "
+                               "alone in the reported 'design_rule'"},
         "states": {"every": ST.EVERY, "exit_margin": ST.EXIT_MARGIN,
                    "interior_k": ST.INTERIOR_K, "interior_k_descriptive": ST.INTERIOR_K_DESCRIPTIVE,
                    "clearance_min": ST.CLEARANCE_MIN, "slip_margin_min": ST.SLIP_MARGIN_MIN,
