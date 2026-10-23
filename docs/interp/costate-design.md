@@ -1400,8 +1400,9 @@ run's world (T's 9,887 rows), with J_z under each of the 9 decision networks' ob
   probe extractor's count (`gates.expected_heads`, `probes.N_HEADS_GENERALIST`). The tree's
   count equals the config's by construction there: `critic.trained_critic` refuses a tree
   whose head count is not the config's, before any measurement ("Containment" below). So the
-  judge can fail on the config's count against the expected one, on Flax's or on the probe
-  extractor's, never on a tree that disagrees with its config.
+  judge can fail on the config's count against the expected one, on Flax's, on the probe
+  extractor's, or on a measurement that raised, but never because a tree disagrees with its
+  config.
 - **Float32 check.**
   - V32 is RunningMeanStd.normalize and Critic.apply in float32, with x64 off, on the float32
     params and the raw D observation rounded to float32.
