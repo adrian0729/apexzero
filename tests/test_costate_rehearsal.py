@@ -2,7 +2,8 @@
 and a crash voids the tag): every stage of scripts/costate.py through its ``main()``, in
 order, on random-init stand-ins for the trained networks, before the tag.
 
-Opt-in (about 40 minutes on 2 threads): ``COSTATE_REHEARSAL=1 uv run --no-sync pytest
+Opt-in (about 47 minutes on 2 threads beside another job; the probes stage takes 24 of them,
+the pre-tag stages 20): ``COSTATE_REHEARSAL=1 uv run --no-sync pytest
 tests/test_costate_rehearsal.py -p no:cacheprovider``, or ``uv run --no-sync python
 tests/test_costate_rehearsal.py --dir DIR`` (keeps DIR; ``--from STEP`` resumes there).
 
@@ -31,14 +32,20 @@ tests/test_costate_rehearsal.py --dir DIR`` (keeps DIR; ``--from STEP`` resumes 
   at ``K5_MLP_MAXITER`` iterations.
 - **The sequence** (``STEPS``): inputs, k2, inputs, k2b, k0, k1, k3, k3b, k4, k5, k6, nulls,
   prereg; the record committed, annotated-tagged and pushed; a pre-tag stage refused;
-  activations, tag.json committed, critic, own, probes, analyse --confirmatory, its
-  decisions committed; a second analyse --confirmatory refused; a non-confirmatory analyse
-  unlocked by the committed decisions.
+  activations, tag.json committed, critic, own, probes, a non-confirmatory analyse
+  (coverage only), analyse --confirmatory, its decisions committed; a second analyse
+  --confirmatory refused; a non-confirmatory analyse unlocked by the committed decisions.
 
-What it cannot exercise: trained weights (values, value accuracy's pass, K3's trained checks
-failing for real), the full T and every network's run time and memory, step 2's overlap for
-the networks not listed, and the network failing K3 after the tag (tests/test_costate_stages.py
-plants it).
+The report (``report``; ``--dir``'s report.json) lists each step's time, every contained
+error and every decision stated on a non-finite CI; the test fails on either.
+
+What it cannot exercise: trained weights. A random-init policy crashes within about 20 steps,
+so no own run is valid: C1-own, its held form and value accuracy record 'not testable' or
+'fewer than 3 rows', and K3b's trained analogue fails (tests/test_costate_stages.py scores
+them on planted own arrays). Every stand-in passes K3's after-the-tag checks (the failing
+network is planted there too). Nor the full T (9,887 rows), the 34 networks and the 9
+decision networks (R18's variants see one seed), their run time and memory, C1-dev's 16
+snapshots per network (one here), or K4's and K5's real verdicts.
 """
 
 from __future__ import annotations
@@ -108,7 +115,8 @@ STAND_IN_SEED = 101            # + index: never one of the random controls' seed
 COPIED = ("config.json", "eval_rdev.json", "metrics.csv")
 STEPS = ("inputs", "k2", "inputs-cut", "k2b", "k0", "k1", "k3", "k3b", "k4", "k5", "k6",
          "nulls", "prereg", "tag", "refuse-pre-tag", "activations", "pin", "critic", "own",
-         "probes", "analyse", "commit-decisions", "analyse-again", "analyse-dry")
+         "probes", "analyse-coverage", "analyse", "commit-decisions", "analyse-again",
+         "analyse-dry")
 POST = ("activations", "critic", "own", "probes", "analyse")
 
 # Runs in the clone, one process per stage (as the real stages do): the reduced lists
@@ -322,12 +330,13 @@ class Rehearsal:
     def rewind(self, step: str) -> None:
         """Resume at ``step``: HEAD back to where it was before it (the working tree kept),
         and the post-tag files written from there on removed."""
-        head = self.state["head_before"].get(step)
+        later = STEPS[STEPS.index(step):]
+        head = next((self.state["head_before"][s] for s in later
+                     if s in self.state["head_before"]), None)
         if head is None:
-            raise SystemExit(f"no recorded HEAD before {step}")
+            raise SystemExit(f"no recorded HEAD at or after {step}")
         _git(self.repo, "reset", "-q", "--mixed", head)
         out = self.repo / "outputs" / "costate"
-        later = STEPS[STEPS.index(step):]
         if "tag" in later and self.state.get("tag_commit"):
             _git(self.repo, "tag", "-d", TAG)
             _git(self.repo, "push", "-q", "origin", f":refs/tags/{TAG}")
@@ -356,6 +365,12 @@ class Rehearsal:
                 raise RuntimeError("the first post-tag stage wrote no tag.json")
             _git(r, "add", "-f", "outputs/costate/tag.json")
             _git(r, "commit", "-q", "-m", "Idea 2: pin the tag (rehearsal)")
+        elif step == "analyse-coverage":
+            self.stage(step, "analyse")
+            d = json.loads((out / "analyse" / "decisions_dry.json").read_text())
+            if d.get("decided") or "coverage" not in d:
+                raise RuntimeError("a non-confirmatory analyse before the decisions are "
+                                   "committed computed decisions")
         elif step == "analyse":
             self.stage(step, "analyse", "--confirmatory")
         elif step == "commit-decisions":
@@ -373,7 +388,7 @@ class Rehearsal:
 
     def run(self, start: str | None = None) -> dict:
         steps = STEPS[STEPS.index(start):] if start else STEPS
-        if start and start in self.state["head_before"]:
+        if start and any(s in self.state["head_before"] for s in steps):
             self.rewind(start)
         for s in steps:
             self.state["head_before"][s] = _git(self.repo, "rev-parse", "HEAD")
@@ -463,7 +478,7 @@ def _have_inputs() -> bool:
 
 
 @pytest.mark.skipif(not os.environ.get("COSTATE_REHEARSAL"),
-                    reason="the full post-tag rehearsal (about 40 min): COSTATE_REHEARSAL=1")
+                    reason="the full post-tag rehearsal (about 47 min): COSTATE_REHEARSAL=1")
 @pytest.mark.skipif(not _have_inputs(), reason="step 1's keys or the runs are missing")
 def test_every_stage_through_main_on_random_init_stand_ins(tmp_path):
     build(tmp_path)
