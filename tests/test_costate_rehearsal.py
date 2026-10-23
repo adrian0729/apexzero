@@ -2,8 +2,8 @@
 and a crash voids the tag): every stage of scripts/costate.py through its ``main()``, in
 order, on random-init stand-ins for the trained networks, before the tag.
 
-Opt-in (about 47 minutes on 2 threads beside another job; the probes stage takes 24 of them,
-the pre-tag stages 20): ``COSTATE_REHEARSAL=1 uv run --no-sync pytest
+Opt-in (about 74 minutes on 2 threads; K4 takes 32 of them on the reduced T, PR-6b and PR-6c
+most of it, the probes stage 24): ``COSTATE_REHEARSAL=1 uv run --no-sync pytest
 tests/test_costate_rehearsal.py -p no:cacheprovider``, or ``uv run --no-sync python
 tests/test_costate_rehearsal.py --dir DIR`` (keeps DIR; ``--from STEP`` resumes there).
 
@@ -106,8 +106,8 @@ NETWORKS = {
 POWER_FLOOR = {"s": True, "n": False, "xi": True, "vx": False}
 K2B_EXCLUDED = {"approach": ["n", "vx"], "braking": ["s", "n", "xi", "vx"],
                 "corner": ["s", "n", "xi", "vx"], "exit": ["n", "xi", "vx"]}
-# K4's planted recoveries and K5's wiring check fail on so small a T (on the real T both pass
-# at 428f51f, a pre-tag matter): their verdicts are forced to pass so that prereg
+# K4's planted recoveries fail on so small a T and K5's wiring check can (on the real T both
+# pass at 428f51f, a pre-tag matter): their verdicts are forced to pass so that prereg
 # binds them, the computed one kept beside it ('pass_computed').
 FORCE_PASS = ("k4", "k5")
 K5_MLP_MAXITER = 25            # K5's MLP ceilings (descriptive) at 25 L-BFGS iterations, not 500:
@@ -479,7 +479,7 @@ def _have_inputs() -> bool:
 
 
 @pytest.mark.skipif(not os.environ.get("COSTATE_REHEARSAL"),
-                    reason="the full post-tag rehearsal (about 47 min): COSTATE_REHEARSAL=1")
+                    reason="the full post-tag rehearsal (about 74 min): COSTATE_REHEARSAL=1")
 @pytest.mark.skipif(not _have_inputs(), reason="step 1's keys or the runs are missing")
 def test_every_stage_through_main_on_random_init_stand_ins(tmp_path):
     build(tmp_path)
