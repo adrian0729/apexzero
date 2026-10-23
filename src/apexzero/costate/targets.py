@@ -77,11 +77,13 @@ path rows, which then hold fixed variables only, are relaxed too (as constant ro
 would leave IPOPT a rank-deficient Jacobian; they cannot bind). The warm re-solves use step
 2's Gate 1 solver (``kkt.fd_solver``: the key solver's options, REFINE_IPOPT's warm start,
 tol 1e-10, kkt.py:980-995). ``fd_costate_k1`` applies K1's 'smaller c' where the Richardson
-pair disagrees, and ``FD.kink`` K1's kink rule. Planted bugs (``PLANTS``, ``ACTION_PLANTS``,
-``PI_PLANTS``) must fail; 'unfolded' is the raw (un-folded) multipliers through the same
-formula (``costate`` with an identity ``Fold``): it moves only lambda_pedal, by alpha-weighted
-sums of the pedal-state box multipliers ahead (c_t), and K1 scores it on the pedal rows where
-c_t != 0.
+pair disagrees, and ``FD.kink`` K1's kink rule. Every estimate carries K1's zero-rule floor
+(``gates.k1_error``) as ``FD.noise`` = 6 KINK_J_NOISE / (h gamma^t): ``fd_pi``'s at t = 1
+and its step ``PI_H``, ``fd_pedal_below``'s from its ladder's J spread. Planted bugs
+(``PLANTS``, ``ACTION_PLANTS``, ``PI_PLANTS``) must fail; 'unfolded' is the raw (un-folded)
+multipliers through the same formula (``costate`` with an identity ``Fold``): it moves only
+lambda_pedal, by alpha-weighted sums of the pedal-state box multipliers ahead (c_t), and K1
+scores it on the pedal rows where c_t != 0.
 
 **The pedal step at pedal-saturated states** (``fd_pedal_below``; a design clarification
 recorded before the tag: the design's 1e-5 is replaced there). Shifting pedal at a pedal-
@@ -1028,9 +1030,10 @@ def fd_pedal_below(prob: K.KeyProblem, t: int, ladder=PEDAL_LADDER, rtol: float 
 
 
 PI_PLANTS = ("plus_shift", "r0_prev", "j_w")
+PI_H = 1e-5                 # K1's step for pi (design Section 7)
 
 
-def fd_pi(prob: K.KeyProblem, j: int, h: float = 1e-5, plant: str | None = None,
+def fd_pi(prob: K.KeyProblem, j: int, h: float = PI_H, plant: str | None = None,
           a_prev: np.ndarray | None = None, solver=None) -> FD:
     """pi_{1,j} on an anchored key (design Section 7, K1 'pi on 10 anchored keys'): a_0's
     bounds moved to a_0 + c e_j, defect row 0 set to g_0 at (x_0, a_0 + c, x_1) so x_1 is
@@ -1038,7 +1041,14 @@ def fd_pi(prob: K.KeyProblem, j: int, h: float = 1e-5, plant: str | None = None,
     - 0.02 ||a_0 + c - a_{-1}||^2 from the re-solve's own w, a_{-1} = 0. Planted bugs:
     'plus_shift' (defect row 0 shifted the other way), 'r0_prev' (r_0 with ``a_prev`` as
     a_{-1}, e.g. the key's anchor['a_prev'] or the agent's a_{L-2}) and 'j_w' (J_W in place
-    of J_tail)."""
+    of J_tail).
+
+    ``FD.noise`` is K1's floor built as a lambda_1 comparison's (``fd_costate``): the
+    estimate is the same central Richardson stencil over (h, h/2), four warm re-solves and
+    no J(0), and J errors of KINK_J_NOISE reach J_tail divided by gamma, as they reach
+    lambda_1 = dJ_W/dc / gamma, so the floor is 6 KINK_J_NOISE / (h gamma) (twice the
+    largest error they can give the estimate, ``gates.k1_error``). There is no kink test
+    (forward and backward are not formed). A planted FD carries the same floor."""
     if not K.is_anchored(prob.rec):
         raise ValueError("pi's shift is defined on anchored keys (a_0 fixed)")
     if plant is not None and plant not in PI_PLANTS:
@@ -1074,4 +1084,5 @@ def fd_pi(prob: K.KeyProblem, j: int, h: float = 1e-5, plant: str | None = None,
 
     d_h, d_h2 = d(h), d(0.5 * h)
     return FD(value=_richardson(d_h, d_h2, "central"), fd_h=d_h, fd_h2=d_h2,
-              discrepancy=abs(d_h2 - d_h), side="central", h=h, ok=bool(ok), iterations=its)
+              discrepancy=abs(d_h2 - d_h), side="central", h=h, ok=bool(ok), iterations=its,
+              noise=6.0 * KINK_J_NOISE / (h * gam))

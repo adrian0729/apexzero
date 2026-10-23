@@ -5,8 +5,10 @@
 - K1: the sample is step 2's Gate 1 stratification; the pass rule (kinks and unresolved
   comparisons left out, the difference's floor, zero comparisons counted and never pooled,
   the descriptive share and no vacuous pass, planted bugs that must fail) on rows with known
-  answers; the literal kink reading beside it; the rule in the frozen constants; one stored
-  key's states against real re-solves, with every planted bug failing.
+  answers; pi under the same zero rule at its own floor (its zeros and its plants' counted,
+  never pooled, no vacuous pass or fail); the literal kink reading beside it; the rule in
+  the frozen constants; one stored key's states against real re-solves, with every planted
+  bug failing; pi on a stored anchored key, its pedal comparison a zero one.
 - K2: the twin pairs, the retention rule t_H, the twins' discrepancies on T; K2b's second
   corner (its total turn) and the exclusion rule.
 - K3's judge fails on every planted defect of a passing report.
@@ -185,6 +187,70 @@ def test_k1_zero_comparisons_are_counted_not_pooled():
     assert zp["plants"]["pre_jump"]["n_zero"] == 5 and not zp["pass_with_plants"]
 
 
+def _pi(err, plant=0.6, **kw):
+    return {"err": err, "ok": True, "plants": {p: plant for p in TG.PI_PLANTS}, **kw}
+
+
+def _k1_passing():
+    """Lambda rows on which K1 passes with its plants (every required plant scored)."""
+    return [_row("s", 1e-5) for _ in range(40)] \
+        + [_row("n", 1e-5, contact=True, plants=_all_plants(pre_jump=0.3)) for _ in range(5)] \
+        + [_row("pedal", 1e-5, saturated=True, fold_active=True,
+                plants=_all_plants(unfolded=0.3)) for _ in range(5)]
+
+
+def test_k1_pi_follows_the_zero_rule():
+    """pi follows the lambda components' zero rule (the smoke run's K1 re-score: 8 of 20 pi
+    comparisons, j = 1 on 8 anchored keys with |pi| ~ 1e-11 and |FD| <= 1.1e-9, were zero
+    ones pooled as 0): at fd_pi's floor max(1e-6, 6 KINK_J_NOISE / (PI_H gamma)), a zero
+    comparison of pi or of a plant is counted and never pooled, pi needs a non-zero one, and
+    a pi plant fails only on non-zero comparisons."""
+    lam = _k1_passing()
+    assert GT.k1_decision(lam, [_pi(1e-6)])["pass_with_plants"]
+    # the floor: fd_pi's step and gamma, above Gate 1's 1e-6
+    noise = 6.0 * TG.KINK_J_NOISE / (TG.PI_H * 0.995)
+    fd = TG.FD(value=1.184e-10, fd_h=0, fd_h2=0, discrepancy=3.55e-10, side="central",
+               h=TG.PI_H, ok=True, iterations=4, noise=noise)
+    assert noise == pytest.approx(6.03e-6, rel=1e-3) and noise > TG.ZERO_ATOL
+    assert GT.k1_error(-8.312e-12, fd) is None and GT.k1_design_error(-8.312e-12, fd) is None
+    assert TG.fd_error(-8.312e-12, fd) == 0.0                # the old rule's pooled zero
+    mid = dataclasses.replace(fd, value=3e-6)                # between 1e-6 and the floor
+    assert GT.k1_error(3e-6 + 1e-9, mid) is None and GT.k1_design_error(3e-6 + 1e-9, mid) > 0
+    # zeros are counted, never pooled: pooled as 0, 3 errors of 5e-3 among 7 would pass
+    assert GT._pass_rule([5e-3] * 3 + [0.0] * 4)["pass"]
+    d = GT.k1_decision(lam, [_pi(5e-3) for _ in range(3)] + [_pi(None) for _ in range(4)])
+    assert (d["pi"]["n"], d["pi"]["n_zero"]) == (3, 4) and not d["pi"]["pass"]
+    assert d["pi"]["median"] == pytest.approx(5e-3) and not d["pass"]
+    # the smoke run's shape: 12 non-zero comparisons and 8 zero ones
+    pi = [_pi(1e-6, err_design=1e-6) for _ in range(12)] \
+        + [_pi(None, plant=1.0, err_design=None) for _ in range(8)]
+    d = GT.k1_decision(lam, pi)
+    assert (d["pi"]["n"], d["pi"]["n_zero"]) == (12, 8) and d["pi"]["pass"]
+    assert (d["pi"]["design_rule"]["n"], d["pi"]["design_rule"]["n_zero"]) == (12, 8)
+    assert all((v["n"], v["n_zero"]) == (20, 0) and v["fails"]
+               for v in d["pi"]["plants"].values())
+    assert d["pass_with_plants"]
+    # every pi comparison a zero one: pi is not decided and K1 does not pass
+    dz = GT.k1_decision(lam, [_pi(None) for _ in range(4)])
+    assert dz["pi"]["n"] == 0 and dz["pi"]["reason"] == "no non-zero pi comparison"
+    assert not dz["pi"]["pass"] and not dz["pass"] and not dz["pass_with_plants"]
+    # a pi plant cannot fail vacuously: zero comparisons only, it is not scored
+    vac = [{**r, "plants": {**r["plants"], "j_w": None}} for r in pi]
+    dv = GT.k1_decision(lam, vac)
+    jw = dv["pi"]["plants"]["j_w"]
+    assert (jw["n"], jw["n_zero"]) == (0, 20) and not jw["fails"]
+    assert dv["pass"] and not dv["plants_fail"] and not dv["pass_with_plants"]
+    # its zero comparisons left out, a plant still fails on its non-zero ones
+    part = [{**r, "plants": {**r["plants"], "j_w": None if r["err"] is None else 0.6}}
+            for r in pi]
+    dp = GT.k1_decision(lam, part)
+    assert (dp["pi"]["plants"]["j_w"]["n"], dp["pi"]["plants"]["j_w"]["n_zero"]) == (12, 8)
+    assert dp["pi"]["plants"]["j_w"]["fails"] and dp["pass_with_plants"]
+    # a pi plant that matches the re-solves does not fail
+    ok = [{**r, "plants": {**r["plants"], "plus_shift": 1e-7}} for r in pi]
+    assert not GT.k1_decision(lam, ok)["plants_fail"]
+
+
 def _central(c, err, fwd, bwd, disc=1e-9, **kw):
     return _row(c, err, side="central", forward=fwd, backward=bwd, discrepancy=disc,
                 err_design=err, **kw)
@@ -235,6 +301,8 @@ def test_k1_rule_in_the_frozen_constants():
     assert (t["zero_atol"], t["kink_factor"]) == (TG.ZERO_ATOL, TG.KINK_FACTOR) == (1e-6, 10.0)
     assert "eps_t = max(zero_atol, 6 kink_j_noise / (h gamma^t))" in t["k1_rule"]
     assert "never pooled" in t["k1_rule"]
+    assert (t["pi_h"], t["pi_plants"]) == (TG.PI_H, list(TG.PI_PLANTS)) and TG.PI_H == 1e-5
+    assert "max(zero_atol, 6 kink_j_noise / (pi_h gamma))" in t["k1_rule"]
 
 
 @needs_keys
@@ -275,6 +343,30 @@ def test_k1_pedal_ladder_on_a_saturated_anchored_state(bank):
     unf = TG.costate(kt.problem, "jac", plant="unfolded")
     assert GT.k1_error(float(unf.lam[15, TG.PEDAL]), fd) > 1e-2
     assert np.array_equal(np.delete(unf.lam, TG.PEDAL, 1), np.delete(cs.lam, TG.PEDAL, 1))
+
+
+@needs_keys
+def test_k1_pi_on_a_stored_anchored_key(bank):
+    """pi on one of the smoke run's anchored keys: pi_pedal (j = 1) is a zero comparison
+    there (|pi| 7.1e-12, FD -1.07e-9), counted and not pooled; pi_steer matches its
+    re-solves; every planted pi bug is scored on both (its FD far above the floor) and
+    fails."""
+    ref = next(r for v in ST.n_refs().values() for r in v if r.key_id.startswith("9b1695f1"))
+    rows = GT.k1_pi(ref, bank)
+    noise = 6.0 * TG.KINK_J_NOISE / (TG.PI_H * 0.995)
+    assert [r["j"] for r in rows] == [0, 1] and all(r["ok"] for r in rows)
+    assert all(r["noise"] == pytest.approx(noise) and r["h"] == TG.PI_H for r in rows)
+    steer, pedal = rows
+    assert steer["err"] < 1e-3 and steer["err_design"] == steer["err"]
+    assert abs(pedal["target"]) < 1e-10 and abs(pedal["fd"]) < 1e-8
+    assert pedal["err"] is None and pedal["err_design"] is None
+    for r in rows:
+        assert all(abs(r["plant_fd"][p]) > noise for p in TG.PI_PLANTS), r["plant_fd"]
+        assert all(r["plants"][p] > 1e-2 for p in TG.PI_PLANTS), r["plants"]
+    d = GT.k1_decision(_k1_passing(), rows)
+    assert (d["pi"]["n"], d["pi"]["n_zero"]) == (1, 1) and d["pi"]["pass"]
+    assert all(v["fails"] and v["n"] == 2 for v in d["pi"]["plants"].values())
+    assert d["pass_with_plants"]
 
 
 @needs_keys

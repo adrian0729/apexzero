@@ -12,7 +12,8 @@ switching function and the shadow prices, against finite differences of warm re-
     stationarity to the same targets;
   - every component of lambda_t at plan states of each kind matches Richardson differences of
     pinned-prefix re-solves (K1's rule), and every planted bug fails;
-  - pi_1 on the anchored problem matches its exact-x_1 shift, and its planted bugs fail;
+  - pi_1 on the anchored problem matches its exact-x_1 shift, and its planted bugs fail; every
+    estimate carries K1's floor at pi's step;
   - the wall, slip and grip prices match re-solves with the parameter moved, and the road
     field sums to the wall price.
 - On step 1's stored keys: the design's example key reads as Section 2 quotes it; K0 holds on
@@ -333,12 +334,16 @@ def test_planted_costate_bugs_fail(synth, synth_fd, plant):
 def test_pi_matches_its_exact_shift(synth):
     anch = synth.anch
     pi1 = TG.costate(anch).pi[1]
+    # K1's floor as a lambda_1 comparison's, at pi's step (gates.k1_error's zero rule)
+    noise = 6.0 * TG.KINK_J_NOISE / (TG.PI_H * float(anch.spec.gamma))
     for j in range(NA):
         fd = TG.fd_pi(anch, j)
         assert fd.ok and abs(fd.value - pi1[j]) < 1e-6 * max(abs(pi1[j]), 1e-3), (j, fd, pi1)
+        assert fd.h == TG.PI_H and fd.noise == pytest.approx(noise) and not fd.kink
         for plant in TG.PI_PLANTS:
             bad = TG.fd_pi(anch, j, plant=plant, a_prev=np.array([0.3, -0.2]))
             assert abs(bad.value - pi1[j]) > 1e-3, (j, plant)
+            assert bad.noise == fd.noise, (j, plant)
 
 
 def test_anchored_decision_costate_matches_resolves(synth):

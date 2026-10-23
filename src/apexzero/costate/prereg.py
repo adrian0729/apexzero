@@ -181,7 +181,8 @@ def constants() -> dict:
                     "k1": [TG.K1_MEDIAN, TG.K1_P95], "plants": list(TG.PLANTS),
                     "kink_factor": TG.KINK_FACTOR, "zero_atol": TG.ZERO_ATOL,
                     "kink_j_noise": TG.KINK_J_NOISE, "shrink_rtol": TG.SHRINK_RTOL,
-                    "max_shrink": TG.MAX_SHRINK,
+                    "max_shrink": TG.MAX_SHRINK, "pi_h": TG.PI_H,
+                    "pi_plants": list(TG.PI_PLANTS),
                     "k1_rule": "K1's zero threshold and denominator floor eps_t = max(zero_atol, "
                                "6 kink_j_noise / (h gamma^t)) (gates.k1_error; on the pedal-"
                                "saturated ladder the rungs' J spread where it exceeds "
@@ -191,8 +192,12 @@ def constants() -> dict:
                                "max(discrepancy, 6 kink_j_noise / (h gamma^t)); c / 10 at most "
                                "max_shrink times while the Richardson pair disagrees by more "
                                "than shrink_rtol |FD| and 6 kink_j_noise / (h gamma^t), and "
-                               "still so: unresolved, not counted, in the 30% share; zero_atol "
-                               "alone in the reported 'design_rule'"},
+                               "still so: unresolved, not counted, in the 30% share; pi_1 "
+                               "(targets.fd_pi at pi_h) under the same zero rule with eps = "
+                               "max(zero_atol, 6 kink_j_noise / (pi_h gamma)), its plants' "
+                               "comparisons too: pi needs a non-zero comparison and each pi "
+                               "plant must fail on its non-zero ones; zero_atol alone in the "
+                               "reported 'design_rule'"},
         "states": {"every": ST.EVERY, "exit_margin": ST.EXIT_MARGIN,
                    "interior_k": ST.INTERIOR_K, "interior_k_descriptive": ST.INTERIOR_K_DESCRIPTIVE,
                    "clearance_min": ST.CLEARANCE_MIN, "slip_margin_min": ST.SLIP_MARGIN_MIN,

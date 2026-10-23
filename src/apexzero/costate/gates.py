@@ -41,7 +41,10 @@ only, 'unfolded' on the pedal rows whose fold is active; on anchored decisions a
 J_W read as J_tail: gamma lambda_1 + e_s/10); none may pass vacuously (every required plant
 scored on a non-zero comparison of a decided component). pi on the anchored keys
 (``k1_pi``): ``targets.fd_pi`` with its planted bugs (``targets.PI_PLANTS``), required
-whenever anchored keys are checked. The record binds K1 on ``pass_with_plants``.
+whenever anchored keys are checked, under the same rule (``k1_error`` at fd_pi's floor
+max(1e-6, 6 KINK_J_NOISE / (h gamma)), h = ``targets.PI_H``): a zero comparison of pi or of
+a plant is counted ('n_zero') and never pooled, pi needs a non-zero comparison, and each
+plant must fail on its non-zero ones. The record binds K1 on ``pass_with_plants``.
 
 **K2, horizon** (``twin_pairs``, ``k2_twins``, ``k2_horizon``, ``k2_extend``). On each tier
 V twin pair (the W = 400 and W = 800 nominal keys of one cell), |lambda^400_t -
@@ -454,7 +457,11 @@ def literal_kink(r: dict) -> bool | None:
 
 def k1_pi(ref: K.KeyRef, bank=None, kt: TG.KeyTargets | None = None) -> list[dict]:
     """pi_1 on one anchored key, against ``targets.fd_pi`` and its planted bugs ('r0_prev'
-    with the key's anchor['a_prev'], the naming hazard of Section 2)."""
+    with the key's anchor['a_prev'], the naming hazard of Section 2), scored as the lambda
+    components are (``k1_error``; its floor is fd_pi's ``FD.noise``): 'err' is None for a
+    zero comparison (|pi| and |FD| both below the floor), and so is a plant's entry when
+    |pi| and the planted FD both are. 'err_design' is Section 7's error to the letter
+    (``k1_design_error``), and 'plant_fd' the planted estimates."""
     if bank is None:
         bank, _ = K.design(stimuli_dir())
     kt = TG.key_targets(ref, bank=bank) if kt is None else kt
@@ -465,13 +472,16 @@ def k1_pi(ref: K.KeyRef, bank=None, kt: TG.KeyTargets | None = None) -> list[dic
     for j in range(2):
         fd = TG.fd_pi(prob, j, solver=solver)
         target = float(cs.pi[1, j])
-        pl = {}
+        pl, pfd = {}, {}
         for p in TG.PI_PLANTS:
             fp = TG.fd_pi(prob, j, plant=p, a_prev=a_prev if p == "r0_prev" else None,
                           solver=solver)
-            pl[p] = TG.fd_error(target, fp)
+            pl[p], pfd[p] = k1_error(target, fp), fp.value
         rows.append({"key_id": ref.key_id, "j": j, "target": target, "fd": fd.value,
-                     "ok": fd.ok, "err": TG.fd_error(target, fd), "plants": pl})
+                     "ok": fd.ok, "h": fd.h, "discrepancy": fd.discrepancy,
+                     "noise": fd.noise, "err": k1_error(target, fd),
+                     "err_design": k1_design_error(target, fd), "plants": pl,
+                     "plant_fd": pfd})
     return rows
 
 
@@ -528,7 +538,9 @@ def k1_decision(rows: list[dict], pi_rows: list[dict] | None = None,
     non-zero comparison that counts is descriptive. The plants cannot pass vacuously: each
     required one (``required_plants``) must be present and fail on at least one decided
     component with non-zero counted rows; pi is required (``require_pi``, default: whenever
-    an anchored key is in the rows) and its plants must fail too. The share of the
+    an anchored key is in the rows), under the same zero rule: it passes only on a non-zero
+    comparison, and each of its plants must be scored on a non-zero one and fail
+    ('design_rule' beside it, binding nothing). The share of the
     pedal-saturated pedal rows that count is reported (``saturated_counted_share``); such
     rows left unresolved count toward pedal's 30% share like any other. The two reported
     readings ('design_rule', 'design_rule_literal_kink'; None for rows without one-sided
@@ -589,11 +601,17 @@ def k1_decision(rows: list[dict], pi_rows: list[dict] | None = None,
         require_pi = any(r.get("kind") == "anchored" for r in rows)
     good_pi = [r for r in (pi_rows or []) if r["ok"]]
     if good_pi:
-        pi = _pass_rule(np.array([r["err"] for r in good_pi]))
-        pp = {p: _pass_rule(np.array([r["plants"][p] for r in good_pi])) for p in TG.PI_PLANTS}
-        out["pi"] = {**pi, "plants": {p: {**v, "fails": not v["pass"]} for p, v in pp.items()}}
+        pi = _pass_rule([r["err"] for r in good_pi])
+        if not pi["n"]:
+            pi["reason"] = "no non-zero pi comparison"
+        pp = {p: _pass_rule([r["plants"][p] for r in good_pi]) for p in TG.PI_PLANTS}
+        pp = {p: {**v, "fails": bool(v["n"] and not v["pass"])} for p, v in pp.items()}
+        out["pi"] = {**pi, "n_failed_solves": len(pi_rows) - len(good_pi),
+                     "design_rule": _pass_rule([r.get("err_design", r["err"])
+                                                for r in good_pi]),
+                     "plants": pp}
         out["pass"] = bool(out["pass"] and pi["pass"])
-        out["plants_fail"] = bool(out["plants_fail"] and all(not v["pass"] for v in pp.values()))
+        out["plants_fail"] = bool(out["plants_fail"] and all(v["fails"] for v in pp.values()))
     elif require_pi:
         out["pi"] = {"n": 0, "pass": False, "reason": "no converged pi row"}
         out["pass"] = False
