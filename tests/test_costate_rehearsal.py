@@ -101,12 +101,13 @@ NETWORKS = {
 }
 # The reduced T's power floor and K2b exclusions are replaced by the real T's (the smoke run
 # of the pre-tag stages on every key): the post-tag stages then meet the components and
-# phases the real run decides on (n and vx have no decision row at all).
-POWER_FLOOR = {"s": True, "n": True, "xi": True, "vx": False}
+# phases the real run decides on (n and vx have no decision row at all). The floor is the
+# interior one at f_D's k = 8 (the third full-size check, 428f51f): n's share 0.091 < 0.10.
+POWER_FLOOR = {"s": True, "n": False, "xi": True, "vx": False}
 K2B_EXCLUDED = {"approach": ["n", "vx"], "braking": ["s", "n", "xi", "vx"],
                 "corner": ["s", "n", "xi", "vx"], "exit": ["n", "xi", "vx"]}
-# K4's planted recoveries and K5's wiring check fail on so small a T (and failed on the real
-# T in that smoke run, a pre-tag matter): their verdicts are forced to pass so that prereg
+# K4's planted recoveries and K5's wiring check fail on so small a T (on the real T both pass
+# at 428f51f, a pre-tag matter): their verdicts are forced to pass so that prereg
 # binds them, the computed one kept beside it ('pass_computed').
 FORCE_PASS = ("k4", "k5")
 K5_MLP_MAXITER = 25            # K5's MLP ceilings (descriptive) at 25 L-BFGS iterations, not 500:
