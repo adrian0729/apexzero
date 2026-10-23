@@ -26,10 +26,10 @@ the tag): in slice f, fold f's rows carry the fit without fold f, and a training
 g carries the fit without folds f and g (``fold_gradients``, ``FoldNets.net_for``; the far
 geometries of neither f nor the row's own fold for the far-geometry lambda), so no row's
 predictor in any slice comes from a fit that saw its own fold. The nested value fit is the
-same fit (z-scored on its own rows) at fold f's penalty, as every kNN serving fold f uses
-fold f's k; one fit per pair of folds and penalty serves both slices (F(F - 1)/2 = 15 extra
-fits when every fold's penalty agrees, as the ridge fits' do on the smoke run; 20 for G1's
-MLP, whose fold 1 chose another penalty). Before it, slice f pulled every
+same fit (z-scored on its own rows) at fold f's penalty, as the nested kNN fits are f_D's
+own kNN on fewer rows; one fit per pair of folds and penalty serves both slices (F(F - 1)/2
+= 15 extra fits when every fold's penalty agrees, as the ridge fits' do on the smoke run;
+20 for G1's MLP, whose fold 1 chose another penalty). Before it, slice f pulled every
 row back through fold f's fit, so fold f's calibration was fitted on in-sample training-row
 gradients and applied to fold f's out-of-sample ones. On the smoke run's world under G1's
 obs_rms the interior K_P-mean null R2_c (every K_P component scored) moves from 0.2546 to

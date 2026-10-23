@@ -9,9 +9,8 @@ stored keys:
   partition, different across partitions) and the inner folds;
 - the three weighting schemes and the small-geometry flag;
 - the kNN decoy model (against a brute-force mean), cross-fitting that never sees a row's own
-  fold, f_D's k by grouped CV (the smallest for a rough decoy, the largest for a smooth one,
-  fold f's choice blind to fold f's targets, ties to the smaller k), residual shares (with
-  the within-direction convention) and fold stability;
+  fold, f_D at its one fixed k (every fit, fold and column), residual shares (with the
+  within-direction convention; T's and the interior's) and fold stability;
 - the observability rule (tau_s, column residuals, clipped rows, thresholds);
 - on the stored keys: T = 9,967 states, 48 geometries whose keys (mirror partners, phases,
   widths, twins) share a fold, 459 braking keys, the example key's rows, and N = 8,136.
@@ -214,99 +213,65 @@ def test_cross_fit_never_sees_the_rows_own_fold():
     np.testing.assert_array_equal(res.training(2), res.by_fold[2])
 
 
-def _decoy_world(per: int = 40, seed: int = 3):
+def _decoy_world(per: int = 12, seed: int = 3):
     """``_geometries``' 48 geometries with ``per`` rows each at x ~ U(-1, 1), a decoy
-    coordinate every geometry shares; partition 0's outer and inner folds per row; random
-    weights. Two targets: a rough function of x with little noise (the kNN's bias dominates:
-    the smallest k is best) and a smooth one with much noise (its variance dominates: the
-    largest)."""
+    coordinate every geometry shares; partition 0's outer folds per row; random weights; a
+    rough and a smooth noisy target."""
     R, th = _geometries()
     rng = np.random.default_rng(seed)
     geo = np.repeat(np.arange(len(R)), per)
     x = rng.uniform(-1.0, 1.0, len(geo))
-    outer_g = ST.geometry_folds(R, th, 0)
-    inner = np.stack([ST.inner_folds(R, th, outer_g, f, 0)[geo] for f in range(ST.N_FOLDS)])
     Y = np.c_[np.sin(150.0 * x) + 0.02 * rng.standard_normal(len(x)),
               x + rng.standard_normal(len(x))]
-    return x[:, None], Y, outer_g[geo], inner, rng.random(len(x)) + 0.5, rng
+    return x[:, None], Y, ST.geometry_folds(R, th, 0)[geo], rng.random(len(x)) + 0.5
 
 
-def test_decoy_k_is_small_for_a_rough_decoy_and_large_for_a_smooth_one():
-    X, Y, fold, inner, w, _ = _decoy_world()
-    k, sse = ST.knn_k_cv(X, Y, fold, inner, w)
-    assert k.shape == (6, 2) and sse.shape == (6, len(ST.KNN_K_GRID), 2)
-    np.testing.assert_array_equal(k[:, 0], 3)
-    np.testing.assert_array_equal(k[:, 1], 30)
-    # the rule inside cross_fit: the same choice and curve, recorded
-    res = ST.cross_fit(X, Y, fold, w, inner=inner)
-    np.testing.assert_array_equal(res.k, k)
-    np.testing.assert_array_equal(res.cv, sse)
-    rec = res.record()
-    assert rec["grid"] == list(ST.KNN_K_GRID) and rec["k"] == k.tolist()
-    assert np.array(rec["sse"]).shape == sse.shape
-    # every fit serving fold f uses fold f's k, so slice f of each column is the fixed-k
-    # cross-fit's at that k; each row's own-fold residual uses its own fold's k
-    fixed = {kk: ST.cross_fit(X, Y, fold, w, k=kk) for kk in ST.KNN_K_GRID}
-    for f in range(6):
-        for j in range(2):
-            np.testing.assert_array_equal(res.by_fold[f, :, j],
-                                          fixed[int(k[f, j])].by_fold[f, :, j])
-            np.testing.assert_array_equal(res.oof[fold == f, j],
-                                          fixed[int(k[f, j])].oof[fold == f, j])
-    assert fixed[15].k.tolist() == [[15, 15]] * 6 and fixed[15].cv is None
-    assert fixed[15].record()["sse"] is None
+def test_decoy_k_is_one_fixed_k():
+    """f_D is the ``KNN_K``-neighbour mean in every fit, fold and column (v2.3, the second
+    decision): each slice's held-out rows and cross-fitted training rows are the kNN at
+    ``KNN_K`` fitted on that slice's own training rows, by default and when given; the
+    residuals carry the k; anything but one positive integer is refused (no per-fold or
+    per-column k)."""
+    X, Y, fold, w = _decoy_world()
+    res = ST.cross_fit(X, Y, fold, w)
+    assert res.k == ST.KNN_K and isinstance(res.k, int)
+    np.testing.assert_array_equal(res.by_fold, ST.cross_fit(X, Y, fold, w, k=ST.KNN_K).by_fold)
+    for f in (0, 4):
+        test, train = fold == f, fold != f
+        want = Y[test] - ST.knn_fit(X[train], Y[train], w[train], ST.KNN_K).predict(X[test])
+        np.testing.assert_array_equal(res.by_fold[f, test], want)
+        g = (f + 1) % 6
+        fit, pred = train & (fold != g), fold == g
+        want = Y[pred] - ST.knn_fit(X[fit], Y[fit], w[fit], ST.KNN_K).predict(X[pred])
+        np.testing.assert_array_equal(res.by_fold[f, pred], want)
+    other = 3 if ST.KNN_K != 3 else 5
+    r3 = ST.cross_fit(X, Y, fold, w, k=other)
+    assert r3.k == other and not np.allclose(r3.by_fold, res.by_fold)
+    for bad in (np.full((6, 2), 5), np.array([5, 5]), 0, 2.5, True, None):
+        with pytest.raises((ValueError, TypeError)):
+            ST.cross_fit(X, Y, fold, w, k=bad)
 
 
-def test_decoy_k_never_sees_the_held_out_fold():
-    """Fold f's targets replaced by large noise: fold f's curve and k are bit for bit the
-    same, and so are slice f's training residuals and its held-out rows' predictions; every
-    other fold's curve moves (fold f's rows are in its training set)."""
-    X, Y, fold, inner, w, rng = _decoy_world()
-    k0, sse0 = ST.knn_k_cv(X, Y, fold, inner, w)
-    r0 = ST.cross_fit(X, Y, fold, w, inner=inner)
-    moved = False
-    for f in (0, 3, 5):
-        Y2 = Y.copy()
-        Y2[fold == f] = 100.0 * rng.standard_normal(((fold == f).sum(), 2))
-        k2, sse2 = ST.knn_k_cv(X, Y2, fold, inner, w)
-        np.testing.assert_array_equal(k2[f], k0[f])
-        np.testing.assert_array_equal(sse2[f], sse0[f])
-        assert all(not np.allclose(sse2[g], sse0[g]) for g in range(6) if g != f)
-        moved |= bool(np.any(k2 != k0))
-        r2 = ST.cross_fit(X, Y2, fold, w, inner=inner)
-        tr = fold != f
-        np.testing.assert_array_equal(r2.k[f], r0.k[f])
-        np.testing.assert_array_equal(r2.by_fold[f][tr], r0.by_fold[f][tr])
-        np.testing.assert_allclose((Y2 - r2.by_fold[f])[~tr], (Y - r0.by_fold[f])[~tr],
-                                   rtol=0, atol=1e-9)
-    assert moved                                   # the perturbation does move other folds
-
-
-def test_decoy_k_arguments():
-    X, Y, fold, inner, w, _ = _decoy_world(per=12)
-    with pytest.raises(ValueError, match="inner folds"):
-        ST.cross_fit(X, Y, fold, w)                # the rule needs the inner folds
-    with pytest.raises(ValueError):
-        ST.cross_fit(X, Y, fold, w, k=np.full((6, 3), 5))
-    with pytest.raises(ValueError):
-        ST.knn_k_cv(X, Y, fold, inner[:, :-1], w)
-    bad = inner.copy()
-    bad[0, fold == 0] = 1                          # held-out rows given an inner fold
-    with pytest.raises(ValueError, match="training rows"):
-        ST.knn_k_cv(X, Y, fold, bad, w)
-    with pytest.raises(ValueError, match="increasing"):
-        ST.knn_k_cv(X, Y, fold, inner, w, grid=(5, 3))
-    # an exact tie (a zero target: every SSE is 0) goes to the smaller k
-    k, sse = ST.knn_k_cv(X, np.c_[np.zeros(len(X)), Y[:, 1]], fold, inner, w)
-    assert np.all(sse[:, :, 0] == 0.0) and np.all(k[:, 0] == ST.KNN_K_GRID[0])
-    # a given [F, m] choice is used fold by fold
-    kk = np.array([[3, 30], [30, 3], [5, 8], [8, 5], [15, 15], [3, 3]])
-    r = ST.cross_fit(X, Y, fold, w, k=kk)
-    np.testing.assert_array_equal(r.k, kk)
-    for f in range(6):
-        for j in range(2):
-            np.testing.assert_array_equal(
-                r.by_fold[f, :, j], ST.cross_fit(X, Y, fold, w, k=int(kk[f, j])).by_fold[f, :, j])
+def test_decoy_shares_on_t_and_the_interior():
+    """``decoy_shares``: T's shares with T's key weights and the interior's with the
+    interior's own key weights (the power floor's stratum), the mirror-odd components about
+    their within-direction means."""
+    rng = np.random.default_rng(4)
+    n = 600
+    key = np.repeat([f"k{i}" for i in range(30)], 20)
+    tab = {"key_id": key, "direction": np.where(np.arange(n) % 40 < 20, 1, -1),
+           "interior": rng.random(n) < 0.6}
+    lam = rng.normal(size=(n, 4)) + np.c_[np.zeros(n), tab["direction"], tab["direction"],
+                                          np.zeros(n)]
+    oof = 0.5 * rng.normal(size=(n, 4))
+    share, share_int = ST.decoy_shares(tab, lam, oof)
+    w = ST.weights(tab, "key")
+    np.testing.assert_allclose(share, ST.residual_share(oof, lam, w, tab["direction"], TG.K_P))
+    i = tab["interior"]
+    wi = ST.weights({c: v[i] for c, v in tab.items()}, "key")
+    np.testing.assert_allclose(share_int, ST.residual_share(oof[i], lam[i], wi,
+                                                            tab["direction"][i], TG.K_P))
+    assert not np.allclose(share, share_int)
 
 
 def test_residual_share_and_stability():

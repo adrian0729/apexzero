@@ -1423,9 +1423,9 @@ def probes_of(acts: dict, world, frozen: dict, rows_c2, rows_sw, valid=None,
     """C2 and C2-sw of one network from its activations (``costate.analysis``), with
     ``valid`` [n, 4] each K_P component's decision rows (``states.decision_mask``), the
     pre-registered variants (``variant_specs``; the decoy residuals re-cross-fitted on each
-    partition's folds with f_D's frozen k, ``prereg.decoy_k``, or the rule where the frozen
-    values lack the partition, recorded under 'decoy_k'; weights renormalised on each
-    variant's stratum), and C2's and C2-sw's descriptive strata tables (``by_stratum``:
+    partition's folds at f_D's frozen k, ``prereg.decoy_k``, or ``states.KNN_K`` where the
+    frozen values lack it, recorded under 'decoy_k'; weights renormalised on each variant's
+    stratum), and C2's and C2-sw's descriptive strata tables (``by_stratum``:
     ``analysis.STRATA``, or ``strata`` {'C2': names, 'C2-sw': names}; partition 0, key
     weights renormalised on each stratum; a stratum whose
     rows a variant already scored reuses that record; ``kappa_clipped`` [n] the network's own
@@ -1449,18 +1449,17 @@ def probes_of(acts: dict, world, frozen: dict, rows_c2, rows_sw, valid=None,
     sig = ST.winsorise(np.asarray(tab["sigma_pedal"], float),
                        frozen["winsor_bounds"]["sigma_pedal"])
     specs = variant_specs(tab, frozen, variants)
-    out: dict = {"sensitivity": {}}
+    # f_D's k: the record's frozen one ('decoy_k'), else the code's (states.KNN_K)
+    k_d = PR.decoy_k(frozen)
+    out: dict = {"sensitivity": {}, "decoy_k": {
+        "k": ST.KNN_K if k_d is None else k_d, "source": "constant" if k_d is None else "frozen"}}
     res_by_p: dict = {}
     fo_by_p: dict = {}
 
     def residuals(p: int, fo):
-        # f_D's k: the record's frozen choice for partition p ('decoy_k'), else the rule
         if p not in res_by_p:
-            k = PR.decoy_k(frozen, p)
             res_by_p[p] = ST.cross_fit(ST.decoy_d1(tab), lam, fo.outer, ST.weights(tab, "key"),
-                                       k=k, inner=fo.inner)
-            out.setdefault("decoy_k", {})[str(p)] = {
-                "k": res_by_p[p].k.tolist(), "source": "rule" if k is None else "frozen"}
+                                       k=out["decoy_k"]["k"])
         return res_by_p[p]
 
     def folds(p: int):

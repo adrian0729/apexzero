@@ -146,18 +146,32 @@ and planted networks only, before the tag; the K4 review's verified write-up):
   ``K4_PR6_SEEDS`` (3 draws); 32 units hold F (tanh of random mixes of F, ``hold_units``),
   appended to the host's h3. PR-6b's F is smooth (``pr6b_f``: a ridge of lambda on 256
   biased tanh features of the PR-6 decoys); PR-6c's matches the decoy kNN (``pr6c_f``: the
-  leave-one-geometry-out k = 15 kNN of lambda on D1). y is residualised by the pipeline's
-  own cross-fit (``states.cross_fit``, f_D's k chosen on y by the rule). The statistic is
+  leave-one-geometry-out k = 15 kNN of lambda on D1, ``K4_PR6C_K``, the world's own k
+  whatever f_D's). y is residualised by the pipeline's own cross-fit (``states.cross_fit``
+  at f_D's one k, ``states.KNN_K``). The statistic is
   C2's primary one (``c2_primary``: C2's decision stratum, each component on its decision
   rows, the frozen power floor's components, C2's 5 random-init controls). Pass per world:
   on every seed Delta2 <= ``K4_ZERO_TOL``, and on every seed Delta2 > ``K4_ZERO_TOL`` with the
   residualisation turned off; for PR-6b also the units' probe-alone R2 at least the kNN's on
   every seed (mean over K_P on T). T-wide values (every row and component, C2's controls)
   and per-component gains are descriptive, as are two planted faults on the first seed
-  (an over-smoothed kNN, k = ``K4_OVERSMOOTH_K``; D1 without s - s_apex).
+  (an over-smoothed kNN, k = ``K4_OVERSMOOTH_K``; D1 without s - s_apex, at f_D's k).
 - ``band_notes``: PR-6's over-fitting cost and PR-6c's leak bound (its largest Delta2 over
   the seeds), which the analysis prints beside a C2 or C2-sw decision near the band
   (``analysis.band_notes``; copied into the record from the bound gates/k4.json).
+
+**f_D's k** (v2.3, the second decision before the tag; ``states`` module docstring for the
+grounds): one k for every fit, fold, partition and K_P component, chosen on synthetic known
+truth only, on validation seeds disjoint from K4's gate seeds. ``decoy_k_leaks`` builds
+PR-6b's and PR-6c's worlds exactly as K4 does (``pr6_world``: the same F, units, C2's
+decision rows, controls and statistic) on each of ``DECOY_K_SEEDS`` (6 noise draws,
+``decoy_k_rng``: stream ``costate_decoy_k``, sub-stream v, shared by both worlds) with y
+residualised at the candidate k and C2's power floor recomputed at k (``at_decoy_k``,
+``prereg.frozen_values``' rule); ``decoy_k_choice`` takes among ``DECOY_K_CANDIDATES`` = (3,
+5, 8, 15) the largest k whose every validation seed of both worlds gives C2's primary Delta2
+<= ``K4_ZERO_TOL`` (none: the smallest, a blocker). The full-size run's Delta2 per seed is
+``DECOY_K_VALIDATION`` and its choice ``states.KNN_K`` = 8; the choice read the validation
+seeds alone, and K4's gate seeds are left to K4's own run at the chosen k.
 
 **K5** (``k5``): the permuted-target wiring check (``probes.wiring_null``: while each outer
 fold is held out the training targets are permuted state by state across all training rows,
@@ -171,7 +185,8 @@ Seeds: K4's planted noise uses ``K4_STREAM`` (310, ``costate.STREAMS``' 'costate
 ``k4_rng`` sub-streams: 0 the bootstrap counts, (1, i) and (2, i) PR-1a, 3 PR-1b, 4 and 5
 PR-3, 6 PR-7, 7 PR-5, 8 PR-6's units, 9 and 10 PR-8, 11 PR-9, 12 K5's counts, 13 PR-6b's
 features, (14, seed) PR-6b and PR-6c's noise, (15, j) the units holding F, j = 0 PR-6b, 1
-PR-6c) and K2b's nothing random.
+PR-6c); the validation seeds of f_D's k draw on ``costate_decoy_k`` (311, sub-stream v);
+K2b draws nothing random.
 """
 
 from __future__ import annotations
@@ -183,7 +198,7 @@ from collections.abc import Callable, Sequence
 import numpy as np
 
 from apexzero.costate import analysis as AN
-from apexzero.costate import keys_root, stimuli_dir
+from apexzero.costate import keys_root, stimuli_dir, stream_rng
 from apexzero.costate import probes as PB
 from apexzero.costate import states as ST
 from apexzero.costate import targets as TG
@@ -226,6 +241,22 @@ K4_PR6B_ALPHA = 1e-2          # PR-6b: that ridge's penalty (weights normalised 
 K4_HOLD_UNITS = 32            # PR-6b, PR-6c: the units holding F
 K4_HOLD_SD = 0.5              # their mixes and biases ~ N(0, 0.5^2)
 K4_OVERSMOOTH_K = 300         # PR-6b, PR-6c's planted fault: an over-smoothed decoy kNN
+K4_PR6C_K = 15                # PR-6c's F: the k of its leave-one-geometry-out kNN (the world)
+DECOY_K_CANDIDATES = (3, 5, 8, 15)   # f_D's k: the candidates (module docstring 'f_D's k')
+DECOY_K_SEEDS = (0, 1, 2, 3, 4, 5)   # its validation seeds (stream costate_decoy_k)
+# the choice's record: C2's primary Delta2 per candidate k on the validation seeds (PR-6b
+# 'smooth', PR-6c 'knn'; decoy_k_leaks on the full-size T, G1's obs_rms, random-init actors,
+# C2's decision rows and the power floor at each k; rounded to 1e-6);
+# states.KNN_K = decoy_k_choice(DECOY_K_VALIDATION)['k']
+DECOY_K_VALIDATION = {
+    3: {"smooth": (0.004384, -0.002206, 0.006054, 0.003679, 0.002618, 0.000524),
+        "knn": (0.008771, -0.002498, 0.002644, 0.013044, 0.004397, 0.000703)},
+    5: {"smooth": (0.006590, 0.003167, 0.010495, 0.002655, -0.003946, 0.000123),
+        "knn": (0.009084, -0.000433, -0.001259, 0.016210, 0.010921, 0.014187)},
+    8: {"smooth": (0.004369, -0.000184, 0.005274, 0.003672, -0.001049, -0.005061),
+        "knn": (0.007570, 0.000744, -0.001750, 0.008204, 0.007878, 0.009593)},
+    15: {"smooth": (0.005319, 0.011415, 0.008983, -0.003051, 0.003993, 0.002600),
+         "knn": (-0.010864, -0.016044, -0.003177, 0.008887, -0.016700, -0.024079)}}
 SD_KP_PHASES = ST.PHASES
 
 
@@ -1217,7 +1248,7 @@ def probe_world(tab: io.Table, z: np.ndarray, cfg,
     lam = np.stack([np.asarray(tab[f"lam_{c}"], float) for c in K_P], 1)
     lam = np.stack([ST.winsorise(lam[:, k], ST.winsor_bounds(lam[:, k], w))
                     for k in range(lam.shape[1])], 1)
-    res = ST.cross_fit(ST.decoy_d1(tab), lam, fo.outer, w, inner=fo.inner)
+    res = ST.cross_fit(ST.decoy_d1(tab), lam, fo.outer, w)
     o = np.clip(z, -10.0, 10.0)
     h3, m = [], []
     for s in seeds:
@@ -1340,6 +1371,7 @@ def k4(pw: ProbeWorld, counts: np.ndarray | None = None, which: Sequence[str] | 
     if "PR-9" in which:
         out["PR-9"] = pr9(pw, counts)
     out["pass"] = bool(all(v.get("pass", False) for k, v in out.items() if k.startswith("PR")))
+    out["decoy_k"] = ST.KNN_K                    # f_D's k in lambda_res and PR-6b/6c's y
     return out
 
 
@@ -1543,13 +1575,13 @@ def pr6b_f(pw: ProbeWorld) -> np.ndarray:
 
 def pr6c_f(pw: ProbeWorld) -> np.ndarray:
     """[n, 4] PR-6c's decoy function, matching the decoy kNN (Section 7's 'matches the decoy
-    kNN's R2'): each geometry's rows predicted by the ``states.KNN_K`` = 15 kNN of lambda on
-    D1 fitted on every other geometry."""
+    kNN's R2'): each geometry's rows predicted by the ``K4_PR6C_K`` = 15 kNN of lambda on D1
+    fitted on every other geometry (the world's own k, whatever f_D's)."""
     D1, geo = ST.decoy_d1(pw.tab), ST.geometry_index(pw.tab)
     F = np.full(pw.lam.shape, np.nan)
     for g in np.unique(geo):
         s = geo == g
-        F[s] = ST.knn_fit(D1[~s], pw.lam[~s], pw.w[~s], ST.KNN_K).predict(D1[s])
+        F[s] = ST.knn_fit(D1[~s], pw.lam[~s], pw.w[~s], K4_PR6C_K).predict(D1[s])
     return F
 
 
@@ -1588,18 +1620,22 @@ def _stat(rec: dict) -> dict:
 
 
 def pr6_world(pw: ProbeWorld, kind: str, seeds: Sequence[int] = K4_PR6_SEEDS,
-              t_wide: bool = True, faults: bool = True) -> dict:
+              t_wide: bool = True, faults: bool = True, k: int | None = None,
+              noise: Callable[[int], np.random.Generator] | None = None) -> dict:
     """PR-6b (``kind`` 'smooth', ``pr6b_f``) or PR-6c ('knn', ``pr6c_f``): the known-truth
-    world of the module docstring on each noise seed (sub-stream (14, seed)), the units
+    world of the module docstring on each noise seed (``noise(seed)``; K4's own, the default,
+    is sub-stream (14, seed); ``decoy_k_rng`` the validation seeds of f_D's k), the units
     holding F on sub-stream (15, j). Per seed: C2's primary Delta2 (``c2_primary``) on y
-    residualised by ``states.cross_fit`` (f_D's k by the rule) and on y itself (the
-    residualisation turned off), the units' probe-alone R2 and the kNN's on T; with
-    ``t_wide`` the T-wide statistic, with ``faults`` (first seed) the over-smoothed kNN and D1
-    without s - s_apex. Pass: every seed's Delta2 <= ``K4_ZERO_TOL`` and every seed's
-    unresidualised Delta2 > it, and for PR-6b every seed's probe-alone R2 >= the kNN's (means
-    over K_P). 'leak_bound' is the largest Delta2 over the seeds, 'gain_max' each component's
-    largest gain."""
+    residualised by ``states.cross_fit`` at f_D's k (``k``, default ``states.KNN_K``) and on
+    y itself (the residualisation turned off), the units' probe-alone R2 and the kNN's on T;
+    with ``t_wide`` the T-wide statistic, with ``faults`` (first seed) the over-smoothed kNN
+    and D1 without s - s_apex (at f_D's k). Pass: every seed's Delta2 <= ``K4_ZERO_TOL`` and
+    every seed's unresidualised Delta2 > it, and for PR-6b every seed's probe-alone R2 >= the
+    kNN's (means over K_P). 'leak_bound' is the largest Delta2 over the seeds, 'gain_max'
+    each component's largest gain."""
     j = {"smooth": 0, "knn": 1}[kind]
+    k = ST.KNN_K if k is None else int(k)
+    noise = (lambda s: k4_rng(14, s)) if noise is None else noise
     w, fo = pw.w, pw.fo
     F = pr6b_f(pw) if kind == "smooth" else pr6c_f(pw)
     U = hold_units(F, w, k4_rng(15, j))
@@ -1610,14 +1646,14 @@ def pr6_world(pw: ProbeWorld, kind: str, seeds: Sequence[int] = K4_PR6_SEEDS,
                  "n_controls": len(pw.h3[1:1 + PB.N_RANDOM_ACTORS]),
                  "rows": int(np.sum(pw.rows_c2)) if pw.rows_c2 is not None else len(w),
                  "passing": None if pw.power_floor is None else dict(pw.power_floor),
-                 "seeds": []}
+                 "k": k, "seeds": []}
     for s in seeds:
-        y = Fs + K4_PR6_NOISE * _ar1(pw.tab, w, F.shape[1], k4_rng(14, s))
-        res = ST.cross_fit(D1, y, fo.outer, w, inner=fo.inner)
+        y = Fs + K4_PR6_NOISE * _ar1(pw.tab, w, F.shape[1], noise(s))
+        res = ST.cross_fit(D1, y, fo.outer, w, k=k)
         on, off = c2_primary(pw, H, res.by_fold), c2_primary(pw, H, y)
         alone = PB.probe_r2(PB.ridge_cv(None, y, fo, w, U, pw.names), w, pw.direction)
         knn = PB.r2(y, y - res.oof, w, pw.direction, pw.names)
-        rec = {"seed": int(s), "k": res.k.tolist(), **_stat(on),
+        rec = {"seed": int(s), "k": res.k, **_stat(on),
                "scored_rows": on.get("scored_rows"), "off": _stat(off),
                "alone_r2": alone.tolist(), "knn_r2": knn.tolist(),
                "alone_mean": float(np.mean(alone)), "knn_mean": float(np.mean(knn))}
@@ -1627,8 +1663,7 @@ def pr6_world(pw: ProbeWorld, kind: str, seeds: Sequence[int] = K4_PR6_SEEDS,
         out["seeds"].append(rec)
         if faults and s == seeds[0]:
             bad = {"knn_k300": ST.cross_fit(D1, y, fo.outer, w, k=K4_OVERSMOOTH_K),
-                   "d1_without_ds_apex": ST.cross_fit(D1[:, 1:], y, fo.outer, w,
-                                                      inner=fo.inner)}
+                   "d1_without_ds_apex": ST.cross_fit(D1[:, 1:], y, fo.outer, w, k=k)}
             out["faults"] = {}
             for lab, rf in bad.items():
                 st = _stat(c2_primary(pw, H, rf.by_fold))
@@ -1664,6 +1699,63 @@ def band_notes(rec: dict) -> dict:
                           "seeds": len(p6c.get("seeds") or []),
                           "scope": "K4 PR-6c: C2's primary statistic, the largest over "
                                    "its noise seeds"}}
+
+
+# ------------------------------------------------------------------------- f_D's k
+
+
+def decoy_k_rng(v: int) -> np.random.Generator:
+    """Validation seed ``v``'s noise for the choice of f_D's k (module docstring 'f_D's k'):
+    stream ``costate_decoy_k``, sub-stream v, one draw shared by PR-6b and PR-6c as K4's
+    gate seeds share theirs (``costate_k4``, sub-stream (14, seed))."""
+    return stream_rng("costate_decoy_k", v)
+
+
+def at_decoy_k(pw: ProbeWorld, k: int) -> tuple[ProbeWorld, dict]:
+    """``pw`` with lambda_res cross-fitted at f_D's k = ``k`` and C2's power floor recomputed
+    there (``prereg.frozen_values``' rule: partition 0's own-fold residuals, the interior's
+    shares, ``states.decoy_shares``), with the shares and both floors (input side only)."""
+    res = ST.cross_fit(ST.decoy_d1(pw.tab), pw.lam, pw.fo.outer, pw.w, k=k)
+    share, share_int = ST.decoy_shares(pw.tab, pw.lam, res.oof, pw.w)
+    floor = ST.power_floor(share_int)
+    info = {"k": int(k), "residual_share": dict(zip(K_P, share.tolist(), strict=True)),
+            "residual_share_interior": dict(zip(K_P, share_int.tolist(), strict=True)),
+            "power_floor": floor, "power_floor_T": ST.power_floor(share)}
+    return dataclasses.replace(pw, lam_res=res.by_fold, power_floor=floor), info
+
+
+def decoy_k_leaks(pw: ProbeWorld, k: int, seeds: Sequence[int] = DECOY_K_SEEDS,
+                  faults: bool = False) -> dict:
+    """PR-6b's and PR-6c's records on the validation seeds (``decoy_k_rng``) with f_D at
+    ``k``, on ``pw`` at k (``at_decoy_k``): per seed C2's primary Delta2 exactly as K4
+    computes it on its gate seeds (``pr6_world``), with ``faults`` the planted faults on
+    every seed (each seed its own ``pr6_world`` call). 'delta2' {kind: [per seed]} is what
+    ``decoy_k_choice`` reads; the rest is descriptive."""
+    pk, info = at_decoy_k(pw, k)
+    out: dict = {"k": int(k), "real": info, "seeds": [int(v) for v in seeds], "delta2": {}}
+    for kind in ("smooth", "knn"):
+        recs = [pr6_world(pk, kind, (v,), t_wide=False, faults=faults, k=k, noise=decoy_k_rng)
+                for v in seeds]
+        out[kind] = {"seeds": [r["seeds"][0] for r in recs],
+                     "faults": [r.get("faults") for r in recs] if faults else None}
+        out["delta2"][kind] = [r["seeds"][0]["delta2"] for r in recs]
+    return out
+
+
+def decoy_k_choice(delta2: dict, candidates: Sequence[int] = DECOY_K_CANDIDATES,
+                   tol: float = K4_ZERO_TOL) -> dict:
+    """f_D's k by the rule (module docstring 'f_D's k'): among ``candidates`` the largest k
+    for which every validation seed of PR-6b ('smooth') and PR-6c ('knn') gives C2's primary
+    Delta2 <= ``tol`` (``delta2`` {k: {kind: [Delta2 per seed]}}; a missing or non-finite
+    Delta2 fails); when none does, the smallest candidate, flagged as a blocker."""
+    ok = {}
+    for k in candidates:
+        rec = delta2.get(k, delta2.get(str(k), {}))
+        vals = [rec.get(kind) or [] for kind in ("smooth", "knn")]
+        ok[int(k)] = all(len(v) > 0 and all(_le(x, tol) for x in v) for v in vals)
+    good = [k for k, v in ok.items() if v]
+    return {"k": max(good) if good else min(ok), "qualifying": good, "blocker": not good,
+            "candidates": [int(k) for k in candidates], "tol": tol}
 
 
 def pr8(pw: ProbeWorld, counts: np.ndarray, snr: float = 4.0) -> dict:

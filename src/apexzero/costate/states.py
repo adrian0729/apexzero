@@ -62,30 +62,29 @@ robustness partitions. ``inner_folds`` deals the training geometries to 5 inner 
 same way on stream ``costate_inner`` (sub-streams: partition, held-out fold).
 
 **Decoys** (``decoy_d1``, ``cross_fit``; Section 4 'Decoys'). D1 = (s - s_apex, vx, log R,
-theta, w, sigma). f_D is the k nearest-neighbour mean (weighted by the metric's weights) on
-D1 standardised by the (weighted) mean and SD of its own training states. For outer fold f
+theta, w, sigma). f_D is the ``KNN_K`` = 8 nearest-neighbour mean (weighted by the
+metric's weights) on D1 standardised by the (weighted) mean and SD of its own training
+states, the same k in every fit, outer fold, partition and K_P component. For outer fold f
 the held-out states get the residual of the model fitted on the other five folds; the
 training states of fold f get cross-fitted residuals (fold g's states from the model fitted
 on the four folds other than f and g), so no state is ever its own neighbour.
 
-f_D's k is chosen per outer fold and target column (``knn_k_cv``; v2.3, before the tag) from
-the frozen grid ``KNN_K_GRID`` = (3, 5, 8, 15, 30), by grouped cross-validation over
-geometries on the target and D1 alone (no network, nothing from C2): for outer fold f, each
-of the frozen inner folds of f's training geometries (``inner_folds``, the ridge's own) is
-predicted by the kNN fitted on f's other inner folds, and the k with the smallest weighted
-out-of-geometry SSE, pooled over the inner folds, wins (an exact tie: the smaller k). Fold f's
-own rows never enter fold f's choice, and every fit that serves fold f (the held-out rows'
-model and the nested models of its training rows) uses fold f's k. ``Residuals.oof``, each
-row's residual from the model that held its own fold out, therefore uses the k of the row's
-own fold (chosen without that fold): the one array the power floor's shares, PR-3's split by
-key and PR-1b read. Why: the design's fixed k = 15 (``KNN_K``) over-smooths lambda_s (on
-T a k = 5 kNN predicts 19-25% of lambda_s's k = 15 residual for held-out geometries; K4's
-PR-6 review). On the smoke run's T (9,887 states, partition 0) the rule gives lambda_s
-k = 3-15 by fold, lambda_n 5, lambda_xi 15-30 and lambda_vx 15. The cross-fitted R2 of
-(s, n, xi, vx) moves on T from (0.720, 0.815, 0.715, 0.944) at k = 15 to (0.724, 0.808,
-0.709, 0.944), and on the interior from (0.711, 0.884, 0.787, 0.926) to (0.709, 0.935,
-0.774, 0.926): lambda_n's interior residual share falls from 0.107 to 0.064, below the
-power floor.
+f_D's k (v2.3, the second decision before the tag; ``gates.decoy_k_choice``). In C2 the
+residualiser serves validity: what leaks into C2 is f_D's bias (E[f_D] differing from the
+decoy function), which a network holding that function can recover; its variance (noise
+borrowed from other geometries) no network can recover, and it only adds unexplainable
+variance to lambda_res, a power cost in the conservative direction. An out-of-geometry SSE
+trades the two, so it is the wrong criterion for choosing k (the nested-CV choice per fold
+and component it replaces took k = 15-30 on K4's smooth known-truth world, which then
+leaked). The rule, fixed before any result: among ``gates.DECOY_K_CANDIDATES`` = (3, 5, 8,
+15) the largest k for which every one of 6 validation seeds (stream ``costate_decoy_k``,
+disjoint from K4's gate seeds) of K4's PR-6b and PR-6c worlds gives C2's primary Delta2 <=
+0.01 with y residualised at k, C2's power floor recomputed at k; none: k = 3, a blocker. On
+the full-size T (9,887 states, G1's obs_rms, random-init actors) only k = 8 qualifies
+(largest leak 0.0053 on PR-6b, 0.0096 on PR-6c; k = 3, 5 and 15 each have a seed above
+0.01; ``gates.DECOY_K_VALIDATION``). At k = 8 the interior residual shares of (s, n, xi, vx)
+are (0.224, 0.091, 0.248, 0.076) (0.289, 0.107, 0.213, 0.070 at the design's k = 15):
+lambda_n is below the power floor, so C2 decides on s and xi.
 
 ``residual_share`` is Var_w(lambda_res) / Var_w(lambda) (about within-direction means for the
 mirror-odd components, as R2_wd); ``knn_stability`` the spread of a state's six
@@ -139,8 +138,7 @@ N_FOLDS = 6
 N_INNER = 5
 N_PARTITIONS = 11            # partition 0 (frozen at the tag) + 10 robustness partitions
 THETA_CLASSES = (90.0, 180.0)   # class 0, 1; every other theta is class 2
-KNN_K = 15                   # Section 4's fixed k: knn_fit's default; the pipeline chooses k
-KNN_K_GRID = (3, 5, 8, 15, 30)   # f_D's k per (outer fold, column) (module docstring)
+KNN_K = 8                    # f_D's one k (module docstring; gates.decoy_k_choice)
 POWER_FLOOR = 0.10           # Section 12 decision 5
 TAU_S = 1e-4                 # Section 3.2: s's column-norm ratio
 LSTSQ_RCOND = 1e-12          # relative singular-value cutoff of the column projections
@@ -509,14 +507,10 @@ class KNN:
     w: np.ndarray             # [n_train]
     k: int
 
-    def predict(self, X: np.ndarray, k: int | None = None) -> np.ndarray:
-        """The k-neighbour mean at X (``k`` defaults to the fit's)."""
-        k = self.k if k is None else int(k)
-        if not 1 <= k <= len(self.y):
-            raise ValueError(f"k = {k} outside 1..{len(self.y)} training states")
+    def predict(self, X: np.ndarray) -> np.ndarray:
         Z = (np.asarray(X, float) - self.mean) / self.sd
-        _, idx = self.tree.query(Z, k=k)
-        idx = idx.reshape(len(Z), k)
+        _, idx = self.tree.query(Z, k=self.k)
+        idx = idx.reshape(len(Z), self.k)
         ww = self.w[idx]
         return np.einsum("nk,nkm->nm", ww, self.y[idx]) / ww.sum(1, keepdims=True)
 
@@ -535,119 +529,48 @@ def knn_fit(X: np.ndarray, Y: np.ndarray, w: np.ndarray | None = None, k: int = 
     return KNN(mean=mean, sd=sd, tree=cKDTree((X - mean) / sd), y=Y, w=w, k=int(k))
 
 
-def _knn_columns(X: np.ndarray, Y: np.ndarray, w: np.ndarray, ks: np.ndarray,
-                 Xq: np.ndarray) -> np.ndarray:
-    """[len(Xq), m] column j of Y predicted at Xq by the ks[j]-neighbour mean (one fit, one
-    query per distinct k)."""
-    ks = np.asarray(ks, int)
-    fit = knn_fit(X, Y, w, int(ks.max()))
-    out = np.empty((len(Xq), Y.shape[1]))
-    for k in np.unique(ks):
-        cols = ks == k
-        out[:, cols] = fit.predict(Xq, int(k))[:, cols]
-    return out
-
-
-def _grid(grid) -> tuple[int, ...]:
-    g = tuple(int(k) for k in grid)
-    if not g or g[0] < 1 or np.any(np.diff(g) <= 0):
-        raise ValueError(f"the k grid must be increasing positive integers, got {grid}")
-    return g
-
-
-def knn_k_cv(X: np.ndarray, Y: np.ndarray, fold: np.ndarray, inner: np.ndarray,
-             w: np.ndarray | None = None,
-             grid: tuple[int, ...] = KNN_K_GRID) -> tuple[np.ndarray, np.ndarray]:
-    """f_D's k per outer fold and column of Y (module docstring): for outer fold f, the
-    weighted SSE of each inner fold's rows (``inner[f]``: -1 on fold f's rows, 0.. on its
-    training rows; ``probes.Folds.inner``) predicted by the kNN fitted on f's other inner
-    folds, pooled over the inner folds, per k of ``grid``; the smallest SSE wins and an
-    exact tie goes to the smaller k. Returns k [F, m] and the curve [F, len(grid), m]."""
-    X, Y = np.asarray(X, float), np.asarray(Y, float)
-    Y = Y[:, None] if Y.ndim == 1 else Y
-    fold, inner = np.asarray(fold, int), np.asarray(inner, int)
-    w = np.ones(len(X)) if w is None else np.asarray(w, float)
-    grid = _grid(grid)
-    F = int(fold.max()) + 1
-    if inner.shape != (F, len(X)):
-        raise ValueError(f"inner folds {inner.shape}, expected {(F, len(X))}")
-    sse = np.zeros((F, len(grid), Y.shape[1]))
-    for f in range(F):
-        train = fold != f
-        if np.any(inner[f][~train] != -1) or np.any(inner[f][train] < 0):
-            raise ValueError(f"the inner folds of outer fold {f} must cover exactly its "
-                             "training rows")
-        for i in np.unique(inner[f][train]):
-            fit, pred = train & (inner[f] != i), inner[f] == i
-            model = knn_fit(X[fit], Y[fit], w[fit], grid[-1])
-            for a, k in enumerate(grid):
-                sse[f, a] += w[pred] @ (Y[pred] - model.predict(X[pred], k)) ** 2
-    return np.asarray(grid)[np.argmin(sse, axis=1)], sse
-
-
 @dataclass(frozen=True)
 class Residuals:
     """Cross-fitted decoy residuals lambda_res = lambda - f_D (module docstring), with f_D's
-    k per (outer fold, column) and, when ``knn_k_cv`` chose it, its curve."""
+    k (the same for every fold and column)."""
 
     by_fold: np.ndarray       # [F, n, m]: row i's residual when fold f is held out
     fold: np.ndarray          # [n]
-    k: np.ndarray | None = None      # [F, m]: the k of every fit serving fold f
-    cv: np.ndarray | None = None     # [F, len(grid), m]: knn_k_cv's weighted SSE
-    grid: tuple[int, ...] | None = None
+    k: int = KNN_K
 
     @property
     def oof(self) -> np.ndarray:
-        """[n, m] each row's residual from the model that held its own fold out, with that
-        fold's k (chosen without the row's fold)."""
+        """[n, m] each row's residual from the model that held its own fold out."""
         return self.by_fold[self.fold, np.arange(len(self.fold))]
 
     def training(self, f: int) -> np.ndarray:
         """[n, m] the residuals used when fold f is held out (held-out rows included)."""
         return self.by_fold[f]
 
-    def record(self) -> dict:
-        """f_D's k [F][m] and the CV curve [F][len(grid)][m] (None when k was given)."""
-        return {"grid": None if self.grid is None else list(self.grid),
-                "k": None if self.k is None else np.asarray(self.k).tolist(),
-                "sse": None if self.cv is None else np.asarray(self.cv).tolist()}
-
 
 def cross_fit(X: np.ndarray, Y: np.ndarray, fold: np.ndarray, w: np.ndarray | None = None,
-              k: int | np.ndarray | None = None, inner: np.ndarray | None = None,
-              grid: tuple[int, ...] = KNN_K_GRID) -> Residuals:
-    """lambda_res = Y - f_D cross-fitted (module docstring). ``k``: None (the pipeline's)
-    chooses it per (outer fold, column) by ``knn_k_cv`` on ``inner`` [F, n]
-    (``probes.Folds.inner``); an int fixes it everywhere; an array [F, m] gives it per
-    (fold, column), e.g. the record's frozen choice. Every fit serving fold f uses fold f's
-    k."""
+              k: int = KNN_K) -> Residuals:
+    """lambda_res = Y - f_D cross-fitted (module docstring), f_D the ``k``-neighbour mean
+    (``KNN_K`` in the pipeline) in every fit, fold and column."""
+    if k is None or isinstance(k, bool) or np.ndim(k) or int(k) != k or int(k) < 1:
+        raise ValueError(f"f_D's k must be one positive integer, got {k!r}")
+    k = int(k)
     X, Y = np.asarray(X, float), np.asarray(Y, float)
     Y = Y[:, None] if Y.ndim == 1 else Y
     fold = np.asarray(fold, int)
     w = np.ones(len(X)) if w is None else np.asarray(w, float)
     F = int(fold.max()) + 1
-    cv = None
-    if k is None:
-        if inner is None:
-            raise ValueError("choosing f_D's k needs the inner folds (probes.Folds.inner)")
-        grid = _grid(grid)
-        kk, cv = knn_k_cv(X, Y, fold, inner, w, grid)
-    else:
-        kk = np.asarray(k, int)
-        if kk.ndim and kk.shape != (F, Y.shape[1]):
-            raise ValueError(f"k {kk.shape}, expected an int or {(F, Y.shape[1])}")
-        kk = np.broadcast_to(kk, (F, Y.shape[1])).copy()
     out = np.full((F, *Y.shape), np.nan)
     for f in range(F):
         test, train = fold == f, fold != f
-        out[f, test] = Y[test] - _knn_columns(X[train], Y[train], w[train], kk[f], X[test])
+        out[f, test] = Y[test] - knn_fit(X[train], Y[train], w[train], k).predict(X[test])
         for g in range(F):
             if g == f:
                 continue
             fit = train & (fold != g)
             pred = fold == g
-            out[f, pred] = Y[pred] - _knn_columns(X[fit], Y[fit], w[fit], kk[f], X[pred])
-    return Residuals(by_fold=out, fold=fold, k=kk, cv=cv, grid=None if cv is None else grid)
+            out[f, pred] = Y[pred] - knn_fit(X[fit], Y[fit], w[fit], k).predict(X[pred])
+    return Residuals(by_fold=out, fold=fold, k=k)
 
 
 def residual_share(res: np.ndarray, Y: np.ndarray, w: np.ndarray,
@@ -663,6 +586,20 @@ def residual_share(res: np.ndarray, Y: np.ndarray, w: np.ndarray,
         grp = direction if (direction is not None and nm in MIRROR_ODD) else None
         out[j] = wvar(res[:, j], w, grp) / wvar(Y[:, j], w, grp)
     return out
+
+
+def decoy_shares(tab: io.Table, lam: np.ndarray, oof: np.ndarray,
+                 w: np.ndarray | None = None) -> tuple[np.ndarray, np.ndarray]:
+    """(T's, T's interior's) K_P residual shares (``residual_share``) of the own-fold decoy
+    residuals ``oof`` [n, 4] of ``lam``: T with its key weights ``w`` (default the metric's),
+    the interior, C2's decision stratum and the power floor's, with its own key weights."""
+    lam, oof = np.asarray(lam, float), np.asarray(oof, float)
+    w = weights(tab, "key") if w is None else np.asarray(w, float)
+    d = np.asarray(tab["direction"])
+    inner = np.asarray(tab["interior"], bool)
+    wi = weights({c: np.asarray(v)[inner] for c, v in tab.items()}, "key")
+    return (residual_share(oof, lam, w, d, K_P),
+            residual_share(oof[inner], lam[inner], wi, d[inner], K_P))
 
 
 def knn_stability(r: Residuals, Y: np.ndarray, w: np.ndarray) -> np.ndarray:

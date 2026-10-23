@@ -20,8 +20,11 @@
   by-fold record, PR-6's one-sided rule and gain grid, PR-6b's known truth passing and its
   planted faults failing (the residualisation off or skipped, an over-smoothed kNN, D1
   without s - s_apex), PR-6c's record and rule, C2's primary statistic on C2's decision
-  rows, K4 needing PR-6b and PR-6c, and the rules in the frozen constants; K5's wiring record
-  and its rule in the frozen constants; K6's counts."""
+  rows, K4 needing PR-6b and PR-6c, and the rules in the frozen constants; f_D's k (the
+  largest candidate whose every validation seed passes, the smallest as a blocker; the
+  validation seeds on their own stream; at_decoy_k's residuals and floor; states.KNN_K the
+  rule's choice on the recorded leaks); K5's wiring record and its rule in the frozen
+  constants; K6's counts."""
 
 import dataclasses
 import json
@@ -692,7 +695,7 @@ def _synthetic_world(n_geo=24, keys=4, steps=12, seed=0):
                     tab["direction"] * z[:, 2], z[:, 3] ** 2], 1)
     w = ST.weights(tab, "key")
     fo = PB.folds(tab)
-    res = ST.cross_fit(ST.decoy_d1(tab), lam, fo.outer, w, inner=fo.inner)
+    res = ST.cross_fit(ST.decoy_d1(tab), lam, fo.outer, w)
     h3 = [np.tanh(z @ rng.normal(size=(30, 24)) / 5) for _ in range(3)]
     m = [h @ rng.normal(size=(24, 2)) for h in h3]
     return GT.ProbeWorld(tab, z, fo, w, tab["direction"], lam, res.by_fold, h3, m)
@@ -762,7 +765,7 @@ def _decoy_world(n_geo=48, keys=8, steps=16, seed=0):
                     np.tanh((ds + 60) / 20) * (vx / 80)], 1) + 0.3 * rng.normal(size=(n, 4))
     w = ST.weights(tab, "key")
     fo = PB.folds(tab)
-    res = ST.cross_fit(ST.decoy_d1(tab), lam, fo.outer, w, inner=fo.inner)
+    res = ST.cross_fit(ST.decoy_d1(tab), lam, fo.outer, w)
     h3 = [np.tanh(z @ rng.normal(size=(30, 24)) / 5) for _ in range(6)]
     m = [h @ rng.normal(size=(24, 2)) for h in h3]
     return GT.ProbeWorld(tab, z, fo, w, tab["direction"], lam, res.by_fold, h3, m)
@@ -815,16 +818,15 @@ def test_k4_pr6b_known_truth_passes_and_its_planted_faults_fail(decoy_world, mon
     s = r["seeds"][0]
     assert r["pass"] and r["residualised_ok"] and r["off_detected"] and r["alone_ok"], s
     assert s["delta2"] <= GT.K4_ZERO_TOL < s["off"]["delta2"]
-    assert s["alone_mean"] >= s["knn_mean"] and np.shape(s["k"]) == (6, 4)
+    assert s["alone_mean"] >= s["knn_mean"] and s["k"] == r["k"] == ST.KNN_K
     assert all(f["detected"] for f in r["faults"].values()), r["faults"]
     assert r["leak_bound"] == s["delta2"] and len(r["gain_max"]) == 4
     assert r["n_controls"] == PB.N_RANDOM_ACTORS
 
-    def skipped(X, Y, fold, w=None, k=None, inner=None, grid=ST.KNN_K_GRID):
+    def skipped(X, Y, fold, w=None, k=ST.KNN_K):
         Y = np.asarray(Y, float)
         F = int(np.max(fold)) + 1
-        return ST.Residuals(np.array(np.broadcast_to(Y, (F, *Y.shape))), np.asarray(fold),
-                            np.full((F, Y.shape[1]), 15))
+        return ST.Residuals(np.array(np.broadcast_to(Y, (F, *Y.shape))), np.asarray(fold), k)
 
     monkeypatch.setattr(ST, "cross_fit", skipped)
     bad = GT.pr6_world(pw, "smooth", seeds=(0,), t_wide=False, faults=False)
@@ -897,6 +899,77 @@ def test_k4_pr6_constants_in_the_record():
     assert g["k4_pr6"]["seeds"] == [0, 1, 2] and g["k4_controls"] == 3
     assert "one-sided" in g["k4_pr6_rule"] and "own-fold" in g["k4_pr1b_rule"]
     assert g["band_note_margin"] == AN.BAND_NOTE_MARGIN == 0.02
+
+
+def test_decoy_k_rule():
+    """f_D's k (module docstring 'f_D's k'): the largest candidate whose every validation
+    seed of PR-6b and PR-6c gives C2's primary Delta2 <= K4_ZERO_TOL (a missing, None or NaN
+    Delta2 fails); when none does, the smallest, flagged as a blocker."""
+    ok, bad = [0.004, -0.02, 0.01], [0.004, 0.0101, -0.02]
+    t = {3: {"smooth": ok, "knn": ok}, 5: {"smooth": ok, "knn": ok},
+         8: {"smooth": bad, "knn": ok}, 15: {"smooth": ok, "knn": [0.0, None]}}
+    c = GT.decoy_k_choice(t)
+    assert (c["k"], c["qualifying"], c["blocker"]) == (5, [3, 5], False)
+    assert c["candidates"] == list(GT.DECOY_K_CANDIDATES) == [3, 5, 8, 15]
+    t[8]["smooth"] = ok
+    assert GT.decoy_k_choice(t)["k"] == 8                     # the largest, not the smallest
+    assert GT.decoy_k_choice({**t, 15: {"smooth": ok, "knn": ok}})["k"] == 15
+    assert GT.decoy_k_choice({**t, 8: {"smooth": [np.nan], "knn": ok}})["k"] == 5
+    assert GT.decoy_k_choice({**t, 8: {"smooth": [], "knn": ok}})["k"] == 5
+    assert GT.decoy_k_choice({str(k): v for k, v in t.items()})["k"] == 8   # JSON keys
+    none = GT.decoy_k_choice({k: {"smooth": ok, "knn": bad} for k in GT.DECOY_K_CANDIDATES})
+    assert (none["k"], none["qualifying"], none["blocker"]) == (3, [], True)
+
+
+def test_decoy_k_is_the_rules_choice_on_its_own_validation_seeds(decoy_world, monkeypatch):
+    """states.KNN_K is the rule's choice on the recorded validation leaks; the validation
+    seeds draw on their own stream ('costate_decoy_k'), never K4's gate seeds; at_decoy_k
+    re-cross-fits lambda at k and recomputes C2's power floor there (frozen_values' rule);
+    decoy_k_leaks runs PR-6b's and PR-6c's construction on every validation seed at k."""
+    from apexzero.costate import STREAMS, stream_rng
+    from apexzero.costate import prereg as PR
+    from apexzero.costate.targets import K_P
+
+    assert ST.KNN_K == GT.decoy_k_choice(GT.DECOY_K_VALIDATION)["k"]
+    assert ST.KNN_K in GT.DECOY_K_CANDIDATES and GT.DECOY_K_SEEDS == tuple(range(6))
+    assert all(len(GT.DECOY_K_VALIDATION[k][kind]) == len(GT.DECOY_K_SEEDS)
+               for k in GT.DECOY_K_CANDIDATES for kind in ("smooth", "knn"))
+    c = PR.constants()["states"]
+    assert c["knn_k"] == ST.KNN_K and c["knn_k_candidates"] == list(GT.DECOY_K_CANDIDATES)
+    assert c["knn_k_validation"]["seeds"] == list(GT.DECOY_K_SEEDS)
+    assert c["knn_k_validation"]["stream"] == "costate_decoy_k" and "largest" in c["knn_k_rule"]
+    # the stream is its own, and no validation draw is a gate draw
+    assert list(STREAMS.values()).count(STREAMS["costate_decoy_k"]) == 1
+    gate = [GT.k4_rng(14, s).standard_normal(16) for s in GT.K4_PR6_SEEDS]
+    for v in GT.DECOY_K_SEEDS:
+        a = GT.decoy_k_rng(v).standard_normal(16)
+        np.testing.assert_array_equal(a, stream_rng("costate_decoy_k", v).standard_normal(16))
+        assert not any(np.allclose(a, g) for g in gate)
+    # at_decoy_k: lambda_res and the floor at k (on a world with an interior stratum)
+    pw, _ = decoy_world
+    pw = dataclasses.replace(pw, tab={**pw.tab, "interior": pw.tab["ds_apex"] < 40.0})
+    pk, info = GT.at_decoy_k(pw, 5)
+    res = ST.cross_fit(ST.decoy_d1(pw.tab), pw.lam, pw.fo.outer, pw.w, k=5)
+    np.testing.assert_array_equal(pk.lam_res, res.by_fold)
+    share, share_int = ST.decoy_shares(pw.tab, pw.lam, res.oof, pw.w)
+    assert info["residual_share_interior"] == dict(zip(K_P, share_int.tolist(), strict=True))
+    assert pk.power_floor == info["power_floor"] == ST.power_floor(share_int)
+    assert info["power_floor_T"] == ST.power_floor(share) and info["k"] == 5
+    # decoy_k_leaks: pr6_world on each validation seed, at k, on the validation stream
+    calls = []
+
+    def world(pw_, kind, seeds, t_wide=True, faults=True, k=None, noise=None):
+        calls.append((kind, tuple(seeds), t_wide, faults, k, noise, pw_.power_floor))
+        return {"seeds": [{"seed": seeds[0], "delta2": 0.001 * seeds[0]}], "faults": {}}
+    monkeypatch.setattr(GT, "pr6_world", world)
+    out = GT.decoy_k_leaks(pw, 8, faults=True)
+    assert [c_[:5] for c_ in calls] == [(kind, (v,), False, True, 8)
+                                        for kind in ("smooth", "knn") for v in GT.DECOY_K_SEEDS]
+    assert all(c_[5] is GT.decoy_k_rng for c_ in calls)
+    assert all(c_[6] == out["real"]["power_floor"] for c_ in calls)
+    assert out["delta2"] == {kind: [0.001 * v for v in GT.DECOY_K_SEEDS]
+                             for kind in ("smooth", "knn")}
+    assert out["k"] == 8 and len(out["smooth"]["faults"]) == len(GT.DECOY_K_SEEDS)
 
 
 def test_k5_wiring_record_and_its_rule_in_the_frozen_constants(big_world):

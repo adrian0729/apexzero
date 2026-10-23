@@ -114,7 +114,7 @@ def world(cfg):
     tab, z, eps, lam = _world()
     w = ST.weights(tab)
     fo = P.folds(tab)
-    res = ST.cross_fit(ST.decoy_d1(tab), lam, fo.outer, w, inner=fo.inner)
+    res = ST.cross_fit(ST.decoy_d1(tab), lam, fo.outer, w)
     trained = P.hidden(P.random_actor(cfg, 10), z)     # the network under test (random-init)
     rand = [P.hidden(P.random_actor(cfg, s), z)["h3"] for s in range(P.N_RANDOM_ACTORS)]
     return dict(tab=tab, z=z, eps=eps, lam=lam, w=w, fo=fo, res=res, h=trained, rand=rand,

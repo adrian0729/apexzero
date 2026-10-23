@@ -12,11 +12,11 @@ fields/prereg.py:1-60, simplified where idea 2 needs less):
   finals per agent (``states.n_refs``) with theirs, and T's (key id, t) list after K2's cut
   with its sha256 (``t_hash``); D is T at t = 0;
 - **the frozen values** computed before the tag (``frozen_values``): the winsorisation bounds
-  of every target column on T, f_D's k per partition, outer fold and K_P component with its
-  cross-validation curve ('decoy_k'; ``states.knn_k_cv``; the post-tag C2 reads it,
-  ``decoy_k``), the K_P residual shares and the power-floor verdicts, partition 0's fold of
-  each geometry and the sha256 of the 10 robustness partitions, t_H, the kappa
-  sensitivity set (the geometries with R <= ``KAPPA_SET_R``), the interior share by phase;
+  of every target column on T, f_D's one k (``states.KNN_K``, the same for every partition,
+  outer fold and K_P component; 'decoy_k', which the post-tag C2 reads, ``decoy_k``), the
+  K_P residual shares and the power-floor verdicts, partition 0's fold of each geometry and
+  the sha256 of the 10 robustness partitions, t_H, the kappa sensitivity set (the
+  geometries with R <= ``KAPPA_SET_R``), the interior share by phase;
 - **the constants** the gates, nulls and decisions use (``constants``: a copy for the reader;
   the code hash binds them): tolerances, thresholds (interior k, clearance and slip margins,
   tau_s, the pedal-saturated tolerance), the penalty grid, Huber's constant, the bands, the
@@ -202,17 +202,22 @@ def constants() -> dict:
                    "interior_k": ST.INTERIOR_K, "interior_k_descriptive": ST.INTERIOR_K_DESCRIPTIVE,
                    "clearance_min": ST.CLEARANCE_MIN, "slip_margin_min": ST.SLIP_MARGIN_MIN,
                    "folds": ST.N_FOLDS, "inner": ST.N_INNER, "partitions": ST.N_PARTITIONS,
-                   "knn_k_grid": list(ST.KNN_K_GRID),
-                   "knn_k_rule": "f_D's k per (partition, outer fold, K_P component), from "
-                                 "knn_k_grid by grouped CV over geometries on the target and "
-                                 "D1 alone: for outer fold f, each inner fold of f's training "
-                                 "geometries (the frozen inner folds) predicted by the kNN "
-                                 "fitted on f's other inner folds; the smallest weighted SSE "
-                                 "pooled over the inner folds wins, an exact tie the smaller "
-                                 "k; every f_D fit serving fold f (its held-out rows and the "
-                                 "nested fits of its training rows) uses fold f's k, so each "
-                                 "row's own-fold residual uses its own fold's k; the choice "
-                                 "is frozen in frozen['decoy_k'] and the post-tag C2 reads it",
+                   "knn_k": ST.KNN_K, "knn_k_candidates": list(GT.DECOY_K_CANDIDATES),
+                   "knn_k_rule": "f_D's one k (knn_k) for every fit, partition, outer fold "
+                                 "and K_P component, chosen before the tag on synthetic known "
+                                 "truth only (gates.decoy_k_choice): among knn_k_candidates "
+                                 "the largest k for which every validation seed "
+                                 "(knn_k_validation) of K4's PR-6b and PR-6c worlds gives "
+                                 "C2's primary Delta2 <= gates.k4[2], y residualised at k and "
+                                 "C2's power floor recomputed at k; none: the smallest, a "
+                                 "blocker. Grounds: what leaks into C2 is f_D's bias, which a "
+                                 "network holding the decoy function recovers; its variance "
+                                 "only costs power, so an out-of-geometry SSE, which trades "
+                                 "the two, does not choose k",
+                   "knn_k_validation": {
+                       "seeds": list(GT.DECOY_K_SEEDS), "stream": "costate_decoy_k",
+                       "delta2": {str(k): {kind: list(v) for kind, v in d.items()}
+                                  for k, d in GT.DECOY_K_VALIDATION.items()}},
                    "power_floor": ST.POWER_FLOOR, "tau_s": ST.TAU_S,
                    "winsor": list(ST.WINSOR), "small_geometry": ST.SMALL_GEOMETRY_KEYS,
                    "sw_stratum": ST.SW_STRATUM},
@@ -334,18 +339,19 @@ def constants() -> dict:
                              "noise": GT.K4_PR6_NOISE, "features": GT.K4_PR6B_FEATURES,
                              "alpha": GT.K4_PR6B_ALPHA,
                              "hold": [GT.K4_HOLD_UNITS, GT.K4_HOLD_SD],
-                             "oversmooth_k": GT.K4_OVERSMOOTH_K},
+                             "oversmooth_k": GT.K4_OVERSMOOTH_K, "pr6c_k": GT.K4_PR6C_K},
                   "k4_pr6_rule": "PR-6: Delta2 <= k4[2] (one-sided) on C2's by-fold lambda_res "
                                  "with K4's controls, the decoy units' gain the grid's whose "
                                  "probe-alone R2 lies closest to the decoy kNN's, and PR-1b "
                                  "passing; PR-6b (smooth F) and PR-6c (F the leave-one-"
                                  "geometry-out k = 15 kNN of lambda on D1): y = std(F) + "
                                  "noise AR(1) eps, the units holding F appended to h3, y "
-                                 "residualised by states.cross_fit; C2's primary statistic "
-                                 "(its decision rows, power floor and 5 random-init "
-                                 "controls) <= k4[2] on every seed, > k4[2] on every seed "
-                                 "with the residualisation off, and for PR-6b the units' "
-                                 "probe-alone R2 >= the kNN's on every seed; K4 needs both",
+                                 "residualised by states.cross_fit at states.knn_k; C2's "
+                                 "primary statistic (its decision rows, power floor and 5 "
+                                 "random-init controls) <= k4[2] on every seed, > k4[2] on "
+                                 "every seed with the residualisation off, and for PR-6b the "
+                                 "units' probe-alone R2 >= the kNN's on every seed; K4 needs "
+                                 "both",
                   "band_note_margin": AN.BAND_NOTE_MARGIN},
         "streams": dict(STREAMS), "kappa_set_r": KAPPA_SET_R}
 
@@ -368,19 +374,10 @@ def frozen_values(tab, t_H: int | None, partitions: int | None = None) -> dict:
     bounds = {c: list(ST.winsor_bounds(np.asarray(tab[c], float), w)) for c in cols}
     lam = np.stack([ST.winsorise(np.asarray(tab[f"lam_{c}"], float), bounds[f"lam_{c}"])
                     for c in TG.K_P], 1)
-    from apexzero.costate import probes as PB
-
-    # f_D's k per (partition, outer fold, component), chosen on the target and D1 alone
-    # (states.knn_k_cv); partition 0's residuals give the shares and the floor
-    D1 = ST.decoy_d1(tab)
-    fos = [PB.folds(tab, p) for p in range(partitions or ST.N_PARTITIONS)]
-    res = ST.cross_fit(D1, lam, fos[0].outer, w, inner=fos[0].inner)
-    cvs = [(res.k, res.cv)] + [ST.knn_k_cv(D1, lam, fo.outer, fo.inner, w) for fo in fos[1:]]
-    d = np.asarray(tab["direction"])
-    share = ST.residual_share(res.oof, lam, w, d, TG.K_P)
+    # f_D at its one k (states.KNN_K); partition 0's residuals give the shares and the floor
+    res = ST.cross_fit(ST.decoy_d1(tab), lam, ST.row_folds(tab), w, k=ST.KNN_K)
+    share, share_int = ST.decoy_shares(tab, lam, res.oof, w)
     inner = np.asarray(tab["interior"], bool)
-    wi = ST.weights({k: np.asarray(v)[inner] for k, v in tab.items()}, "key")
-    share_int = ST.residual_share(res.oof[inner], lam[inner], wi, d[inner], TG.K_P)
     from apexzero.costate import analysis as AN
     G = ST.geometry_keys(tab)
     uniq = np.unique(G, axis=0)
@@ -392,10 +389,8 @@ def frozen_values(tab, t_H: int | None, partitions: int | None = None) -> dict:
             # C2 is decided on the interior stratum, so its floor is applied there (the
             # T-wide verdicts are descriptive)
             "power_floor": ST.power_floor(share_int), "power_floor_T": ST.power_floor(share),
-            # k [partition][fold][component]; sse [partition][fold][grid][component]
-            "decoy_k": {"grid": list(ST.KNN_K_GRID), "names": list(TG.K_P),
-                        "k": [np.asarray(k).tolist() for k, _ in cvs],
-                        "sse": [np.asarray(s).tolist() for _, s in cvs]},
+            "decoy_k": {"k": res.k, "scope": "every partition, outer fold and K_P "
+                                              "component (states.KNN_K)"},
             "c3w_rows": AN.C3W_ROWS, "w1_rows": AN.W1_ROWS, "t_H": t_H,
             "geometries": uniq.tolist(), "fold_partition0": parts[0],
             "partitions_sha256": _canon(parts),
@@ -404,18 +399,11 @@ def frozen_values(tab, t_H: int | None, partitions: int | None = None) -> dict:
             "t_count": len(w)}
 
 
-def decoy_k(frozen: dict, partition: int, names=None) -> np.ndarray | None:
-    """f_D's frozen k [F, m] on ``partition``'s folds (``frozen_values``' 'decoy_k', the
-    columns in ``names``' order, default K_P), or None when the frozen values do not carry
-    that partition (the caller then applies the rule, ``states.cross_fit``)."""
-    from apexzero.costate import targets as TG
-
+def decoy_k(frozen: dict) -> int | None:
+    """f_D's frozen k (``frozen_values``' 'decoy_k'), or None when the frozen values do not
+    carry it (the caller then uses ``states.KNN_K``)."""
     dk = (frozen or {}).get("decoy_k")
-    if not dk or not 0 <= int(partition) < len(dk.get("k") or []):
-        return None
-    k = np.asarray(dk["k"][int(partition)], int)
-    have = list(dk["names"])
-    return k[:, [have.index(c) for c in (TG.K_P if names is None else names)]]
+    return None if not dk or dk.get("k") is None else int(dk["k"])
 
 
 def build_record(repo: Path, sets: dict[str, list[tuple[str, str]]], keys_root: Path,
