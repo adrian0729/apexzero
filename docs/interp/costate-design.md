@@ -1,4 +1,4 @@
-# Idea 2: does the network encode the costate? (design v2.5, not frozen)
+# Idea 2: does the network encode the costate? (design v2.6, not frozen)
 
 Status: 23 Oct 2026.
 - **v1** was reviewed on four lenses (math, probing, feasibility, science): 42 findings were
@@ -23,6 +23,11 @@ Status: 23 Oct 2026.
   that K4 and the new stages read are bound at prereg, K4's band notes stand beside C2 only,
   and Section 15's record of the code and the rehearsal is brought up to date. No gate rule,
   tolerance, seed or k changes.
+- **v2.6** records the lead's decision on C2's noise floor and the worker pools (Section 16).
+  The primary C2 and C2-sw are scored against a pool of 20 random-init actors with a two-level
+  CI, and C2's random-only null is re-measured on that statistic (hosts 20–39). The four long
+  stages run their units in worker pools whose outputs equal the serial run's. No gate rule,
+  tolerance, band or k changes, and K4 and decoy-k are unchanged.
 
 Nothing here has been computed on a trained network: no activation, gradient or probe. The
 numbers come from step 1's key files, run metadata (`runs/*/config.json`, `runs/*/eval_rdev.json`,
@@ -2369,6 +2374,11 @@ and C3-w's x.
   network confirms. A refute comes easily, since the null's mean is negative and 7 of 20 random
   networks refute. Adding a condition, such as a point above the null's 95th percentile, is the
   lead's decision before the tag. v2.5 does not make it.
+- *Since v2.6* (Section 16): the lead decided, before the tag and on random-init evidence only,
+  to score the primary C2 and C2-sw against a pool of 20 random-init actors (seeds 0–19) with a
+  two-level CI, which resamples the controls as well as the geometries (16.2, 16.3). For those
+  records 'Consequences' above is superseded. The null is re-measured on that statistic with
+  hosts 20–39 (16.5). The numbers above are v2.5's null, kept for comparison.
 - **In the record and the analysis.** prereg copies the null into frozen['c2_null']: the
   summary, each seed's statistic, CI and decision, and its scope. The analysis prints it beside
   each network's primary C2 with the share of null statistics at or above the network's
@@ -2550,3 +2560,401 @@ none is changed. v2.5's code is e14865d. Its full-size run (the fourth) is in 15
 | 10 | As #3 (integrity; minor) | As #3 |
 
 Also corrected: the gates docstring's host offset at k = 8 (0.0042, as 15.7, not 0.0043).
+
+*Since v2.6* (Section 16): #1's open decision is taken. The primary C2 and C2-sw are scored
+against a pool of 20 random-init actors with a two-level CI, and c2-null is re-measured on that
+statistic with hosts 20–39 (mean −0.0090, SD 0.0199; 5 of 20 refute, none confirms). #1's
+numbers are v2.5's null, kept for comparison (16.5).
+
+## 16. C2's control pool and the worker pools (v2.6; before the tag, no trained network computed)
+
+23 Oct 2026. v2.5 measured C2's random-only null and left the response to the lead (15.10,
+15.14 #1). Three commits on costate-dev record the lead's decision and a change that makes the
+long stages affordable:
+- **C2's control pool** (0119569; 5b3a261 labels the 'not testable' records). The primary C2 and
+  C2-sw of each decision network are scored against a pool of 20 random-init actors, with a CI
+  that resamples the controls as well as the geometries. c2-null is re-measured on that
+  statistic.
+- **Worker pools** (7d0c801). probes, own, the nulls and decoy-k run their independent units in
+  parallel processes, and their outputs are the serial run's to the bit.
+
+This section states each change as the code at 7d0c801 applies it, with the measurements behind
+it. No gate rule, tolerance or band changes, and f̂_D's k stays 8. K4's and decoy-k's seeds,
+controls and recorded numbers are unchanged (16.4). The new seeds are the pool's actors 5–19
+(0–4 are the controls already) and c2-null's hosts, which move from 5–24 to 20–39 so that they
+stay disjoint from the pool. Numbers are in Section 15's setting unless stated otherwise: the
+smoke run's world, partition 0, key weights, G1's obs_rms and config, C2's 3,951
+decision-stratum rows (s 1,643 and ξ 1,581 scored), the floor {s, ξ} and f̂_D at k = 8. Only
+key files, the input side and random-init or planted networks enter.
+
+### 16.1 The finding
+
+v2.5's null (15.10; the fourth run) scored 20 random-init actors (seeds 5–24) as the network
+against C2's 5 controls (seeds 0–4), with C2's CI. Mean −0.0192 and SD 0.0282; 7 refute, 13 are
+inconclusive and none confirms; 4 CIs lie wholly below 0. Two features of that statistic
+produce this.
+- **The CI leaves out the between-network variance.** `probes.gain` bootstraps the 48 geometry
+  clusters. Each draw re-weights the out-of-fold predictions of probes fitted once, on one
+  network and one set of controls. The CI says how the statistic would move over other
+  geometries for these networks, not over other draws of the networks. The 20 hosts differ only
+  in their random draw, and their statistics spread with SD 0.028. None of that spread is in
+  the CI, so 4 of them had CIs that exclude 0, all below it.
+- **The 5 controls are one draw, shared by every network.** The statistic subtracts the median
+  of their gains, which is itself random. Its error is an offset that every trained network
+  inherits and that no CI sees. On the new null's hosts (16.5), the median of controls 0–4's own
+  gains over the base (each the mean over the statistic's components) exceeds the pool's median
+  by +0.0047 on average, and is never below it (0 to +0.0118).
+
+### 16.2 The decision and its grounds
+
+**The decision** (the lead's, before the tag). The primary C2 and C2-sw are scored against a
+pool of 20 random-init actors, with a two-level percentile bootstrap: each draw resamples the
+controls as well as the geometries. The point is still the network's gain minus the controls'
+median gain. The bands do not change. No condition on the null's percentiles is added, and the
+null stays descriptive.
+
+**Grounds.**
+- A C2 decision is a claim about a trained network against random-init networks of its own
+  architecture on its own z. Its CI has to carry the spread of that reference set, and the
+  geometry-only CI does not (16.1).
+- A median over 20 controls varies less than one over 5, so the offset that every network
+  inherits is smaller. What remains of it enters the two-level CI, since each draw takes the
+  median over a resampled pool.
+- The evidence is random-init only: v2.5's c2-null (random hosts against random controls), the
+  Monte Carlo tests on synthetic populations of networks (16.3, 'Tests') and the rehearsal's
+  random-init stand-ins. No trained network's activation, value or gradient has been computed,
+  and the decision does not depend on one.
+- Disclosure: the pool and the two-level CI were chosen after v2.5's null had been seen. Every
+  C2 statistic seen by then was of random-init or planted networks.
+
+### 16.3 What changed
+
+**The pool** (`probes.N_POOL` = 20, `probes.POOL_SEEDS` = 0–19). Random-init actors from
+`probes.random_actor`, built as the 5 controls are: the network's own config, evaluated on the
+trained network's z. In C2 each control's probe has the base [z, m] with the network's m; in
+C2-sw the base is [z] and the target σ^ped. Seeds 0–4 are the 5 controls, and 5–19 are new.
+
+**The point.** As before, per component: the network's R² gain over the base minus the median
+of the controls' gains, now over all 20. C2 averages it over the components that pass the power
+floor; C2-sw has σ^ped's one component.
+
+**The CI** (`probes.gain` with `pool`; `probes.pool_draws`).
+- Each of the 2,000 draws resamples the 48 geometry clusters as before (the same counts) and,
+  independently, the 20 controls with replacement, on the new stream `costate_c2_pool` (index
+  312, `probes.POOL_STREAM`; `costate.STREAMS` names it), not on the geometries' `costate_boot`.
+  The control draws are the same for every network, as the geometry counts are.
+- Draw b's statistic is the network's gain minus the median over draw b's resampled controls,
+  under draw b's geometry counts. The 95% CI is the percentile interval of the 2,000 draws.
+- With every draw's controls the whole pool, it is the geometry-only CI exactly. The point is
+  the same under both.
+
+**The bands** are unchanged. Confirm needs the CI's lower end > 0 and a point ≥ 0.05; refute
+needs the upper end < 0.05; otherwise inconclusive.
+
+**Which records use it.** Only the primary C2 and C2-sw of each decision network enter a
+decision: `analysis.network_decisions` reads them, and R18's `variant_decisions` reads its
+output. They use the pool and the two-level CI. Every other C2 and C2-sw record decides nothing
+and keeps the 5 controls (seeds 0–4) with the geometry-only CI:
+- the sensitivity variants: partitions 1–10, weights:geometry and weights:state, drop_small,
+  drop_kappa_set, braking_keys and non_braking_keys;
+- robustness_C2, the spread of the partitions' statistics;
+- every strata-table row except each table's primary row, which is the decision's own record.
+
+Every record says which in 'controls' (`analysis.controls_label`: the seeds, their number,
+'two-level' or 'geometry', and the rule), the 'not testable' ones included (5b3a261). A
+descriptive record's point therefore differs from the primary's by the reference set as well
+as by its rows or weights. On c2-null's hosts the 5 controls' median gain sat above the pool's
+by +0.0047 on average (16.1), which lowers a 5-control point by about that much.
+
+**Beside each decision** (descriptive).
+- 'pool' (`probes.pool_rank`): the network's rank among the 21 (the network and the 20
+  controls) by its own gain over the base, the mean over the statistic's components. Rank 1 is
+  the largest; the counts above, below and tied and every control's gain are kept.
+- 'ci_geometry': the same point's geometry-only CI, with the 20 controls fixed.
+
+**Activations** (the post-tag stage; `activations_of`).
+- Each decision network's npz holds the pool's 20 random h3 and m ('random0_h3' to
+  'random19_h3'). The other 25 networks keep the 5.
+- Measured on a random-init stand-in at T's 9,887 rows (G1's config and obs_rms): the pool's h3
+  is 20 × 9,887 × 256 float64, 405 MB. All arrays take 575 MB in memory, against 269 MB with 5
+  controls. The compressed npz is 535 MB against 242 MB: 4.8 GB over the 9 decision networks,
+  2.6 GB more than before. Peak RSS 1.4 GB, and about 16 s per network to compute and write.
+- The probes stage refuses activations without the pool before it probes any network
+  (`pool_problems`: a file missing, or one without every pool actor's h3, "run activations
+  again").
+
+**Cost.** A primary C2 or C2-sw fits 22 ridge probes (the base, the network and 20 controls)
+in place of 7. That is 30 more fits per decision network, about 4–5 minutes, and roughly 40
+minutes over the 9 when run serially.
+
+**The record.** Its constants carry probes.c2_pool: the seeds, the stream, the rule, the scope,
+'five_controls' (the 5 controls' seeds, rule and scope) and the note that K4 is unchanged. The
+pool's stream is listed in probes.streams and in the record's streams. gates.c2_null carries
+controls 0–19, ci 'two-level' and v2.5's null ('five_controls_v25').
+
+**Tests** (tests/test_costate_probes.py, on synthetic populations of random networks whose
+gains vary with SD 0.03, as C2's null did; and tests/test_costate_stages.py).
+- The two-level CI is wider than the same point's geometry-only CI, which it records beside it.
+  Each draw's statistic is the network's gain minus the median over its resampled controls (to
+  10⁻¹⁴).
+- A network planted 0.08 above the population's median gain is confirmed (in at least 55 of 60
+  fresh worlds), and one at the median never is.
+- Over 400 fresh worlds and pools, the two-level CI covers the network's true offset from the
+  population's median near nominally (0.92–0.99). The geometry-only CI under-covers by at least
+  0.05 (about 0.85 in a 2,000-draw check).
+- The pool's draws are deterministic and on their own stream.
+- The probes stage refuses activations written for the 5 controls.
+- K4's records (no pool) keep exactly their former fields.
+
+### 16.4 K4, unchanged
+
+- K4's plants test the probe pipeline, each against its own controls: 3 of the 5
+  (`gates.K4_N_CONTROLS`; seeds 1–3 in the probe world, whose host is seed 0), and for PR-6b and
+  PR-6c all 5 (seeds 1–5). Its no-gain plants are paired increments, in which the controls'
+  median cancels (15.8). The question the pool answers, a trained network's distance from random
+  ones, is not K4's.
+- `analysis.c2_network` refuses a pool together with a host ("a paired increment's controls
+  cancel: it takes no control pool").
+- So the pool and the two-level CI enter neither K4 nor decoy-k, nor their recorded numbers:
+  `gates.DECOY_K_VALIDATION` and its unpaired table, and the band notes pr6_cost 0.0083 and
+  pr6c_leak 0.0069.
+- K4's band notes are still placed beside C2 records (the primary, each variant and each strata
+  row) by the same rule. Beside the primary they are now read against its two-level CI.
+
+### 16.5 The new null, and the old one
+
+**The stage** (`gates.c2_null`; `C2_NULL_SEEDS` = 20–39, and a host in the pool is refused).
+Each host is scored as the probes stage scores a trained network's primary C2:
+`analysis.c2_network` with the host's own h3 and m, against the pool 0–19 with the two-level
+CI. Each host's geometry-only CI and the decision under it are recorded beside it
+('ci_geometry', 'decision_geometry_ci'), and so is its rank.
+
+**The run** (a fresh root at 0119569, code hash a3d8517aa106…). The world's sha256
+(b5130c418642…), the frozen values, t_H 267 and K2b's rule are identical to the fourth run's.
+G1's obs_rms, 3,951 decision-stratum rows, the floor {s, ξ}, k = 8. Every statistic is finite,
+so the stage passes.
+
+| | v2.5: hosts 5–24, controls 0–4, geometry-only CI | v2.6: hosts 20–39, pool 0–19, two-level CI | v2.6's points, geometry-only CI (pool fixed) |
+|---|---|---|---|
+| Mean, SD | −0.0192, 0.0282 | −0.0090, 0.0199 | as v2.6 |
+| Median | −0.0112 | −0.0107 | as v2.6 |
+| Range | −0.0901 to +0.0314 | −0.0403 to +0.0288 | as v2.6 |
+| 5th and 95th percentiles | −0.0636, +0.0168 | −0.0360, +0.0231 | as v2.6 |
+| Refute / inconclusive / confirm | 7 / 13 / 0 | 5 / 15 / 0 (refuting: seeds 22, 24, 28, 30, 39) | 8 / 12 / 0 (also 27, 29 and 33) |
+| CIs wholly above / below 0 | 0 / 4 | 2 / 0 (seeds 26 and 36) | 3 / 1 |
+| Mean CI width | not recorded | 0.347 | 0.316 |
+
+- No host confirms. The two CIs wholly above 0 have points 0.029 and 0.021, below the 0.05 band.
+- The two-level CI is wider than the geometry-only one for 19 of the 20 hosts; host 30's is
+  0.004 narrower. The extra width is modest, because the geometry level dominates and its CIs
+  are strongly left-skewed (lower ends down to −0.68).
+- The hosts' mean rank among the 21 (host and pool) is 11.05, against 11 if hosts and controls
+  are exchangeable.
+- The mean is still below 0. The statistic subtracts a per-component median, and random
+  networks' gains over the base are left-skewed: host 20's 20 control gains run from −0.018 to
+  +0.097, with mean 0.050 and median 0.066. A random network's expected gain is therefore below
+  the median it is compared with.
+- The 5 controls' median sat at or above the pool's on every host (by +0.0047 on average, up to
+  +0.0118; 16.1).
+
+**The old null** is kept for comparison: `gates.C2_NULL_FIVE_CONTROLS`, the record's
+gates.c2_null.five_controls_v25 and gates/c2_null.json's 'five_controls_v25'. Nothing reads it.
+
+**In the record and the analysis**, as in 15.10: prereg copies the null into frozen['c2_null'],
+whose scope now names the pool and the two-level CI, and `analysis.c2_null_note` prints it
+beside each primary C2 with the share of null statistics at or above the network's. No
+decision reads it. Its scope is G1's obs_rms. C2-sw still has no random-only null of its own;
+its two-level CI carries its controls' spread on its own base and target.
+
+**Cost.** 4,020 s (67 minutes) on the default 2 XLA threads, beside the rehearsal: about 200 s
+per host for 22 ridge fits (the base, the host and 20 controls), about 9 s a fit. Peak RSS 1.52
+GB. v2.5's c2-null took 1,206 s. Its input chain on the fresh root: inputs 97 s, K2 240 s,
+inputs again 99 s, K2b 3,138 s.
+
+### 16.6 Worker pools for the long stages
+
+**Units** (7d0c801; `apexzero.costate.workers`, scripts/costate.py's `POOLED`). probes, own and
+the nulls take one unit per network. decoy-k takes 48: one per candidate k, world and
+validation seed (4 × 2 × 6; `gates.decoy_k_unit`, each unit's world rebuilt at its k from the
+parent's `at_decoy_k` arrays). The units are independent.
+
+**The option.** `--workers N` on those four stages only, at least 1. The default is the cores
+over `--threads`, less one (`workers.default_workers`), and never more than the units: 5
+workers of 2 threads on the 12-core Mac. `--workers 1` is the serial path, in the stage's own
+process. c2-null is not pooled.
+
+**Why the outputs are the serial run's.** `workers.run` returns `[fn(state, unit) for unit in
+units]` either way:
+- each unit's seeds depend on the unit alone;
+- the stage's state reaches the workers once, pickled into one temporary file, so its arrays are
+  the parent's bit for bit (the probes stage hands over the world without its per-key inputs);
+- the workers are spawned, not forked (JAX is not fork-safe). Each mirrors the parent's thread
+  pins (checked when it starts), its x64 setting and its trained-network locks, and decides
+  nothing;
+- the parent loads every checkpoint and checks its pin, so no worker opens a checkpoint or the
+  record;
+- the parent gathers the results in the serial order, and only then writes and stamps every
+  output.
+
+**Stamps.** A pooled stage's stamp carries 'workers' and 'threads' (XLA's and the BLAS
+libraries' thread variables). Neither makes a run partial, and neither enters any content hash.
+
+**Failure.** A unit that raises, or a worker that dies (out of memory, say), fails the stage.
+The pending units are cancelled and the running ones ended, and `WorkerFailed` names the unit,
+or every unfinished unit when a worker died. Nothing is written. The serial path, too, now
+writes only after every unit has returned.
+
+**The BLAS pin.** A pooled stage pins the BLAS libraries (VECLIB_MAXIMUM_THREADS,
+OPENBLAS_NUM_THREADS, OMP_NUM_THREADS and MKL_NUM_THREADS) to 1 thread before numpy loads, in
+its own process and so in every worker. On the M3 Pro, Accelerate at 2 threads does not give
+the same bits as at 1: decoy-k's full-size Δ2 moved by up to 8·10⁻¹¹ paired (3·10⁻¹¹ at k = 8;
+1.5·10⁻¹⁰ unpaired), well inside the 10⁻⁶ reproduction tolerance. At 1, 6 and 12 threads, and
+unset, its units give the same bits. Every earlier run was unset, and so matches 1 thread. The
+other stages stay unpinned, as before.
+
+**npz outputs** (scripts/costate.py's `savez`). They are written with every member's zip
+timestamp fixed at 1980-01-01. An npz's sha256, and with it nulls/summary.json's content hash,
+therefore depend on the arrays alone and repeat across runs. This machine's numpy (2.5.4, on
+Python 3.12) already writes that timestamp in `np.savez_compressed`; `savez` fixes it in idea
+2's own code instead of relying on the default. inputs/world.npz is still written by
+`inputs.save_world` through `np.savez_compressed`. Its sha256 has repeated in every full-size
+run since the third check.
+
+**Tests** (tests/test_costate_workers.py, 9 test functions).
+- `workers.run` gathers the results in the units' order, whatever order they finish in. Every
+  worker shares the parent's pins, x64 setting and locks, and gets its state bit for bit. A unit
+  that raises, or a worker that dies, fails the run promptly and returns nothing. A script's
+  function reaches a worker by its file and name.
+- Each pooled stage runs through `main()` in a fresh process at reduced size, with `--workers 1`
+  and `--workers 3`. Every JSON output's content_sha256 (recomputed and as stamped) and every
+  npz (byte for byte and array for array) are identical, and the stamps differ in the pool only.
+  A unit that raises in a worker fails the stage, and no output is written, serial or pooled.
+- The options (`--workers` on the pooled stages only, at least 1, never partial), the default
+  pool, the thread pins, and `savez`'s bytes.
+
+**Measured** (the M3 Pro, 6P + 6E cores and 18 GB; `--threads 2`, BLAS at 1 thread, each run
+alone; 7d0c801's code run from scratch snapshots, of which the full-size decoy-k's differs only
+in how a failed pool names its units; peak memory is the process tree's RSS).
+- Identity at reduced size (the rehearsal's 298-row T): the pooled and serial nulls, own,
+  decoy-k and probes are identical.
+- Identity at full size: the pooled decoy-k's record equals the fourth run's serial record
+  (e14865d), content_sha256 33aa0f569de4bb93…. The pooled nulls and own equal the serial ones
+  (G1's nulls; one stand-in's own). The pooled probes were not run at full size.
+
+| Stage | Size | Serial | Pooled | Ratio | Peak (pooled) |
+|---|---|---|---|---|---|
+| decoy-k | full, 48 units | 6,777 s (the fourth run, beside K4 and c2-null) | 2,033 s on 5 workers | 3.3× | 3.5–3.75 GB |
+| nulls | full, 9 networks | about 2,900 s (G1 alone 322 s) | 1,503 s on 5 workers | 1.9× | 3.2 GB |
+| own | full, 5 stand-ins | 5 × 257 s | 591 s on 5 workers | 2.2× | 4.2 GB |
+| probes | reduced, 5 stand-ins | 5 × 1,627 s | 2,053 s on 5 workers | 4.0× | 2.0 GB |
+| nulls | reduced, 9 networks | 497 s | 157 s on 5 workers | 3.2× | 2.4 GB |
+| decoy-k | reduced, 6 units | 755 s | 269 s on 3 workers | 2.8× | 1.4 GB |
+| own | reduced, 5 stand-ins | 102 s | 128 s on 5 workers | 0.8× | 3.5 GB |
+
+- Contention: a decoy-k unit takes about 212 s on 5 workers against 126–141 s serially. The 9
+  networks' nulls run in 2 rounds, at about 2.3 times a unit's serial time.
+- own does not pay at reduced size, since each worker pays its own JIT compile (about 40 s
+  there).
+- One stand-in's probes took 2,323 s serially at full size (1.86 GB) and 1,627 s at reduced
+  size: a probes unit is bound mostly by the widths p, not by the rows n.
+
+### 16.7 The canonical order, its cost, the rehearsal and the tests
+
+**Expected cost of the pre-tag stages** (2 threads, each alone; the pooled stages on 5
+workers). This replaces 15.11's 'Expected cost on 2 threads'.
+
+| Stage | Wall time |
+|---|---|
+| inputs, twice | about 100 s each (96–103 s) |
+| K2 | about 4 minutes (240–248 s) |
+| K2b | about 53 minutes (3,104–3,174 s) |
+| K0 | 32 minutes (1,941 s) |
+| K1 | 18 minutes (1,053–1,116 s) |
+| K3, K3b | under a minute each (54 s, 41 s) |
+| K4 | about 41 minutes (2,483 s, the fourth run) |
+| K5 | 40–45 minutes (2,403–2,692 s) |
+| K6 | seconds |
+| decoy-k | 34 minutes pooled (2,033 s); about 104–113 serially |
+| c2-null | 67 minutes (4,020 s), not pooled |
+| the nulls, 9 networks | 25 minutes pooled (1,503 s); about 48 serially |
+| prereg | under a minute |
+
+**The canonical order.** The dependencies are 15.11's. Inputs, K2 and inputs again (binding t_H)
+come first, then K2b. K4, decoy-k and c2-null read K2b's exclusions, and K6 counts them. K0,
+K1, K3, K3b, K5 and the nulls do not read K2b's output. The canonical pre-tag pass therefore
+runs:
+1. inputs, K2 and inputs again (452 s);
+2. K2b (3,104 s), with K0, K1, K3, K3b, K5 and the pooled nulls beside it, all shorter;
+3. c2-null (4,020 s), with K4 (2,483 s), the pooled decoy-k (2,033 s) and K6 beside it;
+4. prereg.
+
+Each stage is deterministic on its inputs, seeds and thread pins. Earlier checks ran stages
+side by side with identical results (the third check's K2b, K5 and nulls; the fourth run's K4,
+decoy-k and c2-null), so running them side by side changes no output.
+- The critical path is K2b, then c2-null: about 7,640 s (452 + 3,104 + 4,020 + about 60 for
+  prereg), 2.1 h without contention. Expect about 2.5–3 h, since 7–10 processes compete for 12
+  cores. Running the stages off the critical path at low priority (nice) would keep K2b and
+  c2-null from slowing.
+- The same schedule without pools takes about 2.9 h; decoy-k's 6,777 s is then the long pole
+  after K2b. One stage after another, the pass takes about 7.0 h without pools and 5.3 h with
+  them.
+- c2-null is now the long pole after K2b. Pooling it would shorten that window to K4's 41
+  minutes (about 1.7 h in all). v2.6 does not pool it.
+
+**The canonical re-run** must reproduce 15.11's list, with C2's random-only null as 16.5 gives
+it, not as the fourth run does. decoy-k's record, pooled, is expected to equal the fourth run's
+(content_sha256 33aa0f569de4bb93…). A difference beyond round-off is a finding to report, as
+15.11 states.
+
+**Post-tag cost** (the 9 decision networks; measured on random-init stand-ins at the full T, 2
+threads). This replaces Section 13's unmeasured 20–30 minutes per network.
+- probes: 2,323 s (39 minutes) per network serially, about 1.9 GB per process. For the 9, about
+  5.8 h serially, or about 1.6 h on 5 workers (2 rounds, a unit's time raised about 1.26 times by
+  contention), at about 10 GB peak. The pool's 30 extra fits are about 40 minutes of the serial
+  total.
+- own: 257 s per network serially, its JIT compile included. For the 9, about 33 minutes
+  serially (the compile paid once) and about 18–20 minutes on 5 workers (2 rounds).
+- activations: about 16 s per network, about 9 minutes for the 34.
+- critic: not measured. analyse: minutes.
+- In all, about 2.2 h plus the critic stage.
+
+**The rehearsal** (at 0119569, before 5b3a261 and the pools).
+- `C2_NULL_REDUCED` is now (20, 21): c2-null on two of its hosts.
+- It completed in 5,109 s, every stage exiting 0: the probes stage 1,652 s (1,622 s at v2.5),
+  c2-null with 2 hosts 341 s (113 s), activations 13.7 s.
+- G1's stand-in's primary C2 and C2-sw are both inconclusive, against the 20 controls with the
+  two-level CI. The variants and the non-primary strata rows used the 5 controls, and the null's
+  note was placed beside the primary C2.
+- It showed the 'not testable' records returned before any fit without 'controls'. 5b3a261
+  labels them; no statistic changes.
+- tests/test_costate_*.py at 0119569: 183 passed and 1 skipped.
+
+**Tests.** 188 test functions in tests/test_costate_*.py: 174 at v2.5, 179 after 0119569 (the
+two-level CI's four in tests/test_costate_probes.py and the probes stage's pool check in
+tests/test_costate_stages.py), and 9 more in tests/test_costate_workers.py (7d0c801). At
+7d0c801, tests/test_costate_probes.py and tests/test_costate_stages.py pass (69).
+
+### 16.8 Earlier text read through this section
+
+| Where | Earlier text | Read as |
+|---|---|---|
+| Section 4, 'Metrics' | CIs: a cluster bootstrap over geometries | the primary C2 and C2-sw: the two-level bootstrap (16.3); every other CI is the cluster bootstrap over geometries |
+| Section 5 | Seeds: actors 0–4 | actors 0–19 (0–4 for the descriptive C2 and C2-sw records); c2-null's hosts 20–39 |
+| Section 5, the table | Random-init actors (5) and critics (20) | actors: a pool of 20 (seeds 0–19) for the primary C2 and C2-sw, and 5 (seeds 0–4) for their descriptive variants and strata; critics 20, unchanged |
+| Section 5 (15.12's row) | the random controls | the pool for the primary C2 and C2-sw, the 5 for everything else; K4's own controls, unchanged (16.4) |
+| Section 6, opening | Decisions use 95% cluster-bootstrap CIs over geometries | C2's and C2-sw's: the two-level CI (16.3) |
+| Section 6, C2 | trained minus the median over 5 random-init actors | trained minus the median over a pool of 20 random-init actors (seeds 0–19; each on the trained network's z, with the base given the network's m), with the two-level CI; the bands unchanged (16.3) |
+| Section 6, C2-sw | trained minus the median over 5 random-init actors | the same pool, two-level CI and bands, with its own base [z] and target σ^ped (16.3) |
+| Section 6, C2 and C2-sw | — | beside each decision, descriptive: the network's rank among the 21 and the same point's geometry-only CI (16.3) |
+| Section 8, 'Probes' | C2's 5 random fits per network | 20 for each primary C2 and C2-sw, 5 for every other record (16.3) |
+| Section 13, 'Post-tag cost' | 20–30 minutes per network, unmeasured | about 39 minutes per network serially, measured (16.7) |
+| Section 14, 'Where it runs', and 15.11 | the pre-tag order | the same dependencies, with stages run side by side (16.7) |
+| 15.8, 'Consequence' | trained Δ2 minus the median over 5 random-init actors, unpaired | the primary C2 and C2-sw against the pool with the two-level CI; K4 unchanged (16.3, 16.4) |
+| 15.10, C2 | 'The statistic' is unchanged: the median over 5 | the pool and the two-level CI for the primary (16.3) |
+| 15.10, 'The noise floor' and 'The null' | seeds 5–24 against controls 0–4 | hosts 20–39 against the pool with the two-level CI (16.5); v2.5's null kept as `gates.C2_NULL_FIVE_CONTROLS` |
+| 15.10, 'Consequences' | C2's CI is the cluster bootstrap over geometries, with the network and its controls fixed | superseded for the primary records (16.2, 16.3) |
+| 15.10, 'Band notes' | beside any C2 refute or confirm | unchanged; beside the primary, read against its two-level CI (16.4) |
+| 15.11, 'The canonical re-run' | C2's random-only null as the fourth run gives it | as 16.5 gives it |
+| 15.11 | 'Expected cost on 2 threads' | 16.7 |
+| 15.11, 'Tests' | 174 test functions | 188 (16.7) |
+| 15.14, #1 | the null's numbers; no confirm condition added, the lead's decision | v2.5's null; the decision is taken (16.2) and no confirm condition is added |
