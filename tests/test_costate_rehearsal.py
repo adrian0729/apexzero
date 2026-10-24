@@ -2,10 +2,12 @@
 and a crash voids the tag): every stage of scripts/costate.py through its ``main()``, in
 order, on random-init stand-ins for the trained networks, before the tag.
 
-Opt-in (about 83 minutes on 2 threads; K4 takes 32 of them on the reduced T, PR-6b and PR-6c
-most of it, the probes stage 27, decoy-k and c2-null 6): ``COSTATE_REHEARSAL=1 uv run --no-sync pytest
+Opt-in (about 89 minutes on 2 threads with the default pools; K4 takes 31 of them on the
+reduced T, PR-6b and PR-6c most of it, the probes stage 28 (two networks in two workers),
+c2-null 6, decoy-k 2): ``COSTATE_REHEARSAL=1 uv run --no-sync pytest
 tests/test_costate_rehearsal.py -p no:cacheprovider``, or ``uv run --no-sync python
-tests/test_costate_rehearsal.py --dir DIR`` (keeps DIR; ``--from STEP`` resumes there).
+tests/test_costate_rehearsal.py --dir DIR`` (keeps DIR; ``--from STEP`` resumes there;
+``--workers N`` passes --workers to the pooled stages, else they take their default).
 
 - **A scratch clone** of this repository's HEAD (its branch 'main'; step 1's, step 2's and
   H4R's tags with it) whose origin is a local bare repository, so the freeze check's tag,
@@ -21,8 +23,8 @@ tests/test_costate_rehearsal.py --dir DIR`` (keeps DIR; ``--from STEP`` resumes 
 - **Reduced lists, not partial options** (``_DRIVER``, in every stage's process): the A2
   keys (``A2``: 10 geometries, a horizon twin pair so T holds W = 800 keys, a geometry with
   5 keys, the kappa set, braking and non-braking keys, one multi-basin key), N's anchored
-  finals and K1's sample (``N``, ``K1``), and the networks (``NETWORKS``: one decision
-  network, two other generalists, one of them without step 2's overlap, and one specialist
+  finals and K1's sample (``N``, ``K1``), and the networks (``NETWORKS``: two decision
+  networks, two other generalists, one of them without step 2's overlap, and one specialist
   with 0 heads). Every output is therefore stamped as a full run and prereg binds it. K2
   draws its insurance solves from the full A2 list (30 of them, as in the real run). The
   power floor and K2b's exclusions on the reduced T are replaced by the real T's
@@ -32,14 +34,22 @@ tests/test_costate_rehearsal.py --dir DIR`` (keeps DIR; ``--from STEP`` resumes 
   full-size table on the reduced T), K5's descriptive MLP ceilings stop at
   ``K5_MLP_MAXITER`` iterations, decoy-k runs one candidate on one validation seed
   (``DECOY_K_REDUCED``) and c2-null two null actors (``C2_NULL_REDUCED``).
+- **The worker pools** (``workers.POOLED``: probes, own, the nulls, decoy-k): each has at
+  least two units here (a decision network each; decoy-k's one k on its two worlds), so each
+  runs in spawned workers at the stages' default pool (5 on the 12-core Mac at 2 threads, at
+  most one per unit) or at ``--workers``. The report lists the pool each stage's stamps
+  record ('pools'), and the test fails on a stage that ran serially. A worker runs its
+  unit on what the parent hands it (``workers`` module docstring), so the reduced lists,
+  patched in the parent only, reach it through the units.
 - **The sequence** (``STEPS``): inputs, k2, inputs, k2b, k0, k1, k3, k3b, k4, decoy-k,
   c2-null, k5, k6, nulls, prereg; the record committed, annotated-tagged and pushed; a pre-tag stage refused;
   activations, tag.json committed, critic, own, probes, a non-confirmatory analyse
   (coverage only), analyse --confirmatory, its decisions committed; a second analyse
   --confirmatory refused; a non-confirmatory analyse unlocked by the committed decisions.
 
-The report (``report``; ``--dir``'s report.json) lists each step's time, every contained
-error and every decision stated on a non-finite CI; the test fails on either.
+The report (``report``; ``--dir``'s report.json) lists each step's time, the pooled stages'
+pools, every contained error and every decision stated on a non-finite CI; the test fails on
+a contained error, on such a decision and on a pooled stage that ran serially.
 
 What it cannot exercise: trained weights. A random-init policy crashes within about 20 steps,
 so no own run is valid: C1-own, its held form and value accuracy record 'not testable' or
@@ -95,10 +105,11 @@ A2 = (
 N = {"G1": ("0016821f8af1f6e163150a04",), "S1": ("0008733b7d9b371327de21b9",)}
 K1 = ("0016821f8af1f6e163150a04", "0005ec83ccf94435ead117b7")   # an anchored key (pi) and an A2
 NETWORKS = {
-    "generalists": ("runs/dr-pilot-200M",            # G1: the decision network
+    "generalists": ("runs/dr-pilot-200M",            # G1: a decision network (the primary's)
                     "runs/dr-pilot-200M-s3",         # base-v1 with G1: C3-w's ranks
-                    "runs/dr-pilot-v2-tilt30-s3"),   # base-v2: no step 2 overlap
-    "decision": ("G1",),
+                    "runs/dr-pilot-v2-tilt30-s3",    # base-v2: no step 2 overlap
+                    "runs/dr-pilot-v2-tilt30"),      # G2: the second decision network (pools)
+    "decision": ("G1", "G2"),
     "specialists": ("S1",),
 }
 # The reduced T's power floor and K2b exclusions are replaced by the real T's (the smoke run
@@ -124,6 +135,9 @@ STEPS = ("inputs", "k2", "inputs-cut", "k2b", "k0", "k1", "k3", "k3b", "k4", "de
          "probes", "analyse-coverage", "analyse", "commit-decisions", "analyse-again",
          "analyse-dry")
 POST = ("activations", "critic", "own", "probes", "analyse")
+# Each pooled stage's outputs (``workers.POOLED``), whose stamps record the pool that ran it.
+POOL_OUTPUTS = {"decoy-k": "gates/decoy_k.json", "nulls": "nulls", "own": "post/own",
+                "probes": "post/probes"}
 
 # Runs in the clone, one process per stage (as the real stages do): the reduced lists
 # patched in, then the clone's scripts/costate.py main() with the stage's own argv.
@@ -319,12 +333,13 @@ class Rehearsal:
     """The steps (``STEPS``) on a built scratch directory, each logged with its time."""
 
     def __init__(self, scratch: Path, threads: int = 2, deviation: str | None = None,
-                 echo=print):
+                 echo=print, workers: int | None = None):
         self.scratch = Path(scratch)
         self.repo = self.scratch / "repo"
         self.logs = self.scratch / "logs"
         self.logs.mkdir(exist_ok=True)
         self.threads, self.deviation, self.echo = threads, deviation, echo
+        self.workers = workers          # --workers on the pooled stages (None: their default)
         self.state_path = self.scratch / "state.json"
         self.state = (json.loads(self.state_path.read_text()) if self.state_path.exists()
                       else {"head_before": {}, "times": {}})
@@ -335,9 +350,13 @@ class Rehearsal:
     def stage(self, step: str, *argv: str, ok: bool = True) -> subprocess.CompletedProcess:
         """``scripts/costate.py <argv>`` in the clone through ``_DRIVER``; ``ok``: it must
         exit 0, else it must refuse (exit non-zero)."""
+        from apexzero.costate import workers as WK
+
         args = list(argv)
         if self.deviation and argv[0] in POST:
             args += ["--post-tag-deviation", self.deviation]
+        if self.workers is not None and argv[0] in WK.POOLED:
+            args += ["--workers", str(self.workers)]
         r = subprocess.run([sys.executable, "-c", _DRIVER, str(self.repo),
                             str(self.scratch / "rehearsal.json"), str(self.threads), *args],
                            cwd=self.repo, capture_output=True, text=True, check=False,
@@ -439,6 +458,26 @@ def _errors(d, path: str = "") -> list[str]:
     return out
 
 
+def pools(out: Path) -> dict[str, list]:
+    """{pooled stage: the worker counts its outputs' stamps record ('workers'; None where a
+    stamp has none)} (``POOL_OUTPUTS``)."""
+    from apexzero.fields.prereg import STAMP_SUFFIX, read_stamp
+
+    got = {}
+    for stage, rel in POOL_OUTPUTS.items():
+        p = Path(out) / rel
+        files = [p] if p.suffix else sorted(q for q in p.glob("*")
+                                            if not q.name.endswith(STAMP_SUFFIX))
+        got[stage] = sorted({(read_stamp(f) or {}).get("workers") for f in files}, key=str)
+    return got
+
+
+def serial(pooled: dict[str, list]) -> list[str]:
+    """The pooled stages that did not run every output in spawned workers (``pools``)."""
+    return [s for s, ws in pooled.items()
+            if not ws or not all(isinstance(w, int) and w > 1 for w in ws)]
+
+
 DECIDED = ("confirm", "refute", "inconclusive", "not confirmed",
            "rules out a strong association")
 
@@ -461,9 +500,10 @@ def _nan_decided(d, path: str = "") -> list[str]:
 
 
 def report(repo: Path, state: dict) -> dict:
-    """What the rehearsal produced: step times, the decisions file's shape and its
-    secondaries' verdicts, every contained error, every decision on a non-finite CI, the
-    strata rows that are not testable and the forced gates' computed verdicts."""
+    """What the rehearsal produced: step times, the pooled stages' pools, the decisions
+    file's shape and its secondaries' verdicts, every contained error, every decision on a
+    non-finite CI, the strata rows that are not testable and the forced gates' computed
+    verdicts."""
     out = repo / "outputs" / "costate"
     dec = json.loads((out / "analyse" / "decisions.json").read_text())
     dry = json.loads((out / "analyse" / "decisions_dry.json").read_text())
@@ -479,7 +519,9 @@ def report(repo: Path, state: dict) -> dict:
                    for n, rec in nets.items()}
     forced = {g: json.loads((out / "gates" / f"{g.replace('-', '_')}.json").read_text()).get(
         "pass_computed") for g in FORCE_PASS}
+    pooled = pools(out)
     return {"times": state["times"], "total_s": round(sum(state["times"].values()), 1),
+            "pools": pooled, "serial_pools": serial(pooled),
             "networks": {n: sorted(v) for n, v in nets.items()},
             "descriptive_networks": sorted(dec["descriptive_networks"]),
             "per_network": dec["per_network"], "secondaries": secondaries,
@@ -502,17 +544,40 @@ def _have_inputs() -> bool:
 
 
 @pytest.mark.skipif(not os.environ.get("COSTATE_REHEARSAL"),
-                    reason="the full post-tag rehearsal (about 83 min): COSTATE_REHEARSAL=1")
+                    reason="the full post-tag rehearsal (about 89 min): COSTATE_REHEARSAL=1")
 @pytest.mark.skipif(not _have_inputs(), reason="step 1's keys or the runs are missing")
 def test_every_stage_through_main_on_random_init_stand_ins(tmp_path):
+    from apexzero.costate import analysis as AN
+
     build(tmp_path)
-    rep = Rehearsal(tmp_path).run()
+    rep = Rehearsal(tmp_path, workers=2).run()     # the pools on whatever the machine's cores
     assert not rep["errors"], rep["errors"]
     assert not rep["nan_decided"], rep["nan_decided"]
-    assert rep["networks"] and all("C1-own" in v for v in rep["networks"].values())
+    assert not rep["serial_pools"], rep["pools"]
+    decided = {AN.network_of(a) for a in NETWORKS["decision"]}
+    assert sorted(rep["networks"]) == sorted(decided)
+    assert all("C1-own" in v for v in rep["networks"].values())
     assert rep["descriptive_networks"] == sorted(
-        [*NETWORKS["generalists"][1:], *NETWORKS["specialists"]])
+        n for n in [*NETWORKS["generalists"], *NETWORKS["specialists"]] if n not in decided)
     assert rep["dry_decided"] is True and rep["dry_unlocked_by"]
+
+
+def test_every_pooled_stage_has_two_units_or_more():
+    """The reduced lists give every pooled stage at least two units, so the rehearsal runs
+    each in spawned workers (module docstring 'The worker pools'): the decision networks
+    (probes, own, the nulls: ``prereg.null_networks``) and decoy-k's (k, world, seed)."""
+    from apexzero.costate import analysis as AN
+    from apexzero.costate import gates as GT
+    from apexzero.costate import workers as WK
+
+    assert set(POOL_OUTPUTS) == set(WK.POOLED)
+    runs = {AN.network_of(a) for a in NETWORKS["decision"]}
+    assert len(runs) >= 2 and runs <= set(NETWORKS["generalists"])
+    assert len(DECOY_K_REDUCED["candidates"]) * len(GT.DECOY_K_WORLDS) * len(
+        DECOY_K_REDUCED["seeds"]) >= 2
+    assert serial({"own": [2], "probes": [2, 3]}) == []
+    assert serial({"own": [1], "nulls": [None], "probes": [2, 1], "decoy-k": []}) == [
+        "own", "nulls", "probes", "decoy-k"]
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -522,6 +587,8 @@ def main(argv: list[str] | None = None) -> int:
                     help="resume an earlier rehearsal in --dir at this step")
     ap.add_argument("--rev", default="HEAD", help="the commit to rehearse (default HEAD)")
     ap.add_argument("--threads", type=int, default=2)
+    ap.add_argument("--workers", type=int, default=None,
+                    help="--workers for the pooled stages (default: the stages' own default)")
     ap.add_argument("--deviation", default=None,
                     help="--post-tag-deviation for the post-tag stages (code changed in the "
                          "clone after the tag: a resumed rehearsal only)")
@@ -532,10 +599,10 @@ def main(argv: list[str] | None = None) -> int:
         build(a.dir, a.rev)
     elif a.start is None:
         raise SystemExit(f"{a.dir} holds a rehearsal: give --from STEP, or an empty --dir")
-    rep = Rehearsal(a.dir, a.threads, a.deviation).run(a.start)
+    rep = Rehearsal(a.dir, a.threads, a.deviation, workers=a.workers).run(a.start)
     (a.dir / "report.json").write_text(json.dumps(rep, indent=1, default=str) + "\n")
     print(json.dumps(rep, indent=1, default=str))
-    return 1 if rep["errors"] or rep["nan_decided"] else 0
+    return 1 if rep["errors"] or rep["nan_decided"] or rep["serial_pools"] else 0
 
 
 if __name__ == "__main__":
