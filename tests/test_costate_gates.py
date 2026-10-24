@@ -416,6 +416,23 @@ def test_k0_summary_requires_the_planted_action_bugs_and_skips_none():
     assert not GT.k0_summary([good, bad])["pass"]
 
 
+def test_k0_scope_decides_on_the_keys_read_and_reports_the_rest():
+    """Design Section 18: a key outside the scope (an anchored final of the deferred N) that
+    is not 'ok' is reported and decides nothing; inside the scope it fails K0. Planted
+    action-row bugs must fail on every key, scope or not."""
+    good = {"key_id": "a", "ok": True, "plants_fail": True, "x0_identity": 0.0,
+            "action_plants": {p: 1e-3 for p in TG.ACTION_PLANTS},
+            "repolish_change": {"lam": 0.0, "pi": 0.0, "switch": 0.0}}
+    n_final = {**good, "key_id": "n", "ok": False, "stationarity": 1.2e-9}
+    s = GT.k0_summary([good, n_final], scope={"a"})
+    assert s["pass"] and s["not_ok"] == ["n"] and s["not_ok_descriptive"] == ["n"]
+    assert s["scope"]["keys"] == 1
+    assert not GT.k0_summary([good, n_final], scope={"a", "n"})["pass"]
+    assert not GT.k0_summary([good, n_final])["pass"]                  # no scope: every key
+    weak = {**n_final, "ok": True, "plants_fail": False}
+    assert not GT.k0_summary([good, weak], scope={"a"})["pass"]        # plants: every key
+
+
 def test_k2b_second_corner_and_rule():
     sc = GT.second_corner(1000, 1200.0, 30.0, 90.0, -1)
     turn = np.trapezoid(sc.kappa, dx=2.0)

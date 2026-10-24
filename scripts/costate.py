@@ -747,9 +747,12 @@ def stage_k0(args) -> None:
     from apexzero.costate import states as ST
 
     refs = _a2(args)
+    # K0's verdict covers the keys a pre-registered computation reads: the A2 keys and K1's
+    # sample (design Section 18); N's other anchored finals are checked and reported only
+    scope = {r.key_id for r in refs} | {r.key_id for r in GT.k1_sample()}
     if "n" in (args.kinds or []):
         refs += [r for v in ST.n_refs().values() for r in v]
-    res = GT.k0(refs, progress=lambda k: _log(args, "k0", k))
+    res = GT.k0(refs, progress=lambda k: _log(args, "k0", k), scope=scope)
     _write(_out(args, "gates") / "k0.json", res)
 
 

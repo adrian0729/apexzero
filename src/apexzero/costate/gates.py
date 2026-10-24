@@ -8,7 +8,10 @@ key's a_0, has no sign), the action rows to ``targets.ACTION_TOL`` with every pl
 above ``targets.PLANT_MIN``, sigma read from the folded command multipliers, lambda_n = Pi^R -
 Pi^L where the road ahead is straight to ``targets.STRAIGHT_TOL``, every target finite), and
 the change against the stored (un-re-polished) multipliers (``targets.targets_change``). K0
-passes when every key's record is 'ok' and every key's planted action-row bugs fail.
+passes when every key whose targets a pre-registered computation reads (the A2 keys and K1's
+sample; ``k0_summary``'s scope, design Section 18) is 'ok' and every key's planted action-row
+bugs fail. N's other anchored finals are checked and reported; a failure among them is
+listed in 'not_ok_descriptive' (N is deferred, Section 14).
 
 **K1, targets against re-solves** (``k1_sample``, ``k1_key``, ``k1_decision``). The 50 keys
 are stratified as step 2's Gate 1 (``fields.gates.GATE1_STRATA``, ``family``; drawn on step
@@ -391,10 +394,13 @@ def _number(v) -> bool:
     return isinstance(v, int | float) and not isinstance(v, bool)
 
 
-def k0_summary(rows: list[dict]) -> dict:
-    """K0's pass (every key 'ok', and on every key every planted action-row bug fails) and
-    the maxima of each identity over the keys (every numeric field any row carries; a row's
-    None, e.g. no straight road ahead, is skipped)."""
+def k0_summary(rows: list[dict], scope: set[str] | None = None) -> dict:
+    """K0's pass (every key in ``scope`` 'ok', and on every key every planted action-row bug
+    fails) and the maxima of each identity over the keys (every numeric field any row carries;
+    a row's None, e.g. no straight road ahead, is skipped). ``scope`` is the keys whose targets
+    a pre-registered computation reads (``stage_k0``: the A2 keys and K1's sample; design
+    Section 18); None is every key. A key outside it that is not 'ok' is listed in
+    'not_ok_descriptive' and decides nothing."""
     ok = [r for r in rows if "failed" not in r]
     num = sorted({k for r in ok for k, v in r.items() if _number(v)}
                  - {"W", "repolish_iterations"})
@@ -411,11 +417,18 @@ def k0_summary(rows: list[dict]) -> dict:
            "repolish_change_max": {k: float(max(r["repolish_change"][k] for r in ok))
                                    for k in ("lam", "pi", "switch")} if ok else {}}
     out["plants_fail"] = bool(ok and all(r.get("plants_fail") for r in ok))
-    out["pass"] = bool(rows and not out["not_ok"] and out["plants_fail"])
+    deciding = [k for k in out["not_ok"] if scope is None or k in scope]
+    out["not_ok_descriptive"] = [k for k in out["not_ok"] if k not in deciding]
+    out["scope"] = ({"keys": len(rows), "rule": "every key"} if scope is None else
+                    {"keys": sum(r["key_id"] in scope for r in rows),
+                     "rule": "the keys a pre-registered computation reads: the A2 keys and K1's "
+                             "sample (design Section 18)"})
+    out["pass"] = bool(rows and not deciding and out["plants_fail"])
     return out
 
 
-def k0(refs: Sequence[K.KeyRef], bank=None, progress: Callable | None = None) -> dict:
+def k0(refs: Sequence[K.KeyRef], bank=None, progress: Callable | None = None,
+       scope: set[str] | None = None) -> dict:
     if bank is None:
         bank, _ = K.design(stimuli_dir())
     rows = []
@@ -423,7 +436,7 @@ def k0(refs: Sequence[K.KeyRef], bank=None, progress: Callable | None = None) ->
         rows.append(k0_key(r, bank))
         if progress:
             progress(r.key_id)
-    return {"rows": rows, "summary": k0_summary(rows)}
+    return {"rows": rows, "summary": k0_summary(rows, scope)}
 
 
 # ------------------------------------------------------------------------- K1

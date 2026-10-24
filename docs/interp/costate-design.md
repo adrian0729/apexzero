@@ -1,4 +1,4 @@
-# Idea 2: does the network encode the costate? (design v2.7, not frozen)
+# Idea 2: does the network encode the costate? (design v2.8, not frozen)
 
 Status: 24 Oct 2026.
 - **v1** was reviewed on four lenses (math, probing, feasibility, science): 42 findings were
@@ -38,6 +38,11 @@ Status: 24 Oct 2026.
   otherwise it is inconclusive. No statistic, CI, band, tolerance, seed or k changes. Under the
   rule c2-null's refutes fall from 5 to 3, none confirms, and no decision of K4's PR-5 changes.
   The rules are final from this version, and any later change is a logged deviation.
+- **v2.8** records K0's scope after the canonical pre-tag run (Section 18). K0 failed there, as it
+  had unnoticed in the smoke run, on 6 of N's 8,136 anchored finals (the fold's stationarity
+  1.6·10⁻¹⁰ to 1.2·10⁻⁹ against 10⁻¹⁰). No pre-registered computation reads those keys, since N
+  is deferred (Section 14), so K0's verdict now covers the keys that are read: the A2 keys and
+  K1's sample. The other anchored finals are checked and reported. No other rule changes.
 
 Nothing here has been computed on a trained network: no activation, gradient or probe. The
 numbers come from step 1's key files, run metadata (`runs/*/config.json`, `runs/*/eval_rdev.json`,
@@ -3457,3 +3462,80 @@ Properties of the rule, reported and not acted on in this version.
 | 16.7, 'Post-tag cost' | probes 39 minutes per network | plus at most about 12 s per network for the rule (17.7) |
 | 16.7, 'Tests' | 189 test functions | 194 (17.7) |
 | 16.9, 'Not done', the leave-one-geometry-out value | not added | added: the rule's record beside each decision, and a summary beside each descriptive record (17.3) |
+
+## 18. K0's scope after the canonical pre-tag run (v2.8; before the tag, no trained network computed)
+
+24 Oct 2026.
+
+### 18.1 The finding
+
+- The canonical pre-tag pass (HEAD 291e2bc, every stage at full size, 11:42–14:00) passed every
+  gate but K0, and prereg refused. K1, K2, K2b and K5 equal the third check's records; K4
+  equals the fourth run's apart from the fields 17.3 adds; decoy-k's content hash is
+  33aa0f569de4…, as 16.7 requires; c2-null's equals the 17.4 run's (6c069e5f7a58…).
+- K0 failed on 6 of its 8,617 keys, the same 6 as in the 22 Oct smoke run (185c637). There the
+  failure went unnoticed: K0 keeps its verdict in its summary, the checks after the smoke run
+  read the gates' top-level verdicts, and no full-size check since then re-ran K0.
+- All 6 are N's anchored finals at W = 400 (405e10e0, 88768f7d, 3a25d635, faaf438a, 11fe5644,
+  532b452e). Each fails only Section 7's pedal-fold condition, the stationarity residual at
+  most 10⁻¹⁰: theirs are 1.6·10⁻¹⁰ to 1.2·10⁻⁹. Everything else holds by a wide margin: the x_0
+  identity 0, the route gap 1.0·10⁻¹², the end gap 7.4·10⁻¹², the action rows at most
+  5.8·10⁻¹⁰ (limit 10⁻⁹), the straight-road identity at most 1.8·10⁻¹⁵, no sign violation, and
+  every planted action-row bug fails.
+- Over the 8,136 anchored finals the residual has median 1.0·10⁻¹² and 99th percentile
+  2.9·10⁻¹¹. Every A2 key passes.
+- The residual is the solver's, not the fold's: on these keys the raw residual equals the
+  folded one to four digits. The re-polish took 0 iterations on each. A likely cause, not
+  verified: step 2's
+  re-polish (`fields.keys.repolish`, frozen) stops on IPOPT's scaled KKT error, and when the
+  multipliers are large the unscaled residual can exceed the tolerance by the scaling factor.
+
+### 18.2 Where those keys are read
+
+- D is T's t = 0 rows (Section 13, 'D in the code'): A2 keys.
+- N's analyses (its replication of C1, C2 and C2-sw, and C1-own on N) are deferred (Section 14)
+  and exploratory if run later.
+- K1 reads 50 keys, 30 of them anchored finals; none of the six is among them.
+- No pre-registered computation reads the six keys' targets.
+
+### 18.3 The rule
+
+- K0's verdict covers the keys whose targets a pre-registered computation reads: the A2 keys and
+  K1's sample, 511 keys. Every one of them must be 'ok', under Section 7's and Section 13's
+  conditions, unchanged.
+- N's other anchored finals are still checked and reported. A failure among them is listed in
+  the summary's 'not_ok_descriptive' and decides nothing. If N is run later, the listed keys are
+  left out or re-polished first.
+- Planted action-row bugs must still fail on every key, inside the scope or not.
+- Code: `gates.k0_summary(rows, scope)` and `stage_k0`'s scope (the A2 keys and
+  `gates.k1_sample()`); the summary records the scope and its rule. A test covers a failure
+  outside the scope (reported, K0 passes), inside it (K0 fails), no scope (every key) and a
+  planted bug that does not fail outside the scope (K0 fails).
+- Re-scored offline on the canonical rows: K0 passes, 511 keys in scope, the six listed as
+  descriptive.
+
+### 18.4 Grounds, and what was not done
+
+- This narrows a gate after its failure was seen, and is recorded as such. The scope follows
+  from Section 14's deferral of N, which was decided on 22–23 Oct for cost and scope without
+  K0's result in view: the anchored finals entered K0 (Section 13) because N's analyses would
+  read them.
+- A looser stationarity tolerance was rejected: it would be tuned to this result, and even
+  10⁻⁹ fails one of the six.
+- A second re-polish of these keys under tighter solver options was not taken. It would change
+  step 2's frozen re-polish settings inside idea 2, need not reach 10⁻¹⁰, and would validate
+  targets that nothing reads.
+
+### 18.5 What follows
+
+- The code hash changes, so every pre-tag stage is re-run in 16.7's order. Every record is
+  expected to equal the 24 Oct run's, except K0's summary (its scope, 'not_ok_descriptive' and
+  its pass).
+- The rules are final from this version; any later change is a logged deviation.
+
+### 18.6 Earlier text read through this section
+
+| Where | It said | Read as |
+|---|---|---|
+| Section 7, K0 | every key | every key is checked; the verdict is on the keys a pre-registered computation reads (18.3) |
+| Section 13, 'Order before the tag', 2 | K0 on every A2 key and every anchored final, with the stricter verdict | the same keys and conditions; the verdict on the A2 keys and K1's sample (18.3) |
