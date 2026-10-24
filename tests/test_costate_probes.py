@@ -31,6 +31,7 @@ No trained network is loaded or evaluated (design Section 1: nothing before the 
 costate-prereg-v1); only G1's config.json is read. NumPy float64 in this process (x64 stays
 off); JAX float64 runs in its own process."""
 
+import dataclasses
 import json
 import os
 import subprocess
@@ -971,3 +972,154 @@ def test_the_pool_and_its_resampling_are_deterministic():
     r1 = P.gain(b0, fs[0], fs[1:], w, fo, pool=P.pool_draws(P.N_POOL)).record()
     r2 = P.gain(b0, fs[0], fs[1:], w, fo, pool=P.pool_draws(P.N_POOL)).record()
     assert json.dumps(r1) == json.dumps(r2)
+
+
+# ------------------------------------------------------------------------- the single-geometry rule
+
+LOGO_HEAVY = 6                  # the high-SSE cluster of the LOGO worlds (C2's real one is 6 too)
+LOGO_LABELS = np.stack([5.0 + np.arange(POP_G), np.full(POP_G, 90.0)], 1)   # (R, theta)
+
+
+def _logo_world(rng: np.random.Generator, heavy: bool, n_controls: int = P.N_POOL):
+    """A gain's world for the single-geometry rule (``probes.LOGO_RULE``): 48 clusters of 10
+    rows and one target; the base leaves the residual r = sqrt(POP_K2) y, and a network removes
+    the share u_g of r's squared error in cluster g (its prediction base + t r, (1 - t)^2 =
+    1 - u_g), so its gain over the base is POP_K2 sum_g u_g SSE_g / SST. ``heavy``: cluster
+    ``LOGO_HEAVY``'s target has 9 times the SD (about 63% of the base's squared error, 2% of
+    the weight), and the network removes 0.4 of r's error there and 0.04 elsewhere: a gain of
+    about 0.13 that is about 0.02 without that cluster. Otherwise the clusters are alike and
+    u_g = 0.25 + N(0, 0.02^2), about 0.125 in every set. The controls remove u = |N(0,
+    0.01^2)|, near 0."""
+    n = POP_G * POP_ROWS
+    cl = np.repeat(np.arange(POP_G), POP_ROWS)
+    sd = np.ones(POP_G)
+    if heavy:
+        sd[LOGO_HEAVY] = 9.0
+        u_net = np.full(POP_G, 0.04)
+        u_net[LOGO_HEAVY] = 0.4
+    else:
+        u_net = 0.25 + 0.02 * rng.standard_normal(POP_G)
+    y = rng.standard_normal((n, 1)) * sd[cl][:, None]
+    base = y * (1.0 - np.sqrt(POP_K2))
+    us = [u_net] + [np.abs(0.01 * rng.standard_normal(POP_G)) for _ in range(n_controls)]
+    preds = [base + (1.0 - np.sqrt(1.0 - u[cl]))[:, None] * (y - base) for u in us]
+
+    def probe(p):
+        return P.Probe(p, y, np.zeros((1, 1, 2)), np.zeros((1, 2), int), ("lam_s",))
+
+    fo = P.Folds(np.zeros(n, int), np.zeros((1, n), int), cl)
+    return probe(base), [probe(p) for p in preds], fo, np.ones(n)
+
+
+def test_the_rule_turns_a_decision_resting_on_one_geometry_inconclusive():
+    """(a) The single-geometry robustness rule (``LOGO_RULE``) on a world where one cluster
+    holds most of the base's squared error and the network's gain (``_logo_world``): the
+    full set confirms, the set without that cluster refutes (its point is about 0.02, below
+    the band), so the recorded decision is 'inconclusive' with reason 'geometry-sensitive',
+    the cluster named with its (R, theta) and its set's decision, and the full set's decision
+    kept as 'decision_all_geometries'. So with the two-level CI and with the geometry-only
+    one; the scoring is the only thing that changes (the point, CI and draws are the full
+    set's either way), and every other set confirms."""
+    for pool in (True, False):
+        b, fs, fo, w = _logo_world(np.random.default_rng(12), heavy=True)
+        draws = P.pool_draws(P.N_POOL) if pool else None
+        plain = P.gain(b, fs[0], fs[1:], w, fo, pool=draws)
+        g = P.gain(b, fs[0], fs[1:], w, fo, pool=draws, logo="rule", labels=LOGO_LABELS)
+        assert plain.decision == g.decision_all == "confirm", plain.record()
+        assert (g.stat, g.ci, g.ci_geometry) == (plain.stat, plain.ci, plain.ci_geometry)
+        np.testing.assert_array_equal(g.boot, plain.boot)
+        assert g.decision == "inconclusive"
+        assert g.sensitive == ({"geometry": LOGO_HEAVY, "R": 5.0 + LOGO_HEAVY, "theta": 90.0,
+                                "decision": "refute"},)
+        lg = g.logo
+        assert lg["kind"] == "rule" and lg["geometry"] == list(range(POP_G))
+        assert lg["R"] == LOGO_LABELS[:, 0].tolist() and lg["stream"] == "costate_logo"
+        assert lg["n_boot"] == P.N_BOOT and len(lg["ci"]) == len(lg["decision"]) == POP_G
+        assert lg["decision"][LOGO_HEAVY] == "refute"
+        assert lg["decision"].count("confirm") == POP_G - 1
+        assert 0.0 < lg["ci"][LOGO_HEAVY][0] <= lg["ci"][LOGO_HEAVY][1] < 0.05
+        assert lg["stat"][LOGO_HEAVY] < 0.03 and g.stat > 0.1
+        mi = lg["most_influential"]
+        assert (mi["geometry"], mi["R"], mi["theta"]) == (LOGO_HEAVY, 11.0, 90.0)
+        assert mi["move"] == pytest.approx(lg["stat"][LOGO_HEAVY] - g.stat)
+        np.testing.assert_allclose(lg["move"], np.asarray(lg["stat"]) - g.stat, atol=1e-15)
+        sh = lg["shares"]["lam_s"]
+        assert sh["sse_base"][LOGO_HEAVY] > 0.55 and sh["weight"][LOGO_HEAVY] == 1 / POP_G
+        assert sum(sh["sse_base"]) == pytest.approx(1.0) and sum(sh["weight"]) == pytest.approx(1)
+        # set g's point is the statistic of the same predictions with cluster g's rows dropped
+        keep = fo.cluster != LOGO_HEAVY
+        sub = P.Folds(fo.outer[keep], fo.inner[:, keep], fo.cluster[keep])
+        alone = P.gain(*(dataclasses.replace(p, pred=p.pred[keep], y=p.y[keep])
+                         for p in (b, fs[0])),
+                       [dataclasses.replace(p, pred=p.pred[keep], y=p.y[keep]) for p in fs[1:]],
+                       w[keep], sub, counts=np.ones((1, POP_G - 1), int))
+        assert lg["stat"][LOGO_HEAVY] == pytest.approx(alone.stat, abs=1e-12)
+        rec = g.record()
+        assert rec["decision"] == "inconclusive" and rec["reason"] == "geometry-sensitive"
+        assert rec["decision_all_geometries"] == "confirm"
+        assert rec["geometry_sensitive"] == list(g.sensitive) and rec["logo"] == lg
+        assert ("ci_kind" in rec) == pool
+        json.dumps(rec)
+        # the summary (the descriptive records'): the sets' points, the decision unchanged
+        s = P.gain(b, fs[0], fs[1:], w, fo, pool=draws, logo="summary", labels=LOGO_LABELS)
+        assert s.decision == "confirm" and s.decision_all is None and not s.sensitive
+        assert s.logo["kind"] == "summary" and s.logo["stat"] == lg["stat"]
+        assert "ci" not in s.logo and "decision" not in s.logo
+        assert {"decision_all_geometries", "geometry_sensitive", "reason"}.isdisjoint(
+            s.record())
+
+
+def test_a_gain_spread_over_the_geometries_stands_under_the_rule():
+    """(b) Where the network's gain is spread over the geometries (``_logo_world``, no heavy
+    cluster), every set confirms as the full set does, so the confirm stands and no geometry
+    is named; an inconclusive full set stays inconclusive whatever its sets decide, and a
+    refute stands only where every set refutes."""
+    b, fs, fo, w = _logo_world(np.random.default_rng(14), heavy=False)
+    g = P.gain(b, fs[0], fs[1:], w, fo, pool=P.pool_draws(P.N_POOL), logo="rule",
+               labels=LOGO_LABELS)
+    assert g.decision == g.decision_all == "confirm" and g.sensitive == ()
+    assert set(g.logo["decision"]) == {"confirm"}
+    assert abs(g.logo["most_influential"]["move"]) < 0.01
+    rec = g.record()
+    assert rec["geometry_sensitive"] == [] and "reason" not in rec
+    assert rec["decision_all_geometries"] == rec["decision"] == "confirm"
+    assert P.logo_rule("inconclusive", ["confirm"] * 3) == ("inconclusive", [])
+    assert P.logo_rule("not testable", ["refute"]) == ("not testable", [])
+    assert P.logo_rule("refute", ["refute"] * 3) == ("refute", [])
+    assert P.logo_rule("refute", ["refute", "not testable", "inconclusive"]) == (
+        "inconclusive", [1, 2])
+    with pytest.raises(ValueError, match="'rule', 'summary' or None"):
+        P.gain(b, fs[0], fs[1:], w, fo, logo="yes")
+
+
+def test_the_logo_sets_draw_on_their_own_stream():
+    """(c) Each set's bootstrap draws the other G - 1 clusters with replacement, G - 1 per
+    draw and N_BOOT draws, on the named stream 'costate_logo' with the left-out geometry's
+    index as the sub-stream (``logo_counts``): the same for every call, network and
+    hypothesis, independent of the geometry bootstrap's, so a record repeats exactly."""
+    from apexzero.costate import STREAMS, stream_rng
+
+    assert STREAMS["costate_logo"] == P.LOGO_STREAM
+    assert list(STREAMS.values()).count(P.LOGO_STREAM) == 1
+    c = P.logo_counts(POP_G, 6)
+    assert c.shape == (P.N_BOOT, POP_G) and not c[:, 6].any()
+    assert (c.sum(1) == POP_G - 1).all()
+    want = stream_rng("costate_logo", 6).multinomial(POP_G - 1, np.full(POP_G - 1, 1 / 47),
+                                                       size=P.N_BOOT)
+    np.testing.assert_array_equal(np.delete(c, 6, axis=1), want)
+    np.testing.assert_array_equal(c, P.logo_counts(POP_G, 6))
+    np.testing.assert_array_equal(P.logo_counts(POP_G, 6, sub=40), np.insert(
+        stream_rng("costate_logo", 40).multinomial(POP_G - 1, np.full(POP_G - 1, 1 / 47),
+                                                   size=P.N_BOOT), 6, 0, axis=1))
+    assert not np.array_equal(c, P.logo_counts(POP_G, 7))
+    assert not np.array_equal(np.delete(c, 6, axis=1),
+                              P.cluster_counts(POP_G - 1, rng=P.boot_rng()))
+    with pytest.raises(ValueError, match="2 clusters"):
+        P.logo_counts(1, 0)
+    b, fs, fo, w = _logo_world(np.random.default_rng(13), heavy=True)
+    r1 = P.gain(b, fs[0], fs[1:], w, fo, pool=P.pool_draws(P.N_POOL), logo="rule").record()
+    r2 = P.gain(b, fs[0], fs[1:], w, fo, pool=P.pool_draws(P.N_POOL), logo="rule").record()
+    assert json.dumps(r1) == json.dumps(r2)
+    # without labels the sets name the clusters' indices only
+    assert r1["geometry_sensitive"] == [{"geometry": LOGO_HEAVY, "decision": "refute"}]
+    assert r1["logo"]["R"] is None and "R" not in r1["logo"]["most_influential"]

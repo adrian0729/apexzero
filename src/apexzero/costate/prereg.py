@@ -253,7 +253,21 @@ def constants() -> dict:
                                   "draws averaged and scored by R2_wd against the unpermuted "
                                   "held-out targets; every K_P component needs a cluster-"
                                   "bootstrap CI lower end <= 0 and a point <= wiring[1]",
-                   "streams": [PB.BOOT_STREAM, PB.MLP_STREAM, PB.POOL_STREAM],
+                   "streams": [PB.BOOT_STREAM, PB.MLP_STREAM, PB.POOL_STREAM, PB.LOGO_STREAM],
+                   "logo": {"rule": PB.LOGO_RULE, "stream": "costate_logo",
+                            "scope": "the primary C1, C2 and C2-sw of each decision network "
+                                     "(the records that enter network_decisions and R18; C1's "
+                                     "label 'at scale' needs the ruled confirm) and K4's PR-5, "
+                                     "whose rules read the ruled decisions; C3-w and C3-R2c are "
+                                     "across networks and exempt; the strata tables' rows, "
+                                     "the sensitivity variants and the descriptive networks' "
+                                     "C1 carry the sets' points only ('summary', "
+                                     "descriptive)",
+                            "records": "each set's point, move, CI and decision, the most "
+                                       "influential geometry and its move, and each "
+                                       "geometry's share of the weight and of the base's "
+                                       "(C2, C2-sw) or the network's and the target's (C1) "
+                                       "squared error"},
                    "c2_pool": {"seeds": list(PB.POOL_SEEDS), "stream": "costate_c2_pool",
                                "rule": AN.C2_TWO_LEVEL_CI,
                                "scope": "the primary C2 and C2-sw of each decision network "

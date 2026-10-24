@@ -116,7 +116,29 @@ so it carries the controls' own spread (the between-network variance that the
 geometry-only CI, controls fixed, leaves out) as well as the geometries'. The bands do not
 change. Two descriptives stand beside it in the record: ``ci_geometry``, the same point's
 geometry-only CI, and ``pool`` (``pool_rank``), the network's rank among the 20 controls'
-own gains over the base. ``fwl`` is Section 4's
+own gains over the base.
+
+**The single-geometry robustness rule** (``LOGO_RULE``; ``gain``'s ``logo``, ``logo_gain``,
+``logo_counts``, ``logo_rule``; the lead's decision before the tag, on random-init evidence:
+on C2's decision rows one geometry held about 5% of the weight but 64-70% of the base's
+out-of-fold squared error, and leaving it out moved a random host's statistic by 0.09-0.17).
+Every decision computed with a geometry-cluster bootstrap (the primary C1, C2 and C2-sw) is
+also computed on each leave-one-geometry-out scoring set: geometry g's rows weighted 0 in
+scoring, the fitted probes, out-of-fold predictions and controls unchanged, so set g's point
+is the statistic of the same predictions without those rows (from the per-geometry sums,
+``boot_r2`` of the counts 1 - e_g). Its CI is the same percentile bootstrap over the other
+G - 1 geometries, ``N_BOOT`` draws of ``logo_counts`` on stream ``LOGO_STREAM``
+('costate_logo', sub-stream the geometry's index in T), vectorised over the draws; a
+two-level CI keeps the pool's control draws (``pool_draws``), the same for every set, so it
+stays two-level. A confirm or refute stands only if every set decides the same; otherwise
+the record says 'inconclusive' with reason 'geometry-sensitive', names the geometries whose
+removal changes it (``ruled``: each one's index in T, R, theta and its set's decision) and
+keeps the full set's decision as 'decision_all_geometries'. An inconclusive full set stays
+inconclusive. Beside it (``logo_record``): each set's point, move, CI and decision, the most
+influential geometry (the largest absolute move) and each passing component's geometries'
+shares of the weight and of the base's squared error (``cluster_shares``). The descriptive
+records take a 'summary' (the sets' points, the most influential geometry and the shares; no
+CI, no rule). ``fwl`` is Section 4's
 two-stage (Frisch-Waugh-Lovell) check: within each training fold, the target and every H
 column residualised on B by ridge at the full model's alpha_B, then a ridge of the residual
 target on the residual H at its alpha_H; with alpha_B -> 0 it reproduces the full model
@@ -164,10 +186,11 @@ readout of z and whose h3 holds it linearly), ``one_hot`` and ``grouped_folds`` 
 and its deliberately mis-grouped split).
 
 **Streams**: ``costate_inner``, ``costate_perm`` and ``costate_control`` are idea 2's
-(``stream_rng``, costate/__init__.py:52-55). The bootstrap, the MLP inits and the control
-pool's resampling use ``BOOT_STREAM`` = 308, ``MLP_STREAM`` = 307 and ``POOL_STREAM`` = 312
-with the same seeding (ROOT_SEED, STREAM_OFFSET + index, ids; interp/constants.py:51-56);
-``STREAMS`` names them 'costate_boot', 'costate_mlp' and 'costate_c2_pool'.
+(``stream_rng``, costate/__init__.py:52-55). The bootstrap, the MLP inits, the control
+pool's resampling and the leave-one-geometry-out sets' use ``BOOT_STREAM`` = 308,
+``MLP_STREAM`` = 307, ``POOL_STREAM`` = 312 and ``LOGO_STREAM`` = 313 with the same seeding
+(ROOT_SEED, STREAM_OFFSET + index, ids; interp/constants.py:51-56); ``STREAMS`` names them
+'costate_boot', 'costate_mlp', 'costate_c2_pool' and 'costate_logo'.
 """
 
 from __future__ import annotations
@@ -223,6 +246,16 @@ WIRING_TOL = 0.01               # K5: the largest permuted-target R2_wd point (g
 BOOT_STREAM = 308               # costate.STREAMS['costate_boot']
 MLP_STREAM = 307                # costate.STREAMS['costate_mlp']
 POOL_STREAM = 312               # costate.STREAMS['costate_c2_pool']: the pool's resampling
+LOGO_STREAM = 313               # costate.STREAMS['costate_logo']: the LOGO sets' resampling
+LOGO_RULE = ("the single-geometry robustness rule: the decision is recomputed on each "
+             "leave-one-geometry-out scoring set (the geometry's rows weighted 0 in scoring; "
+             "fits, calibrations, out-of-fold predictions, nulls and controls unchanged), its CI "
+             "the same bootstrap over the other G - 1 geometries (stream costate_logo, "
+             "sub-stream the geometry, N_BOOT draws; a two-level CI keeps the pool's control "
+             "draws); a confirm or refute stands only if every set's decision is the same, "
+             "otherwise it is 'inconclusive' (reason 'geometry-sensitive', the geometries named, "
+             "the full-set decision kept as 'decision_all_geometries'); an inconclusive "
+             "full-set decision stays inconclusive")
 
 
 def _rng(index: int, *ids: int) -> np.random.Generator:
@@ -242,6 +275,12 @@ def pool_rng(*ids: int) -> np.random.Generator:
 
 def mlp_rng(*ids: int) -> np.random.Generator:
     return _rng(MLP_STREAM, *ids)
+
+
+def logo_rng(*ids: int) -> np.random.Generator:
+    """The leave-one-geometry-out sets' resampling generator (``LOGO_STREAM``; ids: the
+    geometry left out)."""
+    return _rng(LOGO_STREAM, *ids)
 
 
 # ------------------------------------------------------------------------- networks
@@ -1045,6 +1084,135 @@ def ci(samples: np.ndarray, level: float = CI_LEVEL) -> tuple[np.ndarray, np.nda
     return lo, hi
 
 
+# ------------------------------------------------------------------------- leave one geometry out
+
+
+def logo_counts(n_clusters: int, left_out: int, n_boot: int = N_BOOT,
+                sub: int | None = None) -> np.ndarray:
+    """[B, G] the cluster bootstrap of the leave-one-geometry-out set without cluster
+    ``left_out`` (``LOGO_RULE``): the G - 1 others drawn with replacement, G - 1 per draw, on
+    stream ``LOGO_STREAM`` sub-stream ``sub`` (default ``left_out``; the callers pass the
+    geometry's index in T, so a set's draws do not depend on the stratum's other
+    geometries' positions); column ``left_out`` is 0."""
+    G = int(n_clusters)
+    if G < 2:
+        raise ValueError("a leave-one-geometry-out set needs 2 clusters or more")
+    rng = logo_rng(int(left_out) if sub is None else int(sub))
+    c = rng.multinomial(G - 1, np.full(G - 1, 1.0 / (G - 1)), size=int(n_boot))
+    return np.insert(c, int(left_out), 0, axis=1)
+
+
+def logo_rule(decision: str, set_decisions: Sequence[str]) -> tuple[str, list[int]]:
+    """``LOGO_RULE``: (the recorded decision, the positions of the sets whose decision differs
+    from the full set's). A confirm or refute stands only when no set differs; any other
+    decision stands as it is, and no set is named."""
+    if decision not in ("confirm", "refute"):
+        return decision, []
+    changed = [i for i, d in enumerate(set_decisions) if d != decision]
+    return ("inconclusive" if changed else decision), changed
+
+
+def cluster_shares(bs: BootSums, k: int = 0) -> dict[str, np.ndarray]:
+    """Each cluster's share [G, m] of the metric's weight ('weight'), of prediction set k's
+    squared error ('sse') and of the total sum of squares about the full set's mean ('sst',
+    within direction for a mirror-odd component: R2's denominator) per component; NaN where
+    a component's total is 0."""
+    m = bs.wy.shape[2]
+    w = bs.w if bs.w.ndim == 3 else np.repeat(bs.w[..., None], m, 2)      # [G, D, m]
+    sw, sy = w.sum(0), bs.wy.sum(0)                                         # [D, m]
+    with np.errstate(invalid="ignore", divide="ignore"):
+        mu_d = np.where(sw > 0, sy / np.where(sw > 0, sw, 1.0), 0.0)
+        mu_p = sy.sum(0) / sw.sum(0)
+    mu = np.where(bs.odd[None], mu_d, mu_p[None])[None]                    # [1, D, m]
+    sst = (bs.wyy - 2.0 * mu * bs.wy + mu ** 2 * w).sum(1)
+    out = {}
+    for name, a in (("weight", w.sum(1)), ("sse", bs.wee[:, :, k, :].sum(1)), ("sst", sst)):
+        tot = a.sum(0)
+        with np.errstate(invalid="ignore", divide="ignore"):
+            out[name] = np.where(tot > 0, a / np.where(tot > 0, tot, 1.0), np.nan)
+    return out
+
+
+def _geometry(gid, labels) -> dict:
+    """A geometry's record: its index in T and, with ``labels`` ([G_T, 2], each index's
+    (R, theta)), its R and theta."""
+    out = {"geometry": int(gid)}
+    if labels is not None:
+        R, th = np.asarray(labels, float)[int(gid)]
+        out.update(R=float(R), theta=float(th))
+    return out
+
+
+def logo_record(ids, labels, point: float, stats: np.ndarray, shares: dict | None = None,
+                ci_: np.ndarray | None = None, decisions: Sequence[str] | None = None,
+                extra: dict | None = None, n_boot: int | None = None) -> dict:
+    """The leave-one-geometry-out record of one statistic: the geometries left out (their
+    index in T, R and theta), each set's point and move (point minus the full set's), the
+    most influential geometry (the largest absolute finite move) and the clusters' shares
+    ({component: {share: [G]}}); with the rule, each set's CI and decision and the stream.
+    A 'summary' (no CI) is the descriptive records' (``LOGO_RULE``: exempt from the rule)."""
+    ids = [int(v) for v in ids]
+    st = np.asarray(stats, float)
+    move = st - float(point)
+    lab = np.asarray(labels, float)[ids] if labels is not None else None
+    out = {"kind": "rule" if decisions is not None else "summary", "geometry": ids,
+           "R": None if lab is None else lab[:, 0].tolist(),
+           "theta": None if lab is None else lab[:, 1].tolist(),
+           "stat": st.tolist(), "move": move.tolist()}
+    fin = np.flatnonzero(np.isfinite(move))
+    if len(fin):
+        i = int(fin[np.argmax(np.abs(move[fin]))])
+        out["most_influential"] = {**_geometry(ids[i], labels), "stat": float(st[i]),
+                                   "move": float(move[i])}
+    if decisions is not None:
+        out.update(ci=np.asarray(ci_, float).tolist(), decision=list(decisions),
+                   stream="costate_logo", n_boot=int(n_boot))
+    if shares is not None:
+        out["shares"] = shares
+    if extra:
+        out.update(extra)
+    return out
+
+
+def logo_gain(bs: BootSums, passing: np.ndarray, point: float, ids, labels=None,
+              n_boot: int = N_BOOT, pool: np.ndarray | None = None, band: float = C2_BAND,
+              rule: bool = True, names=None) -> dict:
+    """A gain's leave-one-geometry-out sets (``LOGO_RULE``) from its sums ``bs`` (prediction
+    sets: the base, the network, the controls) over clusters ``ids`` (each one's index in T,
+    the sums' order): set g weights cluster g's rows 0 in scoring, so its point is the
+    statistic of the same out-of-fold predictions without them, over the components passing
+    the power floor that keep a scored row outside g. With ``rule`` its CI is the same
+    bootstrap over the other G - 1 clusters (``logo_counts``; ``pool``: the same control
+    draws, so a two-level CI stays two-level), vectorised over the draws, and its decision
+    the bands'; a set with no component left is 'not testable'. 'shares': each passing
+    component's clusters' shares of the weight and of the base's squared error."""
+    G = bs.w.shape[0]
+    m = bs.wy.shape[2]
+    names = [str(i) for i in range(m)] if names is None else list(names)
+    passing = np.asarray(passing, bool)
+    wk = (bs.w if bs.w.ndim == 3 else np.repeat(bs.w[..., None], m, 2)).sum(1)    # [G, m]
+    keep = passing[None] & ((wk.sum(0)[None] - wk) > 0)                           # [G, m]
+    g0 = _gain_of(boot_r2(bs, 1.0 - np.eye(G)), passing)                          # [G, m]
+    stats = np.array([g0[g, keep[g]].mean() if keep[g].any() else np.nan for g in range(G)])
+    sh = cluster_shares(bs, 0)
+    shares = {names[k]: {"weight": sh["weight"][:, k].tolist(),
+                         "sse_base": sh["sse"][:, k].tolist()} for k in np.flatnonzero(passing)}
+    if not rule:
+        return logo_record(ids, labels, point, stats, shares)
+    cis = np.full((G, 2), np.nan)
+    decs = []
+    for g in range(G):
+        if not keep[g].any():
+            decs.append("not testable")
+            continue
+        rb = boot_r2(bs, logo_counts(G, g, n_boot, ids[g]))                       # [B, K, m]
+        gb = _gain_of(rb, passing, pool)[:, keep[g]].mean(1)
+        lo, hi = ci(gb)
+        cis[g] = lo, hi
+        decs.append(decide(float(stats[g]), float(lo), float(hi), band))
+    return logo_record(ids, labels, point, stats, shares, cis, decs, n_boot=n_boot)
+
+
 # ------------------------------------------------------------------------- C2 and C2-sw
 
 
@@ -1066,7 +1234,10 @@ class Gain:
     bootstrap draws, ``ci`` its interval, ``decision`` the band's verdict. With a control
     pool (module docstring 'Two-level CI'): ``ci_geometry`` the interval of the same
     statistic with the controls fixed (descriptive) and ``pool`` the network's rank among
-    the controls' own gains (``pool_rank``; descriptive)."""
+    the controls' own gains (``pool_rank``; descriptive). With the leave-one-geometry-out
+    sets (``logo``: ``logo_gain``'s record): under the rule (``LOGO_RULE``) ``decision`` is
+    the ruled one, ``decision_all`` the full set's and ``sensitive`` the geometries whose
+    removal changes it; a summary (descriptive) leaves the decision as it is."""
 
     names: tuple
     passing: np.ndarray
@@ -1083,6 +1254,9 @@ class Gain:
     band: float
     ci_geometry: tuple[float, float] | None = None
     pool: dict | None = None
+    logo: dict | None = None
+    decision_all: str | None = None
+    sensitive: tuple = ()
 
     def record(self) -> dict:
         out = {"names": list(self.names), "passing": self.passing.tolist(),
@@ -1094,7 +1268,32 @@ class Gain:
         if self.ci_geometry is not None:
             out.update(ci_kind="two-level", ci_geometry=list(self.ci_geometry),
                        pool=self.pool)
+        out.update(logo_fields(self.logo, self.decision_all, self.sensitive))
         return out
+
+
+def logo_fields(logo: dict | None, decision_all: str | None, sensitive: Sequence[dict]
+                ) -> dict:
+    """A record's leave-one-geometry-out fields: 'logo' (the sets) and, under the rule,
+    'decision_all_geometries' (the full set's decision), 'geometry_sensitive' (the
+    geometries whose removal changes it, each with the set's decision) and, when it is not
+    empty, 'reason' 'geometry-sensitive'."""
+    if logo is None:
+        return {}
+    out: dict = {"logo": logo}
+    if logo.get("kind") == "rule":
+        out.update(decision_all_geometries=decision_all, geometry_sensitive=list(sensitive))
+        if sensitive:
+            out["reason"] = "geometry-sensitive"
+    return out
+
+
+def ruled(decision: str, logo: dict, labels=None) -> tuple[str, tuple]:
+    """``logo_rule`` on a rule record (``logo_record``): (the recorded decision, the changing
+    geometries, each with R, theta and the set's decision)."""
+    dec, changed = logo_rule(decision, logo["decision"])
+    return dec, tuple({**_geometry(logo["geometry"][i], labels),
+                       "decision": logo["decision"][i]} for i in changed)
 
 
 def _gain_of(r: np.ndarray, passing: np.ndarray, pick: np.ndarray | None = None
@@ -1152,15 +1351,19 @@ class NotTestable(ValueError):
 def gain(base: Probe, full: Probe, randoms: Sequence[Probe], w: np.ndarray, fo: Folds,
          direction: np.ndarray | None = None, passing=None, rows: np.ndarray | None = None,
          counts: np.ndarray | None = None, band: float = C2_BAND,
-         mask: np.ndarray | None = None, pool: np.ndarray | None = None) -> Gain:
+         mask: np.ndarray | None = None, pool: np.ndarray | None = None,
+         logo: str | None = None, labels: np.ndarray | None = None) -> Gain:
     """The gain statistic of probes fitted on the same rows and targets (``rows``: the
     stratum scored, e.g. the interior; ``counts`` [B, G] over ``fo.cluster``'s clusters;
     ``mask`` [n, m] each component's own scored rows within them). ``pool`` [B, J] (the
     two-level CI, module docstring; ``pool_draws``): draw b's statistic takes the median
     over the controls ``randoms[pool[b]]`` under draw b's geometry counts, and the point
     stays the median over all J; None: the geometry-only CI with the controls fixed.
-    ``NotTestable`` when no component passes the power floor or none passing it keeps a
-    scored row."""
+    ``logo`` (``logo_gain``; ``fo.cluster`` holds each row's geometry index in T, and
+    ``labels`` [G_T, 2] each index's (R, theta)): 'rule' the leave-one-geometry-out sets
+    with their CIs and decisions, and the decision ruled by ``LOGO_RULE``; 'summary' their
+    points only (descriptive); None neither. ``NotTestable`` when no component passes the
+    power floor or none passing it keeps a scored row."""
     m = np.ones(len(w), bool) if rows is None else np.asarray(rows, bool)
     names = base.names
     for p in (full, *randoms):
@@ -1201,9 +1404,23 @@ def gain(base: Probe, full: Probe, randoms: Sequence[Probe], w: np.ndarray, fo: 
         gb = _gain_of(rb, passing, pool)[:, passing].mean(1)
         rank = pool_rank(raw, r0[2:], r0[0], passing)
     lo, hi = ci(gb)
+    dec = decide(stat, float(lo), float(hi), band)
+    lg, dec_all, sens = None, None, ()
+    if logo is not None:
+        if logo not in ("rule", "summary"):
+            raise ValueError(f"logo is 'rule', 'summary' or None, not {logo!r}")
+        ids = np.unique(np.asarray(fo.cluster)[m])           # boot_sums' cluster order
+        if G < 2:                    # removing the one geometry leaves no row to score
+            lg = {"kind": logo, "geometry": ids.tolist(), "reason": "one geometry",
+                  **({"decision": ["not testable"]} if logo == "rule" else {})}
+        else:
+            lg = logo_gain(bs, passing, stat, ids, labels, counts.shape[0], pool, band,
+                           logo == "rule", names)
+        if logo == "rule":
+            dec_all = dec
+            dec, sens = ruled(dec, lg, labels)
     return Gain(names, passing, r0[0], r0[1], r0[2:], g0, raw, raw / (1.0 - r0[0]), stat, gb,
-                (float(lo), float(hi)), decide(stat, float(lo), float(hi), band), band,
-                ci_geo, rank)
+                (float(lo), float(hi)), dec, band, ci_geo, rank, lg, dec_all, sens)
 
 
 def conditional(hidden_layers: Sequence[np.ndarray], base: np.ndarray, Y: np.ndarray,
@@ -1219,15 +1436,17 @@ def c2(h3: np.ndarray, random_h3: Sequence[np.ndarray], z: np.ndarray, m: np.nda
        y_res: np.ndarray, fo: Folds, w: np.ndarray, direction: np.ndarray, names,
        passing=None, rows: np.ndarray | None = None, counts: np.ndarray | None = None,
        grid: Sequence[float] = GRID, h_grid: Sequence[float] = H_GRID,
-       mask: np.ndarray | None = None, pool: np.ndarray | None = None) -> Gain:
+       mask: np.ndarray | None = None, pool: np.ndarray | None = None,
+       logo: str | None = None, labels: np.ndarray | None = None) -> Gain:
     """C2 (design Section 6): ``y_res`` lambda_res (``states.Residuals.by_fold`` [F, n, m] or
     [n, m]), the base [z, m] of the network, the network's h3 and the random-init actors'
     h3 on the same z; the probes are fitted on every row given and component k is scored on
-    ``mask[:, k]`` (default all); ``pool``: the two-level CI's control draws (``gain``)."""
+    ``mask[:, k]`` (default all); ``pool``: the two-level CI's control draws, ``logo`` and
+    ``labels`` the leave-one-geometry-out sets (``gain``)."""
     base = np.hstack([_as2d(z, len(w)), _as2d(m, len(w))])
     pb, fulls = conditional([h3, *random_h3], base, y_res, fo, w, names, grid, h_grid)
     return gain(pb, fulls[0], fulls[1:], w, fo, direction, passing, rows, counts, mask=mask,
-                pool=pool)
+                pool=pool, logo=logo, labels=labels)
 
 
 @dataclass(frozen=True)
@@ -1290,12 +1509,15 @@ def c2_paired(h3: np.ndarray, host: np.ndarray, random_h3: Sequence[np.ndarray],
 def c2_sw(h3: np.ndarray, random_h3: Sequence[np.ndarray], z: np.ndarray, sigma: np.ndarray,
           fo: Folds, w: np.ndarray, rows: np.ndarray | None = None,
           counts: np.ndarray | None = None, grid: Sequence[float] = GRID,
-          h_grid: Sequence[float] = H_GRID, pool: np.ndarray | None = None) -> Gain:
+          h_grid: Sequence[float] = H_GRID, pool: np.ndarray | None = None,
+          logo: str | None = None, labels: np.ndarray | None = None) -> Gain:
     """C2-sw (design Section 6): Delta_sw = [R2(h3 + z) - R2(z)] on sigma^ped, not conditioned
     on m, on the pedal-saturated rows given (with their ``Folds.subset``); ``pool``: the
-    two-level CI's control draws (``gain``)."""
+    two-level CI's control draws, ``logo`` and ``labels`` the leave-one-geometry-out sets
+    (``gain``)."""
     pb, fulls = conditional([h3, *random_h3], z, sigma, fo, w, ("sigma_pedal",), grid, h_grid)
-    return gain(pb, fulls[0], fulls[1:], w, fo, None, None, rows, counts, pool=pool)
+    return gain(pb, fulls[0], fulls[1:], w, fo, None, None, rows, counts, pool=pool,
+                logo=logo, labels=labels)
 
 
 # ------------------------------------------------------------------------- MLP probe

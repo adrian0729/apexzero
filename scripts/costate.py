@@ -31,8 +31,9 @@ is computed; refused once the tag exists):
                 table (``gates.decoy_k``; gates/decoy_k.json; after inputs and k2b)
     c2-null     C2's random-only null, descriptive: 20 random-init actors (seeds 20-39)
                 scored as the network through C2's primary statistic against C2's control
-                pool (seeds 0-19) with the two-level CI (``gates.c2_null``;
-                gates/c2_null.json; after inputs and k2b)
+                pool (seeds 0-19) with the two-level CI, each decision ruled by the
+                single-geometry rule (``gates.c2_null``; gates/c2_null.json; after inputs
+                and k2b)
     k5          K5: the permuted-target wiring check and the control task
     k6          K6: coverage per component and reason
     nulls       C1's input-side nulls per network obs_rms (default: the 9 decision networks;
@@ -65,9 +66,11 @@ Post-tag stages (refused unless the freeze check passes: ``freeze_problems``):
                 geometries and the kappa set dropped, braking and non-braking sub-scores)
                 and their descriptive strata tables (a primary entry is 'not testable' only
                 on ``probes.NotTestable``); the primary C2 and C2-sw against the control
-                pool with the two-level CI, every other record against the 5 controls with
-                the geometry-only CI (``probes_of``)
-    analyse     the analysis (C1 and its secondaries with the accel-held pullback, the
+                pool with the two-level CI and ruled by the single-geometry rule
+                (``probes.LOGO_RULE``), every other record against the 5 controls with the
+                geometry-only CI and its leave-one-geometry-out points only (``probes_of``)
+    analyse     the analysis (C1, ruled by the single-geometry rule, and its secondaries
+                with the accel-held pullback, the
                 critic's value accuracy against its own policy's return, which with K3b's
                 trained analogue decides C1-own's standing, the per-network strata tables of
                 every hypothesis, C3-w and C3-R2c over the 31 generalists, the
@@ -1602,11 +1605,13 @@ def probes_of(acts: dict, world, frozen: dict, rows_c2, rows_sw, valid=None,
     (``analysis.guarded``: an error is recorded in place of the record). Only the primary C2
     and C2-sw enter a decision, so only they are scored against the control pool
     (``probes.POOL_SEEDS``, 'random0_h3' to 'random19_h3' in ``acts``) with the two-level CI
-    (``probes.pool_draws``); every other record keeps the 5 controls and the geometry-only CI
-    (``analysis`` module docstring 'C2's control pool'), and each says which ('controls'),
-    the 'not testable' ones included (a strata row with no row or no per-network column); a
-    contained error records the error alone. A strata table's primary row is the decision's
-    own record."""
+    (``probes.pool_draws``) and ruled by the single-geometry robustness rule
+    (``probes.LOGO_RULE``: 'logo' 'rule', with each geometry's (R, theta)); every other record
+    keeps the 5 controls and the geometry-only CI (``analysis`` module docstring 'C2's control
+    pool') with its leave-one-geometry-out points only ('summary'), and each says which
+    ('controls'), the 'not testable' ones included (a strata row with no row or no
+    per-network column); a contained error records the error alone. A strata table's primary
+    row is the decision's own record."""
     import numpy as np
 
     from apexzero.costate import analysis as AN
@@ -1642,12 +1647,16 @@ def probes_of(acts: dict, world, frozen: dict, rows_c2, rows_sw, valid=None,
             fo_by_p[p] = PB.folds(tab, p)
         return fo_by_p[p]
 
+    labels = AN.geometry_labels(tab)
+
     def refs(primary: bool) -> dict:
-        """The controls (and, for a decision, the two-level CI's draws) of one record."""
+        """The controls (and, for a decision, the two-level CI's draws) of one record, and its
+        leave-one-geometry-out sets: a decision's ruled (``probes.LOGO_RULE``), every other
+        record's points only (descriptive)."""
         if primary:
             return {"random_h3": pool, "pool": PB.pool_draws(len(pool)),
-                    "controls": PB.POOL_SEEDS}
-        return {"random_h3": rnd, "pool": None, "controls": five}
+                    "controls": PB.POOL_SEEDS, "logo": "rule"}
+        return {"random_h3": rnd, "pool": None, "controls": five, "logo": "summary"}
 
     def c2_on(r2, fo, res, scheme="key", primary=False) -> dict:
         w2 = ST.stratum_weights(tab, r2, scheme)
@@ -1656,7 +1665,7 @@ def probes_of(acts: dict, world, frozen: dict, rows_c2, rows_sw, valid=None,
             return AN.c2_network(acts["actor_h3"], rf["random_h3"], z, acts["m"], res.by_fold,
                                  fo, None, tab["direction"], TG.K_P, frozen["power_floor"],
                                  r2, weights=w2[r2], mask=valid, pool=rf["pool"],
-                                 controls=rf["controls"])
+                                 controls=rf["controls"], logo=rf["logo"], labels=labels)
         except PB.NotTestable as e:
             return {"decision": "not testable", "reason": str(e),
                     "controls": AN.controls_label(rf["controls"], primary)}
@@ -1666,7 +1675,8 @@ def probes_of(acts: dict, world, frozen: dict, rows_c2, rows_sw, valid=None,
         rf = refs(primary)
         try:
             return AN.c2_sw_network(acts["actor_h3"], rf["random_h3"], z, sig, acts["m"][:, 1],
-                                    fo, ws[rs], rs, pool=rf["pool"], controls=rf["controls"])
+                                    fo, ws[rs], rs, pool=rf["pool"], controls=rf["controls"],
+                                    logo=rf["logo"], labels=labels)
         except PB.NotTestable as e:
             return {"decision": "not testable", "reason": str(e),
                     "controls": AN.controls_label(rf["controls"], primary)}
@@ -1889,14 +1899,15 @@ def c1_frame(world, frozen: dict, flags: dict):
 
 def c1_bare(fr, g, counts):
     """C1 without nulls (``analysis.c1`` on ``c1_frame``'s rows, decision mask, calibration,
-    bounds and bootstrap, every slope CI) of a pullback ``g`` [n, 8]: the accel-held
-    sensitivity, C3-R2c's x (its R2_c) and the descriptive C1 of the networks outside the
-    decision set."""
+    bounds and bootstrap, every slope CI, the leave-one-geometry-out points only) of a
+    pullback ``g`` [n, 8]: the accel-held sensitivity, C3-R2c's x (its R2_c) and the
+    descriptive C1 of the networks outside the decision set."""
     from apexzero.costate import analysis as AN
     from apexzero.costate import targets as TG
 
     return AN.c1(g[:, fr.idx], fr.lam, fr.fo.outer, fr.w_in, fr.cl, fr.G, fr.tab["direction"],
-                 fr.inner, None, fr.valid, TG.K_P, counts, slope_boot="always", bounds=fr.bnd)
+                 fr.inner, None, fr.valid, TG.K_P, counts, slope_boot="always", bounds=fr.bnd,
+                 logo="summary", labels=AN.geometry_labels(fr.tab))
 
 
 def heads_of(crit: dict, fr, counts) -> dict:
@@ -1946,7 +1957,9 @@ def analyse_network(name: str, world, frozen: dict, crit: dict, nulls: dict, fla
     interior's pedal-saturated states descriptively with pedal kept there; C1-own (without
     the own stage's output: 'not testable', descriptive, with the reason) and its accel-held
     form ('C1-own_held': the critic's accel-held pullback against lambda^own_held,
-    descriptive); C1's pre-registered variants (``variant_specs``; on partitions 1-10 the
+    descriptive); C1 itself ruled by the single-geometry robustness rule
+    (``probes.LOGO_RULE``; ``analysis.c1``'s 'rule': its label 'at scale' needs the ruled
+    confirm), every variant and strata row with the leave-one-geometry-out points only; C1's pre-registered variants (``variant_specs``; on partitions 1-10 the
     fold-dependent nulls, fitted on partition 0, are left out and said so; partition 0's
     key-weighted variants carry their slope CIs), C1-braking and its non-braking counterpart
     bootstrapped over their own geometries, and the accel-held pullback ('pullback:held',
@@ -1979,8 +1992,9 @@ def analyse_network(name: str, world, frozen: dict, crit: dict, nulls: dict, fla
     # [n, 8], or [F, n, 8] per held-out fold (``analysis.FOLD_NULLS``): K_P on the last axis
     nl = {k: np.asarray(v)[..., idx] for k, v in nulls.items() if k != "fits"}
     nl["random_critics"] = [r[:, idx] for r in crit["random_g"]]
+    labels = AN.geometry_labels(tab)
     c1 = AN.c1(g, lam, fo.outer, w_in, cl, G, tab["direction"], inner, nl, valid, TG.K_P,
-               counts, slope_boot="always", bounds=bnd)
+               counts, slope_boot="always", bounds=bnd, logo="rule", labels=labels)
     out = {"C1": c1.record(), "decision_rows": {c: int((inner & valid[:, k]).sum())
                                                 for k, c in enumerate(TG.K_P)},
            "decision_mask_sha256": hashlib.sha256(
@@ -2072,6 +2086,7 @@ def analyse_network(name: str, world, frozen: dict, crit: dict, nulls: dict, fla
     fold_nulls = set(AN.FOLD_NULLS) | {k for k, v in nl.items()
                                        if isinstance(v, np.ndarray) and v.ndim == 3}
     done = {inner.tobytes(): out["C1"]}   # rows -> record (partition 0, key weights)
+    geo = ST.geometry_index(tab)          # a subset's clusters' indices in T (_subclusters)
 
     def variant(i: int, sp: dict, rows) -> dict:
         fo_v = PB.folds(tab, sp["partition"])
@@ -2080,7 +2095,8 @@ def analyse_network(name: str, world, frozen: dict, crit: dict, nulls: dict, fla
         canon = sp["partition"] == 0 and sp["scheme"] == "key"
         r = AN.c1(g, lam, fo_v.outer, ST.stratum_weights(tab, rows, sp["scheme"]), cl_v, G_v,
                   tab["direction"], rows, nl_v, valid, TG.K_P, cnt_v,
-                  slope_boot="always" if canon else False, bounds=bnd).record()
+                  slope_boot="always" if canon else False, bounds=bnd, logo="summary",
+                  labels=labels, geometries=np.unique(geo[rows])).record()
         r["nulls_omitted"] = sorted(set(nl) - set(nl_v))
         # Section 12 decision 2: the "at scale" label gates C1's primary record only; a
         # variant's (C1-braking's among them) is reported, never a label claim
@@ -2133,7 +2149,8 @@ def analyse_network(name: str, world, frozen: dict, crit: dict, nulls: dict, fla
                 cl_s, G_s, cnt_s = _subclusters(tab, rows, AN.STRATUM_SEED + j)
                 return AN.c1(g, lam, fo.outer, ST.stratum_weights(tab, rows), cl_s, G_s,
                              tab["direction"], rows, nl, valid, TG.K_P, cnt_s,
-                             slope_boot="always", bounds=bnd).record()
+                             slope_boot="always", bounds=bnd, logo="summary", labels=labels,
+                             geometries=np.unique(geo[rows])).record()
 
             rec_s = done[rows.tobytes()] = AN.guarded(compute)
         return AN.stratum_record(

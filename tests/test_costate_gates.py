@@ -1130,9 +1130,11 @@ def test_c2_null_scores_random_actors_as_c2_scores_a_network(decoy_world, monkey
     own h3 and m, against the control pool (random-init actors 0-19) with the two-level CI,
     through ``analysis.c2_network`` on C2's decision stratum, mask and power floor with key
     weights renormalised on the stratum (the probes stage's call for a primary C2); each
-    seed's geometry-only CI and its decision beside it; the summary is the seeds'
-    distribution, with v2.5's 5-control null beside it; the null's seeds may not be in the
-    pool, and it needs C2's setup."""
+    seed's geometry-only CI and its decision beside it; each decision ruled by the
+    single-geometry robustness rule (``probes.LOGO_RULE``), its sets and the full set's
+    decision kept; the summary is the seeds' distribution, with the rule's counts and v2.5's
+    5-control null beside it; the null's seeds may not be in the pool, and it needs C2's
+    setup."""
     from apexzero.costate import analysis as AN
     from apexzero.costate import prereg as PR
     from apexzero.costate.targets import K_P
@@ -1158,8 +1160,17 @@ def test_c2_null_scores_random_actors_as_c2_scores_a_network(decoy_world, monkey
         want = AN.c2_network(acts[r["seed"]][0], [acts[s][0] for s in PB.POOL_SEEDS], pw.z,
                              acts[r["seed"]][1], pw.lam_res, pw.fo, None, pw.direction, K_P,
                              floor, rows, weights=wr[rows], mask=mask,
-                             pool=PB.pool_draws(PB.N_POOL), controls=PB.POOL_SEEDS)
+                             pool=PB.pool_draws(PB.N_POOL), controls=PB.POOL_SEEDS,
+                             logo="rule", labels=AN.geometry_labels(pw.tab))
         assert r["stat"] == want["stat"] and r["ci"] == want["ci"]
+        assert r["logo"] == want["logo"] and r["logo"]["kind"] == "rule"
+        assert r["decision_all_geometries"] == want["decision_all_geometries"]
+        assert r["geometry_sensitive"] == want["geometry_sensitive"]
+        assert r["decision"] == PB.logo_rule(r["decision_all_geometries"],
+                                             r["logo"]["decision"])[0]
+        geo = np.unique(ST.geometry_index(pw.tab)[rows])
+        assert r["logo"]["geometry"] == geo.tolist()
+        assert r["logo"]["R"] == AN.geometry_labels(pw.tab)[geo, 0].tolist()
         assert r["ci_geometry"] == want["ci_geometry"] and r["pool"] == want["pool"]
         assert r["scored_rows"] == want["scored_rows"] and r["decision"] == want["decision"]
         assert want["controls"]["ci"] == "two-level" and want["controls"]["n"] == 20
@@ -1169,6 +1180,7 @@ def test_c2_null_scores_random_actors_as_c2_scores_a_network(decoy_world, monkey
                               acts[r["seed"]][1], pw.lam_res, pw.fo, None, pw.direction, K_P,
                               floor, rows, weights=wr[rows], mask=mask)
         assert fixed["stat"] == r["stat"] and fixed["ci"] == r["ci_geometry"]
+        assert fixed["decision"] == r["decision_geometry_ci"] and "logo" not in fixed
     st = np.array([r["stat"] for r in rec["networks"]])
     s = rec["summary"]
     assert (s["n"], s["n_finite"]) == (2, 2)
@@ -1176,6 +1188,9 @@ def test_c2_null_scores_random_actors_as_c2_scores_a_network(decoy_world, monkey
     assert s["p95"] == pytest.approx(np.quantile(st, 0.95)) and s["max"] == st.max()
     assert sum(s["decisions"].values()) == 2 and sum(s["geometry_ci"]["decisions"].values()) == 2
     assert s["ci_width_mean"] >= s["geometry_ci"]["ci_width_mean"] > 0
+    assert rec["logo"] == PB.LOGO_RULE and sum(s["logo"]["decisions_all_geometries"].values()) == 2
+    assert s["logo"]["geometry_sensitive"] == sum(bool(r["geometry_sensitive"])
+                                                  for r in rec["networks"])
     old = rec["five_controls_v25"]
     assert old["seeds"] == list(range(5, 25)) and old["controls"] == list(range(5))
     assert (old["mean"], old["sd"], old["max"]) == (-0.019198, 0.028184, 0.031410)
@@ -1183,6 +1198,9 @@ def test_c2_null_scores_random_actors_as_c2_scores_a_network(decoy_world, monkey
     assert PR.constants()["gates"]["c2_null"]["five_controls_v25"] == old
     fz = GT.c2_null_frozen(json.loads(json.dumps(rec)))
     assert fz["stats"] == st.tolist() and fz["seeds"] == list(seeds)
+    assert fz["decisions_all_geometries"] == [r["decision_all_geometries"]
+                                              for r in rec["networks"]]
+    assert "single-geometry robustness rule" in fz["scope"]
     assert "2 random-init actors" in fz["scope"] and "descriptive" in fz["scope"]
     assert "two-level CI" in fz["scope"]
     with pytest.raises(ValueError, match="control pool"):

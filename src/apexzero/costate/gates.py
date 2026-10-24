@@ -119,7 +119,9 @@ least the readout's R2 minus 0.02, one-sided, since the probe on h2 or h3 also s
 layer's other units and can exceed the readout), PR-5, 5b, 5c, 5d (lambda + noise as the
 critic's gradient through C1 at SNR 0.25-4 on C1's decision rows, expected SNR / (1 +
 SNR)), PR-5e (the floor: zero, noise and -lambda gradients score about 0 per component, a
-direction-only one at most 0.02 on xi), PR-6, PR-6b and PR-6c (below), PR-7 (scale
+direction-only one at most 0.02 on xi; PR-5's rules read C1's decisions as the analysis
+records them, ruled by the single-geometry rule, ``probes.LOGO_RULE``, and each row keeps the
+full set's decision and the sets), PR-6, PR-6b and PR-6c (below), PR-7 (scale
 invariance to 1e-6), PR-8 (C2-sw's gain within 0.03 on C2-sw's stratum), PR-9 (heads sharing
 V: D_V = 0 and the planted D_grad recovered). K4 passes when every plant does.
 
@@ -227,10 +229,13 @@ control pool) is scored as the network exactly as the probes stage scores a trai
 (``analysis.c2_network``: its own m in the base [z, m], the pool of random-init actors 0-19
 as the controls with the two-level CI, ``probes`` module docstring 'Two-level CI', partition
 0's by-fold lambda_res at f_D's k, C2's decision stratum with key weights renormalised on
-it, the decision mask and the frozen power floor), on z under G1's obs_rms. The spread of the
-20 statistics is the between-network variance; the two-level CI carries the controls' share
-of it. Each seed's geometry-only CI and the decision under it are recorded beside it
-(descriptive). The summary (``c2_null_frozen``) is copied into the record and printed beside
+it, the decision mask and the frozen power floor, and each decision ruled by the
+single-geometry robustness rule, ``probes.LOGO_RULE``), on z under G1's obs_rms. The spread
+of the 20 statistics is the between-network variance; the two-level CI carries the controls'
+share of it. Each seed's geometry-only CI and the decision under it, the full set's decision
+and the leave-one-geometry-out sets are recorded beside it (descriptive), and the summary
+counts the full sets' decisions, the seeds the rule turns inconclusive and the geometries
+that change them ('logo'). The summary (``c2_null_frozen``) is copied into the record and printed beside
 each network's primary C2 (``analysis.c2_null_note``); no decision reads it. v2.5's null,
 before the pool (seeds 5-24 against the 5 controls 0-4, the geometry-only CI: mean -0.0192,
 SD 0.0282, 7 of 20 refuting, none confirming), is the constant ``C2_NULL_FIVE_CONTROLS``,
@@ -251,7 +256,9 @@ features, (14, seed) PR-6b and PR-6c's noise, (15, j) the units holding F, j = 0
 PR-6c); the validation seeds of f_D's k draw on ``costate_decoy_k`` (311, sub-stream v);
 C2's random-only null uses the random-init actors of seeds 20-39 (``probes.random_actor``, as
 C2's control pool 0-19 does) and the pool's resampling on ``costate_c2_pool`` (312,
-``probes.pool_draws``); K2b draws nothing random.
+``probes.pool_draws``); the single-geometry rule's sets (c2-null's and PR-5's) resample on
+``costate_logo`` (313, ``probes.logo_counts``, sub-stream the geometry); K2b draws nothing
+random.
 """
 
 from __future__ import annotations
@@ -1552,11 +1559,16 @@ def pr5(pw: ProbeWorld, counts: np.ndarray, rows: np.ndarray | None = None) -> d
     rng = k4_rng(7)
     noise = rng.standard_normal(lam.shape)
 
+    labels = AN.geometry_labels(pw.tab)
+
     def run(g, label, exp=None):
+        # C1's decision as the analysis records it: ruled by probes.LOGO_RULE
         c = AN.c1(g, lam, fo.outer, wr, cl, G, pw.direction, rows, None, None, K_P, counts,
-                  bounds=bounds)
+                  bounds=bounds, logo="rule", labels=labels)
         rec = {"case": label, "r2c": c.r2c.tolist(), "stat": c.stat, "ci": list(c.ci),
-               "decision": c.decision, "label": c.label, "slope": c.slope.tolist()}
+               "decision": c.decision, "label": c.label, "slope": c.slope.tolist(),
+               "decision_all_geometries": c.decision_all,
+               "geometry_sensitive": list(c.sensitive), "logo": c.logo}
         if exp is not None:
             rec["expected"] = exp
         out["rows"].append(rec)
@@ -2053,7 +2065,8 @@ def c2_null(pw: ProbeWorld, cfg, seeds: Sequence[int] = C2_NULL_SEEDS,
     a trained network (``analysis.c2_network`` with its own h3 and m, the pool of random-init
     actors ``probes.POOL_SEEDS`` as the controls with the two-level CI's draws
     ``probes.pool_draws``, on ``pw``'s z, by-fold lambda_res, folds, decision stratum, mask
-    and frozen power floor, key weights renormalised on the stratum), and the summary
+    and frozen power floor, key weights renormalised on the stratum, each decision ruled by
+    ``probes.LOGO_RULE`` with its sets and the full set's decision beside it), and the summary
     (``c2_null_summary``), with v2.5's 5-control summary beside it (``C2_NULL_FIVE_CONTROLS``,
     descriptive). Descriptive; 'pass': every seed's statistic is finite."""
     if pw.rows_c2 is None or pw.mask is None or pw.power_floor is None:
@@ -2065,6 +2078,7 @@ def c2_null(pw: ProbeWorld, cfg, seeds: Sequence[int] = C2_NULL_SEEDS,
         raise ValueError(f"the null's seeds {clash} are in C2's control pool")
     rows = np.asarray(pw.rows_c2, bool)
     wr = ST.stratum_weights(pw.tab, rows)
+    labels = AN.geometry_labels(pw.tab)
     ctrl = [PB.hidden(PB.random_actor(cfg, s), pw.z)["h3"] for s in controls]
     draws = PB.pool_draws(len(ctrl))
     nets = []
@@ -2073,19 +2087,21 @@ def c2_null(pw: ProbeWorld, cfg, seeds: Sequence[int] = C2_NULL_SEEDS,
         try:
             rec = AN.c2_network(hid["h3"], ctrl, pw.z, hid["m"], pw.lam_res, pw.fo, None,
                                 pw.direction, K_P, pw.power_floor, rows, weights=wr[rows],
-                                mask=pw.mask, pool=draws, controls=controls)
+                                mask=pw.mask, pool=draws, controls=controls, logo="rule",
+                                labels=labels)
         except PB.NotTestable as e:
             rec = {"decision": "not testable", "reason": str(e)}
         ci_g = rec.get("ci_geometry")
         nets.append({"seed": int(s), **{k: rec.get(k) for k in (
-            "stat", "ci", "ci_geometry", "gain", "raw", "decision", "reason", "n_stratum",
-            "scored_rows", "pool")},
+            "stat", "ci", "ci_geometry", "gain", "raw", "decision", "decision_all_geometries",
+            "geometry_sensitive", "reason", "n_stratum", "scored_rows", "pool", "logo")},
             "decision_geometry_ci": None if ci_g is None else PB.decide(
                 float(rec["stat"]), float(ci_g[0]), float(ci_g[1]))})
         if progress:
             progress(f"seed {int(s)}: {rec.get('stat')} {rec.get('ci')} {rec.get('decision')}")
     summ = c2_null_summary(nets)
     return {"seeds": [int(s) for s in seeds], "controls": list(controls), "ci": "two-level",
+            "logo": PB.LOGO_RULE,
             "decoy_k": ST.KNN_K, "passing": dict(pw.power_floor), "rows": int(rows.sum()),
             "obs_rms": "G1", "networks": nets, "summary": summ,
             "five_controls_v25": {k: list(v) if isinstance(v, tuple) else v
@@ -2096,7 +2112,9 @@ def c2_null(pw: ProbeWorld, cfg, seeds: Sequence[int] = C2_NULL_SEEDS,
 def c2_null_summary(nets: Sequence[dict]) -> dict:
     """The null's distribution over its networks' statistics: their number (and how many are
     finite), mean, SD (ddof 1), minimum, maximum and 5th, 50th and 95th percentiles (linear),
-    the decisions' counts, and how many CIs lie above 0 or below 0."""
+    the decisions' counts, and how many CIs lie above 0 or below 0; under the single-geometry
+    rule ('logo') the full sets' decisions' counts, the seeds it turns inconclusive and how
+    often each geometry changes one."""
     st = np.array([_num(r.get("stat")) for r in nets], float)
     fin = st[np.isfinite(st)]
     cis = [r.get("ci") for r in nets if r.get("ci") is not None]
@@ -2115,6 +2133,20 @@ def c2_null_summary(nets: Sequence[dict]) -> dict:
            "p05": q(0.05), "p50": q(0.5), "p95": q(0.95), "decisions": dec,
            "ci_above_0": int(sum(_num(c[0]) > 0 for c in cis)),
            "ci_below_0": int(sum(_num(c[1]) < 0 for c in cis))}
+    if any("decision_all_geometries" in r for r in nets):
+        # the single-geometry robustness rule (probes.LOGO_RULE): the full sets' decisions,
+        # the networks it turns inconclusive and the geometries that change them
+        da: dict = {}
+        flips: dict = {}
+        for r in nets:
+            d = str(r.get("decision_all_geometries", r.get("decision")))
+            da[d] = da.get(d, 0) + 1
+            for gm in r.get("geometry_sensitive") or ():
+                flips[str(gm["geometry"])] = flips.get(str(gm["geometry"]), 0) + 1
+        out["logo"] = {"decisions_all_geometries": da,
+                       "geometry_sensitive": int(sum(bool(r.get("geometry_sensitive"))
+                                                     for r in nets)),
+                       "changing_geometries": flips}
     geo = [r.get("ci_geometry") for r in nets if r.get("ci_geometry") is not None]
     if geo:                   # the two-level null: the same points' geometry-only CIs beside it
         dg: dict = {}
@@ -2135,16 +2167,20 @@ def c2_null_frozen(rec: dict) -> dict:
     gates/c2_null.json): the summary, each seed's statistic, CI and decision, and its scope,
     which ``analysis.c2_null_note`` prints beside each network's primary C2."""
     nets = rec.get("networks") or []
+    ruled = ({"decisions_all_geometries": [r.get("decision_all_geometries") for r in nets]}
+             if rec.get("logo") else {})
     return {"summary": rec.get("summary"), "seeds": [r.get("seed") for r in nets],
             "stats": [r.get("stat") for r in nets], "ci": [r.get("ci") for r in nets],
-            "decisions": [r.get("decision") for r in nets],
+            "decisions": [r.get("decision") for r in nets], **ruled,
             "scope": (f"C2's primary statistic of {len(nets)} random-init actors (seeds "
                       f"{rec.get('seeds')}) as the network against the random-init controls "
                       f"{rec.get('controls')} ({rec.get('ci', 'geometry')} CI): "
                       f"{rec.get('obs_rms')}'s obs_rms, C2's decision "
                       f"stratum ({rec.get('rows')} rows) and mask, the frozen power floor "
                       f"{rec.get('passing')}, partition 0, key weights, f_D at k = "
-                      f"{rec.get('decoy_k')}; descriptive")}
+                      f"{rec.get('decoy_k')}"
+                      + ("; each decision ruled by the single-geometry robustness rule"
+                         if rec.get("logo") else "") + "; descriptive")}
 
 
 def pr8(pw: ProbeWorld, counts: np.ndarray, snr: float = 4.0) -> dict:

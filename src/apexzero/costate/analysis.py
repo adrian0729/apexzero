@@ -129,11 +129,32 @@ record. Every record says which ('controls', ``controls_label``), the 'not testa
 included; a contained error (``guarded``; in a strata table, band 'error') records the
 error alone.
 
+**The single-geometry robustness rule** (``probes.LOGO_RULE``; the lead's decision before
+the tag, on random-init evidence: on C2's decision rows one geometry held 64-70% of the
+base's squared error, and a decision could rest on it). The primary C1 (``c1``'s ``logo`` =
+'rule', ``c1_logo``), C2 and C2-sw (``c2_network``'s and ``c2_sw_network``'s, ``probes``
+module docstring) are also decided on each leave-one-geometry-out scoring set (the
+geometry's rows weighted 0 in scoring; the calibrations, out-of-fold predictions, nulls and
+controls unchanged; the same bootstrap over the other geometries on stream 'costate_logo').
+A confirm or refute stands only where every set decides the same; otherwise the record's
+'decision' is 'inconclusive' (reason 'geometry-sensitive', the geometries named in
+'geometry_sensitive' with their (R, theta), ``geometry_labels``) and the full set's is kept
+as 'decision_all_geometries'. Everything that reads a decision reads the ruled one:
+``network_decisions`` and so R18, C1's label 'at scale' (it needs the ruled confirm), K4's
+band-edge notes beside the primary C2, and K4's PR-5 rules (``gates.pr5``). C1-own's
+standing (``c1_own_status``) reads no decision of C1. C3-w and C3-R2c are across networks
+and exempt; C1-own, C1-pattern, C1-limit and C1-braking are secondaries and keep their
+decisions. The strata tables' rows (but each table's primary row, the decision's own
+record), the sensitivity variants and the descriptive networks' C1 carry the sets' points
+only ('summary': the most influential geometry, its move and the shares; their decision or
+band unchanged).
+
 **C2's random-only null** (``c2_null_note``, descriptive, through ``guarded``; v2.5, with the
 pool): beside each network's primary C2, the record's frozen 'c2_null' (``gates.c2_null``:
 C2's primary statistic of 20 random-init actors, seeds 20-39, scored as the network against
-the pool with the two-level CI, copied at prereg from the bound gates/c2_null.json) with the
-share of its statistics at or above the network's. It changes no decision.
+the pool with the two-level CI and ruled by the single-geometry rule, copied at prereg from
+the bound gates/c2_null.json) with the share of its statistics at or above the network's. It
+changes no decision.
 
 **Per network and per variant** (``network_decisions``, ``variant_decisions``). C1, C2 and
 C2-sw are decided per network on the 9 step 1 generalist finals (``DECISION_NETWORKS``,
@@ -639,6 +660,12 @@ def geometry_clusters(tab) -> tuple[np.ndarray, int]:
     return g, int(g.max()) + 1
 
 
+def geometry_labels(tab) -> np.ndarray:
+    """[G, 2] each geometry index's (R, theta) (``states.geometry_index``'s order): the
+    leave-one-geometry-out records' labels."""
+    return np.unique(ST.geometry_keys(tab), axis=0)
+
+
 # ------------------------------------------------------------------------- C1
 
 
@@ -670,12 +697,16 @@ class C1:
     n_stratum: int | None = None             # the stratum's rows (``rows``), any component
     n_uncalibrated: np.ndarray | None = None  # [m] valid rows dropped: no out-of-fold fit
     reason: str | None = None                # why 'not testable'
+    logo: dict | None = None                 # the leave-one-geometry-out sets (``c1_logo``)
+    decision_all: str | None = None          # under the rule: the full set's decision
+    sensitive: tuple = ()                    # under the rule: the geometries that change it
 
     def record(self) -> dict:
         def lst(v):
             return None if v is None else np.asarray(v).tolist()
 
         extra = {} if self.reason is None else {"reason": self.reason}
+        extra.update(PB.logo_fields(self.logo, self.decision_all, self.sensitive))
         return {**extra, "names": list(self.names), "r2c": self.r2c.tolist(), "stat": self.stat,
                 "ci": list(self.ci), "null_r2c": {k: np.asarray(v).tolist()
                                                   for k, v in self.null_r2c.items()},
@@ -776,12 +807,79 @@ def _null_array(x, n: int) -> np.ndarray:
     return x if x.ndim == 3 else x.reshape(n, -1)
 
 
+def c1_logo(sums: dict, spearman_in: dict, names: Sequence[str], spans, n_clusters: int,
+            n_boot: int, point: float, rule: bool = True, labels=None,
+            geometries: np.ndarray | None = None, confirm: float = C1_CONFIRM,
+            refute: float = C1_REFUTE) -> dict:
+    """C1's leave-one-geometry-out sets (``probes.LOGO_RULE``), one per geometry with a scored
+    row, from each scored component's sums (``sums`` {k: ``probes.BootSums``}, prediction
+    sets: the calibrated gradient, then the nulls' in ``spans`` (name, first, count)): set g
+    weights geometry g's rows 0 in scoring, so its R2_c is the mean over the components that
+    keep a scored row outside g of the same calibrated, clipped predictions' R2_wd without
+    them. With ``rule`` its CI, each null's paired difference and each component's Spearman
+    are the same cluster bootstrap over the other geometries (``probes.logo_counts``,
+    sub-stream the geometry's index; vectorised over the draws), and its decision C1's
+    bands (``c1_decide``). The Spearman CIs (``spearman_in`` {k: (g, lambda, w, cluster,
+    direction, odd)}) are computed only where the decision can turn on them (R2_c's lower
+    end above ``confirm`` and every null's above 0); elsewhere 'spearman_lo' is None and
+    the decision is the same either way. 'shares': each component's geometries' shares of
+    the weight, of the network's squared error and of the target's sum of squares (the
+    reference: R2's denominator). ``geometries`` [G] each cluster's geometry index in T
+    (default the cluster's own; a stratum's re-indexed clusters pass theirs), which names
+    the sets, labels them and seeds their draws."""
+    gid = np.arange(n_clusters) if geometries is None else np.asarray(geometries, int)
+    comps = sorted(sums)
+    wk = np.stack([sums[k].w.sum(1) for k in comps], 1)                     # [G, c]
+    present = np.flatnonzero(wk.sum(1) > 0)
+    drop = 1.0 - np.eye(n_clusters)[present]                                # [Gp, G]
+    pts = np.stack([PB.boot_r2(sums[k], drop)[:, :, 0] for k in comps], 2)  # [Gp, K, c]
+    keep = (wk.sum(0)[None] - wk[present]) > 0                              # [Gp, c]
+    stats = np.array([pts[i, 0, keep[i]].mean() if keep[i].any() else np.nan
+                      for i in range(len(present))])
+    shares = {}
+    for k in comps:
+        sh = PB.cluster_shares(sums[k], 0)
+        shares[str(names[k])] = {"weight": sh["weight"][present, 0].tolist(),
+                                 "sse_network": sh["sse"][present, 0].tolist(),
+                                 "sst": sh["sst"][present, 0].tolist()}
+    if not rule:
+        return PB.logo_record(gid[present], labels, point, stats, shares)
+    cis = np.full((len(present), 2), np.nan)
+    null_lo = {name: [None] * len(present) for name, _, _ in spans}
+    sp_lo: list = [None] * len(present)
+    decs = []
+    for i, g in enumerate(present):
+        kc = [k for j, k in enumerate(comps) if keep[i, j]]
+        if not kc:
+            decs.append("not testable")
+            continue
+        C = PB.logo_counts(n_clusters, int(g), n_boot, int(gid[g]))
+        dr = np.stack([PB.boot_r2(sums[k], C)[:, :, 0] for k in kc], 2)     # [B, K, c']
+        st = dr[:, 0].mean(1)
+        lo, hi = _ci(st)
+        cis[i] = lo, hi
+        nl = []
+        for name, i0, cnt in spans:
+            nl.append(_ci(st - dr[:, i0:i0 + cnt].mean(2).max(1))[0])
+            null_lo[name][i] = nl[-1]
+        sp = []
+        if lo > confirm and all(v > 0.0 for v in nl):
+            for k in kc:
+                x, y, ww, cl, d, od = spearman_in[k]
+                sp.append(_ci(spearman_boot(x, y, ww, cl, C, d, od)[1])[0])
+            sp_lo[i] = sp
+        decs.append(c1_decide(lo, hi, nl, sp, confirm, refute))
+    return PB.logo_record(gid[present], labels, point, stats, shares, cis, decs,
+                          {"null_lo": null_lo, "spearman_lo": sp_lo}, n_boot)
+
+
 def c1(g: np.ndarray, lam: np.ndarray, outer: np.ndarray, w: np.ndarray, cluster: np.ndarray,
        n_clusters: int, direction: np.ndarray, rows: np.ndarray,
        nulls: dict[str, np.ndarray | list[np.ndarray]] | None = None,
        valid: np.ndarray | None = None, names: Sequence[str] = K_P,
        counts: np.ndarray | None = None, fit_rows: np.ndarray | None = None,
-       slope_boot: bool | str = True, bounds=None) -> C1:
+       slope_boot: bool | str = True, bounds=None, logo: str | None = None,
+       labels: np.ndarray | None = None, geometries: np.ndarray | None = None) -> C1:
     """C1 on ``rows`` (the interior stratum) of g [n, m] against lambda [n, m] (winsorised
     targets, columns ``names``). ``nulls``: name -> a gradient [n, m], or [F, n, m] per
     held-out fold (``FOLD_NULLS``: ``calibrate`` fits and predicts fold f from slice f), put
@@ -796,7 +894,11 @@ def c1(g: np.ndarray, lam: np.ndarray, outer: np.ndarray, w: np.ndarray, cluster
     component left without a row drops out of the mean, and with none left C1 is 'not
     testable' ('reason'). The pooled slopes' CIs are bootstrapped for a confirm
     (``slope_boot`` True: the label's), always ('always': Section 6's 'slope CIs per
-    component and stratum') or never (False)."""
+    component and stratum') or never (False). ``logo`` (``c1_logo``; ``labels`` [G_T, 2] each
+    geometry index's (R, theta), ``geometries`` each cluster's index in T, default the
+    cluster's own): 'rule' the leave-one-geometry-out sets with their CIs and decisions,
+    the decision ruled by ``probes.LOGO_RULE`` (the label 'at scale' needs the ruled
+    confirm); 'summary' their points only (descriptive); None neither."""
     names = tuple(names)
     n = len(w)
     g = np.asarray(g, float).reshape(n, -1)
@@ -829,6 +931,7 @@ def c1(g: np.ndarray, lam: np.ndarray, outer: np.ndarray, w: np.ndarray, cluster
     inv_ci = np.full((m, 2), np.nan)
     n_rows, n_uncal = np.zeros(m, int), np.zeros(m, int)
     scored = rows[:, None] & val & np.isfinite(cal.pred)      # [n, m]: the scored rows
+    sums, sp_in, spans = {}, {}, []
     for k in range(m):
         sel = scored[:, k]
         n_rows[k] = int(sel.sum())
@@ -841,8 +944,11 @@ def c1(g: np.ndarray, lam: np.ndarray, outer: np.ndarray, w: np.ndarray, cluster
         for k_, ps in null_cal.items():
             spans.append((k_, len(preds), len(ps)))
             preds += [np.where(np.isfinite(p[sel, k]), p[sel, k], 0.0) for p in ps]
-        pt, dr = boot_r2(lam[sel, k], preds, w[sel], cluster[sel], n_clusters, counts,
-                         direction[sel], bool(odd[k]))
+        bs = sums[k] = _boot_sums(lam[sel, k], np.stack(preds), np.asarray(w[sel], float),
+                                  cluster[sel], n_clusters, direction[sel], bool(odd[k]))
+        pt = PB.boot_r2(bs, np.ones((1, n_clusters)))[0, :, 0]
+        dr = PB.boot_r2(bs, counts)[:, :, 0]
+        sp_in[k] = (g[sel, k], lam[sel, k], w[sel], cluster[sel], direction[sel], bool(odd[k]))
         r2c[k], draws[:, k] = pt[0], dr[:, 0]
         for k_, i0, cnt in spans:
             null_pt[k_][:, k] = pt[i0:i0 + cnt]
@@ -875,7 +981,21 @@ def c1(g: np.ndarray, lam: np.ndarray, outer: np.ndarray, w: np.ndarray, cluster
         null_diff[k_] = (float(stat - pt_k), dl, dh)
         null_r2c[k_] = null_pt[k_][int(np.argmax(null_pt[k_][:, ok].mean(1)))]
     decision = c1_decide(lo, hi, [v[1] for v in null_diff.values()], sp_ci[ok, 0])
-    if slope_boot == "always" or (slope_boot and decision == "confirm"):
+    lg, dec_all, sens = None, None, ()
+    if logo is not None:
+        if logo not in ("rule", "summary"):
+            raise ValueError(f"logo is 'rule', 'summary' or None, not {logo!r}")
+        if n_clusters < 2:              # removing the one geometry leaves no row to score
+            lg = {"kind": logo, "reason": "one geometry",
+                  "geometry": [0 if geometries is None else int(np.asarray(geometries)[0])],
+                  **({"decision": ["not testable"]} if logo == "rule" else {})}
+        else:
+            lg = c1_logo({k: v for k, v in sums.items() if ok[k]}, sp_in, names, spans,
+                         n_clusters, B, stat, logo == "rule", labels, geometries)
+        if logo == "rule":
+            dec_all = decision
+            decision, sens = PB.ruled(decision, lg, labels)
+    if slope_boot == "always" or (slope_boot and (dec_all or decision) == "confirm"):
         # the label's slope CIs (Section 12 decision 2), or every stratum's (descriptive)
         for k in np.flatnonzero(ok):
             sel = scored[:, k]
@@ -888,7 +1008,8 @@ def c1(g: np.ndarray, lam: np.ndarray, outer: np.ndarray, w: np.ndarray, cluster
                  and np.all(gl_ci[ok, 0] >= SCALE_BAND[0])
                  and np.all(inv_ci[ok, 1] <= SCALE_BAND[1]))
     return C1(names, r2c, stat, (lo, hi), null_r2c, null_diff, sp, sp_ci, slope, slope_ci,
-              n_rows, decision, label, cal, slope_gl, gl_ci, inv_ci, int(rows.sum()), n_uncal)
+              n_rows, decision, label, cal, slope_gl, gl_ci, inv_ci, int(rows.sum()), n_uncal,
+              None, lg, dec_all, sens)
 
 
 # ------------------------------------------------------------------------- C1 secondaries
@@ -1148,7 +1269,8 @@ def c2_network(h3: np.ndarray, random_h3: Sequence[np.ndarray], z: np.ndarray, m
                names: Sequence[str], passing: dict, rows: np.ndarray, weights=None,
                counts: np.ndarray | None = None, grid=PB.GRID, h_grid=PB.H_GRID,
                mask: np.ndarray | None = None, host: np.ndarray | None = None,
-               pool: np.ndarray | None = None, controls: Sequence[int] | None = None) -> dict:
+               pool: np.ndarray | None = None, controls: Sequence[int] | None = None,
+               logo: str | None = None, labels: np.ndarray | None = None) -> dict:
     """C2 on the stratum ``rows`` (``PROBE_FIT``): ``lam_res`` [F, n, m] (or [n, m]) over all
     of T, the folds dealt on T. ``w_all`` is a callable giving the metric's weights of a row
     subset (``states.weights`` of the subset table) or the weights of the stratum's rows.
@@ -1161,9 +1283,13 @@ def c2_network(h3: np.ndarray, random_h3: Sequence[np.ndarray], z: np.ndarray, m
     alone (``probes.c2_paired``: its unpaired gain and the host's beside it). ``pool`` [B,
     J]: the two-level CI's control draws (``probes.pool_draws`` over the J controls
     ``random_h3``; not with ``host``); ``controls``: the controls' seeds, recorded with the
-    kind of CI as 'controls' (``controls_label``)."""
+    kind of CI as 'controls' (``controls_label``). ``logo``: the leave-one-geometry-out sets
+    ('rule': a decision's, ruled by ``probes.LOGO_RULE``; 'summary': a descriptive record's
+    points; not with ``host``), ``labels`` each geometry's (R, theta) (``geometry_labels``)."""
     if host is not None and pool is not None:
         raise ValueError("a paired increment's controls cancel: it takes no control pool")
+    if host is not None and logo is not None:
+        raise ValueError("a paired increment decides nothing: it takes no LOGO sets")
     lab = {} if controls is None else {"controls": controls_label(controls, pool is not None)}
     rows = np.asarray(rows, bool)
     cols = [f"lam_{n}" for n in names]
@@ -1182,7 +1308,7 @@ def c2_network(h3: np.ndarray, random_h3: Sequence[np.ndarray], z: np.ndarray, m
     if host is None:
         gn = PB.c2(h3[rows], [r[rows] for r in random_h3], z[rows], m[rows], Y, sub, w,
                    np.asarray(direction)[rows], cols, passing, None, counts, grid, h_grid,
-                   mask=mk, pool=pool)
+                   mask=mk, pool=pool, logo=logo, labels=labels)
     else:
         gn = PB.c2_paired(h3[rows], np.asarray(host)[rows], [r[rows] for r in random_h3],
                           z[rows], m[rows], Y, sub, w, np.asarray(direction)[rows], cols,
@@ -1199,12 +1325,14 @@ def c2_sw_network(h3: np.ndarray, random_h3: Sequence[np.ndarray], z: np.ndarray
                   sigma_pedal: np.ndarray, m_pedal: np.ndarray, fo: PB.Folds, w: np.ndarray,
                   rows: np.ndarray, counts: np.ndarray | None = None, grid=PB.GRID,
                   h_grid=PB.H_GRID, pool: np.ndarray | None = None,
-                  controls: Sequence[int] | None = None) -> dict:
+                  controls: Sequence[int] | None = None, logo: str | None = None,
+                  labels: np.ndarray | None = None) -> dict:
     """C2-sw on its stratum ``rows`` (``states.SW_STRATUM``: the folded pedal-command
     multiplier active, where sigma^ped is nonzero; the raw pedal-saturated flag is a
     descriptive stratum), with the co-reported Spearman rho(m_pedal - 1, sigma^ped)
     (weighted); 'not testable' when the stratum has no row or its folds allow no inner
-    cross-validation (``probe_cv_problem``). ``pool`` and ``controls`` as ``c2_network``'s."""
+    cross-validation (``probe_cv_problem``). ``pool``, ``controls``, ``logo`` and
+    ``labels`` as ``c2_network``'s."""
     lab = {} if controls is None else {"controls": controls_label(controls, pool is not None)}
     rows = np.asarray(rows, bool)
     why = "no row" if not rows.any() else probe_cv_problem(fo, rows)
@@ -1212,7 +1340,7 @@ def c2_sw_network(h3: np.ndarray, random_h3: Sequence[np.ndarray], z: np.ndarray
         return {"decision": "not testable", "reason": why, "n_stratum": int(rows.sum()), **lab}
     sub = stratum_folds(fo, rows)
     gn = PB.c2_sw(h3[rows], [r[rows] for r in random_h3], z[rows], sigma_pedal[rows], sub, w,
-                  None, counts, grid, h_grid, pool=pool)
+                  None, counts, grid, h_grid, pool=pool, logo=logo, labels=labels)
     rec = gn.record()
     rec["n_stratum"] = int(rows.sum())
     rec["spearman_margin"] = PB.wspearman(np.asarray(m_pedal)[rows] - 1.0,
@@ -1749,10 +1877,11 @@ def strata_counts(tab, names: Sequence[str]) -> dict[str, int | None]:
 
 _C1_FIELDS = ("names", "r2c", "stat", "ci", "spearman", "spearman_ci", "slope", "slope_ci",
               "slope_gl", "slope_gl_ci", "inv_slope_lg_ci", "n_rows", "n_uncalibrated",
-              "null_diff", "reason", "error")
+              "null_diff", "decision_all_geometries", "geometry_sensitive", "logo", "reason",
+              "error")
 _C2_FIELDS = ("names", "passing", "r2_base", "r2_full", "gain", "raw", "partial", "stat", "ci",
               "scored_rows", "spearman_margin", "controls", "ci_kind", "ci_geometry", "pool",
-              "reason", "error")
+              "decision_all_geometries", "geometry_sensitive", "logo", "reason", "error")
 
 
 def stratum_record(hypothesis: str, rec: dict, rows: np.ndarray | None, tab,

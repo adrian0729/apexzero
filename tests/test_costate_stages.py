@@ -1306,10 +1306,13 @@ def test_every_pre_registered_variant_is_reported(tmp_path):
     """Review finding: only partition 0 under key weights was computed. analyse_network and
     probes_of report partitions 1-10, geometry and state weights, the small geometries and
     the kappa set dropped, and the braking / non-braking sub-scores; C3-w carries both
-    covariates and leaves out, with its reason, a network whose x keeps no scored row."""
+    covariates and leaves out, with its reason, a network whose x keeps no scored row. The
+    decisions (C1, C2, C2-sw) carry the single-geometry rule's sets, every descriptive record
+    the sets' points only."""
     cs = _script()
     from apexzero.costate import analysis as AN
     from apexzero.costate import probes as PB
+    from apexzero.costate import states as ST
 
     world, frozen = _toy_world()
     n = world.n
@@ -1362,6 +1365,27 @@ def test_every_pre_registered_variant_is_reported(tmp_path):
     assert set(pr["sensitivity"]) == want and "C2" in pr and "C2-sw" in pr
     assert all({"C2", "C2-sw"} <= set(v) for v in pr["sensitivity"].values())
     assert len(pr["robustness_C2"]["stat"]) == 10
+    # the single-geometry robustness rule (probes.LOGO_RULE): the decisions (C1, C2, C2-sw)
+    # carry their leave-one-geometry-out sets, ruled; every descriptive record (a variant, a
+    # strata row) the sets' points only, its decision or band unchanged
+    labels = AN.geometry_labels(world.tab)
+    for r in (out["C1"], pr["C2"], pr["C2-sw"]):
+        lg = r["logo"]
+        assert lg["kind"] == "rule" and len(lg["ci"]) == len(lg["decision"]) == len(lg["stat"])
+        assert r["decision"] == PB.logo_rule(r["decision_all_geometries"], lg["decision"])[0]
+        assert [g["geometry"] for g in r["geometry_sensitive"]] == [
+            lg["geometry"][i] for i in PB.logo_rule(r["decision_all_geometries"],
+                                                    lg["decision"])[1]]
+        assert lg["R"] == labels[lg["geometry"], 0].tolist()
+    for r in (out["sensitivity"]["drop_small"], out["sensitivity"]["pullback:held"],
+              pr["sensitivity"]["drop_small"]["C2"], pr["sensitivity"]["partition2"]["C2-sw"]):
+        assert r["logo"]["kind"] == "summary" and "decision_all_geometries" not in r
+    drop = out["sensitivity"]["drop_small"]["logo"]["geometry"]
+    assert set(drop) == set(np.unique(ST.geometry_index(world.tab)[
+        world.tab["interior"] & ~ST.small_geometry(world.tab)]).tolist())
+    row = pr["by_stratum"]["C2"]["interior"]
+    assert row["primary"] and row["logo"] == pr["C2"]["logo"]
+    assert row["band"] == pr["C2"]["decision"]
     # C3-w: x from every generalist's width derivative, y and both covariates from the record
     for name in AN.GENERALISTS:
         p = tmp_path / "post" / "critic" / f"{PR.net_file(name)}.npz"

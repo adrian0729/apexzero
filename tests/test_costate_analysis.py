@@ -1214,3 +1214,110 @@ def test_c2_null_note_beside_the_primary_c2():
     assert AN.c2_null_note({"C2": {"error": "KeyError: 'x'"}}, null)["placed"] == []
     assert AN.c2_null_note({"C2": {"stat": 0.1}}, {**null, "stats": [None]})["placed"] == []
     assert "error" in AN.guarded(AN.c2_null_note, {"C2": {"stat": 0.1}}, {"x": 1})
+
+
+# ------------------------------------------------------------------------- the single-geometry rule
+
+C1_HEAVY = 6                    # the LOGO world's high-SSE geometry
+
+
+def _c1_logo_world(heavy: bool, seed: int = 4, f: float = 0.8875, G: int = 48, rows: int = 20):
+    """C1 on one component (s) over G geometries of ``rows`` rows (folds by geometry, 6 outer
+    folds): g = lambda + noise. ``heavy``: geometry ``C1_HEAVY``'s lambda has 8 times the SD
+    (about 58% of the target's sum of squares, 2% of the weight) and its gradient is nearly
+    exact (noise SD 0.05); elsewhere the noise SD is 0.35 f, or 1.5 f in a quarter of the
+    geometries. The cluster bootstrap misses any one geometry in about 37% of its draws, so
+    C1's lower end mostly reflects the draws without it; the set without geometry 6 takes
+    the 2.5% quantile over the others, lower than that. At f = 0.8875 the full set's lower
+    end (about 0.63) and every other set's (0.61 at least) lie above 0.6 and that set's
+    (about 0.59) below it. Otherwise every geometry has SD 1 and noise SD 0.3."""
+    rng = np.random.default_rng(seed)
+    cl = np.repeat(np.arange(G), rows)
+    sc = np.ones(G)
+    sdn = np.where(rng.random(G) < 0.25, 1.5, 0.35) * f
+    if heavy:
+        sc[C1_HEAVY], sdn[C1_HEAVY] = 8.0, 0.05
+    else:
+        sdn[:] = 0.3
+    lam = rng.standard_normal(len(cl)) * sc[cl]
+    g = lam + rng.standard_normal(len(cl)) * sdn[cl]
+    labels = np.stack([10.0 + np.arange(G), np.full(G, 90.0)], 1)
+    return g[:, None], lam[:, None], cl % 6, np.ones(len(cl)), cl, G, labels
+
+
+def _c1_logo(heavy: bool, logo="rule", nulls=None):
+    g, lam, outer, w, cl, G, labels = _c1_logo_world(heavy)
+    return AN.c1(g, lam, outer, w, cl, G, np.ones(len(w)), np.ones(len(w), bool), nulls, None,
+                 ("s",), PB.cluster_counts(G), logo=logo, labels=labels)
+
+
+def test_c1_under_the_rule_names_the_geometry_its_confirm_rests_on():
+    """The single-geometry robustness rule (``probes.LOGO_RULE``) on C1 (``c1_logo``): where
+    one geometry holds most of the target's sum of squares and its gradient is the most
+    accurate (``_c1_logo_world``), the full set confirms but the set without it does not
+    (its CI's lower end falls below 0.6), so C1 records 'inconclusive' (reason
+    'geometry-sensitive', the geometry named with its (R, theta)) with the full set's
+    confirm beside it, and the label 'at scale' (which needs the ruled confirm) is not
+    given. The statistic, its CI and the full set's draws are unchanged; each set's R2_c is
+    the same calibrated predictions scored without that geometry's rows; the shares are the
+    geometries' of the weight, the network's squared error and the target's sum of squares.
+    Where the accuracy is spread (no heavy geometry) the confirm and the label stand."""
+    plain = _c1_logo(True, logo=None)
+    c = _c1_logo(True)
+    assert plain.decision == c.decision_all == "confirm" and plain.label
+    assert (c.stat, c.ci) == (plain.stat, plain.ci)
+    np.testing.assert_array_equal(c.slope_gl_ci, plain.slope_gl_ci)
+    assert c.decision == "inconclusive" and not c.label
+    assert c.sensitive == ({"geometry": C1_HEAVY, "R": 16.0, "theta": 90.0,
+                            "decision": "inconclusive"},)
+    lg = c.logo
+    assert lg["kind"] == "rule" and lg["geometry"] == list(range(48))
+    i = lg["geometry"].index(C1_HEAVY)
+    assert lg["ci"][i][0] < AN.C1_CONFIRM < min(v[0] for j, v in enumerate(lg["ci"]) if j != i)
+    assert lg["decision"].count("confirm") == 47 and lg["spearman_lo"][i] is None
+    assert all(v is not None and v[0] > 0 for j, v in enumerate(lg["spearman_lo"]) if j != i)
+    assert lg["null_lo"] == {}
+    sh = lg["shares"]["s"]
+    assert sh["sst"][i] > 0.5 and sh["weight"][i] == pytest.approx(1 / 48)
+    assert sh["sse_network"][i] < sh["sst"][i]           # its gradient is the most accurate
+    g, lam, outer, w, cl, G, labels = _c1_logo_world(True)
+    keep = cl != C1_HEAVY
+    cal = AN.calibrate(g, lam, outer, w, np.ones(len(w), bool), np.ones_like(lam, bool),
+                       direction=np.ones(len(w)), odd=np.array([False])).pred[:, 0]
+    want = 1.0 - (np.sum((lam[keep, 0] - cal[keep]) ** 2)
+                  / np.sum((lam[keep, 0] - lam[keep, 0].mean()) ** 2))
+    assert lg["stat"][i] == pytest.approx(want, abs=1e-12)
+    rec = c.record()
+    assert rec["decision"] == "inconclusive" and rec["reason"] == "geometry-sensitive"
+    assert rec["decision_all_geometries"] == "confirm" and not rec["label_at_scale"]
+    assert rec["geometry_sensitive"] == list(c.sensitive) and rec["logo"] == lg
+    # the summary: the sets' points, the decision and the label unchanged
+    s = _c1_logo(True, logo="summary")
+    assert s.decision == "confirm" and s.label and s.decision_all is None
+    assert s.logo["kind"] == "summary" and s.logo["stat"] == lg["stat"]
+    assert {"decision_all_geometries", "geometry_sensitive", "reason"}.isdisjoint(s.record())
+    # spread: every set confirms, so the confirm and the label stand
+    sp = _c1_logo(False)
+    assert sp.decision == sp.decision_all == "confirm" and sp.label and sp.sensitive == ()
+    assert set(sp.logo["decision"]) == {"confirm"}
+    assert sp.record()["geometry_sensitive"] == [] and "reason" not in sp.record()
+    # a null's paired difference is ruled per set too: a null as good as the gradient
+    same = _c1_logo(False, nulls={"qss": _c1_logo_world(False)[0]})
+    assert same.decision_all != "confirm" and same.decision == same.decision_all
+    assert len(same.logo["null_lo"]["qss"]) == 48
+
+
+def test_network_decisions_read_the_ruled_decision():
+    """``network_decisions`` (and through it R18's ``variant_decisions``) reads each record's
+    'decision', which under the rule is the ruled one: a C1, C2 or C2-sw confirm that rests
+    on one geometry enters as 'inconclusive'; 'decision_all_geometries' is kept beside it
+    and decides nothing."""
+    c1 = _c1_logo(True).record()
+    c2 = {"decision": "inconclusive", "decision_all_geometries": "refute",
+          "geometry_sensitive": [{"geometry": 6, "decision": "inconclusive"}]}
+    sw = {"decision": "confirm", "decision_all_geometries": "confirm", "geometry_sensitive": []}
+    per = AN.network_decisions(c1, c2, sw)
+    assert per == {"C1": "inconclusive", "C2": "inconclusive", "C2-sw": "confirm"}
+    v = AN.variant_decisions({"G1": per, "G1s1": per, "G1s2": per})
+    assert v["v1"]["C1"]["verdict"] == "inconclusive"
+    assert v["v1"]["C2-sw"]["verdict"] == "confirm"
