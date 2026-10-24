@@ -1162,14 +1162,16 @@ def c2_network(h3: np.ndarray, random_h3: Sequence[np.ndarray], z: np.ndarray, m
     kind of CI as 'controls' (``controls_label``)."""
     if host is not None and pool is not None:
         raise ValueError("a paired increment's controls cancel: it takes no control pool")
+    lab = {} if controls is None else {"controls": controls_label(controls, pool is not None)}
     rows = np.asarray(rows, bool)
     cols = [f"lam_{n}" for n in names]
     pas = PB._passing(passing, tuple(cols))
     if not pas.any():
-        return {"decision": "not testable", "reason": "no component passes the power floor"}
+        return {"decision": "not testable", "reason": "no component passes the power floor",
+                **lab}
     why = "no row" if not rows.any() else probe_cv_problem(fo, rows)
     if why:
-        return {"decision": "not testable", "reason": why, "n_stratum": int(rows.sum())}
+        return {"decision": "not testable", "reason": why, "n_stratum": int(rows.sum()), **lab}
     sub = stratum_folds(fo, rows)
     w = np.asarray(w_all, float) if weights is None else np.asarray(weights, float)
     Y = np.asarray(lam_res, float)
@@ -1187,8 +1189,7 @@ def c2_network(h3: np.ndarray, random_h3: Sequence[np.ndarray], z: np.ndarray, m
     rec["n_stratum"] = int(rows.sum())
     if mk is not None:
         rec["scored_rows"] = mk.sum(0).tolist()
-    if controls is not None:
-        rec["controls"] = controls_label(controls, pool is not None)
+    rec.update(lab)
     return rec
 
 
@@ -1202,10 +1203,11 @@ def c2_sw_network(h3: np.ndarray, random_h3: Sequence[np.ndarray], z: np.ndarray
     descriptive stratum), with the co-reported Spearman rho(m_pedal - 1, sigma^ped)
     (weighted); 'not testable' when the stratum has no row or its folds allow no inner
     cross-validation (``probe_cv_problem``). ``pool`` and ``controls`` as ``c2_network``'s."""
+    lab = {} if controls is None else {"controls": controls_label(controls, pool is not None)}
     rows = np.asarray(rows, bool)
     why = "no row" if not rows.any() else probe_cv_problem(fo, rows)
     if why:
-        return {"decision": "not testable", "reason": why, "n_stratum": int(rows.sum())}
+        return {"decision": "not testable", "reason": why, "n_stratum": int(rows.sum()), **lab}
     sub = stratum_folds(fo, rows)
     gn = PB.c2_sw(h3[rows], [r[rows] for r in random_h3], z[rows], sigma_pedal[rows], sub, w,
                   None, counts, grid, h_grid, pool=pool)
@@ -1213,8 +1215,7 @@ def c2_sw_network(h3: np.ndarray, random_h3: Sequence[np.ndarray], z: np.ndarray
     rec["n_stratum"] = int(rows.sum())
     rec["spearman_margin"] = PB.wspearman(np.asarray(m_pedal)[rows] - 1.0,
                                           np.asarray(sigma_pedal)[rows], w)
-    if controls is not None:
-        rec["controls"] = controls_label(controls, pool is not None)
+    rec.update(lab)
     return rec
 
 

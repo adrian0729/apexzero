@@ -1605,6 +1605,9 @@ def test_value_accuracy_decides_c1_own_and_every_strata_table_is_reported():
         assert all(r["controls"] == five for k, r in tb.items()      # a row on the decided
                    if k != prim and "controls" in r), h                 # rows included
         assert sum("controls" in r for k, r in tb.items() if k != prim) >= 3, h
+        # 'not testable' before any fit still says which controls it would have used
+        assert all("controls" in r for r in tb.values()
+                   if r["band"] == "not testable" and r.get("n")), h
     assert tsw["pedal_switching"]["primary"] and tsw["pedal_switching"]["stat"] == \
         pr["C2-sw"]["stat"]
     assert t2["interior&braking_key"]["stat"] == pr["sensitivity"]["braking_keys"]["C2"]["stat"]
