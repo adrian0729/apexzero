@@ -3063,3 +3063,16 @@ is not measured.
   the lead's choice above. 16.3 gives its size on the two null hosts.
 - A contained error carries no 'controls' (#5): by the containment rule (`analysis.guarded`) the
   record is replaced by its error and holds no statistic, so no reference set can be misread.
+
+**Checks** (911b58b, the code of this review's resolutions).
+- tests/test_costate_stages.py, tests/test_costate_probes.py and tests/test_costate_rehearsal.py:
+  70 passed and 1 skipped (the opt-in rehearsal). ruff passes on the files changed.
+- The rehearsal completed in 5,100 s at the default pools (2 workers per pooled stage), every
+  stage exiting 0, with no contained error, no decision on a non-finite CI and no pooled stage
+  run serially: K4 1,880 s, probes 1,675 s, c2-null 339 s, decoy-k 127 s.
+- Against the pooled rehearsal at 919ee5b (16.7), the probes outputs differ only by the new
+  'controls' labels on the three strata rows with no row (G1's C2-sw
+  pedal_switching&kappa_clipped; G2's C2 interior&kappa_clipped and C2-sw
+  pedal_switching&kappa_clipped). K2b's, K4's, decoy-k's and c2-null's records have the same
+  content_sha256, and the nulls' and own's npz are identical byte for byte. nulls/summary.json
+  differs only by the code hash it records for each network.
