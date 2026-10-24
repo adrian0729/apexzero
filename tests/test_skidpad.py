@@ -11,6 +11,7 @@ far below it (the axles are reasonably balanced).
 import jax
 import jax.numpy as jnp
 import numpy as np
+import pytest
 from scipy.optimize import fsolve
 
 from apexzero.oracle.qss import GG
@@ -18,7 +19,15 @@ from apexzero.vehicle.dynamics import body_derivatives, frenet_rates, tyre_force
 from apexzero.vehicle.ops import JAX
 from apexzero.vehicle.params import F1_2025 as P
 
-jax.config.update("jax_enable_x64", True)
+
+@pytest.fixture(autouse=True, scope="module")
+def _x64():
+    """This module's tests run in float64. It is switched on for them only and restored after,
+    since the other modules' float32 guards need it off (pytest imports every module first)."""
+    prev = jax.config.jax_enable_x64
+    jax.config.update("jax_enable_x64", True)
+    yield
+    jax.config.update("jax_enable_x64", prev)
 
 
 def equilibrium(vx, radius, guess):

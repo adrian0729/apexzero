@@ -17,7 +17,15 @@ from apexzero.env.racing import (
 from apexzero.tracks.track import from_centreline
 from apexzero.vehicle.sim import track_arrays
 
-jax.config.update("jax_enable_x64", True)
+
+@pytest.fixture(autouse=True, scope="module")
+def _x64():
+    """This module's tests run in float64. It is switched on for them only and restored after,
+    since the other modules' float32 guards need it off (pytest imports every module first)."""
+    prev = jax.config.jax_enable_x64
+    jax.config.update("jax_enable_x64", True)
+    yield
+    jax.config.update("jax_enable_x64", prev)
 
 
 def wavy_track(n=1500, mirror=False):

@@ -13,7 +13,15 @@ from apexzero.vehicle.ops import CASADI, JAX
 from apexzero.vehicle.params import F1_2025
 from apexzero.vehicle.sim import control_step, track_arrays
 
-jax.config.update("jax_enable_x64", True)
+
+@pytest.fixture(autouse=True, scope="module")
+def _x64():
+    """This module's tests run in float64. It is switched on for them only and restored after,
+    since the other modules' float32 guards need it off (pytest imports every module first)."""
+    prev = jax.config.jax_enable_x64
+    jax.config.update("jax_enable_x64", True)
+    yield
+    jax.config.update("jax_enable_x64", prev)
 P = F1_2025
 
 
