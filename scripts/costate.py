@@ -105,8 +105,9 @@ outputs are therefore the serial run's to the bit; the stamp records the pool ('
 'threads'), which is never partial and enters no content hash. A unit that fails in a worker
 fails the stage, and nothing is written. One BLAS thread, not --threads: on this Mac
 Accelerate gives decoy-k's units the same bits at 1, 6 and 12 threads as unpinned (every
-earlier run) but not at 2 (Delta2 about 2e-11 apart), and a worker's numpy work runs on one
-core either way.
+earlier run) but not at 2 (decoy-k's full-size Delta2 up to 8e-11 apart paired, 1.5e-10
+unpaired: design Section 16.6, well inside the 1e-6 reproduction tolerance), and a worker's
+numpy work runs on one core either way.
 
 **Freeze rule** (design Section 7 'Freeze'; ``freeze_problems``, step 2's rule simplified):
 the tag costate-prereg-v1 must exist as an annotated tag, be on origin as the same object and
@@ -1602,8 +1603,10 @@ def probes_of(acts: dict, world, frozen: dict, rows_c2, rows_sw, valid=None,
     and C2-sw enter a decision, so only they are scored against the control pool
     (``probes.POOL_SEEDS``, 'random0_h3' to 'random19_h3' in ``acts``) with the two-level CI
     (``probes.pool_draws``); every other record keeps the 5 controls and the geometry-only CI
-    (``analysis`` module docstring 'C2's control pool'), and each says which ('controls').
-    A strata table's primary row is the decision's own record."""
+    (``analysis`` module docstring 'C2's control pool'), and each says which ('controls'),
+    the 'not testable' ones included (a strata row with no row or no per-network column); a
+    contained error records the error alone. A strata table's primary row is the decision's
+    own record."""
     import numpy as np
 
     from apexzero.costate import analysis as AN
@@ -1695,13 +1698,15 @@ def probes_of(acts: dict, world, frozen: dict, rows_c2, rows_sw, valid=None,
     canon = {"partition": 0, "scheme": "key"}
 
     def row(h: str, sname: str, rows) -> dict:
+        # never the primary row (its stratum needs no per-network column, and it reuses out[h])
+        lab = {"controls": AN.controls_label(five, False)}
         if rows is None:
-            return AN.stratum_record(h, {"reason": "no per-network column " + ", ".join(
-                AN.missing_columns(tab_s, sname))}, None, tab_s)
+            return {**AN.stratum_record(h, {"reason": "no per-network column " + ", ".join(
+                AN.missing_columns(tab_s, sname))}, None, tab_s), **lab}
         primary = bool(sname == AN.PRIMARY_STRATUM[h] and np.array_equal(rows, decided[h]))
         rec_s = out[h] if primary else done.get((h, rows.tobytes()))
         if rec_s is None and not rows.any():
-            rec_s = {"decision": "not testable", "reason": "no row"}
+            rec_s = {"decision": "not testable", "reason": "no row", **lab}
         if rec_s is None:
             rec_s = done[(h, rows.tobytes())] = AN.guarded(on, h, canon, rows)
         return AN.stratum_record(h, rec_s, rows, tab_s, primary=primary)

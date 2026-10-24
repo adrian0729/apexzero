@@ -1,6 +1,6 @@
 # Idea 2: does the network encode the costate? (design v2.6, not frozen)
 
-Status: 23 Oct 2026.
+Status: 24 Oct 2026.
 - **v1** was reviewed on four lenses (math, probing, feasibility, science): 42 findings were
   confirmed and 2 rejected.
 - **v2** applies the confirmed findings; Section 11 maps each one to its change.
@@ -27,7 +27,11 @@ Status: 23 Oct 2026.
   The primary C2 and C2-sw are scored against a pool of 20 random-init actors with a two-level
   CI, and C2's random-only null is re-measured on that statistic (hosts 20–39). The four long
   stages run their units in worker pools whose outputs equal the serial run's. No gate rule,
-  tolerance, band or k changes, and K4 and decoy-k are unchanged.
+  tolerance, band or k changes, and K4 and decoy-k are unchanged. A review of v2.6 (16.9)
+  confirmed 6 findings, one major: on C2's real rows one geometry dominates, and the decision
+  CI covers well below nominal there (about 0.68–0.79 on two null hosts). That is measured and
+  left to the lead before the tag; the record of the code, the rehearsal and the tests is
+  brought up to date.
 
 Nothing here has been computed on a trained network: no activation, gradient or probe. The
 numbers come from step 1's key files, run metadata (`runs/*/config.json`, `runs/*/eval_rdev.json`,
@@ -1635,9 +1639,16 @@ tag.
   rehearsal was not re-run for v2.4.
 - *Since v2.5* (Section 15.11): the rehearsal was re-run at 6d901a4 and again at v2.5's code.
   It still forces K4's verdict (and now decoy-k's) and K5's, so it shows crash safety only.
+- *Since v2.6* (Section 16.7): the networks are two decision networks, G1 and G2
+  (runs/dr-pilot-v2-tilt30), beside two other generalists (one without step 2's overlap) and
+  S1. The pooled stages (probes, own, the nulls, decoy-k) run in spawned workers, and the
+  rehearsal also fails on a pooled stage that ran serially. Its sequence runs decoy-k and
+  c2-null after K4 (since v2.5).
 - **Re-run.** `COSTATE_REHEARSAL=1 uv run --no-sync pytest tests/test_costate_rehearsal.py -p
   no:cacheprovider`. Or run `uv run --no-sync python tests/test_costate_rehearsal.py --dir DIR`,
-  which keeps DIR; `--from STEP` resumes there. Its report (report.json) lists each step's time.
+  which keeps DIR; `--from STEP` resumes there (`--workers N` passes --workers to the pooled
+  stages). Its report (report.json) lists each step's time and, since v2.6, each pooled
+  stage's pool.
 
 **Cost** (informational).
 - **The nulls** (before the tag) take about 327 s per network on the shared Mac with 2 threads,
@@ -2579,13 +2590,14 @@ long stages affordable:
   parallel processes, and their outputs are the serial run's to the bit.
 
 This section states each change as the code at 7d0c801 applies it, with the measurements behind
-it. No gate rule, tolerance or band changes, and f̂_D's k stays 8. K4's and decoy-k's seeds,
-controls and recorded numbers are unchanged (16.4). The new seeds are the pool's actors 5–19
-(0–4 are the controls already) and c2-null's hosts, which move from 5–24 to 20–39 so that they
-stay disjoint from the pool. Numbers are in Section 15's setting unless stated otherwise: the
-smoke run's world, partition 0, key weights, G1's obs_rms and config, C2's 3,951
-decision-stratum rows (s 1,643 and ξ 1,581 scored), the floor {s, ξ} and f̂_D at k = 8. Only
-key files, the input side and random-init or planted networks enter.
+it; 16.9 records the review of v2.6 and its resolutions. No gate rule, tolerance or band
+changes, and f̂_D's k stays 8. K4's and decoy-k's seeds, controls and recorded numbers are
+unchanged (16.4). The new seeds are the pool's actors 5–19 (0–4 are the controls already) and
+c2-null's hosts, which move from 5–24 to 20–39 so that they stay disjoint from the pool. Numbers
+are in Section 15's setting unless stated otherwise: the smoke run's world, partition 0, key
+weights, G1's obs_rms and config, C2's 3,951 decision-stratum rows (s 1,643 and ξ 1,581 scored),
+the floor {s, ξ} and f̂_D at k = 8. Only key files, the input side and random-init or planted
+networks enter.
 
 ### 16.1 The finding
 
@@ -2623,7 +2635,10 @@ null stays descriptive.
 - The evidence is random-init only: v2.5's c2-null (random hosts against random controls), the
   Monte Carlo tests on synthetic populations of networks (16.3, 'Tests') and the rehearsal's
   random-init stand-ins. No trained network's activation, value or gradient has been computed,
-  and the decision does not depend on one.
+  and the decision does not depend on one. The tests' near-nominal coverage is that of an
+  equal-cluster world with no influential geometry. On C2's real rows one geometry dominates,
+  and there the two-level CI covers well below nominal (16.3, 'Coverage on C2's rows'; found
+  by the review of v2.6, 16.9).
 - Disclosure: the pool and the two-level CI were chosen after v2.5's null had been seen. Every
   C2 statistic seen by then was of random-init or planted networks.
 
@@ -2661,8 +2676,10 @@ and keeps the 5 controls (seeds 0–4) with the geometry-only CI:
 - every strata-table row except each table's primary row, which is the decision's own record.
 
 Every record says which in 'controls' (`analysis.controls_label`: the seeds, their number,
-'two-level' or 'geometry', and the rule), the 'not testable' ones included (5b3a261). A
-descriptive record's point therefore differs from the primary's by the reference set as well
+'two-level' or 'geometry', and the rule), the 'not testable' ones included (5b3a261; and,
+since the review of v2.6, a strata row with no row or no per-network column, 16.9 #5). A
+contained error (`analysis.guarded`; in a strata table, band 'error') records the error alone.
+A descriptive record's point therefore differs from the primary's by the reference set as well
 as by its rows or weights. On c2-null's hosts the 5 controls' median gain sat above the pool's
 by +0.0047 on average (16.1), which lowers a 5-control point by about that much.
 
@@ -2701,10 +2718,46 @@ gains vary with SD 0.03, as C2's null did; and tests/test_costate_stages.py).
   fresh worlds), and one at the median never is.
 - Over 400 fresh worlds and pools, the two-level CI covers the network's true offset from the
   population's median near nominally (0.92–0.99). The geometry-only CI under-covers by at least
-  0.05 (about 0.85 in a 2,000-draw check).
+  0.05 (about 0.85 in a 2,000-draw check). These figures hold in the tests' world only
+  (`_population`): 48 equal clusters of 10 rows, each network's noise drawn independently and
+  identically per geometry, so no geometry is influential. They do not carry over to C2's rows
+  (next).
 - The pool's draws are deterministic and on their own stream.
 - The probes stage refuses activations written for the 5 controls.
 - K4's records (no pool) keep exactly their former fields.
+
+**Coverage on C2's rows** (the review of v2.6, 16.9 #1; random-init only, descriptive).
+- *The setting.* Two of c2-null's full-size hosts (16.5): seed 26, whose two-level CI lies
+  wholly above 0, and seed 30, which refutes. Each host's out-of-fold predictions (the base, the
+  host and the 20 controls) were saved from its c2-null scoring, and its points reproduce the
+  record's: +0.0288 and −0.0358.
+- *The method.* A double bootstrap. Each of 300 outer draws resamples the 48 geometries and the
+  20 controls, as a two-level draw does, and stands in for a sample. On it, a two-level
+  percentile CI is built from 400 inner draws: geometries from the outer draw's multiset,
+  controls from its controls. The coverage is the share of those CIs that contain the full
+  sample's point. It is a bootstrap estimate of coverage, itself approximate.
+- *Two-level coverage* is 0.680 for host 26 and 0.793 for host 30, and the misses are one-sided:
+  host 26's point lies below the CI's lower end in 0.320 of the draws (never above it), and host
+  30's above its upper end in 0.197 (below it in 0.010). The geometry-only CI, with the outer
+  draw's controls fixed, covers 0.627 and 0.733, so the control level adds about 0.05–0.06.
+- *One geometry dominates.* Geometry cluster 6 holds 4.9–5.5% of the metric's weight on s and
+  ξ, but 64–70% of the base probe's squared error; no other cluster holds more than 10% of it.
+  Leaving cluster 6 out (the controls fixed) moves the statistic by 0.087 for host 26 and 0.172
+  for host 30. The next-largest leave-one-out moves are 0.008 and 0.031.
+- *Each control scored as the network* against the other 19, on host 26's base: coverage 0.93 on
+  average (0.925 in this round's run at 300 outer and 400 inner draws, 0.933 in the review's),
+  and per control between about 0.81 and 0.995. It is lowest where cluster 6 moves the
+  control's statistic most (in this round's run, controls 2 and 6: moves of −0.151 and −0.152,
+  coverage 0.81 and 0.84).
+- *Reading.* The under-coverage concentrates in networks whose statistic leans on cluster 6,
+  and those are the hosts whose CIs exclude 0 or refute, where a decision would fire. In the
+  regime where C2 is decided, the two-level CI does not cover near nominally. The cause is the
+  geometry level, which predates the pool: the geometry-only CI covers less still. C2-sw's
+  coverage on its own rows is not measured.
+- *Consequence.* None in this version: no rule, band, tolerance or seed changes. Whether to
+  change the CI method (BCa, a studentized interval, an influence rule) or to place a
+  descriptive leave-one-geometry-out value beside each primary C2 and C2-sw is the lead's
+  decision before the tag (16.9).
 
 ### 16.4 K4, unchanged
 
@@ -2747,7 +2800,8 @@ so the stage passes.
 - No host confirms. The two CIs wholly above 0 have points 0.029 and 0.021, below the 0.05 band.
 - The two-level CI is wider than the geometry-only one for 19 of the 20 hosts; host 30's is
   0.004 narrower. The extra width is modest, because the geometry level dominates and its CIs
-  are strongly left-skewed (lower ends down to −0.68).
+  are strongly left-skewed (lower ends down to −0.68). Its coverage on these rows is in 16.3
+  ('Coverage on C2's rows').
 - The hosts' mean rank among the 21 (host and pool) is 11.05, against 11 if hosts and controls
   are exchangeable.
 - The mean is still below 0. The statistic subtracts a per-component median, and random
@@ -2929,10 +2983,28 @@ threads). This replaces Section 13's unmeasured 20–30 minutes per network.
   labels them; no statistic changes.
 - tests/test_costate_*.py at 0119569: 183 passed and 1 skipped.
 
-**Tests.** 188 test functions in tests/test_costate_*.py: 174 at v2.5, 179 after 0119569 (the
+**The rehearsal with the pools** (ae4bbdd's rehearsal, run on a clone of 919ee5b).
+- The reduced lists hold two decision networks, G1 and G2 (runs/dr-pilot-v2-tilt30, a fourth
+  stand-in generalist), beside the other two generalists and S1. probes, own and the nulls
+  therefore have two units each, and decoy-k two (its one k on its two worlds).
+- Each pooled stage runs in spawned workers, at the stages' default pool (at most one worker
+  per unit: 2 here at 2 threads) or at the rehearsal's `--workers`; the opt-in test passes
+  `--workers 2`, so it holds on any machine.
+- The report lists the pool that each pooled stage's stamps record ('pools'). The rehearsal
+  fails on a pooled stage that ran serially ('serial_pools'), beside a contained error and a
+  decision on a non-finite CI. A fast test checks that every pooled stage has two units or
+  more (`test_every_pooled_stage_has_two_units_or_more`).
+- It completed in 5,319 s at the default pools (2 workers per stage), with no contained error
+  and no decision on a non-finite CI. decoy-k took 127 s (257 s serially at 0119569) and probes
+  1,685 s for the two networks.
+- G1's probes, own, nulls and decoy-k outputs equal the serial rehearsal's at 0119569, apart
+  from the 'controls' labels that 5b3a261 added to the 'not testable' records.
+
+**Tests.** 189 test functions in tests/test_costate_*.py: 174 at v2.5, 179 after 0119569 (the
 two-level CI's four in tests/test_costate_probes.py and the probes stage's pool check in
-tests/test_costate_stages.py), and 9 more in tests/test_costate_workers.py (7d0c801). At
-7d0c801, tests/test_costate_probes.py and tests/test_costate_stages.py pass (69).
+tests/test_costate_stages.py), 9 more in tests/test_costate_workers.py (7d0c801) and the
+rehearsal's fast test (ae4bbdd). At 7d0c801, tests/test_costate_probes.py and
+tests/test_costate_stages.py pass (69).
 
 ### 16.8 Earlier text read through this section
 
@@ -2949,6 +3021,7 @@ tests/test_costate_stages.py), and 9 more in tests/test_costate_workers.py (7d0c
 | Section 8, 'Probes' | C2's 5 random fits per network | 20 for each primary C2 and C2-sw, 5 for every other record (16.3) |
 | Section 13, 'Post-tag cost' | 20–30 minutes per network, unmeasured | about 39 minutes per network serially, measured (16.7) |
 | Section 14, 'Where it runs', and 15.11 | the pre-tag order | the same dependencies, with stages run side by side (16.7) |
+| Section 14, 'The rehearsal' | The networks are G1, two other generalists (one without step 2's overlap) and S1; it fails on a contained error and on a decision on a non-finite CI | two decision networks, G1 and G2 (runs/dr-pilot-v2-tilt30), beside the two other generalists and S1; the pooled stages run in spawned workers, and it also fails on a pooled stage that ran serially (16.7) |
 | 15.8, 'Consequence' | trained Δ2 minus the median over 5 random-init actors, unpaired | the primary C2 and C2-sw against the pool with the two-level CI; K4 unchanged (16.3, 16.4) |
 | 15.10, C2 | 'The statistic' is unchanged: the median over 5 | the pool and the two-level CI for the primary (16.3) |
 | 15.10, 'The noise floor' and 'The null' | seeds 5–24 against controls 0–4 | hosts 20–39 against the pool with the two-level CI (16.5); v2.5's null kept as `gates.C2_NULL_FIVE_CONTROLS` |
@@ -2956,5 +3029,37 @@ tests/test_costate_stages.py), and 9 more in tests/test_costate_workers.py (7d0c
 | 15.10, 'Band notes' | beside any C2 refute or confirm | unchanged; beside the primary, read against its two-level CI (16.4) |
 | 15.11, 'The canonical re-run' | C2's random-only null as the fourth run gives it | as 16.5 gives it |
 | 15.11 | 'Expected cost on 2 threads' | 16.7 |
-| 15.11, 'Tests' | 174 test functions | 188 (16.7) |
+| 15.11, 'Tests' | 174 test functions | 189 (16.7) |
 | 15.14, #1 | the null's numbers; no confirm condition added, the lead's decision | v2.5's null; the decision is taken (16.2) and no confirm condition is added |
+
+### 16.9 The review of v2.6, and its resolutions
+
+24 Oct 2026, before the tag. A review of v2.6 at ae4bbdd on three lenses (statistics,
+determinism, integrity and crash safety) confirmed 6 findings: one major and five minor, two of
+which repeat a finding from another lens. No finding showed a defect in a gate rule, tolerance,
+seed or the choice of k, and none is changed. Neither C2's statistic nor its CI changes, so
+c2-null is not re-run.
+
+| # | Finding (lens; severity) | Resolution |
+|---|---|---|
+| 1 | The coverage evidence for the decision CI (16.2's third ground, 16.3 'Tests') comes from a synthetic world unlike C2's. On C2's rows one geometry dominates, and both the two-level and the geometry-only CI under-cover (statistics; major) | Measured and recorded: 16.3, 'Coverage on C2's rows' (two-level coverage 0.680 and 0.793 on hosts 26 and 30, the misses one-sided; geometry-only 0.627 and 0.733; cluster 6 holds about 5% of the weight and 64–70% of the base's squared error). 16.2 and 16.3 'Tests' state the tests' world. No rule, band, tolerance or seed changes. Open for the lead before the tag (below) |
+| 2 | scripts/costate.py's 'Worker pools' docstring gives Accelerate's 2-thread deviation as about 2·10⁻¹¹; 16.6 gives up to 8·10⁻¹¹ paired (determinism; minor) | The docstring gives 16.6's figures (up to 8·10⁻¹¹ paired, 1.5·10⁻¹⁰ unpaired, inside the 10⁻⁶ tolerance) |
+| 3 | 16.7's test count (188) and its rehearsal record are stale at HEAD (determinism; minor) | 16.7 and 16.8: 189 test functions, and the pooled rehearsal at 919ee5b (16.7, 'The rehearsal with the pools') |
+| 4 | Sections 14 and 16 do not describe HEAD's rehearsal: two decision networks, the pooled stages, the failure on a serial pool (integrity and crash safety; minor) | As #3. Section 14's rehearsal has a *Since v2.6* note, and 16.8 a row. Its 'R18's variants see one seed' still holds (each variant has one decision network) and stays |
+| 5 | 16.3 says every C2 and C2-sw record carries 'controls', the 'not testable' ones included; a strata row with no row or no per-network column, and a contained error, carry none (integrity and crash safety; minor) | Code: `probes_of` labels a strata row with no row or no per-network column with the 5 controls (never the primary row). 16.3, the `analysis` docstring and `probes_of`'s say that a contained error records the error alone. The probes stage's test checks every 'not testable' row. No statistic changes |
+| 6 | As #2 (integrity and crash safety; minor) | As #2 |
+
+**For the lead before the tag** (#1). On C2's rows the decision CI covers well below nominal,
+with its misses on one side, and the shortfall is largest where one geometry dominates the
+base's error. Options include another interval (BCa, a studentized interval), an influence rule,
+or a descriptive leave-one-geometry-out value beside each primary C2 and C2-sw. This version
+takes none of them. Each would change the code hash and c2-null's record, and an interval or a
+rule would change 16.2's decision; c2-null would then be re-run at full size. C2-sw's coverage
+is not measured.
+
+**Not done, and why.**
+- The leave-one-geometry-out value (#1, optional): not added. It would be a new field beside
+  each decision, computed in the probes stage and in c2-null, and whether to place it is part of
+  the lead's choice above. 16.3 gives its size on the two null hosts.
+- A contained error carries no 'controls' (#5): by the containment rule (`analysis.guarded`) the
+  record is replaced by its error and holds no statistic, so no reference set can be misread.

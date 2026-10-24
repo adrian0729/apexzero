@@ -125,7 +125,9 @@ with the network's rank among the controls' own gains beside it (descriptive). E
 and C2-sw record decides nothing and keeps the 5 controls (seeds 0-4) and the geometry-only
 CI (``C2_GEOMETRY_CI``): the sensitivity and robustness variants, the robustness summary and
 the strata tables' rows, apart from each table's primary row, which is the decision's own
-record. Every record says which ('controls', ``controls_label``).
+record. Every record says which ('controls', ``controls_label``), the 'not testable' ones
+included; a contained error (``guarded``; in a strata table, band 'error') records the
+error alone.
 
 **C2's random-only null** (``c2_null_note``, descriptive, through ``guarded``; v2.5, with the
 pool): beside each network's primary C2, the record's frozen 'c2_null' (``gates.c2_null``:

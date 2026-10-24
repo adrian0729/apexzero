@@ -1607,9 +1607,9 @@ def test_value_accuracy_decides_c1_own_and_every_strata_table_is_reported():
         assert all(r["controls"] == five for k, r in tb.items()      # a row on the decided
                    if k != prim and "controls" in r), h                 # rows included
         assert sum("controls" in r for k, r in tb.items() if k != prim) >= 3, h
-        # 'not testable' before any fit still says which controls it would have used
-        assert all("controls" in r for r in tb.values()
-                   if r["band"] == "not testable" and r.get("n")), h
+        # 'not testable' before any fit still says which controls it would have used, a
+        # stratum with no row included
+        assert all("controls" in r for r in tb.values() if r["band"] == "not testable"), h
     assert tsw["pedal_switching"]["primary"] and tsw["pedal_switching"]["stat"] == \
         pr["C2-sw"]["stat"]
     assert t2["interior&braking_key"]["stat"] == pr["sensitivity"]["braking_keys"]["C2"]["stat"]
@@ -1635,11 +1635,13 @@ def test_value_accuracy_decides_c1_own_and_every_strata_table_is_reported():
     assert "inner cross-validation" in t2["interior&kappa_clipped"]["reason"]    # LinAlgError
     assert "inner cross-validation" in tsw["pedal_switching&kappa_clipped"]["reason"]
     assert t2["interior&W:800"]["band"] == "not testable" and t2["interior&W:800"]["n"] == 0
+    assert t2["interior&W:800"]["controls"] == five       # no row: the 5 it would have used
     assert tsw["pedal_switching&kappa_clipped"]["n"] == int((tab["pedal_switching"] & kc).sum())
     nokc = cs.probes_of(acts, world, frozen, tab["interior"], tab["pedal_switching"],
                         variants=["primary"], strata={"C2": ("interior&kappa_clipped",)})
     row = nokc["by_stratum"]["C2"]["interior&kappa_clipped"]
     assert row["band"] == "not testable" and "kappa_clipped" in row["reason"]
+    assert row["controls"] == five                        # no per-network column, likewise
     small = cs.probes_of(acts, world, frozen, np.ones(n, bool), tab["pedal_switching"],
                          variants=["primary"], strata={"C2": ("interior",)})
     assert not small["by_stratum"]["C2"]["interior"]["primary"]    # not the decided rows
