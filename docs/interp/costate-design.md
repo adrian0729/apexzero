@@ -1,4 +1,4 @@
-# Idea 2: does the network encode the costate? (design v2.6, not frozen)
+# Idea 2: does the network encode the costate? (design v2.7, not frozen)
 
 Status: 24 Oct 2026.
 - **v1** was reviewed on four lenses (math, probing, feasibility, science): 42 findings were
@@ -32,6 +32,12 @@ Status: 24 Oct 2026.
   CI covers well below nominal there (about 0.68–0.79 on two null hosts). That is measured and
   left to the lead before the tag; the record of the code, the rehearsal and the tests is
   brought up to date.
+- **v2.7** records the lead's decision on that finding (Section 17): the single-geometry
+  robustness rule. Each decision network's C1, C2 and C2-sw is also decided with each geometry
+  left out of scoring, and a confirm or refute stands only if every such set decides the same;
+  otherwise it is inconclusive. No statistic, CI, band, tolerance, seed or k changes. Under the
+  rule c2-null's refutes fall from 5 to 3, none confirms, and no decision of K4's PR-5 changes.
+  The rules are final from this version, and any later change is a logged deviation.
 
 Nothing here has been computed on a trained network: no activation, gradient or probe. The
 numbers come from step 1's key files, run metadata (`runs/*/config.json`, `runs/*/eval_rdev.json`,
@@ -2758,6 +2764,12 @@ gains vary with SD 0.03, as C2's null did; and tests/test_costate_stages.py).
   change the CI method (BCa, a studentized interval, an influence rule) or to place a
   descriptive leave-one-geometry-out value beside each primary C2 and C2-sw is the lead's
   decision before the tag (16.9).
+- *Since v2.7* (Section 17): the lead chose an influence rule, the single-geometry robustness
+  rule (17.2, 17.3). Each decision network's C1, C2 and C2-sw is also decided with each
+  geometry left out of scoring, and a confirm or refute stands only if every such set decides
+  the same. BCa and studentized intervals are not taken. Over all 20 of c2-null's hosts,
+  geometry 6 holds 64–71% of the base's squared error on s and 63.5–64.5% on ξ, and under the
+  rule the null's refutes fall from 5 to 3 (17.4).
 
 ### 16.4 K4, unchanged
 
@@ -3057,6 +3069,13 @@ takes none of them. Each would change the code hash and c2-null's record, and an
 rule would change 16.2's decision; c2-null would then be re-run at full size. C2-sw's coverage
 is not measured.
 
+*Since v2.7* (Section 17): #1's open decision is taken. The lead chose the single-geometry
+robustness rule (17.2): a confirm or refute of each decision network's C1, C2 and C2-sw stands
+only if every leave-one-geometry-out scoring set decides the same. The leave-one-geometry-out
+values are recorded beside each ruled decision and, as a summary, beside each descriptive
+record (17.3). c2-null was re-run at full size under the rule (17.4). C2-sw's coverage, and
+that of the ruled decisions, is still not measured.
+
 **Not done, and why.**
 - The leave-one-geometry-out value (#1, optional): not added. It would be a new field beside
   each decision, computed in the probes stage and in c2-null, and whether to place it is part of
@@ -3076,3 +3095,365 @@ is not measured.
   pedal_switching&kappa_clipped). K2b's, K4's, decoy-k's and c2-null's records have the same
   content_sha256, and the nulls' and own's npz are identical byte for byte. nulls/summary.json
   differs only by the code hash it records for each network.
+
+## 17. Single-geometry robustness of the primary decisions (v2.7; before the tag, no trained network computed)
+
+24 Oct 2026. The review of v2.6 found that on C2's decision rows one geometry holds most of the
+base probe's squared error, and that the decision CI covers well below nominal there (16.3,
+'Coverage on C2's rows'; 16.9 #1). It left the response to the lead before the tag. One commit
+on costate-dev, cd34593, records the lead's decision: the single-geometry robustness rule. Each
+decision of a decision network that is computed with a geometry-cluster bootstrap (its C1, C2
+and C2-sw) is also computed with each geometry left out of scoring, and a confirm or refute
+stands only if every such set decides the same.
+
+This section states the rule as the code at cd34593 applies it, with the measurements behind
+it. No statistic, CI method, band, tolerance, seed or k changes, and f̂_D's k stays 8. The rule
+adds one stream, `costate_logo` (index 313), and no seed. Numbers are in Section 16's setting
+unless stated otherwise: the smoke run's world, partition 0, key weights, G1's obs_rms and
+config, C2's 3,951 decision-stratum rows (s 1,643 and ξ 1,581 scored), the floor {s, ξ} and f̂_D
+at k = 8. Only key files, the input side and random-init or planted networks enter.
+
+**The rules are final from this version.** No rule, interval, band, tolerance, seed, grid or k
+is chosen again. Any later change is a deviation, logged and reported as one: after the tag, a
+changed-code or changed-design-document problem is waived only by a logged
+`--post-tag-deviation` (outputs/costate/deviations.jsonl). A gate that fails the canonical pass
+is reported and blocks the tag, as in Section 15.
+
+### 17.1 The finding
+
+- *On two hosts* (16.3, the review's measurement). Geometry 6 holds 4.9–5.5% of the metric's
+  weight on s and ξ, but 64–70% of the base probe's squared error on hosts 26 and 30. Leaving
+  it out of scoring moves their statistics by +0.087 and −0.172; the next-largest moves are
+  0.008 and 0.031. There the two-level CI covers 0.680 and 0.793, with its misses on one side,
+  and the geometry-only CI 0.627 and 0.733.
+- *On all 20 hosts* (this round, 17.4). Geometry 6 holds 64.3–71.2% of the base's squared error
+  on s and 63.5–64.5% on ξ, against 5.5% and 4.9% of the weight. It is the most influential
+  geometry for 17 of the 20 hosts, with moves from −0.172 to +0.087. Leaving out any other
+  geometry moves a host's statistic by at most 0.031.
+- *What it means.* A C2 decision can rest on one geometry's rows, and its CI does not say so:
+  the cluster bootstrap mixes the draws with and without that geometry into one interval.
+
+### 17.2 The decision and its grounds
+
+**The decision** (the lead's, before the tag). Each decision network's C1, C2 and C2-sw is also
+decided on each leave-one-geometry-out scoring set. A confirm or refute stands only if every
+set decides the same as the full set; otherwise the decision is inconclusive, and the full
+set's decision is kept beside it. The statistics, their CIs (C2's and C2-sw's two-level, C1's
+cluster bootstrap) and the bands do not change. 16.9's other options, BCa and studentized
+intervals, are not taken. The leave-one-geometry-out values that 16.9 left optional are
+recorded: beside each ruled decision with its sets' CIs and decisions, and as a summary beside
+each descriptive record.
+
+**Grounds.**
+- A decision on a network should not rest on one geometry. On C2's rows one geometry holds
+  about two thirds of the base's squared error, and where a decision would fire the CI covers
+  well below nominal (17.1).
+- The rule is uniform over C1, C2 and C2-sw: it covers every decision computed with a
+  geometry-cluster bootstrap. It was chosen for all three before C1's geometry influence was
+  measured (17.5), so no C1 number shaped it.
+- It can only withdraw a decision. It turns a confirm or refute into inconclusive and never
+  creates one: an inconclusive or 'not testable' full set stands as it is (`probes.logo_rule`).
+- It leaves every statistic, CI and bootstrap draw as v2.6 computes it. The full set's decision
+  stays in the record, and v2.6's numbers stand (17.4).
+- The evidence is random-init and planted only: v2.6's c2-null, the review's double bootstrap
+  on hosts 26 and 30, and this round's runs (17.4–17.6). No trained network's activation, value
+  or gradient has been computed, and the decision does not depend on one.
+- Disclosure: the rule was chosen after v2.6's null and the review's double bootstrap had been
+  seen. Every statistic seen by then was of random-init or planted networks.
+
+### 17.3 What is computed and recorded
+
+**Scope.**
+- *Ruled:* the primary C1, C2 and C2-sw of each decision network, the three records that
+  `analysis.network_decisions` reads and R18's `variant_decisions` reads through it. C2-sw is a
+  named secondary (Section 12, decision 6), but its per-network decision enters both, so it is
+  ruled as C2's is. The pre-tag stages that score these decisions on random-init or planted
+  networks are ruled too: c2-null's hosts (`gates.c2_null`) and K4's PR-5 (`gates.pr5`).
+- *Exempt:* C3-w and C3-R2c, which are tested across networks. C1-own, C1-pattern, C1-limit and
+  C1-braking are secondaries and keep their decisions.
+- *Summary only* (descriptive; the decision or band unchanged): every strata-table row but each
+  table's primary row (the decision's own record), the sensitivity variants (C1-braking's
+  record among C1's), pullback:held, and the descriptive networks' C1 (`c1_bare`), whose R²_c
+  is also C3-R2c's x.
+
+**The sets** (`probes.logo_gain` for C2 and C2-sw, `analysis.c1_logo` for C1).
+- Set g weights geometry g's rows 0 in scoring. The probes, calibrations, out-of-fold
+  predictions, nulls and controls are unchanged, and nothing is refitted. Set g's point is the
+  same statistic of the same predictions without g's rows, computed from the per-geometry sums
+  (`probes.boot_r2` with the counts 1 − e_g).
+- C2 and C2-sw have one set per geometry of the stratum. A set's point averages the gain over
+  the components that pass the power floor and keep a scored row outside g. C1 has one set per
+  geometry with a scored row, and its R²_c averages over the components that keep one.
+- Each set's CI is the same percentile bootstrap over the other G − 1 geometries: N_BOOT = 2,000
+  draws, each G − 1 geometries drawn with replacement from the other G − 1
+  (`probes.logo_counts`, column g set to 0), vectorised over the draws. They draw on the new
+  stream `costate_logo` (index 313, `probes.LOGO_STREAM`; `costate.STREAMS` names it) with the
+  geometry's index in T as the sub-stream, so a set's draws do not depend on which other
+  geometries a stratum holds. They are the same for every network, and for every hypothesis
+  scored on the same geometries.
+- C2 and C2-sw: every set keeps the pool's control draws (`probes.pool_draws`, the same for
+  every set), so a two-level CI stays two-level.
+- C1: each set's R²_c CI, each null's paired lower end and each component's Spearman CI come
+  from the same counts. The Spearman CIs are computed only where the set's decision can turn on
+  them (R²_c's lower end above 0.6 and every null's paired lower end above 0); elsewhere
+  'spearman_lo' is None, and the decision is the same either way.
+- Each set is decided by its hypothesis's bands (`probes.decide`, `analysis.c1_decide`). A set
+  left with no component or no scored row is 'not testable', which counts as a change. With one
+  geometry no set can be scored, and a confirm or refute becomes inconclusive. C1's and C2's
+  decision rows span 48 geometries, and C2-sw's stratum 48 too.
+
+**The rule** (`probes.LOGO_RULE`, `probes.logo_rule`, `probes.ruled`). A confirm or refute
+stands only if every set decides the same. Otherwise the record's 'decision' is
+'inconclusive', with reason 'geometry-sensitive', and the geometries whose sets differ are
+named. An inconclusive or 'not testable' full set stays as it is, and no geometry is named.
+
+**What reads the ruled decision.** Everything that reads a decision:
+- `analysis.network_decisions`, and through it R18's `variant_decisions`;
+- C1's label 'at scale', which needs the ruled confirm as well as the slope bracket (Section
+  12, decision 2). The slope CIs are computed on the full set's decision, so a
+  geometry-sensitive confirm keeps them in the record but loses the label;
+- K4's band notes beside the primary C2 (`analysis.band_notes`). The variants and strata rows
+  keep their own decisions, and so their notes;
+- K4's PR-5 rules, and c2-null's decisions and summary.
+
+C1-own's standing (`analysis.c1_own_status`) reads no decision of C1: it reads K3b's trained
+analogue and value accuracy only.
+
+**The record.**
+- *A ruled decision* keeps 'decision' (now the ruled one) and adds 'decision_all_geometries'
+  (the full set's), 'geometry_sensitive' (each changing geometry's index in T, R, θ and its
+  set's decision; empty when none) and, when that list is not empty, reason
+  'geometry-sensitive'. Its 'logo' holds the kind 'rule'; the geometries left out, each with its
+  index in T, R and θ (`analysis.geometry_labels`); each set's point, move (its point minus the
+  full set's), CI and decision; the stream and n_boot; the most influential geometry (the
+  largest absolute move) with its point and move; and the shares. For C2 and C2-sw these are
+  each passing component's geometries' shares of the weight and of the base's squared error
+  ('weight', 'sse_base'). For C1 they are the shares of the weight, of the network's squared
+  error and of the target's sum of squares about the full set's mean, R²'s denominator
+  ('weight', 'sse_network', 'sst'); C1's 'logo' also holds each set's null and Spearman lower
+  ends ('null_lo', 'spearman_lo').
+- *A summary* holds kind 'summary': the sets' points and moves, the most influential geometry
+  and the shares. It has no CI and no decision, and its record gains no other field.
+- The strata tables carry the three fields in their C1 and C2 rows (`analysis._C1_FIELDS`,
+  `_C2_FIELDS`).
+- gates/c2_null.json names the rule ('logo') and carries, per host, the ruled 'decision',
+  'decision_all_geometries', 'geometry_sensitive' and 'logo'. Its summary counts the ruled
+  decisions ('decisions') and, under 'logo', the full sets' decisions, the hosts the rule turns
+  inconclusive and how often each geometry changes one. `gates.c2_null_frozen` adds each host's
+  full-set decision, and its scope says that each decision is ruled.
+- gates/k4.json: each PR-5 row keeps the ruled 'decision', 'decision_all_geometries',
+  'geometry_sensitive' and 'logo'.
+- The record's constants carry probes.logo (the rule, the stream, the scope and what each
+  record holds), and probes.streams and the record's streams list stream 313.
+
+### 17.4 c2-null under the rule
+
+**The run.** Full size, from a scratch snapshot of 3d3d02f with the rule (code hash
+3164b2472362…), stamped partial (--out). Its code differs from cd34593's in docstrings and in
+the one-geometry record only, which a 48-geometry run never reaches. Inputs, K2 and K2b were
+those of v2.6's c2-null run (16.5), copied to a fresh root; their stamps allow it, since the
+world's sha256 is b5130c418642… and no inputs or K2b code changed after 0119569. It took 4,013 s
+at a peak RSS of 1.54 GB. Every statistic is finite, so the stage passes.
+
+**What is unchanged.** Each host's statistic, two-level CI, geometry-only CI, gains, pool rank
+and decision under the geometry-only CI equal v2.6's record field for field, and each host's
+full-set decision is its v2.6 decision. The summary's mean, SD, range, percentiles, CI counts
+and widths are 16.5's.
+
+| | v2.6 (16.5) | v2.7: full set | v2.7: ruled |
+|---|---|---|---|
+| Refute / inconclusive / confirm | 5 / 15 / 0 | 5 / 15 / 0 | 3 / 17 / 0 |
+| Refuting seeds | 22, 24, 28, 30, 39 | 22, 24, 28, 30, 39 | 28, 30, 39 |
+| Geometry-sensitive | — | — | 2 (seeds 22 and 24) |
+
+**The full sets' refutes, and host 26.**
+
+| Host | Point | Two-level CI | Full set | Ruled | Geometries whose sets differ | The set without geometry 6: point; CI; decision |
+|---|---|---|---|---|---|---|
+| 22 | −0.0315 | −0.278 to 0.029 | refute | inconclusive | 0, 2, 6, 7, 36 (5 of 48) | −0.098; −0.393 to 0.068; inconclusive |
+| 24 | −0.0242 | −0.298 to 0.045 | refute | inconclusive | 0, 4, 6, 17, 18, 20, 25, 27, 31, 36 (10 of 48) | −0.111; −0.601 to 0.091; inconclusive |
+| 28 | −0.0240 | −0.459 to 0.022 | refute | refute | none | −0.097; −0.746 to 0.044; refute |
+| 30 | −0.0358 | −0.556 to 0.025 | refute | refute | none | −0.208; −0.956 to −0.049; refute |
+| 39 | −0.0403 | −0.427 to 0.005 | refute | refute | none | −0.134; −0.669 to 0.007; refute |
+| 26 | +0.0288 | 0.001 to 0.613 | inconclusive | inconclusive | — | +0.115; 0.049 to 1.058; confirm |
+
+- The geometries named for seeds 22 and 24, as (R, θ): 0 (6.0 m, 90°), 2 (7.5, 90), 4 (8.4,
+  90), 6 (9.4, 90), 7 (9.4, 135), 17 (14.6, 45), 18 (14.6, 90), 20 (14.6, 180), 25 (22.9, 45),
+  27 (22.9, 135), 31 (35.8, 90) and 36 (44.7, 90). Geometries 0, 6 and 36 change both.
+- Seeds 22 and 24 refute with CI upper ends 0.021 and 0.005 below the band. Their sets' upper
+  ends run from 0.006 to 0.068 (median 0.021) and from 0.020 to 0.091 (median 0.036), so 5 and
+  10 sets reach 0.05. Geometry 6's set has the largest upper end on both, although its point is
+  the lowest.
+- Refutes 28, 30 and 39 stand: every set refutes. Removing geometry 6 lowers their statistics
+  (moves −0.073, −0.172 and −0.094).
+- Host 26 stays inconclusive, but its set without geometry 6 confirms: the point rises from
+  0.029 to 0.115, over the 0.05 band, and that set's CI lower end is 0.049.
+
+**In the record.** The record's content changes, since the hosts gain fields and two decisions
+change: content_sha256 6c069e5f7a58…, against v2.6's f5b5986a846e…. prereg binds the canonical
+pass's record (17.7). `analysis.c2_null_note` prints the frozen null beside each primary C2 with
+its ruled decisions. Its statistics are 16.5's, so the share at or above a network's is
+unchanged.
+
+### 17.5 C1's geometry influence
+
+**K4's PR-5 under the rule** (full size; G1's obs_rms, C1 on the 3,951 interior rows with no
+decision mask; the snapshot of 17.4, stamped partial: --out and --which PR-5; 214 s). Every
+case's R²_c, CI and decision equals the fourth run's (15.11): SNR 0.25, 0.5 and 1
+inconclusive; SNR 4 confirm, with the label; −λ refute; one component flipped inconclusive; ×10
+confirm, without the label; zero, noise and direction-only refute. In every case all 48 sets
+decide as the full set does, so no ruled decision differs. The largest absolute move is 0.0091
+(SNR 1). PR-5 and PR-5e pass, so K4's PR-5 rules hold under the rule. K4's other plants compute
+no sets.
+
+**C1's own decision frame** (`c1_frame`: G1's decision mask, with s 1,643 and ξ 1,581 rows
+scored and none for n or vx; `analysis.c1` with and without the rule).
+- The cases: PR-5's plants built on this frame (each component's noise scaled to its SD on its
+  decision rows, on K4's noise stream) and the gradients of the 20 random-init critics (G1's
+  config and obs_rms). The plants were scored with and without C1's nulls (G1's input-side
+  nulls, computed at full size in this round, and the 20 random critics as the random-critic
+  null), the random critics without nulls.
+- No decision changes: in every case every set decides as the full set does. The largest move
+  is 0.0166 for a plant (SNR 1, geometry 8) and 0.0107 for a random critic. Every random critic
+  refutes, and so does each of its sets.
+- No geometry dominates here. Geometry 6 holds 11.8% of λ_s's sum of squares and 9.0% of λ_ξ's
+  (5.5% and 4.9% of the weight). The largest shares are geometry 8 (9.4 m, 180°) with 15.8% for
+  s and geometry 36 (44.7 m, 90°) with 9.7% for ξ. The random critics put 11.4–12.8% (s) and
+  8.5–10.1% (ξ) of their squared error on geometry 6, near its share of the target.
+
+**Where the rule bites for C1.** C1's bands are on its CI alone. Each geometry is absent from
+about 36% of the full bootstrap's draws ((47/48)⁴⁸ = 0.364), so the full CI's lower tail already
+reflects the draws without it. A confirm that rests on one geometry therefore turns
+inconclusive only when its lower end lies near 0.6. In the tests' synthetic world (17.7) the
+full set's lower end is about 0.63 and the set without the heavy geometry's about 0.59.
+
+### 17.6 Geometry 6
+
+From the input side, and from hosts 26 and 30's saved predictions (16.3).
+- *Identity.* Index 6 of T's 48 geometries (`analysis.geometry_labels`, in (R, θ) order): R
+  9.4 m, θ 90°, both turn directions. It has 23 keys (12 left-turn and 11 right-turn; 6 nominal
+  and 17 phase), 353 rows of T and 86 interior rows, and it sits in outer fold 0. On C2's
+  decision mask, 36 of its rows are scored for s and 28 for ξ.
+- *Not extrapolation of the probe.* Its interior rows lie at an ordinary distance from the
+  training folds in z (G1's obs_rms; median distance to the 8 nearest training rows 2.61,
+  against a median of 2.46 over the geometries; rank 23 of 48). Within geometry 6 the base
+  probe's R² is about 0 (s +0.14 and +0.09, ξ −0.01 on hosts 26 and 30), as it is outside it
+  (−0.05 to +0.05). Its share of the base's squared error equals its share of the scored
+  target's own sum of squares (s 0.70, ξ 0.65).
+- *An extreme target.* λ_res is extreme there because f̂_D's out-of-fold kNN fit (k = 8) fails
+  on geometry 6. On C2's scored rows the geometry holds 11.8% (s) and 9.0% (ξ) of λ's sum of
+  squares but 70% and 65% of λ_res's. Its λ_res sum of squares is 95× (s) and 8.2× (ξ) its
+  λ's, against 3.3× and 0.25× in the median geometry; for ξ that is the largest ratio of the
+  48. Its interior rows are the farthest of all geometries from the training folds in
+  standardised decoy space (D₁; median distance to the 8 nearest 1.21, against 0.31 over the
+  geometries). λ_s also sits at its lower winsorisation bound on 19.8% of the geometry's
+  interior rows, against 0.8% of all interior rows at either bound.
+- *Its neighbours* at θ 90° (7.5, 8.4 and 10.5 m) have similar speed and apex-distance ranges
+  on the interior: vx about 25–51 m/s for geometry 6, 27–52 and 28–51 at 7.5 and 8.4 m, and
+  28–44 at 10.5 m.
+- *Reading.* The base's error on geometry 6 is the target's own spread there. f̂_D's
+  residualisation creates it; the probe's fit in z does not. On every host measured, C2's
+  statistic on its decision rows leans on that one geometry's residualisation error. No rule changes for
+  it: f̂_D's k stays 8 (15.7), and the rule makes a decision that rests on it inconclusive.
+
+### 17.7 Cost, the canonical pass and the tests
+
+**Cost per network** (measured on 2 threads).
+- C2: +0.60–0.65 s (two measurements, on hosts 26 and 30's saved predictions; the gain itself
+  takes 0.02 s).
+- C2-sw: +0.22–0.24 s, on synthetic predictions of its 22 probes at its stratum's size on T
+  (2,911 rows, 48 geometries).
+- C1, with the nulls a decision network's C1 carries: +0.6–0.7 s when no set needs its Spearman
+  CIs, and +10.4–10.9 s when all 48 do. That is with two scored components; the Spearman CIs
+  cost per component, so with four it would be about twice that (not measured).
+- The summaries add about 0 s.
+- In all, at most about 12 s per network with two scored components, against 39 minutes of
+  probes (16.7). 16.7's post-tag cost stands. c2-null took 4,013 s (4,020 s at v2.6), so 16.7's
+  schedule stands too.
+
+**The canonical pass.** The order is 16.7's. Two bound records change content, so prereg must
+bind new ones:
+- gates/c2_null.json: the hosts gain fields and two hosts' decisions change (17.4);
+- gates/k4.json: the PR-5 rows gain fields, and every decision is unchanged (17.5).
+
+K4 and c2-null run in 16.7's step 3 as before, and decoy-k computes no sets. The canonical pass
+must reproduce 15.11's list as 16.7 gives it, with C2's random-only null as 17.4 gives it (16.5's
+points and CIs; ruled, 3 refute and 17 inconclusive, none confirming, seeds 22 and 24
+geometry-sensitive) and each PR-5 row's ruled decision equal to its full set's. Its
+gates/c2_null.json is expected to carry the scratch run's content_sha256 (6c069e5f7a58…), since
+the content excludes the stamp and the code differs only where 17.4 says. A difference beyond
+round-off is a finding to report, as 15.11 states.
+
+**Not run on cd34593's code.** The two full-size runs (17.4, 17.5) ran on the snapshot's code
+hash and are partial; they were not repeated on cd34593's. The rehearsal (`COSTATE_REHEARSAL=1`)
+was not re-run; its fast test passes. C2-sw's rule is untested on real C2-sw data, since no
+C2-sw null exists. The coverage of the ruled decisions (a double bootstrap as in 16.3) is not
+measured.
+
+**Tests** (tests/test_costate_probes.py and tests/test_costate_analysis.py; 5 new test
+functions, 194 in tests/test_costate_*.py).
+- C2: in a world where one cluster holds most of the base's squared error (about 63%) and of the
+  network's gain, the full set confirms, the set without that cluster refutes, and the rule
+  records 'inconclusive' with the cluster named, its (R, θ) and its set's decision; so with the
+  two-level CI and with the geometry-only one. The point, the CI and the draws are the full
+  set's, and set g's point equals the statistic of the same predictions with g's rows dropped
+  (to 10⁻¹²). A summary leaves the decision as it is.
+- C2: where the gain is spread over the geometries, every set confirms and the confirm stands.
+  `logo_rule` keeps an inconclusive or 'not testable' full set, keeps a refute only when every
+  set refutes, and counts a 'not testable' set as a change.
+- The sets' draws are on stream costate_logo with the geometry's index as the sub-stream, the
+  same on every call and independent of the geometry bootstrap's; a ruled record repeats
+  exactly.
+- C1: a confirm that rests on one geometry (most of the target's sum of squares, with the most
+  accurate gradient) is ruled inconclusive with that geometry named, and the label is not
+  given; the full set's statistic, CI and slope CIs are unchanged. Where the accuracy is
+  spread, the confirm and the label stand. A null's paired difference is ruled per set.
+- `network_decisions` and `variant_decisions` read the ruled decision.
+- Extended: the c2-null gates test applies the rule and checks its summary, and the stages test
+  checks that the primary C1, C2 and C2-sw carry the rule and that the variants and strata rows
+  carry a summary.
+- The full suite gave 198 passed and 1 skipped (the opt-in rehearsal) in 1,149 s, before the
+  last edits (docstrings and the one-geometry record); after them the targeted tests gave 36
+  passed and 1 skipped. At cd34593 the rule's tests pass (6 selected, 6 passed), and ruff passes
+  on every file the commit changed.
+
+### 17.8 For the lead
+
+Properties of the rule, reported and not acted on in this version.
+1. *Where it bites.* For C1, whose bands are on its CI alone, a single geometry can flip a
+   decision only near a band edge (17.5). For C2 and C2-sw the point's band (≥ 0.05) gives a
+   single-geometry channel: on host 26, leaving out geometry 6 moves the point from 0.029 to
+   0.115, and that set confirms (17.4).
+2. *Fresh bootstraps.* Each set is a fresh bootstrap of the other 47 geometries. A decision whose
+   CI end lies within the sets' spread of a band therefore becomes geometry-sensitive with many
+   geometries named, not only an influential one: 5 and 10 on seeds 22 and 24, whose upper ends
+   lay 0.021 and 0.005 below 0.05. The rule thus also acts as a margin around each band, of
+   about the sets' spread (here up to 0.04–0.05 above the full set's upper end).
+3. *Refutes that removing geometry 6 strengthens stand* (seeds 28, 30 and 39; 17.4).
+4. *Geometry 6's target.* Its extreme λ_res comes from f̂_D's out-of-fold fit (17.6). Nothing
+   changes for it.
+5. *Not measured:* the ruled decisions' coverage on C2's rows, and C2-sw's rule on real C2-sw
+   rows.
+
+### 17.9 Earlier text read through this section
+
+| Where | Earlier text | Read as |
+|---|---|---|
+| Section 4, 'Metrics' (and 16.8's row) | CIs: a cluster bootstrap over geometries | unchanged; each decision network's C1, C2 and C2-sw is also ruled on its leave-one-geometry-out sets (17.3) |
+| Section 5, 'Seeds' (and 16.8's row) | actors 0–4, critics 0–19 (16.8: actors 0–19, c2-null's hosts 20–39) | unchanged, and no seed is added; the sets resample on the new stream costate_logo (313, sub-stream the geometry's index in T) (17.3) |
+| Section 6, opening | Decisions use 95% cluster-bootstrap CIs over geometries | plus the single-geometry rule for each decision network's C1, C2 and C2-sw: a confirm or refute stands only if every leave-one-geometry-out set decides the same (17.3) |
+| Section 6, C1 | Confirm, Refute, Inconclusive | the ruled decision, the full set's kept as 'decision_all_geometries' (17.3) |
+| Section 6, C1's label | confirm, plus a pooled slope CI within [0.5, 2] | the ruled confirm, plus the slope bracket (17.3) |
+| Section 6, C2 and C2-sw | Confirm, Refute, Inconclusive; bands as C2 | the same bands on the full set and on each set; the ruled decision, the full set's beside it (17.3) |
+| Section 7, K4 PR-5 and PR-5b–d | C1 says confirm, inconclusive or refute; the label | C1's ruled decision and label; each row keeps the full set's decision and the sets (17.3, 17.5) |
+| Section 12, decision 2 | the scale band gates only the label | the label needs the ruled confirm (17.3) |
+| 15.10, 'Band notes', and 16.4 | beside any C2 refute or confirm; beside the primary, read against its two-level CI | beside the primary, read against its ruled decision; the variants and strata rows keep their own decisions (17.3) |
+| 15.11 and 16.7, 'The canonical re-run' | C2's random-only null as 16.5 gives it | as 17.4 gives it; K4's PR-5 rows with their ruled decisions; new records bound for gates/k4.json and gates/c2_null.json (17.7) |
+| 16.2, the decision | the two-level percentile bootstrap; the bands unchanged | unchanged, each decision ruled by the single-geometry rule (17.2) |
+| 16.3, 'The record' | constants carry probes.c2_pool; the pool's stream in probes.streams | also probes.logo, and stream 313 in probes.streams and the record's streams (17.3) |
+| 16.3, 'Coverage on C2's rows', 'Consequence'; 16.9, 'For the lead before the tag' (#1) | the lead's decision before the tag: BCa, a studentized interval, an influence rule or a descriptive leave-one-geometry-out value | resolved: the influence rule (17.2), with the leave-one-geometry-out values recorded; BCa and studentized intervals not taken |
+| 16.5, the table | Refute / inconclusive / confirm 5 / 15 / 0 | the full sets' decisions; ruled, 3 / 17 / 0 (17.4) |
+| 16.5, 'In the record and the analysis' | prereg copies the null into frozen['c2_null'] | with each host's full-set decision beside its ruled one; the scope names the rule (17.3) |
+| 16.7, 'Post-tag cost' | probes 39 minutes per network | plus at most about 12 s per network for the rule (17.7) |
+| 16.7, 'Tests' | 189 test functions | 194 (17.7) |
+| 16.9, 'Not done', the leave-one-geometry-out value | not added | added: the rule's record beside each decision, and a summary beside each descriptive record (17.3) |
