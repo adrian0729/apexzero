@@ -89,7 +89,24 @@ outputs/costate/logs/costate-<stage>.log (never under runs/, which is the main c
 Every output carries a provenance stamp (``F.Provenance``'s fields on idea 2's code paths:
 the code hash at the start and just before writing, HEAD, the changed paths, argv, the
 partial options, times, any deviation and the tag), embedded in a JSON object or as a
-<file>.provenance.json sidecar.
+<file>.provenance.json sidecar. An npz is written with fixed zip timestamps (``savez``), so
+its sha256 depends on its arrays alone.
+
+**Worker pools** (``POOLED``: probes, own, nulls, decoy-k; ``apexzero.costate.workers``).
+Their units (a network each; decoy-k's (k, world, seed)) are independent, and --workers N
+(default ``workers.default_workers``: the cores over --threads, less one, 5 on the 12-core
+Mac at 2 threads) runs them in N spawned processes; --workers 1 is the serial path, in this
+process. Each unit's seeds depend on the unit alone; every worker shares this process' thread
+pins (--threads sets XLA's intra-op threads; a pooled stage pins the BLAS libraries to one
+thread, ``BLAS_THREADS``, before numpy loads), its x64 setting and its trained-network locks;
+this process loads the checkpoints and checks their pins, gathers the results in the serial
+order and only then writes and stamps every output, exactly as the serial path does. The
+outputs are therefore the serial run's to the bit; the stamp records the pool ('workers',
+'threads'), which is never partial and enters no content hash. A unit that fails in a worker
+fails the stage, and nothing is written. One BLAS thread, not --threads: on this Mac
+Accelerate gives decoy-k's units the same bits at 1, 6 and 12 threads as unpinned (every
+earlier run) but not at 2 (Delta2 about 2e-11 apart), and a worker's numpy work runs on one
+core either way.
 
 **Freeze rule** (design Section 7 'Freeze'; ``freeze_problems``, step 2's rule simplified):
 the tag costate-prereg-v1 must exist as an annotated tag, be on origin as the same object and
@@ -143,10 +160,34 @@ def _threads(argv: list[str]) -> int | None:
     return None
 
 
+def _stage_arg(argv: list[str]) -> str | None:
+    """The stage on the command line: the first argument that is neither an option nor
+    --threads' value."""
+    skip = False
+    for a in argv[1:]:
+        if skip:
+            skip = False
+        elif a == "--threads":
+            skip = True
+        elif not a.startswith("-"):
+            return a
+    return None
+
+
+# The stages with worker pools (``workers.POOLED``) and the BLAS libraries' thread variables
+# (``workers.BLAS_THREADS``; the tests check both copies): a pooled stage pins them to one
+# thread before numpy loads, in this process and so in every worker it spawns (module
+# docstring 'Worker pools').
+POOLED = ("probes", "own", "nulls", "decoy-k")
+BLAS_THREADS = ("VECLIB_MAXIMUM_THREADS", "OPENBLAS_NUM_THREADS", "OMP_NUM_THREADS",
+                "MKL_NUM_THREADS")
+
 _T = _threads(sys.argv)
 if _T is not None or "XLA_FLAGS" not in os.environ:
     os.environ["XLA_FLAGS"] = ("--xla_cpu_multi_thread_eigen=false "
                                f"intra_op_parallelism_threads={_T or 2}")
+if _stage_arg(sys.argv) in POOLED:
+    os.environ.update(dict.fromkeys(BLAS_THREADS, "1"))
 
 import _bootstrap  # noqa: F401  (makes src/ importable)
 import fields as F
@@ -495,9 +536,11 @@ class Provenance(F.Provenance):
         self.tag = None
         self.environment = F.environment(self.root)
         self.check_imports = False
+        self.workers = None             # a pooled stage's worker processes (``_workers``)
 
     def stamp(self, files: dict | None = None, content_sha256: str | None = None) -> dict:
         from apexzero.costate import prereg as PR
+        from apexzero.costate import workers as WK
 
         now = PR.code_hash(self.root)
         if now != self.code_hash:
@@ -510,6 +553,8 @@ class Provenance(F.Provenance):
                "changed_vs_head": self.changed, "argv": self.argv, "partial": self.partial,
                "start": self.start, "end": F._now(), "deviation": self.deviation,
                "tag": self.tag, "environment": self.environment, "files": dict(files or {})}
+        if self.workers is not None:
+            out["workers"], out["threads"] = int(self.workers), WK.thread_env()
         if content_sha256 is not None:
             out["content_sha256"] = content_sha256
         return out
@@ -525,10 +570,43 @@ def _write(path: Path, obj) -> Path:
     return F._write(Path(path), obj)
 
 
-def _write_npz(path: Path, arrays: dict) -> Path:
-    import numpy as np
+def savez(path: Path, arrays: dict) -> Path:
+    """``np.savez_compressed``'s file (one deflated '<name>.npy' member per array, in order)
+    with every member's zip timestamp fixed at 1980-01-01, so its bytes, and the sha256 that a
+    summary or a stamp records, depend on the arrays alone: the same arrays written twice (by
+    a serial and a pooled run, ``workers``) are the same file."""
+    import zipfile
 
-    return F._stamped_write(Path(path), lambda q: np.savez_compressed(q, **arrays))
+    import numpy as np
+    from numpy.lib import format as npf
+
+    with zipfile.ZipFile(path, mode="w", compression=zipfile.ZIP_DEFLATED,
+                         allowZip64=True) as zf:
+        for name, v in arrays.items():
+            zi = zipfile.ZipInfo(f"{name}.npy", date_time=(1980, 1, 1, 0, 0, 0))
+            zi.compress_type = zipfile.ZIP_DEFLATED
+            with zf.open(zi, "w", force_zip64=True) as fh:
+                npf.write_array(fh, np.asanyarray(v), allow_pickle=True)   # as numpy's
+    return Path(path)
+
+
+def _write_npz(path: Path, arrays: dict) -> Path:
+    return F._stamped_write(Path(path), lambda q: savez(q, arrays))
+
+
+def _workers(args, units: int | None = None) -> int:
+    """A pooled stage's worker processes (``POOLED``): --workers, by default
+    ``workers.default_workers`` (the cores over --threads, less one: 5 on the 12-core Mac at
+    2 threads), at most one per unit; 1 runs the stage's serial path in this process. The
+    count is recorded in every stamp the stage writes ('workers', beside the thread pins,
+    'threads'); it is never partial (``_partial``) and enters no output's content."""
+    from apexzero.costate import workers as WK
+
+    w = getattr(args, "workers", None)
+    n = WK.default_workers(getattr(args, "threads", None) or 2) if w is None else int(w)
+    n = max(1, n if units is None else min(n, int(units)))
+    F._prov().workers = n
+    return n
 
 
 def _out(args, group: str) -> Path:
@@ -874,11 +952,14 @@ def stage_k4(args) -> None:
 
 def stage_decoy_k(args) -> None:
     """f_D's k re-derived on this world (``gates.decoy_k``): its pass, the rule's choice equal
-    to the code's k and the record's table reproduced, binds at prereg."""
+    to the code's k and the record's table reproduced, binds at prereg. Its units, one per
+    candidate k, world and validation seed (``gates.decoy_k_unit``), run in --workers
+    processes (``_workers``); the stamp records the pool that ran them."""
     from apexzero.costate import gates as GT
 
     pw, _, inputs = _probe_world(args, c2_setup=True)
-    res = GT.decoy_k(pw, progress=lambda m: _log(args, "decoy-k", m))
+    res = GT.decoy_k(pw, progress=lambda m: _log(args, "decoy-k", m), workers=_workers(args))
+    _workers(args, len(res["candidates"]) * len(GT.DECOY_K_WORLDS) * len(res["seeds"]))
     res["inputs"] = inputs
     _write(_out(args, "gates") / "decoy_k.json", res)
 
@@ -924,15 +1005,17 @@ def stage_nulls(args) -> None:
     module docstring 'Per held-out fold'), the summary with their shapes, the value fits'
     penalties and training R2 (the nested fits' too) and whether every slice is finite (the
     far-geometry lambda's slices may hold rows without a far geometry: recorded, not
-    required)."""
+    required). One unit per network (``nulls_unit``, its obs_rms read in this process) in
+    --workers processes (``_workers``); every array and the summary are written here once all
+    have returned."""
     import numpy as np
 
     from apexzero.costate import analysis as AN
     from apexzero.costate import inputs as IN
-    from apexzero.costate import nulls as NL
     from apexzero.costate import prereg as PR
     from apexzero.costate import probes as PB
     from apexzero.costate import states as ST
+    from apexzero.costate import workers as WK
     from apexzero.fields.prereg import read_stamp, sha256_file
 
     world = _load_world(args)
@@ -941,12 +1024,11 @@ def stage_nulls(args) -> None:
     w = ST.weights(tab, "key")
     summ = {"networks": {}, "failed": []}
     names = list(dict.fromkeys(AN.network_of(n) for n in (args.network or PR.null_networks())))
-    for name in names:
-        rms, _ = IN.obs_rms_of(name)
-        alphas = PB.MLP_ALPHAS if args.mlp_alphas is None else tuple(args.mlp_alphas)
-        res = NL.null_gradients(world.keys, tab, world.v_star, fo, w, rms, world.lam,
-                                mlp_alphas=alphas, mlp_maxiter=args.mlp_maxiter,
-                                v_star_inf=world.v_star_inf)
+    alphas = PB.MLP_ALPHAS if args.mlp_alphas is None else tuple(args.mlp_alphas)
+    units = [(name, IN.obs_rms_of(name)[0]) for name in names]     # obs_rms read here
+    got = WK.run(nulls_unit, units, _workers(args, len(units)),
+                 state=(world, fo, w, alphas, args.mlp_maxiter), names=names)
+    for name, res in zip(names, got, strict=True):
         arrays = {k: np.asarray(v) for k, v in res.items() if k != "fits"}
         path = _write_npz(_out(args, "nulls") / f"{PR.net_file(name)}.npz", arrays)
         summ["networks"][name] = {"fits": res["fits"], "sha256": sha256_file(path),
@@ -960,6 +1042,17 @@ def stage_nulls(args) -> None:
                 "slices": int((~np.isfinite(fg)).any(2).sum()),
                 "out_of_fold": int((~np.isfinite(fg[fo.outer, np.arange(len(w))])).any(1).sum())}
     _write(_out(args, "nulls") / "summary.json", summ)
+
+
+def nulls_unit(state, unit) -> dict:
+    """One network's nulls (``nulls.null_gradients``): ``state`` the stage's (world, folds,
+    key weights, MLP penalties, MLP iterations), ``unit`` (name, obs_rms)."""
+    from apexzero.costate import nulls as NL
+
+    world, fo, w, alphas, maxiter = state
+    return NL.null_gradients(world.keys, world.tab, world.v_star, fo, w, unit[1], world.lam,
+                             mlp_alphas=alphas, mlp_maxiter=maxiter,
+                             v_star_inf=world.v_star_inf)
 
 
 def dirty_paths(root: Path = ROOT) -> list[str]:
@@ -1396,20 +1489,32 @@ def k3b_trained(agent, bank=None, cells=K3B_TRAINED_CELLS, steps: int | None = N
 
 
 def stage_own(args) -> None:
-    import numpy as np
-
+    """Each network's K3b trained analogue and own costate (``own_unit``): one unit per
+    network, its checkpoint loaded and its pin checked in this process (``load_agent``), in
+    --workers processes (``_workers``); the files are written here once all have returned."""
     from apexzero.costate import analysis as AN
     from apexzero.costate import prereg as PR
+    from apexzero.costate import workers as WK
 
     rec = _post_tag(args, "own costate")
     world = _load_world_frozen(args, rec)
-    for name in args.network or [AN.network_of(a) for a in AN.DECISION_NETWORKS]:
-        ag = load_agent(name, rec["networks"][name])
-        k3 = k3b_trained(ag)
+    names = args.network or [AN.network_of(a) for a in AN.DECISION_NETWORKS]
+    units = [load_agent(name, rec["networks"][name]) for name in names]
+    got = WK.run(own_unit, units, _workers(args, len(units)), state=world, names=names)
+    for name, (k3, out) in zip(names, got, strict=True):
         _write(_out(args, "post") / "own" / f"{PR.net_file(name)}.k3b.json", k3)
-        out = own_of(ag, world)
-        out["k3b_pass"] = np.bool_(k3["decision"]["pass"])
         _write_npz(_out(args, "post") / "own" / f"{PR.net_file(name)}.npz", out)
+
+
+def own_unit(world, agent) -> tuple[dict, dict]:
+    """One network's own stage: K3b's trained analogue (``k3b_trained``) and its own costate
+    and returns on ``world`` (``own_of``), with 'k3b_pass'."""
+    import numpy as np
+
+    k3 = k3b_trained(agent)
+    out = own_of(agent, world)
+    out["k3b_pass"] = np.bool_(k3["decision"]["pass"])
+    return k3, out
 
 
 # ------------------------------------------------------------------------- variants
@@ -1642,12 +1747,17 @@ def pool_problems(out_root: Path, names) -> list[str]:
 
 
 def stage_probes(args) -> None:
+    """Each decision network's C2 and C2-sw (``probes_unit``): one unit per network, its
+    checkpoint loaded and its pin checked in this process for its decision mask and kappa
+    flags, in --workers processes (``_workers``), each loading its own activations file; the
+    files are written here once all have returned."""
     import numpy as np
 
     from apexzero.costate import analysis as AN
     from apexzero.costate import inputs as IN
     from apexzero.costate import prereg as PR
     from apexzero.costate import states as ST
+    from apexzero.costate import workers as WK
     from apexzero.fields import network as NW
 
     rec = _post_tag(args, "probes")
@@ -1660,17 +1770,39 @@ def stage_probes(args) -> None:
     if probs:
         raise SystemExit("the probes stage scores each primary C2 and C2-sw against the "
                          "control pool: " + "; ".join(probs))
+    units = []
     for name in names:
         p = Path(args.out) / "post" / "activations" / f"{PR.net_file(name)}.npz"
-        with np.load(p) as d:
-            acts = {k: d[k] for k in d.files}
         ag = load_agent(name, rec["networks"][name])
         fl = IN.flags(world, NW.upcast32(ag.obs_rms))
         valid = ST.decision_mask(tab, ~fl["observability"].s_unobservable,
                                  rec["frozen"].get("k2b_excluded"))
-        _write(_out(args, "post") / "probes" / f"{PR.net_file(name)}.json",
-               probes_of(acts, world, rec["frozen"], inner, sw, valid,
-                         kappa_clipped=fl["kappa_clipped"]))
+        units.append((str(p), valid, fl["kappa_clipped"]))
+    got = WK.run(probes_unit, units, _workers(args, len(units)),
+                 state=(_table_world(world), rec["frozen"], inner, sw), names=names)
+    for name, out in zip(names, got, strict=True):
+        _write(_out(args, "post") / "probes" / f"{PR.net_file(name)}.json", out)
+
+
+def _table_world(world):
+    """``world`` without its per-key inputs (``probes_of`` reads T's table only): what the
+    probes stage hands its workers."""
+    import dataclasses
+
+    return dataclasses.replace(world, keys=[]) if dataclasses.is_dataclass(world) else world
+
+
+def probes_unit(state, unit) -> dict:
+    """One network's C2 and C2-sw with their variants and strata tables (``probes_of``):
+    ``state`` the stage's (world, frozen values, C2's and C2-sw's rows), ``unit`` (its
+    activations file, its decision mask, its kappa flags)."""
+    import numpy as np
+
+    world, frozen, inner, sw = state
+    path, valid, kappa = unit
+    with np.load(path) as d:
+        acts = {k: d[k] for k in d.files}
+    return probes_of(acts, world, frozen, inner, sw, valid, kappa_clipped=kappa)
 
 
 def _summary(v) -> dict | None:
@@ -2623,7 +2755,19 @@ def build_parser() -> argparse.ArgumentParser:
             p.add_argument("--mlp-maxiter", type=int, default=500)
         if name == "analyse":
             p.add_argument("--confirmatory", action="store_true")
+        if name in POOLED:
+            p.add_argument("--workers", type=_positive, default=None,
+                           help="worker processes, each with --threads XLA threads and one "
+                                "BLAS thread (default: the cores over --threads, less one; 1: "
+                                "the serial path in this process); never partial")
     return ap
+
+
+def _positive(v: str) -> int:
+    n = int(v)
+    if n < 1:
+        raise argparse.ArgumentTypeError(f"{v}: at least 1")
+    return n
 
 
 def main(argv: list[str] | None = None) -> None:

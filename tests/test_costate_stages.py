@@ -765,7 +765,9 @@ def test_stage_nulls_writes_the_per_fold_layout_prereg_binds(tmp_path, monkeypat
         return out
 
     monkeypatch.setattr(NL, "null_gradients", nulls)
-    args = cs.build_parser().parse_args(["nulls", "--out", str(tmp_path)])
+    # the serial path (in this process, where the stub is): tests/test_costate_workers.py
+    # runs the stage with a worker pool
+    args = cs.build_parser().parse_args(["nulls", "--out", str(tmp_path), "--workers", "1"])
     cs._use_provenance(cs.Provenance(args, "nulls"))
     cs.stage_nulls(args)
     summ = json.loads((tmp_path / "nulls" / "summary.json").read_text())

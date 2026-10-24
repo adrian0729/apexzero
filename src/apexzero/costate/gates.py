@@ -214,7 +214,11 @@ k. The pre-tag stage 'decoy-k' (``decoy_k``) re-derives the table on the run's o
 ``decoy_k_leaks`` at every candidate, the choice, and whether every per-seed value (paired
 and unpaired) reproduces ``DECOY_K_VALIDATION`` and ``DECOY_K_VALIDATION_UNPAIRED`` to
 ``DECOY_K_REPRODUCE_TOL`` = 1e-6. It passes when the choice is ``states.KNN_K`` (not a
-blocker) and every value reproduces, so the record's table is the tagged world's.
+blocker) and every value reproduces, so the record's table is the tagged world's. Its 48
+units (candidate k, world, validation seed; ``decoy_k_unit``) are independent: with
+``workers`` > 1 they run in a worker pool (``workers.run``), each unit's world rebuilt at its
+k from this process' ``at_decoy_k`` arrays, and the record is assembled in the serial order
+from the same ``pr6_world`` calls, so it is the serial run's.
 
 **C2's random-only null** (``c2_null``; descriptive, the pre-tag stage 'c2-null'). C2's
 primary statistic of networks that hold nothing beyond a random one: each of
@@ -307,6 +311,7 @@ K4_OVERSMOOTH_K = 300         # PR-6b, PR-6c's planted fault: an over-smoothed d
 K4_PR6C_K = 15                # PR-6c's F: the k of its leave-one-geometry-out kNN (the world)
 DECOY_K_CANDIDATES = (3, 5, 8, 15)   # f_D's k: the candidates (module docstring 'f_D's k')
 DECOY_K_SEEDS = (0, 1, 2, 3, 4, 5)   # its validation seeds (stream costate_decoy_k)
+DECOY_K_WORLDS = ("smooth", "knn")   # PR-6b's and PR-6c's worlds (``pr6_world``'s kinds)
 DECOY_K_REPRODUCE_TOL = 1e-6  # the decoy-k stage: each value against the table (rounded 1e-6)
 # C2's random-only null (module docstring): the random-init actors scored as the network,
 # disjoint from C2's control pool (seeds 0 to probes.N_POOL - 1)
@@ -1903,19 +1908,39 @@ def at_decoy_k(pw: ProbeWorld, k: int) -> tuple[ProbeWorld, dict]:
     return dataclasses.replace(pw, lam_res=res.by_fold, power_floor=floor), info
 
 
+def decoy_k_record(pk: ProbeWorld, k: int, kind: str, v: int, faults: bool = False) -> dict:
+    """One validation seed's ``pr6_world`` record of one world (``kind``) with f_D at ``k``,
+    on ``pk``, ``pw`` at k (``at_decoy_k``): the call ``decoy_k_leaks`` makes in this process
+    and ``decoy_k_unit`` in a worker."""
+    return pr6_world(pk, kind, (v,), t_wide=False, faults=faults, k=k, noise=decoy_k_rng)
+
+
+def decoy_k_unit(state, unit) -> dict:
+    """A worker's unit of the decoy-k stage (``workers.run``): ``state`` (pw, {k: (lambda_res,
+    power floor)} from this process' ``at_decoy_k``), ``unit`` (k, kind, seed); ``pw`` at k
+    rebuilt from those arrays exactly as ``at_decoy_k`` builds it, then ``decoy_k_record``."""
+    pw, at = state
+    k, kind, v = unit
+    lam_res, floor = at[k]
+    pk = dataclasses.replace(pw, lam_res=lam_res, power_floor=floor)
+    return decoy_k_record(pk, k, kind, v)
+
+
 def decoy_k_leaks(pw: ProbeWorld, k: int, seeds: Sequence[int] = DECOY_K_SEEDS,
-                  faults: bool = False) -> dict:
+                  faults: bool = False, done: tuple | None = None) -> dict:
     """PR-6b's and PR-6c's records on the validation seeds (``decoy_k_rng``) with f_D at
     ``k``, on ``pw`` at k (``at_decoy_k``): per seed C2's primary Delta2 exactly as K4
     computes it on its gate seeds (``pr6_world``: the units' paired increment over the host
     alone), with ``faults`` the planted faults on every seed (each seed its own ``pr6_world``
-    call). 'delta2' {kind: [per seed]} is what ``decoy_k_choice`` reads; the rest
-    ('delta2_unpaired', 'host_offset' and the records) is descriptive."""
-    pk, info = at_decoy_k(pw, k)
+    call, ``decoy_k_record``). 'delta2' {kind: [per seed]} is what ``decoy_k_choice`` reads;
+    the rest ('delta2_unpaired', 'host_offset' and the records) is descriptive. ``done``
+    ((pw at k, its info), {(kind, seed): record}) holds them computed already (the worker
+    pool's, ``decoy_k``)."""
+    pk, info = at_decoy_k(pw, k) if done is None else done[0]
     out: dict = {"k": int(k), "real": info, "seeds": [int(v) for v in seeds], "delta2": {},
                  "delta2_unpaired": {}, "host_offset": {}}
-    for kind in ("smooth", "knn"):
-        recs = [pr6_world(pk, kind, (v,), t_wide=False, faults=faults, k=k, noise=decoy_k_rng)
+    for kind in DECOY_K_WORLDS:
+        recs = [decoy_k_record(pk, k, kind, v, faults) if done is None else done[1][(kind, v)]
                 for v in seeds]
         out[kind] = {"seeds": [r["seeds"][0] for r in recs],
                      "faults": [r.get("faults") for r in recs] if faults else None}
@@ -1937,7 +1962,7 @@ def decoy_k_choice(delta2: dict, candidates: Sequence[int] = DECOY_K_CANDIDATES,
     ok = {}
     for k in candidates:
         rec = delta2.get(k, delta2.get(str(k), {}))
-        vals = [rec.get(kind) or [] for kind in ("smooth", "knn")]
+        vals = [rec.get(kind) or [] for kind in DECOY_K_WORLDS]
         ok[int(k)] = all(len(v) > 0 and all(_le(x, tol) for x in v) for v in vals)
     good = [k for k, v in ok.items() if v]
     return {"k": max(good) if good else min(ok), "qualifying": good, "blocker": not good,
@@ -1975,15 +2000,31 @@ def decoy_k_reproduction(delta2: dict, delta2_unpaired: dict,
 
 
 def decoy_k(pw: ProbeWorld, candidates: Sequence[int] = DECOY_K_CANDIDATES,
-            seeds: Sequence[int] = DECOY_K_SEEDS, progress: Callable | None = None) -> dict:
+            seeds: Sequence[int] = DECOY_K_SEEDS, progress: Callable | None = None,
+            workers: int = 1) -> dict:
     """The pre-tag stage 'decoy-k' (module docstring 'f_D's k'): ``decoy_k_leaks`` on ``pw``
     (C2's decision stratum, mask and frozen power floor) at every candidate on the validation
     seeds, the rule's choice (``decoy_k_choice``) and the reproduction of the record's table
     (``decoy_k_reproduction``), with each k's residual shares and floors ('real'). Pass: the
-    choice is ``states.KNN_K``, not a blocker, and every value reproduces the table."""
+    choice is ``states.KNN_K``, not a blocker, and every value reproduces the table. With
+    ``workers`` > 1 the (k, world, seed) units run in that many spawned processes
+    (``decoy_k_unit``; ``at_decoy_k`` once per k here) and the record is the serial one."""
+    from apexzero.costate import workers as WK
+
     by_k = {}
+    done: dict = {}
+    if workers > 1:
+        at = {int(k): at_decoy_k(pw, int(k)) for k in candidates}
+        units = [(int(k), kind, int(v)) for k in candidates for kind in DECOY_K_WORLDS
+                 for v in seeds]
+        got = WK.run(decoy_k_unit, units, workers,
+                     state=(pw, {k: (pk.lam_res, pk.power_floor) for k, (pk, _) in at.items()}),
+                     names=[f"k = {k}, {kind}, seed {v}" for k, kind, v in units])
+        for (k, kind, v), rec in zip(units, got, strict=True):
+            done.setdefault(k, (at[k], {}))[1][(kind, v)] = rec
     for k in candidates:
-        by_k[int(k)] = decoy_k_leaks(pw, int(k), seeds)
+        by_k[int(k)] = (decoy_k_leaks(pw, int(k), seeds) if not done
+                        else decoy_k_leaks(pw, int(k), seeds, done=done[int(k)]))
         if progress:
             progress(f"k = {int(k)}: {by_k[int(k)]['delta2']}")
     delta2 = {k: r["delta2"] for k, r in by_k.items()}
@@ -1996,7 +2037,7 @@ def decoy_k(pw: ProbeWorld, candidates: Sequence[int] = DECOY_K_CANDIDATES,
             "delta2_unpaired": {str(k): v for k, v in unpaired.items()},
             "host_offset": {str(k): r["host_offset"] for k, r in by_k.items()},
             "real": {str(k): r["real"] for k, r in by_k.items()},
-            "records": {str(k): {kind: r[kind]["seeds"] for kind in ("smooth", "knn")}
+            "records": {str(k): {kind: r[kind]["seeds"] for kind in DECOY_K_WORLDS}
                         for k, r in by_k.items()},
             "choice": choice, "knn_k": ST.KNN_K, "reproduces": rep,
             "pass": bool(choice["k"] == ST.KNN_K and not choice["blocker"] and rep["ok"])}
