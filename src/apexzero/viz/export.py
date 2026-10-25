@@ -1,7 +1,7 @@
 """Versioned JSON trajectory export: one track and one or more lap "ghosts".
 
-Every demo surface (the static viewer, the matplotlib figures, the optional Rerun log, a
-later render mode for the video) reads this one file format, so a figure can be redrawn
+Every demo surface (the static viewer, the matplotlib figures, the optional Rerun log, the
+render mode in ``apexzero.viz.render``) reads this one file format, so a figure can be redrawn
 from an export without re-running a policy or an optimiser, and an export made today
 still loads when the final agents exist.
 

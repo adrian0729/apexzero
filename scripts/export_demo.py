@@ -2,7 +2,7 @@
 
     uv run python scripts/export_demo.py                      # Hockenheim specialist showcase
     uv run python scripts/export_demo.py --track Catalunya --agent runs/<dr-run>/ckpt/<step>.pkl \
-        --name catalunya-generalist
+        --name catalunya-generalist --agent-badge "POST HOC" --note "<why the badge applies>"
     uv run --group rerun python scripts/export_demo.py --rrd /tmp/hockenheim.rrd
 
 Writes, under --out (default docs/demo):
@@ -12,7 +12,8 @@ Writes, under --out (default docs/demo):
 and, with --rrd PATH, a Rerun recording (not committed: .rrd files are tied to the SDK
 version that wrote them). The .json and .html carry the TUMFTM-derived track geometry
 (LGPL-3.0), which the repository does not commit, so they are git-ignored under
-docs/demo; only the figures are committed.
+docs/demo; only the figures, which carry the attribution in a footer, are committed.
+scripts/render_demo.py turns the .json into a clip, a frame sequence or stills.
 
 Lockbox: refuses R_TEST circuits (and their mirrored/reversed variants) unless
 --unseal-lockbox is given, which protocol-v1 allows only after the unseal.
@@ -58,6 +59,10 @@ def main():
     ap.add_argument("--track", default="Hockenheim")
     ap.add_argument("--agent", default="runs/hockenheim-specialist-mlp-200M/agent.pkl")
     ap.add_argument("--agent-label", default="RL specialist (200M steps)")
+    ap.add_argument("--agent-badge", choices=export.BADGES, default=None,
+                    help="e.g. POST HOC for a checkpoint no pre-registered rule chose")
+    ap.add_argument("--note", action="append", default=[],
+                    help="an extra note for the export (repeatable), e.g. why a badge applies")
     ap.add_argument("--ocp", default=None, help="default: outputs/ocp/<track>.pkl")
     ap.add_argument("--out", default="docs/demo")
     ap.add_argument("--name", default="hockenheim-specialist")
@@ -89,7 +94,8 @@ def main():
     policy = export.load_policy(agent_path)
     v0 = float(reference_speed(track)[0]) * args.v_start_frac
     ro = export.rollout_policy(policy, track, v0, unsealed=unsealed)
-    g_agent = export.policy_ghost(ro, track, label=args.agent_label, unsealed=unsealed)
+    g_agent = export.policy_ghost(ro, track, label=args.agent_label, badge=args.agent_badge,
+                                  unsealed=unsealed)
 
     # The export must reproduce the evaluation harness's own number for this run.
     harness = timed_laps(policy, track, v0, runs=1)
@@ -127,6 +133,7 @@ def main():
          "before it. 'Charged' moves time gained or lost while both cars are flat out "
          "(throttle >= 0.99) back to the corner where that stretch began; both sum to the "
          "lap delta."),
+        *args.note,
         "Track geometry: TUMFTM racetrack-database (LGPL-3.0).",
     ]
     provenance = {
@@ -145,7 +152,7 @@ def main():
 
     paths = [export.write_document(doc, out / f"{args.name}.json")]
     paths.append(export.embed_in_viewer(doc, out / f"{args.name}.html"))
-    paths += figures.save_figures(doc, out, args.name)
+    paths += figures.save_figures(doc, out, args.name, footer=figures.TUMFTM_ATTRIBUTION)
     if args.rrd:
         from apexzero.viz.rerun_log import log_document
 
