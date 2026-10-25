@@ -245,3 +245,28 @@ Results computed under the earlier version are kept and reported beside the amen
     - **E2, part 1.** For each specialist and each sub-ladder with 2 or more members entering P4 (F6s by registered tail, K-str, W+, W+str), the Spearman ρ between amplitude and d_OOD is positive. With 2 members, the larger amplitude has the larger d_OOD. It holds if this is true for every pair of specialist and sub-ladder.
     - **E2, part 2.** At least one condition entering P4 has d_OOD ≥ 2.37 for S2 and one has d_OOD ≥ 2.75 for S3, and every such condition is a wobble or widening member.
     - **E3–E6** are read off the extended-set classes and the recipe rule as Section 7 states them.
+
+### Amendment 2 (25 Oct 2026): the one ladder extension (POST HOC)
+
+**What had been seen.** Everything in the planned run, so this amendment is post hoc, as Section 10's extension clause requires:
+- the certification, `outputs/p4/certified.json`, committed in `7ad8db2`: 10 conditions certified;
+- the specialists' C and d_OOD on those conditions;
+- their classes.
+
+No certified condition reaches the d_OOD of S2's failing F1 conditions (2.01 and 2.37) or of S3's (2.75). The highest is W+ at 1 m, with 1.34–1.53. S2 and S3 stay class 2, vacuous.
+
+**What changed, and why.** The one ladder extension Section 10 allows: K-str continued at 16e-3, 32e-3 and 64e-3 m⁻¹, positions 4–6 of its ladder, each rung doubling as before.
+- K-str is the only family certified at its top rung (8e-3 at all 9 corners), and it leaves the corner region untouched.
+- F6s κ noise loses corners from scale 3 on, because its noise reaches the corner region. W+ fails the generalists from 2 m. No wobble member is certified.
+- K-str's d_OOD up to 8e-3 (0.75–0.92) was known when these rungs were chosen, and so was S3's falling C on it (1.0, 1.0, 0.875, 0.78).
+
+**Fixed before its runs.**
+- **Construction.** The same footprint, noise, stream and cap as K-str (Amendment 1, items 4 and 7), with level index 4–6.
+- **Separate outputs.** The extension has its own build, certification, freeze and runs, under `outputs/p4/extension/` (`--extension`).
+- **Checks.** The same checks as the planned run:
+  - condition (a)'s s-OCP re-solved against step 1's keys;
+  - the generalists' reference runs, whose criterion must equal the planned run's;
+  - the specialists' registered reruns, checked against `decisions_all.json`.
+- **Certification.** Section 4, unchanged: s-OCP within 1% at 7 or more of the 9 braking corners, and the generalists' median C_G ≥ 0.9. The list, `outputs/p4/extension/certified.json`, is committed before any specialist runs an extension rung.
+- **Classification.** P4's ordered rules, with the F6 set made up of the registered four, the 10 conditions certified in the planned run and every certified extension rung. Classes are also given per family as before, and the recipe rule is applied.
+- **Labels.** Every extension result is labelled post hoc and reported beside the planned results, which stand as this item's result. If no extension rung is certified, the planned result stands unchanged.

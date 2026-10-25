@@ -249,6 +249,38 @@ def condition_catalogue() -> list[dict]:
 
 CATALOGUE = condition_catalogue()
 BY_NAME = {c["name"]: c for c in CATALOGUE}
+MAIN_CATALOGUE = CATALOGUE
+
+# Amendment 2 (post hoc): the plan's one ladder extension, K-str's rungs continued.
+EXT_KSTR_LEVELS = (16e-3, 32e-3, 64e-3)
+EXT_KSTR_TAGS = ("16e-3", "32e-3", "64e-3")
+EXTENSION_DIR = OUT / "extension"
+
+
+def extension_catalogue() -> list[dict]:
+    """K-str at 16e-3, 32e-3 and 64e-3 1/m: positions 4-6 of the extended K-str ladder."""
+    n0 = len(KSTR_LEVELS)
+    return [dict(name=f"{PREFIX}/Kstr/{tag}", family="Kstr", ladder="Kstr", kind="knoise",
+                 amplitude=lv, unit="1/m", f6_scale=None, level_index=n0 + li,
+                 contingency=False)
+            for li, (lv, tag) in enumerate(zip(EXT_KSTR_LEVELS, EXT_KSTR_TAGS, strict=True))]
+
+
+EXTENSION = False
+OUT_DIR = OUT
+
+
+def configure(extension: bool) -> None:
+    """Point every stage at the planned run (outputs/p4/) or at Amendment 2's ladder
+    extension (outputs/p4/extension/, its own build, certification, freeze and runs)."""
+    global EXTENSION, OUT_DIR, BUILD, SOCP, GEN, SPEC, CERTIFIED, CATALOGUE, BY_NAME
+    EXTENSION = bool(extension)
+    OUT_DIR = EXTENSION_DIR if EXTENSION else OUT
+    BUILD, SOCP, GEN, SPEC = (OUT_DIR / d for d in ("build", "socp", "generalists",
+                                                     "specialists"))
+    CERTIFIED = OUT_DIR / "certified.json"
+    CATALOGUE = extension_catalogue() if EXTENSION else MAIN_CATALOGUE
+    BY_NAME = {c["name"]: c for c in CATALOGUE}
 
 
 def p4_rng(corner: int, family: str, level_index: int) -> np.random.Generator:
@@ -391,8 +423,38 @@ def new_conditions(dc: ST.DCorner, track, swap_j: int | None) -> tuple[dict, dic
                 fail(f"corner {i} {fam} {a:g} m: {e}")
             profiles[f"{PREFIX}/{fam}/{a:g}m"] = ST.Profile(k, wl2, wr2, lm, cap)
     info["phi"] = phis
-    if set(profiles) != set(BY_NAME):
+    if set(profiles) != {c["name"] for c in MAIN_CATALOGUE}:
         fail("the builder and the catalogue disagree")
+    return profiles, info
+
+
+def kstr_profile(corner: int, kappa, w_left, w_right, lm, mod, runs, level: float,
+                 level_index: int) -> ST.Profile:
+    """One K-str strip: kappa noise on the straight runs from the new stream, then the
+    frozen inside cap on the modified knots (as ``new_conditions`` builds it)."""
+    kk = kappa + kstr_noise(p4_rng(corner, "Kstr", level_index), len(kappa), runs, level)
+    wl2, wr2, cap = ST.apply_inside_cap(kk, w_left, w_right, mask=mod)
+    return ST.Profile(kk, wl2, wr2, lm, cap)
+
+
+def extension_conditions(dc: ST.DCorner, track) -> tuple[dict, dict]:
+    """Amendment 2's K-str rungs on one corner: the planned K-str footprint, noise and
+    stream (level index = position in the extended ladder)."""
+    from apexzero.tracks.corners import segment
+
+    i = dc.index
+    rr = ST._RealRoad(D_TRACK, dc.corner, dc.before, dc.after, N_KNOTS, track)
+    k, wl, wr = rr.real()
+    lm = rr.landmarks(k)
+    mod = rr.w_lead() < 1.0
+    corners = segment(strip_track(k, wl, wr, f"D/{i}/{COND_A}")).corners
+    spans = [(float(c.s_start), float(c.s_end + DS)) for c in corners]
+    runs = straight_runs(N_KNOTS, spans, rr.lead1, rr.i_b)
+    profiles = {c["name"]: kstr_profile(i, k, wl, wr, lm, mod, runs, c["amplitude"],
+                                        c["level_index"]) for c in extension_catalogue()}
+    info = {"lead1": int(rr.lead1), "i_b": int(rr.i_b), "c0": int(rr.c0), "c1": int(rr.c1),
+            "straight_runs": [[a, b] for a, b in runs],
+            "straight_m": [(b - a) * DS for a, b in runs], "segment_corners": len(corners)}
     return profiles, info
 
 
@@ -475,7 +537,10 @@ def stage_build(args) -> None:
             key = "f6_scale_0.5_vs_stored" if cond.startswith("F6/") else "registered_vs_stored"
             checks[key][name] = bool(eq)
             reg_rows.append(st.stim_id)
-        profiles, info = new_conditions(dc, track, sw)
+        if EXTENSION:
+            profiles, info = extension_conditions(dc, track)
+        else:
+            profiles, info = new_conditions(dc, track, sw)
         a = sbank.by_name(f"D/{i}/{COND_A}").stim_id
         rr = ST._RealRoad(D_TRACK, dc.corner, dc.before, dc.after, N_KNOTS, track)
         k, wl, wr = rr.real()
@@ -570,6 +635,8 @@ _W: dict = {}
 
 
 def _pool(jobs: list[dict], fn, init, workers: int, on_result=None) -> list[dict]:
+    """A spawned pool of at most 4 processes; each worker is configured like this process
+    (the planned run or Amendment 2's extension) before its initializer loads the build."""
     import multiprocessing as mp
     from concurrent.futures import ProcessPoolExecutor, as_completed
 
@@ -578,7 +645,7 @@ def _pool(jobs: list[dict], fn, init, workers: int, on_result=None) -> list[dict
     out = []
     n = max(1, min(int(workers), MAX_WORKERS, len(jobs)))
     with ProcessPoolExecutor(max_workers=n, mp_context=mp.get_context("spawn"),
-                             initializer=init) as ex:
+                             initializer=init, initargs=(EXTENSION,)) as ex:
         futs = [ex.submit(fn, j) for j in jobs]
         for f in as_completed(futs):
             r = f.result()
@@ -591,10 +658,11 @@ def _pool(jobs: list[dict], fn, init, workers: int, on_result=None) -> list[dict
 # ------------------------------------------------------------------------- s-OCP
 
 
-def _socp_init() -> None:
+def _socp_init(extension: bool = False) -> None:
     from apexzero.interp import answer_key as ak
     from apexzero.interp import measures
 
+    configure(extension)
     be_nice()
     ak._x64()
     if not measures.tables_path().exists():
@@ -634,8 +702,8 @@ def _socp_job(job: dict) -> dict:
     return out
 
 
-def socp_results() -> dict[tuple[int, str], dict]:
-    p = SOCP / "results.jsonl"
+def socp_results(socp_dir: Path | None = None) -> dict[tuple[int, str], dict]:
+    p = (socp_dir or SOCP) / "results.jsonl"
     if not p.exists():
         return {}
     out = {}
@@ -783,9 +851,10 @@ def stage_certify_socp(args) -> None:
 # ------------------------------------------------------------------------- rollouts
 
 
-def _rollout_init() -> None:
+def _rollout_init(extension: bool = False) -> None:
     from apexzero.interp import measures
 
+    configure(extension)
     be_nice()
     pio.assert_x64_off()
     if not measures.tables_path().exists():
@@ -1063,6 +1132,11 @@ def stage_certify_generalists(args) -> None:
         write_json(crit_path, crit)
     print(f"C_G(a): {C_a}; rule: {crit['rule']} (threshold {crit['threshold']:.3f})",
           flush=True)
+    if EXTENSION:
+        main = read_json(OUT / "generalists" / "criterion.json")
+        if (main["rule"], main["threshold"], main["C_G_a"]) != (crit["rule"], crit["threshold"],
+                                                                 crit["C_G_a"]):
+            fail("the extension's generalist criterion differs from the planned run's")
 
     def evaluate(names: list[str], batch: str) -> dict:
         per_gen = {a: [] for a in gens}
@@ -1142,8 +1216,11 @@ def certified_list() -> dict:
             "".join(strips[r] for r in rows).encode()).hexdigest() if rows else None
         entry["strip_sha256_per_corner"] = {r.split("/")[1]: strips[r] for r in rows}
         out[name] = entry
-    return dict(status="EXPLORATORY (p4-plan.md Section 4.4): frozen before any specialist "
-                       "is rolled out on a new condition",
+    status = ("EXPLORATORY and POST HOC (p4-plan.md Amendment 2): frozen before any "
+              "specialist is rolled out on an extension rung" if EXTENSION else
+              "EXPLORATORY (p4-plan.md Section 4.4): frozen before any specialist is rolled "
+              "out on a new condition")
+    return dict(status=status,
                 criterion=gen["criterion"], contingency=gen["contingency"],
                 timing=socp["timing"], braking=socp["braking"], conditions=out,
                 entering=[n for n, e in out.items() if e["enters_p4"]],
@@ -1365,8 +1442,24 @@ def stage_classify(args) -> None:
     gen_table = pio.concat_tables([gen_ct[a] for a in gens])
     ct = cond_tables([SPEC / "registered", SPEC / "new"], list(OWNERS), keys, with_d_ood=True)
     entering = list(cert["entering"])
-    fam_of = {n: cert["conditions"][n]["family"] for n in entering}
-    sets = {"registered": A.F6_CONDS, "extended": (*A.F6_CONDS, *entering)}
+    info = {n: cert["conditions"][n] for n in entering}
+    sets = {"registered": A.F6_CONDS}
+    if EXTENSION:
+        # Amendment 2: the planned certified conditions (their runs on the planned design)
+        # plus the extension's rungs.
+        main_cert = read_json(OUT / "certified.json")
+        m_meta = read_json(OUT / "build" / "cells_meta.json")["cells"]
+        m_res = socp_results(OUT / "socp")
+        m_keys = keys_table(m_meta, kt, {k: float(v.get("v_min", np.nan))
+                                         for k, v in m_res.items()})
+        m_ct = cond_tables([OUT / "specialists" / "new"], list(OWNERS), m_keys,
+                           with_d_ood=True)
+        ct = {a: pio.concat_tables([ct[a], m_ct[a]]) for a in OWNERS}
+        sets["planned"] = (*A.F6_CONDS, *main_cert["entering"])
+        info.update({n: main_cert["conditions"][n] for n in main_cert["entering"]})
+        entering = list(main_cert["entering"]) + entering
+    sets["extended"] = (*A.F6_CONDS, *entering)
+    fam_of = {n: info[n]["family"] for n in entering}
     for fam in FAMILIES:
         members = tuple(n for n in entering if fam_of[n] == fam)
         if members:
@@ -1384,10 +1477,10 @@ def stage_classify(args) -> None:
             if sname == "extended":
                 results[a] = r
         C, D, _ = A.completion_by_condition(ct[a])
-        table = [dict(condition=n, family=fam_of[n], ladder=cert["conditions"][n]["ladder"],
-                      amplitude=cert["conditions"][n]["amplitude"],
-                      unit=cert["conditions"][n]["unit"], C=C.get(n), d_ood=D.get(n),
-                      n_corners=len(cert["conditions"][n]["certified_corners"]))
+        table = [dict(condition=n, family=fam_of[n], ladder=info[n]["ladder"],
+                      amplitude=info[n]["amplitude"], unit=info[n]["unit"], C=C.get(n),
+                      d_ood=D.get(n), n_corners=len(info[n]["certified_corners"]),
+                      extension=EXTENSION and n in cert["conditions"])
                  for n in entering]
         table += [dict(condition=f, family="F6 (registered)", ladder=f"F6s/{f.split('/')[1]}",
                        amplitude=nom * 0.5, unit="m" if f.startswith("F6/wobble") else "1/m",
@@ -1417,8 +1510,10 @@ def stage_classify(args) -> None:
     recipe_reg = A.p4_recipe([classify(ct[a], gen_table,
                                        tier_g=tier_g_table(dec[a]["details"]["tier_g_crash"]))
                               for a in OWNERS])
-    write_json(OUT / "classes.json", {
-        "status": "EXPLORATORY (p4-plan.md Section 6): every class here is exploratory",
+    write_json(OUT_DIR / "classes.json", {
+        "status": ("EXPLORATORY and POST HOC (p4-plan.md Amendment 2: the ladder extension)"
+                   if EXTENSION else
+                   "EXPLORATORY (p4-plan.md Section 6): every class here is exploratory"),
         "sets": {k: list(v) for k, v in sets.items()}, "specialists": out,
         "recipe": dict(verdict=recipe.verdict, details=recipe.details),
         "recipe_registered": dict(verdict=recipe_reg.verdict, details=recipe_reg.details),
@@ -1509,9 +1604,14 @@ def stage_report(args) -> None:
     t0 = time.time()
     require_frozen()
     cert = require_committed_freeze()
-    classes = read_json(OUT / "classes.json")
+    classes = read_json(OUT_DIR / "classes.json")
+    if EXTENSION:
+        # The readings over the planned and the extension's certified conditions together.
+        main_cert = read_json(OUT / "certified.json")
+        cert = dict(main_cert, conditions={**main_cert["conditions"], **cert["conditions"]},
+                    entering=list(main_cert["entering"]) + list(cert["entering"]))
     read = readings(cert, classes)
-    with open(OUT / "c_vs_dood.csv", "w", newline="") as fh:
+    with open(OUT_DIR / "c_vs_dood.csv", "w", newline="") as fh:
         w = csv.writer(fh)
         w.writerow(["specialist", "condition", "family", "ladder", "amplitude", "unit", "C",
                     "d_ood", "n_corners"])
@@ -1520,8 +1620,10 @@ def stage_report(args) -> None:
                 w.writerow([a, r["condition"], r["family"], r["ladder"], f"{r['amplitude']:g}",
                             r["unit"], "" if r["C"] is None else f"{r['C']:.4f}",
                             "" if r["d_ood"] is None else f"{r['d_ood']:.4f}", r["n_corners"]])
-    write_json(OUT / "report.json", {
-        "status": "EXPLORATORY: every reading here is exploratory (p4-plan.md Section 7)",
+    write_json(OUT_DIR / "report.json", {
+        "status": ("EXPLORATORY and POST HOC (p4-plan.md Amendment 2: the ladder extension)"
+                   if EXTENSION else
+                   "EXPLORATORY: every reading here is exploratory (p4-plan.md Section 7)"),
         "readings": read,
         "certification": {n: {k: e.get(k) for k in ("family", "amplitude", "unit",
                                                      "socp_corners", "median_C_G",
@@ -1532,10 +1634,10 @@ def stage_report(args) -> None:
         "recipe": classes["recipe"],
         "provenance": provenance("report", sys.argv[1:], t0, {
             "certified.json": sha256_file(CERTIFIED),
-            "classes.json": sha256_file(OUT / "classes.json")})})
+            "classes.json": sha256_file(OUT_DIR / "classes.json")})})
     for k, v in read.items():
         print(f"{k}: holds={v.get('holds')}", flush=True)
-    print(f"wrote {rel(OUT / 'report.json')}, c_vs_dood.csv", flush=True)
+    print(f"wrote {rel(OUT_DIR / 'report.json')}, c_vs_dood.csv", flush=True)
 
 
 # ------------------------------------------------------------------------- main
@@ -1552,7 +1654,10 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--workers", type=int, default=MAX_WORKERS,
                     help=f"process pool size (at most {MAX_WORKERS})")
     ap.add_argument("--force", action="store_true")
+    ap.add_argument("--extension", action="store_true",
+                    help="Amendment 2's post hoc K-str ladder extension (outputs/p4/extension/)")
     args = ap.parse_args(argv)
+    configure(args.extension)
     if args.workers > MAX_WORKERS:
         raise SystemExit(f"at most {MAX_WORKERS} processes (another workflow shares the Mac)")
     be_nice()

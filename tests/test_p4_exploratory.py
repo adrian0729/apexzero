@@ -323,3 +323,30 @@ def test_hockenheim_corner_conditions(p4):
             assert np.all(q.w_left[i <= info["lead1"]] == wl[i <= info["lead1"]])
     wstr = prof["P4A/WplusStr/4m"]
     assert np.all(wstr.w_left[region] == wl[region])
+    # Amendment 2's builder: the same footprint, and the planned rungs rebuilt bit for bit.
+    eprof, einfo = p4.extension_conditions(dc, track)
+    assert einfo["straight_runs"] == info["straight_runs"]
+    runs = [tuple(r) for r in info["straight_runs"]]
+    mod = rr.w_lead() < 1.0
+    for li, (lv, tag) in enumerate(zip(p4.KSTR_LEVELS, p4.KSTR_TAGS, strict=True)):
+        q = p4.kstr_profile(0, k, wl, wr, lm, mod, runs, lv, li)
+        assert np.array_equal(q.kappa, prof[f"P4A/Kstr/{tag}"].kappa)
+    for c in p4.extension_catalogue():
+        d = eprof[c["name"]].kappa - k
+        assert np.all(d[region] == 0.0) and np.abs(d).max() == pytest.approx(c["amplitude"])
+
+
+def test_extension_catalogue_and_configure(p4):
+    ext = p4.extension_catalogue()
+    assert [c["amplitude"] for c in ext] == [16e-3, 32e-3, 64e-3]
+    assert [c["level_index"] for c in ext] == [4, 5, 6]          # continues K-str's ladder
+    assert all(c["family"] == "Kstr" and c["ladder"] == "Kstr" for c in ext)
+    assert not {c["name"] for c in ext} & set(p4.BY_NAME)
+    try:
+        p4.configure(True)
+        assert p4.BUILD == p4.OUT / "extension" / "build" and p4.EXTENSION
+        assert set(p4.BY_NAME) == {c["name"] for c in ext}
+        assert p4.active_conditions(None, None) == [c["name"] for c in ext]
+    finally:
+        p4.configure(False)
+    assert p4.BUILD == p4.OUT / "build" and len(p4.CATALOGUE) == 38 and not p4.EXTENSION
