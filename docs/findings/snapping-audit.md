@@ -136,6 +136,51 @@ artefacts such as antenna position or latency, far below racing-line scale
 - 2026 Hungaroring: 8.1% of stations significant, driver offset p95 7.9 cm, ICC +0.018
 - 2026 Zandvoort: 8.4% of stations significant, driver offset p95 10.9 cm, ICC +0.037
 
+**Per-car breakdown of the sessions with driver offsets above 20 cm at p95.** The same statistic split by car: per 50 m station, the car's mean signed offset over its laps minus the station mean over cars, and per car the median, p95 and maximum of its absolute value. *Near the seam* counts the car's stations above 20 cm that lie within 600 m of the start or end of the pole lap's curve, where the reference curve begins and ends.
+
+*2023 Silverstone*: 13 cars, each with 7-8 stations above 20 cm; 96 of the 96 car-stations above 20 cm are near the seam. Stations where at least half the cars exceed 20 cm (start, m; lap 5800 m): 0, 5250, 5300, 5350, 5400, 5450, 5700, 5750.
+
+| Car | Laps | Stations | Median (cm) | p95 (cm) | Max (cm) | Stations > 20 cm | Near the seam |
+|---|---|---|---|---|---|---|---|
+| 63 | 7 | 116 | 2.1 | 64.0 | 1330.7 | 8 | 8 |
+| 4 | 9 | 116 | 1.9 | 57.9 | 609.5 | 8 | 8 |
+| 31 | 6 | 116 | 2.2 | 55.9 | 1004.2 | 7 | 7 |
+| 18 | 5 | 116 | 2.1 | 48.2 | 301.4 | 8 | 8 |
+| 44 | 8 | 116 | 1.9 | 45.5 | 647.7 | 8 | 8 |
+| 2 | 5 | 116 | 2.2 | 43.0 | 299.2 | 7 | 7 |
+| 27 | 5 | 116 | 2.5 | 37.6 | 300.0 | 8 | 8 |
+| 55 | 9 | 116 | 1.5 | 35.5 | 299.3 | 7 | 7 |
+| 16 | 8 | 116 | 2.0 | 32.8 | 299.1 | 7 | 7 |
+| 14 | 8 | 116 | 2.0 | 27.2 | 299.1 | 7 | 7 |
+| 10 | 7 | 116 | 2.2 | 24.8 | 298.0 | 7 | 7 |
+| 81 | 7 | 116 | 2.0 | 24.4 | 297.7 | 7 | 7 |
+| 23 | 7 | 116 | 2.3 | 23.8 | 296.3 | 7 | 7 |
+
+*2026 Silverstone*: 18 cars, each with 6-8 stations above 20 cm; 123 of the 124 car-stations above 20 cm are near the seam. Stations where at least half the cars exceed 20 cm (start, m; lap 5800 m): 0, 5300, 5350, 5400, 5450, 5700, 5750.
+
+| Car | Laps | Stations | Median (cm) | p95 (cm) | Max (cm) | Stations > 20 cm | Near the seam |
+|---|---|---|---|---|---|---|---|
+| 41 | 6 | 116 | 2.2 | 77.8 | 1193.9 | 8 | 8 |
+| 30 | 7 | 116 | 1.8 | 69.1 | 1026.9 | 8 | 8 |
+| 44 | 6 | 116 | 2.1 | 65.6 | 1184.7 | 8 | 8 |
+| 23 | 5 | 116 | 2.0 | 51.6 | 1591.0 | 7 | 6 |
+| 27 | 5 | 116 | 2.3 | 47.5 | 360.0 | 7 | 7 |
+| 18 | 3 | 116 | 3.0 | 45.9 | 353.6 | 7 | 7 |
+| 87 | 5 | 116 | 2.6 | 44.4 | 359.6 | 7 | 7 |
+| 1 | 5 | 116 | 2.3 | 38.6 | 360.0 | 7 | 7 |
+| 3 | 6 | 116 | 2.2 | 37.1 | 353.9 | 7 | 7 |
+| 11 | 3 | 116 | 3.1 | 34.4 | 354.7 | 7 | 7 |
+| 5 | 3 | 116 | 3.4 | 32.8 | 356.1 | 7 | 7 |
+| 10 | 4 | 116 | 2.5 | 30.9 | 359.1 | 7 | 7 |
+| 63 | 5 | 116 | 3.0 | 28.3 | 360.4 | 7 | 7 |
+| 31 | 3 | 116 | 2.7 | 22.4 | 353.5 | 6 | 6 |
+| 6 | 6 | 116 | 2.1 | 20.2 | 353.4 | 6 | 6 |
+| 55 | 5 | 116 | 2.4 | 19.9 | 360.5 | 6 | 6 |
+| 81 | 6 | 116 | 2.5 | 18.5 | 359.9 | 6 | 6 |
+| 16 | 6 | 116 | 2.8 | 17.4 | 351.6 | 6 | 6 |
+
+**Reading.** 219 of 220 car-stations above 20 cm lie near the seam, and the stations are the same for every car. An offset that every car shows at the same few places belongs to the place (where the reference curve starts and ends), not to a car's line, so these flags are not a driver signal. Away from the seam no car exceeds 20 cm at more than 1 station(s).
+
 Skipped sessions:
 - 2023 Zandvoort: only 0 drivers with >= 3 flying laps
-- 2025 Baku: min() iterable argument is empty
+- 2025 Baku: the archived laps table is empty (OpenF1 returned no timed laps for this session; the location feed is there, but no lap can be cut from it)
