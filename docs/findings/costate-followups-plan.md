@@ -853,3 +853,120 @@ The rule:
   from its committed form.
 
 Amendments are appended below this line.
+
+### Amendment 1 (2026-10-25)
+
+**What changed.** CS-1's operational details, where Section 4's text leaves a choice, and two
+descriptive companions to its tyre-kink flag. No question, row set or expected direction
+changes. **Why.** To fix these choices before any CS-1 number exists. **Computed or seen before
+it.** No CS-1 number. Only the frozen code and the bound files' layout were read, and the
+scaffold's `cs-1 --check` ran, which computes nothing.
+
+1. **The tail** is findings Section 7.1's. On λ_ξ's decision rows, it is the rows where
+   `analysis.leverage_weights` < 1 for g_ξ centred on its key-weighted median within each turn
+   direction (`analysis._robust_centre`). The weights are C1's `w_in`, the key weights
+   renormalised on the interior. Step 1's check also covers the findings table's other columns,
+   at their printed rounding: the fold-mean slope, the tail's weight share and share of ξ's
+   squared error, bulk R²_c, the sign-opposite shares (on rows) and the variance ratio. Any
+   difference stops the item.
+2. **Shares and enrichment** (step 2). The weights are `w_in`. ξ's squared error is
+   w_in (pred − λ_ξ)² under the frozen calibration. For a flag F, the enrichment is
+   P(F | tail) / P(F | bulk). The headline is on rows, and the same ratio on weights is
+   co-reported. It is null when both shares are 0, and "inf" when only the bulk's is.
+   - **Geometry:** `states.geometry_index` (index 38 is (44.7 m, 180°), `frozen.geometries[38]`).
+     E1.1's set is the smallest set of geometries, taken in decreasing order of the tail's
+     squared error, that holds at least half of it.
+   - **Phase position:** bins ⌊(s − s_apex)/25 m⌋ of `tab/ds_apex`.
+   - **Clipping:** four flags. Any channel clipped; a channel of the plan's ξ set clipped (the 160
+     edge-pose channels, 204, 205); a channel outside that set clipped; κ clipping (`inputs.flags`
+     under the network's obs_rms).
+   - **Preview kinks:** |vx − 25| < 1, |vx − 500/6| < 1, and their union.
+   - **Tyre kinks, as written:** the region signature of channels 212–215 (util_f ≥ 2,
+     util_r ≥ 2, vx ≤ 1, the parts of `critic._signature` for those channels) at x_t ± 10⁻³ e_ξ,
+     compared with the one at x_t. Those channels read only (vx, vy, r, δ, pedal) and the context
+     (`dynamics.tyre_forces`, `racing.observe`), so the flag cannot be set. It is computed and
+     reported as it comes out, with its enrichment undefined if it is never set.
+   - **Tyre companions (descriptive):**
+     - the row's own tyre-clip region (channel 212 or 213 at 1, that is util ≥ 2, or vx ≤ 1, read
+       from the stored raw observation), as a flag;
+     - the key-weighted median of max(util_f, util_r) (channels 212–213 plus 1, capped at 2 by the
+       observation) on the tail and the bulk.
+
+     They carry no expected direction beyond E1.2's "not enriched".
+   - **vx:** E1.2's "higher vx" compares key-weighted medians. Means are co-reported.
+3. **Critic against map** (step 3).
+   - **The VJP.** The fresh VJP is `critic._grad_jit` of the main V on each key's T rows, in
+     `critic._batched`'s chunks, as the critic stage computed it.
+   - **The groups.** Let w_j = (∂V_c/∂z_j) when channel j is not clipped, and 0 when it is. A
+     group's contribution is c_k = σ_R Σ_{j∈k} w_j J_z[j, ξ]. The groups are:
+     - the near half of the edge-pose channels (preview points 1–20);
+     - the far half (points 21–40);
+     - channels 204 and 205;
+     - the other channels with J_z[j, ξ] ≠ 0 on some row;
+     - the accel term, σ_R (J_accᵀ w)ᵀ M_x[:, ξ] on rows with t ≥ 1 (of `ObsJac.frenet_leak`'s
+       size).
+
+     With the accel term included, the groups sum to the pullback's g_ξ.
+   - **The check.** The maximum over rows of |Σ_k c_k − g_ξ| / max(|g_ξ|, 10⁻¹² Σ_k |c_k|) must be
+     ≤ 10⁻¹⁰ against the stored g. The fresh `critic.pullback` must also equal the stored g on all
+     8 components to the same relative tolerance.
+   - **On tail and bulk rows separately:**
+     - a group's share of |g_ξ| is Σ w c_k sgn(g_ξ) / Σ w |g_ξ|. It is signed: the shares sum to 1,
+       and a group that pulls against the total has a negative share. The unsigned share
+       Σ w |c_k| / Σ w Σ_j |c_j| is co-reported;
+     - its share of g_ξ's sign is the weighted share of rows with sgn(c_k) = sgn(g_ξ). The share
+       with sgn(c_k) = −sgn(λ_ξ) is reported beside it;
+     - ‖J_z e_ξ‖ is the norm of J_z[:, ξ] over the unclipped channels. The critic's size is
+       σ_R ‖∂V_c/∂z‖ over the unclipped channels with J_z[j, ξ] ≠ 0 at the row;
+     - E1.3's ratios are tail over bulk of their key-weighted medians. Means are co-reported, and
+       so is the cosine g_ξ / (critic size × map size).
+4. **Calibrations** (step 4). The fit rows are each component's decision rows in the training
+   folds, with `w_in`, as for the frozen calibration. Predictions are clipped to
+   `frozen.winsor_bounds`.
+   - **Huber:**
+     - s: `analysis.huber_fit` (c = 1.345, slope clamped at ≥ 0: with a negative slope, its
+       location-only fit);
+     - ξ: the same IRLS with one intercept per turn direction and a shared slope. Each weighted
+       least-squares step is solved within direction. The scale is the weighted MAD of the
+       residuals about their weighted median, pooled over both directions, / 0.6745, re-estimated
+       every iteration. With a negative slope it is the location-only fit per direction. With a
+       single direction it is `analysis.huber_fit` exactly (a test checks this);
+     - no leverage weights.
+   - **Rank:** per fold, component and turn direction (s too, as written), on the training rows T
+     of that direction:
+     - if T has fewer than 3 rows, or the weighted Spearman of (g, λ) on T (`probes.wspearman`) is
+       ≤ 0 or undefined, the prediction is the weighted mean of λ on T;
+     - otherwise a held-out g maps to F = (Σ_T w [g_i < g] + ½ Σ_T w [g_i = g]) / Σ_T w, and then
+       to `states.wquantile(λ_T, w_T, F)`.
+   - **Scores:**
+     - R²_c per component (R²_wd for ξ) and their mean, on the frozen bootstrap counts
+       (`probes.cluster_counts`, stream costate_boot), with 95% percentile CIs;
+     - before the alternatives are scored, the frozen calibration must reproduce `decisions.json`
+       to 10⁻⁸ (`r2c`, `stat`, `ci`, and the per-fold `a` and `b`);
+     - bulk and tail: ξ on its tail and bulk rows; s on its decision rows inside and outside the
+       ξ tail (the exit rows are outside it).
+   - **Plants** (on each network's decision rows):
+     - zero;
+     - noise: the second 9,887 × 4 standard-normal draw of `gates.k4_rng(7)`, as `gates.pr5`
+       draws it, its s and ξ columns;
+     - −λ (winsorised);
+     - direction-only (g = σ).
+
+     A calibration passes its plants in a network when all four score R²_c in [−0.02, 0.005] on
+     both s and ξ. The frozen calibration is put through them too, for reference.
+5. **Reading the expected directions.**
+   - A condition the plan states without a count of networks is read as holding in at least 6 of
+     the 9 (as E1.1 and E1.2 count).
+   - Every condition's per-network results and count are reported.
+   - E1.1 holds when, in at least 6 of 9 networks, the half-error set has at most 6 geometries and
+     includes geometry 38. Each part's count is reported too.
+   - E1.2's clipping part holds when each of the four clipping flags has a row enrichment below
+     1.5 in at least 6 of 9. Its tyre part is read as computed.
+   - E1.4 reads point estimates, with CI upper ends co-reported. Per calibration: ξ's R²_c ≥ −0.05
+     and < 0.2 in all 9, and |ΔR²_c,s| < 0.03 in all 9.
+6. **The rule for later items** is evaluated per alternative calibration on point estimates. It
+   fires when, in at least 5 of 9 networks, the calibration passes its plants and its ξ R²_c
+   exceeds the frozen one's by more than 0.1.
+7. **Outputs.** `outputs/costate/exploratory/cs-1/summary.json` and `rows.npz` (per row: the tail
+   flag, the flags, the contributions, the norms, and the three calibrations' predictions). A copy
+   of the summary goes to `docs/findings/costate-followups/cs-1-summary.json`.
