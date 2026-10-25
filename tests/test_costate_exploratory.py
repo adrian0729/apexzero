@@ -774,3 +774,213 @@ def test_cs1_groups_sum_to_the_frozen_pullback():
                        text=True, cwd=REPO, timeout=600, check=False)
     assert r.returncode == 0, r.stderr[-3000:]
     assert r.stdout.strip().endswith("ok")
+
+
+# ------------------------------------------------------------------------- CS-2 to CS-5
+
+
+def test_cs2_to_cs5_are_registered_untrained(cx):
+    for cmd in ("cs-2", "cs-3", "cs-4", "cs-5"):
+        it = cx.BY_CMD[cmd]
+        assert it.id in cx.COMPUTE and not it.trained and not it.solves, cmd
+        assert "checkpoints" in it.reads and "world" in it.reads, cmd
+    assert cx.BY_CMD["cs-4"].pooled and cx.BY_CMD["cs-5"].pooled
+    assert not cx.BY_CMD["cs-2"].pooled and not cx.BY_CMD["cs-3"].pooled
+    assert {"step1", "step2", "critic:all"} <= set(cx.BY_CMD["cs-3"].reads)
+    assert cx.SX == ("s", "xi") and cx.K_SX == (0, 2)
+
+
+def _c3_int_pairs():
+    from apexzero.costate import analysis as AN
+
+    return AN.C3_INT_PAIRS
+
+
+def test_cs3_measures_are_c3_ints(cx):
+    assert set(cx.CS3_MEASURES) == {m for _, m, _ in _c3_int_pairs()}
+    assert set(cx.STEP1_MEASURES) | set(cx.STEP2_MEASURES) == set(cx.CS3_MEASURES)
+
+
+def test_untrained_cs_items_stay_locked(cx, monkeypatch, tmp_path, locked):
+    monkeypatch.setattr(cx, "preflight", lambda root=None: [])
+    monkeypatch.setattr(cx, "load_context", lambda root=None: ({}, {}, {}))
+    monkeypatch.setattr(cx, "check_inputs", lambda run: [])
+    for cmd in ("cs-2", "cs-3", "cs-4", "cs-5"):
+        seen = []
+        it = cx.BY_CMD[cmd]
+        monkeypatch.setitem(cx.COMPUTE, it.id, lambda run, seen=seen: seen.append(locked()))
+        cx.run_item(it, _args(out=str(tmp_path)))
+        assert seen == [[False, False, False]], cmd
+
+
+def test_direction_floor_and_fold_r2(cx):
+    from apexzero.costate import analysis as AN
+
+    n = 60
+    outer = np.arange(n) % 3
+    d = np.where(np.arange(n) % 2 == 0, -1, 1)
+    rng = np.random.default_rng(10)
+    lam = np.where(d > 0, 2.0, -1.0) + rng.standard_normal(n)
+    w = rng.random(n) + 0.5
+    fit = np.ones(n, bool)
+    fit[:6] = False
+    fl = cx.direction_floor(lam, outer, w, fit, d, n_folds=3)
+    for f in range(3):
+        for s in (-1, 1):
+            tr = (outer != f) & fit & (d == s)
+            assert np.allclose(fl[(outer == f) & (d == s)], w[tr] @ lam[tr] / w[tr].sum())
+    one_side = cx.direction_floor(lam, outer, w, fit & (d > 0), d, n_folds=3)
+    assert np.isnan(one_side[d < 0]).all() and np.isfinite(one_side[d > 0]).all()
+    cl = np.arange(n) % 6
+    pred = lam + 0.5 * rng.standard_normal(n)
+    fr2 = cx.per_fold_r2(lam, pred, w, cl, 6, outer, d, True, n_folds=3)
+    for f in range(3):
+        m = outer == f
+        want = AN.boot_r2(lam[m], [pred[m]], w[m], cl[m], 6, np.ones((1, 6)), d[m], True)[0][0]
+        assert fr2[f] == want
+    assert np.isnan(cx.per_fold_r2(lam, pred, w, cl, 6, np.full(n, 7), n_folds=3)).all()
+
+
+def test_wcorr_and_within_direction_reliability(cx):
+    from apexzero.costate import critic as CR
+
+    rng = np.random.default_rng(11)
+    n = 200
+    x = rng.standard_normal(n)
+    y = 0.6 * x + rng.standard_normal(n)
+    w = rng.random(n) + 0.1
+    assert abs(cx.wcorr(x, y, np.ones(n)) - np.corrcoef(x, y)[0, 1]) < 1e-12
+    d = np.where(np.arange(n) < 80, -1, 1)
+    shifted = x + 10.0 * d                                     # a direction offset in x only
+    a, b = d > 0, d <= 0
+    want = (w[a].sum() * cx.wcorr(x[a], y[a], w[a]) + w[b].sum() * cx.wcorr(x[b], y[b], w[b])) \
+        / w.sum()
+    assert abs(cx.wcorr(shifted, y, w, d) - want) < 1e-12
+    assert abs(cx.wcorr(shifted, y, w)) < abs(cx.wcorr(shifted, y, w, d)) + 1.0
+    assert np.isnan(cx.wcorr(np.ones(5), np.arange(5.0), np.ones(5)))
+    q = x[:, None] + 0.1 * rng.standard_normal((n, 5))
+    assert abs(cx.reliability_within(q, w, np.ones(n)) - CR.head_reliability(q, w)) < 1e-12
+    qs = q + 10.0 * d[:, None]
+    assert CR.head_reliability(qs, w) > cx.reliability_within(qs, w, d)
+
+
+def test_accel_share_and_record(cx):
+    g = np.array([1.0, 2.0, 0.0, -1.0])
+    gh = np.array([1.0, 1.0, 0.0, 1.0])
+    assert np.allclose(cx.accel_share(g, gh), [0.0, 0.5, 0.0, 2.0 / 3.0])
+    util = np.array([0.1, 0.6, 1.0, 2.0])
+    sens = np.array([1.0, 2.0, 3.0, 4.0])
+    rec = cx.accel_record(g, gh, sens, util, np.ones(4, bool), np.full(4, 0.25))
+    assert rec["rows"] == 4 and abs(rec["share_mean"] - (0.5 + 2 / 3) / 4) < 1e-12
+    assert abs(rec["share_aggregate"] - 3.0 / 6.0) < 1e-12
+    assert abs(rec["sens_util_spearman"] - 1.0) < 1e-12
+    assert [b["rows"] for b in rec["util_bins"]] == [1, 0, 1, 0, 2]   # 1.0 and 2.0: last bin
+    assert cx.accel_record(g, gh, sens, util, np.zeros(4, bool), np.ones(4)) == {"rows": 0}
+
+
+def test_geometry_tables_and_blocks(cx):
+    from apexzero.costate import states as ST
+
+    geo = np.array([0, 0, 1, 1, 2])
+    v = np.array([1.0, 3.0, 5.0, np.nan, 7.0])
+    w = np.array([1.0, 3.0, 1.0, 1.0, 1.0])
+    rows = np.array([1, 1, 1, 1, 0], bool)
+    got = cx.geometry_means(v, w, geo, rows, 4)
+    assert got[0] == 2.5 and got[1] == 5.0 and np.isnan(got[2:]).all()
+    med = cx.geometry_medians({"a": 1.0, "b": 3.0, "c": np.nan, "d": 9.0, "z": 4.0},
+                              {"a": 0, "b": 0, "c": 1, "d": 2}, 4)
+    assert med[0] == 2.0 and np.isnan(med[1]) and med[2] == 9.0 and np.isnan(med[3])
+    labels = np.array([[6.0, 90.0], [6.0, 180.0], [9.4, 90.0], [20.0, 45.0], [40.0, 90.0],
+                       [44.7, 180.0]])
+    b = cx.geometry_blocks(labels)
+    k = len(ST.THETA_CLASSES) + 1
+    assert np.array_equal(b // k, ST.r_tercile(labels[:, 0], labels[:, 1]))
+    assert np.array_equal(b % k, ST.theta_class(labels[:, 1]))
+
+
+def test_holm(cx):
+    got = cx.holm([0.01, 0.04, 0.03, 0.2])
+    assert np.allclose(got, [0.04, 0.09, 0.09, 0.2])
+    got = cx.holm([0.5, float("nan"), 0.001])
+    assert np.allclose(got[0], 0.5) and np.isnan(got[1]) and np.allclose(got[2], 0.002)
+    assert cx.holm([0.6, 0.7]) == [1.0, 1.0]
+
+
+def test_c3_pairs_test(cx):
+    from apexzero.costate import analysis as AN
+
+    rng = np.random.default_rng(12)
+    N, G = 8, 12
+    res = rng.standard_normal((N, G))
+    linked = res + 0.05 * rng.standard_normal((N, G))       # the same network x geometry pattern
+    noise = rng.standard_normal((N, G))
+    noise[0, :3] = np.nan                                    # missing cells
+    beh = {"linked": linked, "noise": noise}
+    blocks = np.arange(G) % 3
+    idx = np.arange(N)
+    pairs = [("a", "c", "linked", idx), ("b", "c", "noise", idx[:6])]
+    out = cx.c3_pairs_test({"c": res}, beh, pairs, blocks, 199, np.random.default_rng(0))
+    a, b = out["pairs"]["a"], out["pairs"]["b"]
+    want = AN._corr_present(AN.double_centre(res).ravel(), AN.double_centre(linked).ravel())
+    assert a["r"] == want and a["r"] > 0.9 and a["p"] == 1.0 / 200
+    want_b = AN._corr_present(AN.double_centre(res[:6]).ravel(),
+                              AN.double_centre(noise[:6]).ravel())
+    assert b["r"] == want_b and 0.0 < b["p"] <= 1.0 and b["networks"] == 6
+    assert b["cells"] == 6 * G - 3 and out["null"].shape == (199, 2)
+    again = cx.c3_pairs_test({"c": res}, beh, pairs, blocks, 199, np.random.default_rng(0))
+    assert np.array_equal(again["null"], out["null"])
+    # the permutation keeps each network's geometries within their blocks: a behaviour table
+    # constant within blocks is unchanged by it, so its null is its observed value
+    const = np.stack([rng.standard_normal(3)[blocks] for _ in range(N)])
+    t = cx.c3_pairs_test({"c": res}, {"k": const}, [("k", "c", "k", idx)], blocks, 20,
+                         np.random.default_rng(1))
+    assert np.allclose(t["null"][:, 0], t["pairs"]["k"]["r"])
+
+
+def test_control_gain(cx):
+    rng = np.random.default_rng(13)
+    B, J = 50, 20
+    base = rng.random(1 + B) * 0.1
+    full = base + 0.2
+    ctl = base[None] + rng.normal(0.05, 0.01, (J, 1 + B))
+    pool = rng.integers(0, J, (B, J))
+    g = cx.control_gain(full, ctl, base, pool)
+    assert abs(g["gain"] - 0.2) < 1e-12
+    assert abs(g["stat"] - (0.2 - np.median(ctl[:, 0] - base[0]))) < 1e-12
+    assert g["rank"] == 1 and g["of"] == J + 1
+    two = 0.2 - np.median((ctl - base[None])[:, 1:][pool, np.arange(B)[:, None]], axis=1)
+    lo, hi = np.quantile(two, [0.025, 0.975])
+    assert np.allclose(g["ci"], [lo, hi])
+    geo = 0.2 - np.median((ctl - base[None])[:, 1:], axis=0)
+    assert np.allclose(g["ci_geometry"], np.quantile(geo, [0.025, 0.975]))
+
+
+def test_c1_wiring_reads_s_and_xi(cx):
+    a = np.arange(6 * 4 * 2, dtype=float).reshape(6, 4, 2)
+    b = np.arange(24, dtype=float).reshape(6, 4)
+    c1 = SimpleNamespace(r2c=np.array([0.1, np.nan, 0.2, np.nan]), stat=0.15, ci=(-0.1, 0.3),
+                         calibrated=SimpleNamespace(a=a, b=b))
+    want = {"r2c": [0.1, None, 0.2, None], "stat": 0.15, "ci": [-0.1, 0.3],
+            "calibration": {"a": a.tolist(), "b": b.tolist()}}
+    assert all(v == 0.0 for v in cx.c1_wiring(c1, want).values())
+    want["calibration"]["b"] = (b + np.array([1e-6, 9.0, 0.0, 9.0])).tolist()
+    got = cx.c1_wiring(c1, want)
+    assert abs(got["b"] - 1e-6) < 1e-12 and got["a"] == 0.0
+
+
+def test_cs5_rows_are_approach_and_exit_interior(cx):
+    ph = np.array(["approach", "braking", "corner", "exit", "approach", "exit"])
+    inner = np.array([1, 1, 1, 1, 0, 1], bool)
+    tab = {"phase": ph, "interior": inner, "multi_basin": np.zeros(6, bool)}
+    assert cx.cs5_rows(tab).tolist() == [True, False, False, True, False, True]
+
+
+def test_all_networks_order(cx):
+    from apexzero.costate import analysis as AN
+
+    rec = json.loads(PREREG.read_text())
+    nets = cx.all_networks(rec)
+    assert len(nets) == 34 and nets[:31] == list(AN.GENERALISTS)
+    assert nets[31:] == ["S1", "S2", "S3"]
+    assert [cx.network_label(AN.network_of(lb)) for lb in cx.CS1_ORDER] == list(cx.CS1_ORDER)
+    assert cx.network_label("S1") == "S1"

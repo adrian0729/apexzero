@@ -77,9 +77,14 @@ process reniced by ``--nice`` (default 10) before any item runs.
 
 **The lockbox** (plan R7): this script never reads the lockbox circuits or outputs/sealed.
 
-**Implemented items.** CS-1 (``cs1``, the section 'CS-1: the xi tail'; plan Section 4 with
-amendment 1): the tail reproduced from the findings, where it sits, g_xi split by a fresh VJP
-into channel groups, and R2_c under the Huber and rank calibrations after their plants.
+**Implemented items.**
+- CS-1 (``cs1``, the section 'CS-1: the xi tail'; plan Section 4 with amendment 1): the tail
+  reproduced from the findings, where it sits, g_xi split by a fresh VJP into channel groups,
+  and R2_c under the Huber and rank calibrations after their plants.
+- CS-2 to CS-5 (plan Section 4 with amendment 2; the sections 'CS-2 to CS-5: shared' and one
+  per item): the descriptives pack (``cs2``), C3-int on s and xi (``cs3``), Delta C1, R2_z and
+  the MLP-on-z ceiling (``cs4``, pooled) and W1 on the Pi targets (``cs5``, pooled). None
+  evaluates a trained network, so none unlocks.
 """
 
 from __future__ import annotations
@@ -88,6 +93,7 @@ import dataclasses
 import functools
 import hashlib
 import io
+import itertools
 import json
 import os
 import re
@@ -126,7 +132,7 @@ def _command(argv: Sequence[str]) -> str | None:
 # The items with worker pools (plan Section 1, "pooled"), and the BLAS libraries' thread
 # variables (scripts/costate.py's BLAS_THREADS): a pooled item pins BLAS to one thread before
 # numpy loads, in this process and so in every worker it spawns.
-POOLED_ITEMS = ("cs-4", "cs-7", "cs-8", "cs-9", "cs-10", "cs-11", "cs-12", "bc-a0")
+POOLED_ITEMS = ("cs-4", "cs-5", "cs-7", "cs-8", "cs-9", "cs-10", "cs-11", "cs-12", "bc-a0")
 BLAS_THREADS = ("VECLIB_MAXIMUM_THREADS", "OPENBLAS_NUM_THREADS", "OMP_NUM_THREADS",
                 "MKL_NUM_THREADS")
 DEFAULT_THREADS = 2
@@ -192,13 +198,13 @@ ITEMS: tuple[Item, ...] = (
     Item("CS-1", "The xi tail: where it sits, critic against map, other calibrations",
          ("world", "critic:decision", "activations:decision", "gates:k4", "checkpoints"),
          trained=True),
-    Item("CS-2", "Descriptives pack", ("world", "critic:all", "activations:decision")),
+    Item("CS-2", "Descriptives pack", ("world", "critic:all", "checkpoints")),
     Item("CS-3", "C3-int on s and xi (network x geometry)",
-         ("world", "critic:all", "step1", "step2"), needs=("CS-1",)),
+         ("world", "critic:all", "step1", "step2", "checkpoints"), needs=("CS-1",)),
     Item("CS-4", "Delta C1, R2_z and the MLP-on-z ceiling",
-         ("world", "critic:decision", "activations:decision"), needs=("CS-1",)),
-    Item("CS-5", "W1 on the Pi targets", ("world", "critic:decision", "activations:decision"),
-         needs=("CS-1",)),
+         ("world", "critic:decision", "activations:decision", "checkpoints"), needs=("CS-1",)),
+    Item("CS-5", "W1 on the Pi targets",
+         ("world", "critic:decision", "activations:decision", "checkpoints"), needs=("CS-1",)),
     Item("CS-6", "C1-dev over the 16 snapshots", ("world", "snapshots"), trained=True,
          needs=("CS-1",)),
     Item("CS-7", "Critic-layer and head-unit probes", ("world", "activations:decision"),
@@ -1818,6 +1824,1197 @@ def cs1(run: Run) -> None:
            "calibrations": list(CALIBRATIONS), "plants": list(PLANTS),
            "plant_interval": list(GT.K4_FLOOR), "n_boot": len(counts)}
     run.write_npz("rows", arrays)
+    run.write_json("summary", plain(out))
+
+
+# ------------------------------------------------------------------------- CS-2 to CS-5: shared
+#
+# Plan Section 4 CS-2 to CS-5 with amendment 2 (their operational details). Each network's
+# checkpoint is loaded through its pin for its obs_rms and PPOConfig only (no trained network
+# is evaluated, so these items do not unlock); its frame and decision mask are rebuilt and its
+# frozen C1 recomputed and checked against decisions.json before anything else (amendment 2
+# item 1).
+
+SX = ("s", "xi")                         # C1's components with decision rows
+K_SX = (0, 2)                            # their columns in K_P (and in the 8 state components)
+DESCRIPTIVE_SPECIALISTS = ("S1", "S2", "S3")
+
+
+def load_world(run: Run):
+    """T's world (``scripts/costate.py``'s ``_load_world_frozen``: the bound world.npz, T's
+    (key, t) list, geometries and folds against the record), read through ``run``."""
+    from types import SimpleNamespace
+
+    CS._x64()
+    run.read("inputs/world.npz")
+    return CS._load_world_frozen(SimpleNamespace(out=str(run.costate)), run.rec)
+
+
+def network_frame(run: Run, name: str, world) -> tuple:
+    """(agent, flags, C1's frame) of one network: its checkpoint through its pin (recorded),
+    its flags under its own obs_rms, ``c1_frame`` and its decision mask, checked against
+    decisions.json where it has one (amendment 2 item 1)."""
+    from apexzero.costate import inputs as IN
+    from apexzero.fields import network as NW
+
+    pin = run.rec["networks"][name]
+    agent = CS.load_agent(name, pin, run.root)
+    run.note_input(pin["path"], pin["sha256"])
+    flags = IN.flags(world, NW.upcast32(agent.obs_rms))
+    fr = CS.c1_frame(world, run.rec["frozen"], flags)
+    bad = mask_problems(fr.valid, name, run.decisions)
+    if bad:
+        raise SystemExit(f"{run.item.id}: {'; '.join(bad)}")
+    return agent, flags, fr
+
+
+def read_critic(run: Run, name: str, fields=("g", "g_held", "accel_sens", "dV_dwin")) -> dict:
+    """A network's bound critic arrays, after its K3 check after the tag passed."""
+    import numpy as np
+
+    from apexzero.costate import prereg as PR
+
+    f = PR.net_file(name)
+    with np.load(run.read(f"post/critic/{f}.npz")) as d:
+        out = {k: d[k].copy() for k in fields if k in d.files}
+        ok = bool(d["k3_trained_pass"])
+    k3 = json.loads(run.read(f"post/critic/{f}.k3.json").read_text())
+    if not ok or not (k3.get("decision") or {}).get("pass"):
+        raise SystemExit(f"{run.item.id}: {name} failed K3 after the tag")
+    return out
+
+
+def c1_reference(decisions: dict, name: str) -> dict:
+    """decisions.json's record of a network (``networks`` or ``descriptive_networks``)."""
+    for part in ("networks", "descriptive_networks"):
+        rec = (decisions.get(part) or {}).get(name)
+        if rec is not None and "C1" in rec:
+            return rec
+    raise SystemExit(f"decisions.json has no C1 record of {name}")
+
+
+def frozen_c1(fr, g8, counts, rows=None, w=None):
+    """C1's statistic without nulls, slope CIs or leave-one-geometry-out sets (``analysis.c1``
+    on ``c1_frame``'s calibration, rows, mask, bounds and bootstrap) of a pullback g8 [n, 8];
+    ``rows`` and ``w`` replace the interior and its weights (a stratum: its fit rows too)."""
+    from apexzero.costate import analysis as AN
+    from apexzero.costate import targets as TG
+
+    rows = fr.inner if rows is None else rows
+    w = fr.w_in if w is None else w
+    return AN.c1(g8[:, fr.idx], fr.lam, fr.fo.outer, w, fr.cl, fr.G, fr.tab["direction"], rows,
+                 None, fr.valid, TG.K_P, counts, slope_boot=False, bounds=fr.bnd)
+
+
+def c1_wiring(c1, want: dict, ks=K_SX) -> dict:
+    """{field: max |difference|} of a recomputed C1 against its decisions.json record (r2c of
+    s and xi, stat, ci, the per-fold a and b of s and xi; plan Section 3 'Reuse')."""
+    import numpy as np
+
+    ks = list(ks)
+    got = {"r2c": [c1.r2c[k] for k in ks], "stat": [c1.stat], "ci": list(c1.ci),
+           "a": c1.calibrated.a[:, ks].ravel(), "b": c1.calibrated.b[:, ks].ravel()}
+    ref = {"r2c": [want["r2c"][k] for k in ks], "stat": [want["stat"]], "ci": want["ci"],
+           "a": np.asarray(want["calibration"]["a"], float)[:, ks].ravel(),
+           "b": np.asarray(want["calibration"]["b"], float)[:, ks].ravel()}
+    return {k: float(np.max(np.abs(np.asarray(got[k], float) - np.asarray(ref[k], float))))
+            for k in got}
+
+
+def checked_c1(run: Run, name: str, fr, g8, counts):
+    """The frozen C1 of a network, recomputed and required to reproduce decisions.json to
+    ``WIRING_TOL`` (amendment 2 item 1): (C1, the differences)."""
+    c1 = frozen_c1(fr, g8, counts)
+    wiring = c1_wiring(c1, c1_reference(run.decisions, name)["C1"])
+    if not all(v <= WIRING_TOL for v in wiring.values()):
+        raise SystemExit(f"{run.item.id}: {name}'s frozen C1 does not reproduce decisions.json: "
+                         f"{wiring}")
+    return c1, wiring
+
+
+def c1_rows(fr, k2b: dict) -> dict:
+    """{component: [n] C1's rows} of s and xi (the interior within the decision mask), through
+    the row guard (plan R5)."""
+    return {c: guard_rows(fr.tab, fr.inner & fr.valid[:, k], c, k2b, fr.valid[:, k])
+            for c, k in zip(SX, K_SX, strict=True)}
+
+
+def r2_ci(y, preds, w, cl, G: int, counts, direction=None, odd: bool = False) -> list[dict]:
+    """[{'r2', 'ci'}] R2 (R2_wd when ``odd``) of each prediction vector on the given rows, with
+    the cluster bootstrap's 95% CI (``analysis.boot_r2``)."""
+    from apexzero.costate import analysis as AN
+
+    pt, dr = AN.boot_r2(y, list(preds), w, cl, G, counts, direction, odd)
+    return [{"r2": float(pt[i]), "ci": list(AN._ci(dr[:, i]))} for i in range(len(pt))]
+
+
+def network_label(name: str) -> str:
+    """A decision network's registry label (G1, ...), else the name itself."""
+    from apexzero.costate import analysis as AN
+
+    for lb in CS1_ORDER:
+        if AN.network_of(lb) == name:
+            return lb
+    return name
+
+
+def all_networks(rec: dict) -> list[str]:
+    """The record's networks: the 31 generalists in ``analysis.GENERALISTS``' order, then the
+    specialists (amendment 2 item 1)."""
+    from apexzero.costate import analysis as AN
+
+    pins = list(rec["networks"])
+    gen = [n for n in AN.GENERALISTS if n in pins]
+    return gen + [n for n in pins if n not in gen]
+
+
+def _count_of(per: dict, fn) -> dict:
+    """{per_network, count, of} of a condition over a {name: record} map (NaN-safe)."""
+    out = {}
+    for k, v in per.items():
+        try:
+            out[k] = bool(fn(v))
+        except (TypeError, KeyError, ValueError):
+            out[k] = False
+    return {"per_network": out, "count": int(sum(out.values())), "of": len(out)}
+
+
+# ------------------------------------------------------------------------- CS-2: descriptives
+#
+# Plan Section 4 CS-2 with amendment 2 item 2, on all 34 networks (heads: the 31
+# generalists): unwinsorised R2, raw R2 and the direction-only floor, per-head R2_c, the heads'
+# gradient reliability rho_k, the spread over folds, C1 on D, and the accel term.
+
+UTIL_BINS = (0.0, 0.25, 0.5, 0.75, 1.0, 2.0)   # util_max bins, the last closed at 2
+RHO_E21 = 0.9                            # E2.1
+E22_BAND, E22_AGREE = 0.2, 0.1           # E2.2: CI upper end, agreement with the main V
+E23_S, E24_FLOOR, E26_SHARE = 0.05, 0.1, 0.1
+
+
+def direction_floor(lam, outer, w, fit, direction, n_folds: int | None = None):
+    """[n] the direction-only floor (amendment 2 item 2): per outer fold and turn direction,
+    the w-weighted mean of lam over the training folds' ``fit`` rows, at the held-out fold's
+    rows of that direction (NaN where there is none)."""
+    import numpy as np
+
+    from apexzero.costate import states as ST
+
+    F = ST.N_FOLDS if n_folds is None else int(n_folds)
+    lam, w = np.asarray(lam, float), np.asarray(w, float)
+    outer, fit, d = np.asarray(outer, int), np.asarray(fit, bool), np.asarray(direction) > 0
+    pred = np.full(len(lam), np.nan)
+    for f in range(F):
+        for side in (False, True):
+            tr = (outer != f) & fit & (d == side) & np.isfinite(lam)
+            held = (outer == f) & (d == side)
+            if tr.any() and held.any():
+                pred[held] = w[tr] @ lam[tr] / w[tr].sum()
+    return pred
+
+
+def per_fold_r2(y, pred, w, cl, G: int, outer, direction=None, odd: bool = False,
+                n_folds: int | None = None):
+    """[F] R2 (R2_wd when ``odd``) on each outer fold's rows (NaN where a fold has under 2)."""
+    import numpy as np
+
+    from apexzero.costate import analysis as AN
+    from apexzero.costate import states as ST
+
+    F = ST.N_FOLDS if n_folds is None else int(n_folds)
+    y, pred, w, outer = (np.asarray(v) for v in (y, pred, w, outer))
+    d = None if direction is None else np.asarray(direction)
+    out = np.full(F, np.nan)
+    one = np.ones((1, G))
+    for f in range(F):
+        m = outer == f
+        if m.sum() >= 2:
+            out[f] = AN.boot_r2(y[m], [pred[m]], w[m], np.asarray(cl)[m], G, one,
+                                None if d is None else d[m], odd)[0][0]
+    return out
+
+
+def wcorr(x, y, w, direction=None) -> float:
+    """Weighted Pearson correlation; with ``direction``, the direction-weight-weighted mean of
+    the two directions' own (R2_wd's convention, amendment 2 item 2)."""
+    import numpy as np
+
+    x, y, w = (np.asarray(v, float) for v in (x, y, w))
+    groups = ([np.ones(len(x), bool)] if direction is None
+              else [np.asarray(direction) > 0, np.asarray(direction) <= 0])
+    num = den = 0.0
+    for m in groups:
+        if m.sum() < 2:
+            continue
+        ww = w[m]
+        xc, yc = x[m] - ww @ x[m] / ww.sum(), y[m] - ww @ y[m] / ww.sum()
+        sxy, sxx, syy = ww @ (xc * yc), ww @ (xc * xc), ww @ (yc * yc)
+        if sxx > 0 and syy > 0:
+            num += ww.sum() * sxy / np.sqrt(sxx * syy)
+            den += ww.sum()
+    return float(num / den) if den > 0 else float("nan")
+
+
+def reliability_within(q, w, direction) -> float:
+    """``critic.head_reliability`` within each turn direction, their direction-weight-weighted
+    mean (amendment 2 item 2: xi's companion)."""
+    import numpy as np
+
+    from apexzero.costate import critic as CR
+
+    q, w = np.asarray(q, float), np.asarray(w, float)
+    num = den = 0.0
+    for m in (np.asarray(direction) > 0, np.asarray(direction) <= 0):
+        if m.sum() < 2:
+            continue
+        num += w[m].sum() * CR.head_reliability(q[m], w[m])
+        den += w[m].sum()
+    return float(num / den) if den > 0 else float("nan")
+
+
+def accel_share(g_vx, g_held_vx):
+    """[n] the accel term's share of g_vx per state, |g - g_held| / (|g_held| + |g - g_held|),
+    0 where both are 0 (``critic.Pullback.accel_share``'s formula)."""
+    import numpy as np
+
+    t = np.abs(np.asarray(g_vx, float) - np.asarray(g_held_vx, float))
+    d = np.abs(np.asarray(g_held_vx, float)) + t
+    with np.errstate(invalid="ignore", divide="ignore"):
+        return np.where(d > 0, t / d, 0.0)
+
+
+def accel_record(g_vx, g_held_vx, sens, util, rows, w) -> dict:
+    """The accel term's share of g_vx and the accel-channel sensitivity against util_max on
+    one row set under its weights ``w`` (amendment 2 item 2, step 7)."""
+    import numpy as np
+
+    from apexzero.costate import probes as PB
+
+    rows = np.asarray(rows, bool)
+    if not rows.any():
+        return {"rows": 0}
+    share = accel_share(g_vx, g_held_vx)[rows]
+    t = np.abs(np.asarray(g_vx, float) - np.asarray(g_held_vx, float))[rows]
+    d = np.abs(np.asarray(g_held_vx, float))[rows] + t
+    ww = np.asarray(w, float)[rows]
+    s, u = np.asarray(sens, float)[rows], np.asarray(util, float)[rows]
+    bins = []
+    for i, (lo, hi) in enumerate(itertools.pairwise(UTIL_BINS)):
+        m = (u >= lo) & ((u < hi) if i < len(UTIL_BINS) - 2 else (u <= hi))
+        bins.append({"bin": [lo, hi], "rows": int(m.sum()),
+                     "weight": float(ww[m].sum() / ww.sum()),
+                     "sens_median": _wmedian(s[m], ww[m])})
+    with np.errstate(invalid="ignore", divide="ignore"):
+        rho = PB.wspearman(s, u, ww) if np.ptp(s) > 0 and np.ptp(u) > 0 else float("nan")
+    return {"rows": int(rows.sum()), "share_mean": _wmean(share, ww),
+            "share_median": _wmedian(share, ww),
+            "share_aggregate": float(ww @ t / (ww @ d)) if ww @ d > 0 else float("nan"),
+            "sens_median": _wmedian(s, ww), "sens_mean": _wmean(s, ww),
+            "sens_util_spearman": float(rho), "util_bins": bins}
+
+
+def _cs2_network(run: Run, name: str, world, util, counts) -> dict:
+    """One network's CS-2 (the section header; amendment 2 item 2)."""
+    import numpy as np
+
+    from apexzero.costate import analysis as AN
+    from apexzero.costate import critic as CR
+    from apexzero.costate import states as ST
+    from apexzero.costate import targets as TG
+
+    t0 = time.time()
+    _, _, fr = network_frame(run, name, world)
+    crit = read_critic(run, name, ("g", "g_held", "accel_sens"))
+    g = crit["g"]
+    c1, wiring = checked_c1(run, name, fr, g[:, 0], counts)
+    tab, k2b = fr.tab, run.rec["frozen"]["k2b_excluded"]
+    direction = np.asarray(tab["direction"])
+    outer, cl, G, w_in = fr.fo.outer, fr.cl, fr.G, fr.w_in
+    rows = c1_rows(fr, k2b)
+    out = {"run": name, "label": network_label(name), "wiring": {"c1_max_abs_diff": wiring},
+           "decision_rows": {c: int(r.sum()) for c, r in rows.items()},
+           "frozen": {"r2c": {c: float(c1.r2c[k]) for c, k in zip(SX, K_SX, strict=True)},
+                      "stat": float(c1.stat), "ci": list(c1.ci)}}
+    # steps 1, 2 and 5: unwinsorised R2, raw R2 and the floor, the spread over folds
+    comps = {}
+    for c, k in zip(SX, K_SX, strict=True):
+        odd = c == "xi"
+        p = c1.calibrated.pred[:, k]
+        sel = rows[c] & np.isfinite(p)
+        if sel.sum() != rows[c].sum():
+            raise SystemExit(f"CS-2: {name}: rows of lambda_{c} without a calibration")
+        y, y_raw = fr.lam[:, k], np.asarray(tab[f"lam_{c}"], float)
+        floor = direction_floor(y, outer, w_in, rows[c], direction)
+        if not np.isfinite(floor[sel]).all():
+            raise SystemExit(f"CS-2: {name}: rows of lambda_{c} without a direction-only floor")
+        a = (w_in[sel], cl[sel], G, counts)
+        frozen_r2 = r2_ci(y[sel], [p[sel]], *a, direction[sel], odd)[0]
+        if abs(frozen_r2["r2"] - c1.r2c[k]) > WIRING_TOL:
+            raise SystemExit(f"CS-2: {name}: the rescored R2_c of lambda_{c} is not C1's")
+        raw = r2_ci(y[sel], [p[sel], floor[sel]], *a)
+        folds = per_fold_r2(y[sel], p[sel], w_in[sel], cl[sel], G, outer[sel], direction[sel],
+                            odd)
+        comps[c] = {"rows": int(sel.sum()), "r2c": frozen_r2,
+                    "unwinsorised": r2_ci(y_raw[sel], [p[sel]], *a, direction[sel], odd)[0],
+                    "raw": raw[0], "direction_floor": raw[1],
+                    "raw_minus_floor": raw[0]["r2"] - raw[1]["r2"],
+                    "folds": {"r2": folds.tolist(), "sd": float(np.nanstd(folds)),
+                              "min": float(np.nanmin(folds)), "max": float(np.nanmax(folds))}}
+    fm = np.nanmean([comps[c]["folds"]["r2"] for c in SX], axis=0)
+    out["components"] = comps
+    out["folds_mean"] = {"r2": fm.tolist(), "sd": float(np.nanstd(fm)),
+                         "min": float(np.nanmin(fm)), "max": float(np.nanmax(fm))}
+    # steps 3 and 4: the heads (generalists)
+    E = g.shape[1] - 1
+    if E >= 2:
+        want = c1_reference(run.decisions, name).get("C1-heads") or {}
+        one = np.ones((1, G))
+        dw = {}
+        for c, j in zip(SX, K_SX, strict=True):
+            got = AN.head_disagreement_boot(g[fr.inner, 1:, j], w_in[fr.inner], cl[fr.inner],
+                                            one)[0]
+            dw[c] = float(abs(got - (want.get("D") or {}).get(f"g_{c}", np.nan)))
+        if not all(v <= WIRING_TOL for v in dw.values()):
+            raise SystemExit(f"CS-2: {name}'s heads do not reproduce C1-heads' D: {dw}")
+        out["wiring"]["heads_D_abs_diff"] = dw
+        heads = []
+        for i in range(1, E + 1):
+            ch = frozen_c1(fr, g[:, i], counts)
+            heads.append({"r2c": {c: float(ch.r2c[k]) for c, k in zip(SX, K_SX, strict=True)},
+                          "stat": float(ch.stat), "ci": list(ch.ci),
+                          "minus_main": float(ch.stat - c1.stat)})
+        rel = {}
+        for c, k in zip(SX, K_SX, strict=True):
+            sel, odd = rows[c], c == "xi"
+            q, ww = g[sel, 1:, k], w_in[sel]
+            rho = CR.head_reliability(q, ww)
+            corr_h = [wcorr(g[sel, i, k], fr.lam[sel, k], ww, direction[sel] if odd else None)
+                      for i in range(1, E + 1)]
+            ceiling = float(np.sqrt(rho)) if rho >= 0 else float("nan")
+            rel[c] = {"rho": float(rho), "sqrt_rho": ceiling,
+                      "rho_within_direction": (reliability_within(q, ww, direction[sel])
+                                               if odd else None),
+                      "corr_heads": corr_h,
+                      "corr_main": wcorr(g[sel, 0, k], fr.lam[sel, k], ww,
+                                         direction[sel] if odd else None),
+                      "ceiling_binds": bool(any(abs(v) > ceiling for v in corr_h))}
+        inner = fr.inner
+        rel["interior_all_components"] = {
+            nm: float(CR.head_reliability(g[inner, 1:, j], w_in[inner]))
+            for j, nm in enumerate(TG.STATE_NAMES)}
+        out["heads"] = heads
+        out["reliability"] = rel
+    # step 6: C1 on D
+    D = np.zeros(world.n, bool)
+    D[CS.d_rows(world)] = True
+    Dr = D & fr.inner
+    for c, k in zip(SX, K_SX, strict=True):
+        guard_rows(tab, Dr & fr.valid[:, k], c, k2b, fr.valid[:, k])
+    wD = ST.stratum_weights(tab, Dr)
+    cD = frozen_c1(fr, g[:, 0], counts, rows=Dr, w=wD)
+    fitted = {}
+    for c, k in zip(SX, K_SX, strict=True):
+        s = Dr & fr.valid[:, k] & np.isfinite(c1.calibrated.pred[:, k])
+        fitted[c] = r2_ci(fr.lam[s, k], [c1.calibrated.pred[s, k]], wD[s], cl[s], G, counts,
+                          direction[s], c == "xi")[0]
+        fitted[c]["rows"] = int(s.sum())
+    out["c1_on_d"] = {"rows": int(Dr.sum()), "n_rows": {c: int(cD.n_rows[k]) for c, k in
+                                                        zip(SX, K_SX, strict=True)},
+                      "r2c": {c: float(cD.r2c[k]) for c, k in zip(SX, K_SX, strict=True)},
+                      "stat": float(cD.stat), "ci": list(cD.ci), "band": cD.decision,
+                      "interior_fitted": fitted}
+    # step 7: the accel term and the accel-channel sensitivity (no target: any row, plan R5)
+    t1 = np.asarray(tab["t"]) >= 1
+    union = rows["s"] | rows["xi"]
+    acc = {}
+    for sname, m in (("interior", fr.inner), ("c1_rows", union),
+                     ("interior_t1", fr.inner & t1), ("c1_rows_t1", union & t1)):
+        acc[sname] = accel_record(g[:, 0, 3], crit["g_held"][:, 0, 3],
+                                  np.abs(crit["accel_sens"][:, 0, 1]), util, m,
+                                  ST.stratum_weights(tab, m))
+    out["accel"] = acc
+    out["seconds"] = time.time() - t0
+    print(f"CS-2 {out['label']}: R2_c {c1.stat:.3f}, D {cD.stat:.3f} "
+          f"({out['seconds']:.0f} s)", flush=True)
+    return out
+
+
+def cs2_expected(nets: dict) -> dict:
+    """E2.1-E2.6 read as amendment 2 items 1 and 2 read them."""
+    from apexzero.costate import analysis as AN
+
+    dec = {k: v for k, v in nets.items() if v["label"] in CS1_ORDER}
+    gen = {k: v for k, v in nets.items() if "reliability" in v}
+    others = {k: v for k, v in nets.items() if k not in dec}
+
+    def both(fn, sub):
+        return _count_of(sub, fn)
+
+    e21 = {"rho_at_least_0.9": both(lambda v: all(v["reliability"][c]["rho"] >= RHO_E21
+                                                  for c in SX), gen),
+           "ceiling_never_binds": both(lambda v: not any(v["reliability"][c]["ceiling_binds"]
+                                                         for c in SX), gen)}
+    e21["holds"] = all(p["count"] == p["of"] for p in e21.values())
+    heads = [(k, i, h) for k, v in gen.items() for i, h in enumerate(v.get("heads", []))]
+    band = [(k, i) for k, i, h in heads if h["ci"][1] < E22_BAND]
+    agree = [(k, i) for k, i, h in heads if abs(h["minus_main"]) <= E22_AGREE]
+    e22 = {"heads": len(heads), "ci_upper_below_0.2": len(band), "within_0.1_of_main": len(agree),
+           "failing": sorted({f"{nets[k]['label']}/head{i}" for k, i, _ in heads
+                              if (k, i) not in set(band) or (k, i) not in set(agree)})}
+    e22["holds"] = bool(heads) and len(band) == len(agree) == len(heads)
+
+    def e23(v):
+        c = v["components"]
+        return (abs(c["s"]["unwinsorised"]["r2"] - c["s"]["r2c"]["r2"]) <= E23_S
+                and c["xi"]["unwinsorised"]["r2"] < c["xi"]["r2c"]["r2"])
+
+    def read(fn):
+        r = {"decision": both(fn, dec), "others": both(fn, others)}
+        r["holds"] = r["decision"]["count"] >= E_COUNT
+        return r
+
+    return {"E2.1": e21, "E2.2": e22, "E2.3": read(e23),
+            "E2.4": read(lambda v: abs(v["components"]["xi"]["raw_minus_floor"]) <= E24_FLOOR),
+            "E2.5": read(lambda v: v["c1_on_d"]["ci"][1] < AN.C1_REFUTE),
+            "E2.6": read(lambda v: v["accel"]["c1_rows"]["share_mean"] < E26_SHARE),
+            "reading": "amendment 2 item 1: without a count, at least 6 of the 9 decision "
+                       "networks; E2.1 and E2.2 over every generalist and head"}
+
+
+def world_arrays(world, fields=("ob",)) -> dict:
+    """{field: [n, ...]} of the world's per-key ObsJac fields as T-length arrays."""
+    import numpy as np
+
+    out: dict = {}
+    for k in world.keys:
+        for f in fields:
+            v = np.asarray(getattr(k.oj, f))
+            out.setdefault(f, np.full((world.n, *v.shape[1:]), np.nan))[k.rows] = v
+    return out
+
+
+@computes("CS-2")
+def cs2(run: Run) -> None:
+    """CS-2 (plan Section 4, amendment 2 item 2): ``_cs2_network`` on every network, then the
+    expected directions read (``cs2_expected``); outputs summary.json."""
+    import numpy as np
+
+    from apexzero.costate import analysis as AN
+    from apexzero.costate import probes as PB
+
+    world = load_world(run)
+    ob = world_arrays(world)["ob"]
+    if not np.isfinite(ob).all():
+        raise SystemExit("CS-2: T has rows without a raw observation")
+    util = ob[:, list(TYRE_UTIL)].max(1) + 1.0
+    G = AN.geometry_clusters(world.tab)[1]
+    counts = PB.cluster_counts(G)
+    want = getattr(run.args, "network", None)
+    names = [n for n in all_networks(run.rec)
+             if want is None or want in (n, network_label(n))]
+    if getattr(run.args, "limit", None) is not None:
+        names = names[:max(1, int(run.args.limit))]
+    if not names:
+        raise SystemExit(f"CS-2: --network {want} is not a network of the record")
+    nets = {n: _cs2_network(run, n, world, util, counts) for n in names}
+    out = {"item": "CS-2", "networks": nets, "expected": cs2_expected(nets),
+           "definitions": "plan Section 4 CS-2 and amendment 2 items 1 and 2",
+           "components": list(SX), "util_bins": list(UTIL_BINS), "n_boot": len(counts)}
+    run.write_json("summary", plain(out))
+
+
+# ------------------------------------------------------------------------- CS-3: C3-int on s, xi
+#
+# Plan Section 4 CS-3 with amendment 2 item 3: per network x geometry, the signed calibrated
+# critic residual of s and xi on C1's rows and four behavioural deviations (step 2's G - 1
+# and B, step 1's entry-speed ratio - 1 and brake-onset residual), double-centred over
+# networks and geometries; each of the 8 pairs' correlation with a two-sided permutation p
+# (C3-int's blocked permutation of the geometry labels within each network) and Holm's
+# adjustment.
+
+CS3_MEASURES = ("G_minus_1", "B", "entry_speed_ratio_minus_1", "brake_onset_residual")
+STEP2_MEASURES = {"G_minus_1": "G", "B": "B"}
+STEP1_MEASURES = ("entry_speed_ratio_minus_1", "brake_onset_residual")
+E31_R, E31_P = 0.15, 0.05
+PERM_TIE = 1e-12                         # analysis.c3_int's tie allowance
+
+
+def geometry_means(v, w, geo, rows, G: int):
+    """[G] the w-weighted mean of v over each geometry's ``rows`` (NaN where it has none)."""
+    import numpy as np
+
+    v, w, geo, rows = np.asarray(v, float), np.asarray(w, float), np.asarray(geo), np.asarray(
+        rows, bool)
+    out = np.full(G, np.nan)
+    for gg in range(G):
+        m = rows & (geo == gg) & np.isfinite(v)
+        if m.any() and w[m].sum() > 0:
+            out[gg] = w[m] @ v[m] / w[m].sum()
+    return out
+
+
+def geometry_medians(values: dict, key_geo: dict, G: int):
+    """[G] the median over each geometry's keys of {key_id: value}, finite values only."""
+    import numpy as np
+
+    by: dict[int, list] = {}
+    for k, v in values.items():
+        if k in key_geo and np.isfinite(v):
+            by.setdefault(int(key_geo[k]), []).append(float(v))
+    out = np.full(G, np.nan)
+    for gg, vs in by.items():
+        out[gg] = float(np.median(vs))
+    return out
+
+
+def geometry_blocks(labels):
+    """[G] C3-int's permutation blocks of T's geometries: R tercile x theta class
+    (``states.r_tercile``, ``states.theta_class``)."""
+    import numpy as np
+
+    from apexzero.costate import states as ST
+
+    labels = np.asarray(labels, float)
+    return (ST.r_tercile(labels[:, 0], labels[:, 1]) * (len(ST.THETA_CLASSES) + 1)
+            + ST.theta_class(labels[:, 1]))
+
+
+def holm(p) -> list:
+    """Holm's step-down adjusted p-values (NaN kept as NaN)."""
+    import numpy as np
+
+    p = np.asarray(p, float)
+    out = np.full(len(p), np.nan)
+    ok = np.flatnonzero(np.isfinite(p))
+    order = ok[np.argsort(p[ok], kind="mergesort")]
+    m, run_max = len(order), 0.0
+    for j, i in enumerate(order):
+        run_max = max(run_max, min(1.0, (m - j) * p[i]))
+        out[i] = run_max
+    return out.tolist()
+
+
+def c3_pairs_test(res: dict, beh: dict, pairs, blocks, n_perm: int, rng) -> dict:
+    """Each pair's correlation over present cells of its double-centred tables and its
+    two-sided permutation p (amendment 2 item 3). ``res`` {component: [N, G]}, ``beh``
+    {measure: [N, G]} over one network list; ``pairs`` [(name, component, measure, network
+    indices)]; each draw permutes the geometry labels within each of the N networks within
+    ``blocks`` (as ``analysis.c3_int`` draws them) and serves every pair."""
+    import warnings
+
+    import numpy as np
+
+    from apexzero.costate import analysis as AN
+
+    # a geometry no network of a pair holds is an all-missing column: double_centre's
+    # nanmean warns there and leaves it missing
+    warnings.filterwarnings("ignore", "Mean of empty slice", RuntimeWarning)
+    blocks = np.asarray(blocks)
+    N, G = next(iter(beh.values())).shape
+    groups = [np.flatnonzero(blocks == b) for b in np.unique(blocks)]
+    R = {nm: AN.double_centre(np.asarray(res[c], float)[idx]) for nm, c, _, idx in pairs}
+    obs = {}
+    for nm, _, b, idx in pairs:
+        obs[nm] = AN._corr_present(R[nm].ravel(), AN.double_centre(
+            np.asarray(beh[b], float)[idx]).ravel())
+    null = np.full((int(n_perm), len(pairs)), np.nan)
+    rows = np.arange(N)[:, None]
+    for d in range(int(n_perm)):
+        perm = np.empty((N, G), int)
+        for i in range(N):
+            p = np.arange(G)
+            for gidx in groups:
+                p[gidx] = gidx[rng.permutation(len(gidx))]
+            perm[i] = p
+        cache: dict = {}
+        for j, (nm, _, b, idx) in enumerate(pairs):
+            key = (b, tuple(np.asarray(idx).tolist()))
+            if key not in cache:
+                cache[key] = AN.double_centre(np.asarray(beh[b], float)[rows, perm][idx])
+            null[d, j] = AN._corr_present(R[nm].ravel(), cache[key].ravel())
+    out = {}
+    for j, (nm, c, b, idx) in enumerate(pairs):
+        z = null[:, j][np.isfinite(null[:, j])]
+        r = obs[nm]
+        p = (float((1 + np.sum(np.abs(z) >= abs(r) - PERM_TIE)) / (1 + len(z)))
+             if np.isfinite(r) else float("nan"))
+        present = np.isfinite(R[nm]) & np.isfinite(np.asarray(beh[b], float)[idx])
+        out[nm] = {"component": c, "measure": b, "networks": len(idx), "r": float(r), "p": p,
+                   "cells": int(present.sum()), "n_perm": len(z),
+                   "null_sd": float(np.std(z)) if len(z) else float("nan"),
+                   "null_q": np.quantile(z, [0.025, 0.975]).tolist() if len(z) else None}
+    return {"pairs": out, "null": null}
+
+
+def step2_tables(run: Run, names, key_geo: dict, G: int) -> tuple[dict, dict]:
+    """({measure: {network: [G]}}, per-network notes) of step 2's G - 1 and B (amendment 2
+    item 3): each rows file through the record's ``c3w_inputs`` binding and its stamp, the
+    optimum's rows through their stamp, every row's checkpoint the network's pin; per key
+    ``fields.stages.edge_key_measures`` (step 2's own exclusions), per geometry the median."""
+    import numpy as np
+
+    from apexzero.costate import prereg as PR
+    from apexzero.fields import prereg as FP
+    from apexzero.fields import stages as S
+
+    d = CS.fields_out(run.root)
+    refuse_sealed(d)
+
+    def stamped(p: Path) -> str:
+        sha = sha256_file(p)
+        st = FP.read_stamp(p) or {}
+        if (st.get("files") or {}).get(p.name) != sha:
+            raise SystemExit(f"CS-3: {p.name} is not the file its step 2 stamp binds")
+        run.note_input(PR._repo_rel(p, run.root), sha)
+        return sha
+
+    opt_p = d / "opt-fields" / "rows.jsonl"
+    stamped(opt_p)
+    opt = {r["key_id"]: r for r in S.read_rows(opt_p)}
+    tabs: dict = {m: {} for m in STEP2_MEASURES}
+    notes = {}
+    for name in names:
+        ci = (run.rec.get("c3w_inputs") or {}).get(name) or {}
+        if not ci.get("overlap_file"):
+            continue
+        p = d / "fields-a2" / Path(ci["overlap_file"]).name
+        if stamped(p) != ci.get("overlap_sha256"):
+            raise SystemExit(f"CS-3: {p.name} is not the file the record's c3w_inputs bind")
+        rows = S.read_rows(p)
+        pin = run.rec["networks"][name]["sha256"]
+        bad = [r.get("key_id") for r in rows if r.get("ckpt_sha256") not in (None, pin)]
+        if bad or not any(r.get("ckpt_sha256") == pin for r in rows):
+            raise SystemExit(f"CS-3: {p.name}'s rows are not of {name}'s pinned checkpoint")
+        note = {}
+        for m, field in STEP2_MEASURES.items():
+            km = S.edge_key_measures(rows, opt, field)
+            vals = {k.key_id: k.value for k in km}
+            t = geometry_medians(vals, key_geo, G)
+            tabs[m][name] = t - 1.0 if m == "G_minus_1" else t
+            note[m] = {"keys": len(km), "keys_in_T": int(sum(k in key_geo for k in vals)),
+                       "finite_in_T": int(sum(k in key_geo and np.isfinite(v)
+                                              for k, v in vals.items())),
+                       "geometries": int(np.isfinite(t).sum())}
+        notes[name] = note
+    return tabs, notes
+
+
+def psychophysics_out(root: Path = ROOT) -> Path:
+    """Step 1's outputs (outputs/psychophysics, or through a worktree's outputs/outputs
+    link), as ``scripts/costate.py``'s ``fields_out`` finds step 2's."""
+    d = Path(root) / "outputs" / "psychophysics"
+    if (d / "analysis").exists():
+        return d
+    return Path(root) / "outputs" / "outputs" / "psychophysics"
+
+
+def step1_tables(run: Run, names, tab, key_geo: dict, G: int) -> tuple[dict, dict]:
+    """({measure: {network: [G]}}, per-network notes) of step 1's entry-speed ratio - 1 and
+    brake-onset residual (amendment 2 item 3): each agent's analysis run table at its pinned
+    final, the 'det' run at each T key's (cell, phase) with ``w_is_cell``, its stim and W
+    checked; e_ve and -dd_b, finite only; per geometry the median."""
+    import numpy as np
+
+    from apexzero.costate import prereg as PR
+
+    base = psychophysics_out(run.root) / "analysis" / "runs"
+    refuse_sealed(base)
+    keys: dict = {}
+    for i in range(len(tab["key_id"])):
+        k = str(tab["key_id"][i])
+        if k not in keys:
+            keys[k] = (int(tab["cell_id"][i]), int(tab["key_phase"][i]), int(tab["stim_id"][i]),
+                       int(tab["W"][i]), bool(tab["w_is_cell"][i]))
+    tabs: dict = {m: {} for m in STEP1_MEASURES}
+    notes = {}
+    for name in names:
+        label = network_label(name)
+        ts = int(run.rec["networks"][name]["timesteps"])
+        p = base / f"{label}_{ts:012d}.npz"
+        if not p.exists():
+            raise SystemExit(f"CS-3: no step 1 run table {p.name}")
+        run.note_input(PR._repo_rel(p, run.root), sha256_file(p))
+        with np.load(p, allow_pickle=False) as d:
+            if not np.all(d["timesteps"] == ts):
+                raise SystemExit(f"CS-3: {p.name} is not of {name}'s pinned final")
+            det = np.flatnonzero(d["mode"] == "det")
+            col = {c: d[c][det] for c in ("cell", "phase", "stim", "W", "e_ve", "dd_b",
+                                          "crashed")}
+        at = {(int(c), int(ph)): j for j, (c, ph) in enumerate(zip(col["cell"], col["phase"],
+                                                                   strict=True))}
+        vals: dict = {m: {} for m in STEP1_MEASURES}
+        crashed = missing = 0
+        for k, (cell, ph, stim, W, w_is_cell) in keys.items():
+            if not w_is_cell:
+                continue
+            j = at.get((cell, ph))
+            if j is None:
+                missing += 1
+                continue
+            if int(col["stim"][j]) != stim or int(col["W"][j]) != W:
+                raise SystemExit(f"CS-3: {p.name}'s det run at key {k} is not the key's")
+            crashed += bool(col["crashed"][j])
+            vals["entry_speed_ratio_minus_1"][k] = float(col["e_ve"][j])
+            vals["brake_onset_residual"][k] = -float(col["dd_b"][j])
+        note = {"keys": sum(w for *_, w in keys.values()), "missing": missing,
+                "crashed": int(crashed)}
+        for m in STEP1_MEASURES:
+            t = geometry_medians(vals[m], key_geo, G)
+            tabs[m][name] = t
+            note[m] = {"finite": int(sum(np.isfinite(v) for v in vals[m].values())),
+                       "geometries": int(np.isfinite(t).sum())}
+        notes[name] = note
+    return tabs, notes
+
+
+def _cs3_residuals(run: Run, name: str, world, counts) -> tuple:
+    """([2, G] the signed calibrated residual of s and xi per geometry, the network's notes)
+    (amendment 2 item 3)."""
+    import numpy as np
+
+    from apexzero.costate import states as ST
+
+    _, _, fr = network_frame(run, name, world)
+    g = read_critic(run, name, ("g",))["g"]
+    c1, wiring = checked_c1(run, name, fr, g[:, 0], counts)
+    rows = c1_rows(fr, run.rec["frozen"]["k2b_excluded"])
+    geo = ST.geometry_index(fr.tab)
+    sigma = np.asarray(fr.tab["direction"], float)
+    out = np.full((len(SX), fr.G), np.nan)
+    for j, (c, k) in enumerate(zip(SX, K_SX, strict=True)):
+        r = c1.calibrated.pred[:, k] - fr.lam[:, k]
+        if c == "xi":
+            r = sigma * r
+        out[j] = geometry_means(r, fr.w_in, geo, rows[c], fr.G)
+    return out, {"wiring": wiring, "geometries": [int(np.isfinite(v).sum()) for v in out],
+                 "decision_rows": {c: int(r.sum()) for c, r in rows.items()}}
+
+
+@computes("CS-3")
+def cs3(run: Run) -> None:
+    """CS-3 (plan Section 4, amendment 2 item 3): the residual tables of every network, step
+    2's and step 1's behaviour tables, the 8 primary pairs (generalists) with Holm's
+    adjustment and step 1's pairs with S1-S3 added (descriptive); outputs summary.json and
+    tables.npz."""
+    import numpy as np
+
+    from apexzero.costate import analysis as AN
+    from apexzero.costate import probes as PB
+    from apexzero.costate import states as ST
+    from apexzero.costate import stream_rng
+
+    t0 = time.time()
+    world = load_world(run)
+    tab = world.tab
+    labels = AN.geometry_labels(tab)
+    G = len(labels)
+    counts = PB.cluster_counts(G)
+    geo = ST.geometry_index(tab)
+    key_geo = {str(k): int(g_) for k, g_ in zip(tab["key_id"], geo, strict=True)}
+    nets = all_networks(run.rec)
+    if getattr(run.args, "network", None) is not None:
+        raise SystemExit("CS-3 is across networks: it takes no --network (--limit N keeps the "
+                         "first N networks, a partial run)")
+    if getattr(run.args, "limit", None) is not None:
+        nets = nets[:max(1, int(run.args.limit))]
+    res = np.full((len(nets), len(SX), G), np.nan)
+    notes = {}
+    for i, n in enumerate(nets):
+        res[i], notes[n] = _cs3_residuals(run, n, world, counts)
+        print(f"CS-3 {network_label(n)}: residual tables ({time.time() - t0:.0f} s)", flush=True)
+    gen = [n for n in nets if n in AN.GENERALISTS]
+    step1 = [n for n in [AN.network_of(lb) for lb in CS1_ORDER] + list(DESCRIPTIVE_SPECIALISTS)
+             if n in nets]
+    t2, n2 = step2_tables(run, gen, key_geo, G)
+    t1, n1 = step1_tables(run, step1, tab, key_geo, G)
+    beh = {m: np.full((len(nets), G), np.nan) for m in CS3_MEASURES}
+    for m, d in {**t2, **t1}.items():
+        for n, v in d.items():
+            beh[m][nets.index(n)] = v
+    has = {m: [i for i in range(len(nets)) if np.isfinite(beh[m][i]).any()] for m in beh}
+    pairs, desc = [], []
+    for c in SX:
+        for m in CS3_MEASURES:
+            idx = np.array([i for i in has[m] if nets[i] in AN.GENERALISTS], int)
+            pairs.append((f"{c}~{m}", c, m, idx))
+            if m in STEP1_MEASURES:
+                desc.append((f"{c}~{m}+S", c, m, np.array(has[m], int)))
+    resd = {c: res[:, j] for j, c in enumerate(SX)}
+    blocks = geometry_blocks(labels)
+    n_perm = int(run.rec["constants"]["analysis"]["c3_int_perm"])
+    if n_perm != AN.C3_INT_PERMUTATIONS:
+        raise SystemExit("CS-3: the record's c3_int_perm is not analysis.C3_INT_PERMUTATIONS")
+    test = c3_pairs_test(resd, beh, pairs + desc, blocks, n_perm, stream_rng("costate_c3", 1))
+    prim = {k: test["pairs"][k] for k, *_ in pairs}
+    adj = holm([v["p"] for v in prim.values()])
+    for v, a in zip(prim.values(), adj, strict=True):
+        v["p_holm"] = a
+    descr = {k: test["pairs"][k] for k, *_ in desc}
+    e31 = {"max_abs_r": float(np.nanmax([abs(v["r"]) for v in prim.values()])),
+           "all_abs_r_below_0.15": bool(all(abs(v["r"]) < E31_R for v in prim.values())),
+           "none_holm_at_or_below_0.05": bool(all(not (v["p_holm"] <= E31_P)
+                                                  for v in prim.values()))}
+    e31["holds"] = e31["all_abs_r_below_0.15"] and e31["none_holm_at_or_below_0.05"]
+    out = {"item": "CS-3", "networks": nets, "pairs": prim, "descriptive_with_specialists": descr,
+           "expected": {"E3.1": e31},
+           "networks_per_measure": {m: [nets[i] for i in has[m]] for m in CS3_MEASURES},
+           "residual_notes": notes, "step2_notes": n2, "step1_notes": n1,
+           "geometries": labels.tolist(), "blocks": blocks.tolist(), "n_perm": n_perm,
+           "stream": ["costate_c3", 1], "definitions": "plan Section 4 CS-3 and amendment 2 "
+           "items 1 and 3", "seconds": time.time() - t0}
+    run.write_npz("tables", {"residual": res, **{f"behaviour/{m}": v for m, v in beh.items()},
+                             "null": test["null"], "pairs": np.array([k for k, *_ in pairs + desc]),
+                             "networks": np.array(nets)})
+    run.write_json("summary", plain(out))
+
+
+# ------------------------------------------------------------------------- CS-4: Delta C1, R2_z, MLP
+#
+# Plan Section 4 CS-4 with amendment 2 item 4, on the 9 decision networks and each
+# component's C1 rows: R2_z (ridge on the network's clipped z), R2(z + g) and Delta C1 (g the
+# main V's 8 pulled-back components as the hidden block; ``analysis.delta_c1`` must agree),
+# the MLP-on-z ceiling (``probes.mlp_cv``) and R2_c / R2_MLP. One pool unit per (network,
+# component).
+
+DELTA_TOL = 1e-12                        # analysis.delta_c1 against the probes here
+E41 = {"s": 0.2, "xi": 0.3}
+E42_GAIN, E42_XI = 0.05, 0.4
+E43_RATIO, E44_DELTA = 0.1, 0.02
+
+
+def cs4_unit(state, unit) -> dict:
+    """One (network, component) of CS-4 in a worker: the ridge probes on z and on z + g, the
+    check against ``analysis.delta_c1`` and the MLP probe, out of fold on the unit's rows.
+    ``unit``: the activations file (sha256 checked by the parent), the rows, targets, weights,
+    folds (partition 0 subset), turn directions and g [rows, 8]."""
+    import numpy as np
+
+    from apexzero.costate import analysis as AN
+    from apexzero.costate import probes as PB
+
+    t0 = time.time()
+    with np.load(unit["path"]) as d:
+        z = np.clip(d["z"][unit["idx"]], -10.0, 10.0)
+    fo, w, comp = unit["fo"], unit["w"], unit["comp"]
+    Y = np.asarray(unit["lam"], float)[:, None]
+    names = [f"lam_{comp}"]
+    why = AN.probe_cv_problem(fo, np.ones(len(w), bool))
+    if why:
+        raise RuntimeError(f"CS-4 {unit['label']}/{comp}: {why}")
+    d_dir = unit["direction"] if comp == "xi" else None
+    base = PB.ridge_cv(z, Y, fo, w, None, names)
+    full = PB.ridge_cv(z, Y, fo, w, unit["g8"], names)
+    dc = AN.delta_c1(z, unit["g8"], Y, fo, w, unit["direction"], [comp])
+    r0 = float(PB.probe_r2(base, w, d_dir)[0])
+    r1 = float(PB.probe_r2(full, w, d_dir)[0])
+    diff = max(abs(dc["r2_z"][0] - r0), abs(dc["r2_z_g"][0] - r1))
+    if not diff <= DELTA_TOL:
+        raise RuntimeError(f"CS-4 {unit['label']}/{comp}: analysis.delta_c1 differs ({diff:.3g})")
+    t1 = time.time()
+    mlp = PB.mlp_cv(z, Y, fo, w, names)
+    return {"pred_z": base.pred[:, 0], "pred_zg": full.pred[:, 0], "pred_mlp": mlp.pred[:, 0],
+            "y": base.y[:, 0], "alpha_z": base.alpha[:, 0, 0], "alpha_zg": full.alpha[:, 0],
+            "alpha_mlp": mlp.alpha[:, 0, 0], "delta_c1": dc, "delta_c1_check": float(diff),
+            "seconds_ridge": t1 - t0, "seconds_mlp": time.time() - t1}
+
+
+@computes("CS-4")
+def cs4(run: Run) -> None:
+    """CS-4 (plan Section 4, amendment 2 item 4): the frames, the frozen C1 checked, one pool
+    unit per (network, component) (``cs4_unit``), then the CIs, the ratio and the expected
+    directions; outputs summary.json and preds.npz."""
+    import numpy as np
+
+    from apexzero.costate import analysis as AN
+    from apexzero.costate import prereg as PR
+    from apexzero.costate import probes as PB
+
+    t0 = time.time()
+    world = load_world(run)
+    tab = world.tab
+    direction = np.asarray(tab["direction"])
+    G = AN.geometry_clusters(tab)[1]
+    counts = PB.cluster_counts(G)
+    want = getattr(run.args, "network", None)
+    labels = [lb for lb in CS1_ORDER if want is None or want in (lb, AN.network_of(lb))]
+    if not labels:
+        raise SystemExit(f"CS-4: --network {want} is not a decision network")
+    units, frames = [], {}
+    for lb in labels:
+        name = AN.network_of(lb)
+        _, _, fr = network_frame(run, name, world)
+        g = read_critic(run, name, ("g",))["g"][:, 0]
+        c1, wiring = checked_c1(run, name, fr, g, counts)
+        rows = c1_rows(fr, run.rec["frozen"]["k2b_excluded"])
+        act = run.read(f"post/activations/{PR.net_file(name)}.npz")
+        frames[lb] = (fr, c1, wiring, rows)
+        for c, k in zip(SX, K_SX, strict=True):
+            idx = np.flatnonzero(rows[c])
+            units.append({"label": lb, "comp": c, "path": str(act), "idx": idx,
+                          "lam": fr.lam[idx, k], "w": fr.w_in[idx], "g8": g[idx],
+                          "fo": fr.fo.subset(rows[c]), "direction": direction[idx]})
+    print(f"CS-4: {len(units)} units on {min(run.args.workers or DEFAULT_WORKERS, len(units))} "
+          f"workers ({time.time() - t0:.0f} s)", flush=True)
+    got = run.pool(cs4_unit, units, names=[f"{u['label']}/{u['comp']}" for u in units])
+    nets: dict = {}
+    arrays = {}
+    for u, r in zip(units, got, strict=True):
+        lb, c = u["label"], u["comp"]
+        fr, c1, wiring, rows = frames[lb]
+        k = K_SX[SX.index(c)]
+        odd = c == "xi"
+        if not np.array_equal(r["y"], u["lam"]):
+            raise SystemExit(f"CS-4 {lb}/{c}: the probes' targets are not the unit's")
+        cl = fr.cl[u["idx"]]
+        P = [r["pred_z"], r["pred_zg"], r["pred_mlp"]]
+        if not all(np.isfinite(p).all() for p in P):
+            raise SystemExit(f"CS-4 {lb}/{c}: rows without an out-of-fold prediction")
+        pt, dr = AN.boot_r2(u["lam"], P, u["w"], cl, G, counts, u["direction"], odd)
+        if abs(pt[0] - r["delta_c1"]["r2_z"][0]) > DELTA_TOL:
+            raise SystemExit(f"CS-4 {lb}/{c}: the bootstrap's R2_z is not the probe's")
+        r2c = float(c1.r2c[k])
+        rec = {"rows": len(u["idx"]),
+               "r2_z": {"r2": float(pt[0]), "ci": list(AN._ci(dr[:, 0]))},
+               "r2_z_g": {"r2": float(pt[1]), "ci": list(AN._ci(dr[:, 1]))},
+               "r2_mlp": {"r2": float(pt[2]), "ci": list(AN._ci(dr[:, 2]))},
+               "delta_c1": {"delta": float(pt[1] - pt[0]), "ci": list(AN._ci(dr[:, 1] - dr[:, 0]))},
+               "mlp_minus_z": {"diff": float(pt[2] - pt[0]),
+                               "ci": list(AN._ci(dr[:, 2] - dr[:, 0]))},
+               "r2c": r2c, "ratio_to_ceiling": AN.ratio_to_ceiling(r2c, float(pt[2])),
+               "alpha_z": r["alpha_z"].tolist(), "alpha_zg": r["alpha_zg"].tolist(),
+               "alpha_mlp": r["alpha_mlp"].tolist(), "delta_c1_check": r["delta_c1_check"],
+               "seconds_ridge": r["seconds_ridge"], "seconds_mlp": r["seconds_mlp"]}
+        nets.setdefault(lb, {"run": AN.network_of(lb), "wiring": {"c1_max_abs_diff": wiring},
+                             "c1_stat": float(c1.stat), "components": {}})["components"][c] = rec
+        arrays.update({f"{lb}/{c}/rows": u["idx"], f"{lb}/{c}/pred_z": r["pred_z"],
+                       f"{lb}/{c}/pred_zg": r["pred_zg"], f"{lb}/{c}/pred_mlp": r["pred_mlp"]})
+    for v in nets.values():
+        cc = v["components"]
+        v["mean"] = {k: float(np.mean([cc[c][k]["r2"] for c in SX]))
+                     for k in ("r2_z", "r2_z_g", "r2_mlp")}
+        v["mean"]["ratio_to_ceiling"] = AN.ratio_to_ceiling(v["c1_stat"], v["mean"]["r2_mlp"])
+
+    def cnt(fn):
+        return _count_of(nets, fn)
+
+    def comp(v, c):
+        return v["components"][c]
+
+    e41 = {c: cnt(lambda v, c=c: comp(v, c)["r2_z"]["r2"] >= E41[c]) for c in SX}
+    e42 = {c: cnt(lambda v, c=c: comp(v, c)["mlp_minus_z"]["diff"] >= E42_GAIN) for c in SX}
+    e42["xi_mlp_above_0.4"] = cnt(lambda v: comp(v, "xi")["r2_mlp"]["r2"] > E42_XI)
+    e43 = {c: cnt(lambda v, c=c: comp(v, c)["ratio_to_ceiling"] <= E43_RATIO) for c in SX}
+    e44 = {c: cnt(lambda v, c=c: comp(v, c)["delta_c1"]["delta"] <= E44_DELTA
+                  and comp(v, c)["delta_c1"]["ci"][0] <= 0.0 <= comp(v, c)["delta_c1"]["ci"][1])
+           for c in SX}
+    n = len(nets)
+    expected = {
+        "E4.1": {**e41, "holds": all(p["count"] >= min(E_COUNT, n) for p in e41.values())},
+        "E4.2": {**e42, "holds": all(p["count"] >= min(E_COUNT, n) for p in e42.values())},
+        "E4.3": {**e43, "holds": all(p["count"] == n for p in e43.values())},
+        "E4.4": {**e44, "holds": all(p["count"] == n for p in e44.values())},
+        "reading": "amendment 2 item 4"}
+    out = {"item": "CS-4", "networks": nets, "expected": expected,
+           "definitions": "plan Section 4 CS-4 and amendment 2 items 1 and 4",
+           "components": list(SX), "n_boot": len(counts), "seconds": time.time() - t0}
+    run.write_npz("preds", arrays)
+    run.write_json("summary", plain(out))
+
+
+# ------------------------------------------------------------------------- CS-5: W1 on the Pi targets
+#
+# Plan Section 4 CS-5 with amendment 2 item 5, on the 9 decision networks and T's interior
+# approach- and exit-phase rows: ridge probes of Pi^in, Pi^out, Pi^slip and Pi^mu on z, on z +
+# the actor's h3 and on z + the critic's h3; each hidden layer's gain beyond z against 20
+# random-init controls (the pool actors stored, 20 random-init critics computed here) with the
+# two-level CI; the probes' R2 and Spearman; and W1's critic width price against Pi^in on the
+# same rows. One pool unit per network.
+
+PI_TARGETS = ("Pi_in", "Pi_out", "Pi_slip", "Pi_mu")
+LAYERS = ("actor", "critic")
+RANDOM_TOL = 1e-12                       # the pool actor of seed 0 rebuilt against its h3
+E51_R2, E52_GAIN = 0.3, 0.05
+
+
+def cs5_rows(tab):
+    """[n] CS-5's rows: T's interior rows of the approach and exit phases (amendment 2 item
+    5), through the row guard."""
+    import numpy as np
+
+    rows = np.asarray(tab["interior"], bool) & np.isin(np.asarray(tab["phase"]).astype(str),
+                                                         SCORED_PHASES)
+    return guard_rows(tab, rows)
+
+
+def cs5_unit(state, unit) -> dict:
+    """One network's CS-5 probes in a worker: z, z + actor h3, z + critic h3, and z + each
+    control's h3 (the 20 pool actors stored; 20 random-init critics built from the network's
+    PPOConfig, seeds 0-19), out of fold on the unit's rows, the four Pi targets per call."""
+    import numpy as np
+
+    from apexzero.costate import critic as CR
+    from apexzero.costate import probes as PB
+
+    t0 = time.time()
+    idx, cfg = unit["idx"], unit["cfg"]
+    with np.load(unit["path"]) as d:
+        z = np.clip(d["z"][idx], -10.0, 10.0)
+        h = {"actor": d["actor_h3"][idx], "critic": d["critic_h3"][idx]}
+        pool_a = [d[f"random{s}_h3"][idx] for s in PB.POOL_SEEDS]
+    h0 = PB.hidden(PB.random_actor(cfg, 0), z)["h3"]
+    gap = float(np.max(np.abs(h0 - pool_a[0])))
+    if not gap <= RANDOM_TOL:
+        raise RuntimeError(f"CS-5 {unit['label']}: the pool actor of seed 0 does not rebuild "
+                           f"its stored h3 ({gap:.3g})")
+    pool_c = [PB.hidden(PB.random_critic(cfg, s), z)["h3"] for s in CR.RANDOM_SEEDS]
+    Y, w, fo = unit["Y"], unit["w"], unit["fo"]
+    names = list(PI_TARGETS)
+
+    def probe(hh=None):
+        return PB.ridge_cv(z, Y, fo, w, hh, names)
+
+    base = probe()
+    out = {"z": base.pred, "y": base.y, "alpha_z": base.alpha[:, :, 0]}
+    for k in LAYERS:
+        p = probe(h[k])
+        out[k], out[f"alpha_{k}"] = p.pred, p.alpha
+    out["pool_actor"] = np.stack([probe(hh).pred for hh in pool_a])
+    out["pool_critic"] = np.stack([probe(hh).pred for hh in pool_c])
+    out["random0_gap"] = gap
+    out["seconds"] = time.time() - t0
+    return out
+
+
+def control_gain(dr_full, dr_controls, dr_base, pool) -> dict:
+    """The trained gain minus the controls' median gain (C2's arithmetic, amendment 2 item 5):
+    ``dr_*`` R2 points [1 + B] (row 0 the point, then the bootstrap draws) of the full probe,
+    each control's [J, 1 + B] and the base; ``pool`` [B, J] the two-level draws' control
+    indices. Its two-level CI, its geometry-only CI and the network's rank."""
+    import numpy as np
+
+    from apexzero.costate import analysis as AN
+
+    gt = np.asarray(dr_full) - np.asarray(dr_base)                   # [1 + B]
+    gc = np.asarray(dr_controls) - np.asarray(dr_base)[None]         # [J, 1 + B]
+    stat = float(gt[0] - np.median(gc[:, 0]))
+    B = len(gt) - 1
+    two = gt[1:] - np.median(gc[:, 1:][np.asarray(pool), np.arange(B)[:, None]], axis=1)
+    geo = gt[1:] - np.median(gc[:, 1:], axis=0)
+    above = int((gc[:, 0] > gt[0]).sum())
+    return {"stat": stat, "ci": list(AN._ci(two)), "ci_geometry": list(AN._ci(geo)),
+            "gain": float(gt[0]), "control_median": float(np.median(gc[:, 0])),
+            "control_gains": gc[:, 0].tolist(), "rank": 1 + above, "of": len(gc) + 1}
+
+
+@computes("CS-5")
+def cs5(run: Run) -> None:
+    """CS-5 (plan Section 4, amendment 2 item 5): one pool unit per network (``cs5_unit``),
+    then the probes' R2 and Spearman, the gains against the controls with their two-level
+    CIs, W1's calibrated agreement on the same rows and the expected directions; outputs
+    summary.json and preds.npz."""
+    import numpy as np
+
+    from apexzero.costate import analysis as AN
+    from apexzero.costate import prereg as PR
+    from apexzero.costate import probes as PB
+    from apexzero.costate import states as ST
+
+    t0 = time.time()
+    world = load_world(run)
+    tab = world.tab
+    frozen = run.rec["frozen"]
+    rows = cs5_rows(tab)
+    idx = np.flatnonzero(rows)
+    w_all = ST.stratum_weights(tab, rows)
+    w = w_all[idx]
+    fo = PB.folds(tab)
+    cl_all, G = AN.geometry_clusters(tab)
+    cl = cl_all[idx]
+    counts = PB.cluster_counts(G)
+    pool = PB.pool_draws(PB.N_POOL)
+    bnd = {t: frozen["winsor_bounds"][t] for t in PI_TARGETS}
+    Y = np.stack([ST.winsorise(np.asarray(tab[t], float)[idx], bnd[t]) for t in PI_TARGETS], 1)
+    want = getattr(run.args, "network", None)
+    labels = [lb for lb in CS1_ORDER if want is None or want in (lb, AN.network_of(lb))]
+    if not labels:
+        raise SystemExit(f"CS-5: --network {want} is not a decision network")
+    units, dv = [], {}
+    for lb in labels:
+        name = AN.network_of(lb)
+        pin = run.rec["networks"][name]
+        agent = CS.load_agent(name, pin, run.root)
+        run.note_input(pin["path"], pin["sha256"])
+        dv[lb] = read_critic(run, name, ("dV_dwin",))["dV_dwin"]
+        act = run.read(f"post/activations/{PR.net_file(name)}.npz")
+        units.append({"label": lb, "path": str(act), "cfg": agent.cfg, "idx": idx, "Y": Y,
+                      "w": w, "fo": fo.subset(rows)})
+    print(f"CS-5: {len(units)} units, {len(idx)} rows ({time.time() - t0:.0f} s)", flush=True)
+    got = run.pool(cs5_unit, units, names=labels)
+    nets, arrays = {}, {}
+    for u, r in zip(units, got, strict=True):
+        lb = u["label"]
+        if not np.array_equal(r["y"], Y):
+            raise SystemExit(f"CS-5 {lb}: the probes' targets are not the rows'")
+        P = np.concatenate([r["z"][None], r["actor"][None], r["critic"][None], r["pool_actor"],
+                            r["pool_critic"]])                       # [3 + 2J, rows, 4]
+        if not np.isfinite(P).all():
+            raise SystemExit(f"CS-5 {lb}: rows without an out-of-fold prediction")
+        J = len(r["pool_actor"])
+        per = {}
+        for t, name_t in enumerate(PI_TARGETS):
+            pt, dr = AN.boot_r2(Y[:, t], list(P[:, :, t]), w, cl, G, counts)
+            allr = np.vstack([pt[None], dr])                          # [1 + B, K]
+            rec = {}
+            for i, pname in enumerate(("z", "actor", "critic")):
+                rho, rd = AN.spearman_boot(P[i, :, t], Y[:, t], w, cl, counts)
+                rec[f"r2_{pname}"] = {"r2": float(pt[i]), "ci": list(AN._ci(dr[:, i]))}
+                rec[f"spearman_{pname}"] = {"rho": float(rho), "ci": list(AN._ci(rd))}
+            for i, layer in enumerate(LAYERS, start=1):
+                ctl = allr[:, 3 + (i - 1) * J:3 + i * J].T
+                rec[f"gain_{layer}"] = control_gain(allr[:, i], ctl, allr[:, 0], pool)
+            per[name_t] = rec
+        w1 = {}
+        for tgt, y_t in (("raw", np.asarray(tab["Pi_in"], float)),
+                         ("winsorised", ST.winsorise(np.asarray(tab["Pi_in"], float),
+                                                     bnd["Pi_in"]))):
+            w1[tgt] = AN.calibrated_agreement(dv[lb], y_t, fo.outer, w_all, cl_all, G, rows,
+                                              counts, bounds=[bnd["Pi_in"]])
+        nets[lb] = {"run": AN.network_of(lb), "targets": per, "w1_pi_in": w1,
+                    "random0_gap": r["random0_gap"], "seconds": r["seconds"],
+                    "alpha_z": r["alpha_z"].tolist()}
+        arrays.update({f"{lb}/z": r["z"], f"{lb}/actor": r["actor"], f"{lb}/critic": r["critic"],
+                       f"{lb}/pool_actor": r["pool_actor"], f"{lb}/pool_critic": r["pool_critic"]})
+
+    def cnt(fn):
+        return _count_of(nets, fn)
+
+    def tg(v, t):
+        return v["targets"][t]
+
+    e51 = {t: cnt(lambda v, t=t: tg(v, t)["r2_z"]["r2"] >= E51_R2) for t in ("Pi_in", "Pi_out")}
+    e52 = {f"{layer}:{t}": cnt(lambda v, t=t, layer=layer: tg(v, t)[f"gain_{layer}"]["stat"]
+                               <= E52_GAIN) for layer in LAYERS for t in PI_TARGETS}
+    named = [f"{lb}/{layer}:{t}" for lb, v in nets.items() for layer in LAYERS for t in PI_TARGETS
+             if tg(v, t)[f"gain_{layer}"]["stat"] > E52_GAIN
+             and tg(v, t)[f"gain_{layer}"]["ci"][0] > 0]
+    e53 = {t: cnt(lambda v, t=t: tg(v, t)["r2_z"]["r2"] < tg(v, "Pi_in")["r2_z"]["r2"])
+           for t in ("Pi_slip", "Pi_mu")}
+    n = len(nets)
+    expected = {
+        "E5.1": {**e51, "holds": all(p["count"] >= min(E_COUNT, n) for p in e51.values())},
+        "E5.2": {**e52, "holds": all(p["count"] == n for p in e52.values()),
+                 "above_0.05_with_ci_above_0": named},
+        "E5.3": {**e53, "holds": all(p["count"] >= min(E_COUNT, n) for p in e53.values())},
+        "reading": "amendment 2 item 5"}
+    out = {"item": "CS-5", "networks": nets, "expected": expected, "rows": int(rows.sum()),
+           "rows_by_phase": {p: int((rows & (np.asarray(tab["phase"]).astype(str) == p)).sum())
+                             for p in SCORED_PHASES},
+           "targets": list(PI_TARGETS), "winsor_bounds": bnd, "controls": {
+               "actor": "the pool actors, seeds 0-19 (stored h3)",
+               "critic": "random-init critics, seeds 0-19 (h3 computed here)"},
+           "delta_pi_sd_t": "BC-a0 has not run: reported with BC-a0 (amendment 2 item 5)",
+           "definitions": "plan Section 4 CS-5 and amendment 2 items 1 and 5",
+           "n_boot": len(counts), "seconds": time.time() - t0}
+    run.write_npz("preds", arrays)
     run.write_json("summary", plain(out))
 
 
