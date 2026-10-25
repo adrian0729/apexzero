@@ -1333,3 +1333,29 @@ have stopped them in their first minutes.
   G1s1's checks passed; G1s2 failed its first check (dV_dwin).
 - No summary was formed or written. G1s2's gap (1.59·10⁻¹⁰) is the only number from that run.
 - Nothing else was seen beyond amendment 4's list.
+
+### Amendment 6 (2026-10-25)
+
+**What changed.** CS-11's two cross-program wiring tolerances (amendment 4) go from 10⁻⁸ to
+10⁻⁶ relative, K3's AD tolerance (`critic.FD_TOL`):
+- the width loop's J at d = 0 against `own_return`'s J;
+- the JVP of J along the uniform inside widening against the VJP's contraction.
+
+Nothing else changes: no question, row set, statistic, expected direction, or other check. The
+dV_dwin check stays at amendment 5's 10⁻⁹ of the network's scale.
+
+**Why.** The third canonical CS-11 run, under amendment 5's early stops, stopped in unit G2s2/q3:
+on that unit's first kept key, the JVP and the VJP differ by 5.6·10⁻⁸ relative, against 10⁻⁸. It
+wrote nothing.
+- Forward and reverse mode take the derivative of the same 800-step closed loop in two different
+  orders, so their round-off differs.
+- A derivative through the loop multiplies 800 steps' Jacobians, which amplifies that round-off
+  further than the primal J's gaps (at most 5.4·10⁻¹² so far) suggested when amendment 4 set
+  10⁻⁸.
+- A wiring error (the wrong road, side, count or term) moves J or Π^{in,own} by 10⁻⁴ relative or
+  more, so 10⁻⁶ still catches every one of them.
+
+**Computed or seen before it.**
+- The third run's units checked each key as it was computed and stopped the pool at the first
+  failure: G2s2/q3's JVP gap (5.6·10⁻⁸). That gap is the only number from the run.
+- No summary was formed or written. Nothing else was seen beyond amendment 5's list.
