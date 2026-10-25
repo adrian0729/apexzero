@@ -1248,7 +1248,7 @@ def stage_freeze(args) -> None:
     write_json(CERTIFIED, cert)
     n = len(cert["entering"])
     print(f"wrote {rel(CERTIFIED)}: {n} conditions enter P4. Commit it before the "
-          "specialists stage: git add -f outputs/p4/certified.json", flush=True)
+          f"specialists stage: git add -f {rel(CERTIFIED)}", flush=True)
 
 
 def require_committed_freeze() -> dict:
