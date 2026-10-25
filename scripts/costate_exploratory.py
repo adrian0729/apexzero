@@ -3040,8 +3040,9 @@ OWN_STEPS = 800                          # H = 800 for every D key (design Secti
 OWN_QUARTERS = 4                         # units per network (amendment 3 item 1)
 RESTART_AT = (0.25, 0.6)                 # CS-10's restart checks, as shares of H (K3b's)
 PULLBACK_TOL = 1e-10                     # the pullback at state 0 against the stored g
-J_TOL = 1e-12                            # the width loop's J at d = 0 against own_return's
-JVP_TOL = 1e-9                           # the width VJP's contraction against the JVP
+J_TOL = 1e-8                             # the width loop's J at d = 0 against own_return's
+JVP_TOL = 1e-8                           # the width VJP's contraction against the JVP (both
+                                         # amendment 4: two programs over an 800-step loop)
 DV_TOL = 1e-10                           # dV_dwin recomputed against the stored one
 FD_STEP = 1e-3                           # m: the descriptive Richardson differences
 E10_ROWS, E10_WIDTH = 10.0, 0.5          # E10.1: rows x 10, CI at most half as wide

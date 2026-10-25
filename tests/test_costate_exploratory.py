@@ -1003,6 +1003,9 @@ def test_cs10_cs11_are_registered_trained_pooled(cx):
         assert {"world", "critic:decision", "checkpoints"} <= set(it.reads), cmd
     assert "own" in cx.BY_CMD["cs-10"].reads
     assert cx.OWN_STEPS == 800 and cx.OWN_QUARTERS == 4
+    # amendment 3's tolerances, with amendment 4's for the two cross-program checks
+    assert cx.J_TOL == 1e-8 and cx.JVP_TOL == 1e-8 and cx.DV_TOL == 1e-10
+    assert cx.PULLBACK_TOL == 1e-10
 
 
 def test_own_states_follow_t_end(cx):
