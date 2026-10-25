@@ -196,6 +196,12 @@ def test_in3_tables_readings(il):
     assert r["P8-F"]["holds"]
 
 
+def test_end_label_groups_merge_close_line_ends(il):
+    ends = [(0.05, 200.0, "G1"), (0.049, 200.0, "G2"), (0.2, 200.0, "G3")]
+    groups = il.end_label_groups(ends, 0.01)
+    assert [[a for _, _, a in g] for g in groups] == [["G3"], ["G1", "G2"]]
+
+
 # ------------------------------------------------------------------------- IN-4
 
 

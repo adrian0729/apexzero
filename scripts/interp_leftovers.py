@@ -124,6 +124,9 @@ E4_MAX = 1.0
 POINTS = 100.0
 
 
+SCRIPT_SHA256 = hashlib.sha256(Path(__file__).read_bytes()).hexdigest()   # the code that runs
+
+
 class CheckFailed(SystemExit):
     """A built-in or input check failed: the item stops and writes nothing."""
 
@@ -175,7 +178,7 @@ def clean(x):
 
 def provenance(item: str, argv: list[str], t0: float, start: str, inputs: dict) -> dict:
     script = Path(__file__).resolve()
-    return {"item": item, "script": rel(script), "script_sha256": sha256_file(script),
+    return {"item": item, "script": rel(script), "script_sha256": SCRIPT_SHA256,
             "plan": {"path": rel(PLAN), "sha256": sha256_file(PLAN),
                      "commit": git("log", "-1", "--format=%H", "--", rel(PLAN)),
                      "plan_commit": PLAN_COMMIT, "amendment_1_commit": AMENDMENT_COMMIT},
@@ -702,6 +705,18 @@ def in3_tables(P: dict, b: float, generalists) -> dict:
 SERIES = {"G1": ("#2a78d6", "o"), "G2": ("#eb6834", "s"), "G3": ("#1baf7a", "^")}
 
 
+def end_label_groups(ends: list[tuple[float, float, str]], gap: float) -> list[list]:
+    """Line-end labels (y, x, name) clustered so that labels closer than ``gap`` in y share
+    one label (top to bottom)."""
+    groups: list[list] = []
+    for e in sorted(ends, key=lambda t: -t[0]):
+        if groups and groups[-1][-1][0] - e[0] < gap:
+            groups[-1].append(e)
+        else:
+            groups.append([e])
+    return groups
+
+
 def p6_figure(curves: dict, b: float, paths: list[Path]) -> None:
     """One figure, four panels on a log timestep axis (one y-scale each): tail e_ve^RA at A1
     against +b, v_top, and exp(log_std) for steer and pedal. Colour follows the agent, with a
@@ -720,13 +735,19 @@ def p6_figure(curves: dict, b: float, paths: list[Path]) -> None:
     fig.patch.set_facecolor("#fcfcfb")
     for ax, (key, title) in zip(axes.ravel(), panels, strict=True):
         ax.set_facecolor("#fcfcfb")
+        ends = []
         for agent, c in curves.items():
             col, mk = SERIES[agent]
             x = np.array(c["checkpoints"], float) / 1e6
             y = np.array(c[key], float)
             ax.plot(x, y, color=col, lw=2, marker=mk, ms=5, mec="#fcfcfb", mew=1, label=agent)
-            ax.annotate(agent, (x[-1], y[-1]), xytext=(6, 0), textcoords="offset points",
-                        va="center", fontsize=8, color=ink)
+            ends.append((float(y[-1]), float(x[-1]), agent))
+        lo, hi = ax.get_ylim()
+        for grp in end_label_groups(ends, 0.045 * (hi - lo)):     # one label per cluster
+            ax.annotate(" / ".join(sorted(a for _, _, a in grp)),
+                        (max(x for _, x, _ in grp), float(np.mean([y for y, _, _ in grp]))),
+                        xytext=(6, 0), textcoords="offset points", va="center", fontsize=8,
+                        color=ink)
         if key == "tail_e_ve_ra_A1":
             ax.axhline(b, color=muted, lw=1, ls="--")
             ax.annotate(f"+b = {b:g}", (10.5, b), xytext=(0, 3), textcoords="offset points",
