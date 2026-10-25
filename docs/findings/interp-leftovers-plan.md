@@ -93,4 +93,37 @@
 
 Any change to this plan after its commit is a dated amendment appended here, committed before the computation it changes. Each states what changed, why, and which results (if any) had been seen when it was written. Results computed under the earlier version are kept and reported beside the amended ones. An amendment written after a result was seen is labelled post hoc.
 
-(None yet.)
+### Amendment 1 (25 Oct 2026): IN-1's check (ii), and readings fixed before any result
+
+**What had been seen when this was written.** Only IN-1's two built-in checks had been run. No pair-weighted summary, CI or label of IN-1 had been computed, and nothing of IN-2, IN-3 or IN-4.
+- **Check (i) passed.** The copy changed no A2 row. The frozen `stages.analyse_edges` on the copied A2 rows gives `H2` (9 entries) and `edge_descriptive` (35 entries) equal to `decisions.json`'s, compared as serialised JSON.
+- **Check (ii) failed by one or two keys in four table entries.** The plain per-key medians and key counts under the frozen exclusions (`edge_key_measures` on the copied rows) differ from step 2's tables in Section 7.9 for G2s2 (671 keys against 669) and G3 (569 against 567), and in Section 7.8 for G3 at 134.1M (0.892 on 191 keys against 0.891 on 190) and G3's final A1 column (377 keys against 376). Every other entry matched. Section 7.11's specialists (not part of the check) differ the same way for S2 and S3.
+- **The cause.** Seven keys (G2s2 2, G3 2, G3 at 134.1M 1, S2 1, S3 1) have a row whose overall branch verdict (`branch.ok`) is false while its c_min verdict (`branch.ok_by.c_min`) is true. Step 2's tables were computed by hand with the overall verdict ("the branch and Gate 3 checks pass"), so they drop these keys. The frozen `key_flags` uses the c_min verdict and keeps them.
+- **With the overall verdict, every entry of both tables is reproduced:** G, B and T and the key counts in Section 7.9, and G and the key counts in Section 7.8. These per-key medians and counts were the only numbers seen.
+
+**Changes.**
+1. **Check (ii)** reproduces the tables with step 2's hand rule: the frozen exclusions plus the row's overall branch verdict. The output lists the seven keys. The pair-weighted summaries keep the frozen rule unchanged ("every other rule is unchanged"). E1.1's per-key median is the Section 7.9 value (hand rule). The frozen rule's per-key median is reported beside it.
+2. **Additions.** These are descriptive, reported beside the planned numbers, and change none of them.
+   - IN-1: the same summary on A1 keys only for the finals of G1, G2 and G3, because the earlier snapshots have A1 keys only. E1.2's comparison over training uses it.
+   - IN-2: R18's variant rule also with G3s2 descriptive (gate2-trained), as step 2 treated it.
+   - IN-3: the figure is committed as `docs/findings/interp-leftovers-p6.png`, with a copy in `outputs/interp-leftovers/`.
+   - IN-4: built-in checks, any failure of which stops the item:
+     - each evaluation's `ocp_lap_s` equals `lap_time` in `outputs/ocp/<circuit>.pkl`;
+     - its `gap` equals median lap / `ocp_lap_s` − 1;
+     - `manifest.json`'s `completion` and `completed` equal the evaluations'.
+3. **Readings, fixed now.**
+   - E1.1: two intervals "overlap" when they share a point.
+   - E1.2:
+     - "about 0.78–0.90" is read as each snapshot's pooled G lying in [0.78, 0.90];
+     - "does not rise with training" holds for an agent when no later snapshot's CI lies wholly above its earliest snapshot's CI. The later snapshots are its earlier snapshots in order, then its final on A1 keys.
+   - E2.1: a CI "clears 0.8" when its lower end is at least 0.8.
+   - "Most" (E2.2; IN-3's P2d) means at least 5 of the 9.
+   - IN-3:
+     - b is `decisions_all.json`'s `band` (0.1);
+     - "within ±b" means |median line excess| ≤ b;
+     - v_top "rising" means a Spearman ρ against the checkpoint's timesteps above 0 and the final checkpoint's value above the first's. Each of the two exp(log_std) components (steer, pedal) is "falling" likewise, with ρ below 0 and the final below the first.
+   - IN-4:
+     - gaps are in points (100 × gap);
+     - measure 2's two-sided p is the share of the 1,024 sign assignments whose mean has an absolute value at least the observed one's, the observed assignment included. A pair with no circuit both networks complete would be left out, with the flips over the remaining pairs. The bootstrap uses `numpy.random.default_rng(0)`;
+     - measure 3's arm means and difference are given per variant and pooled over the two variants, with the SD at ddof 1;
+     - E4.1 and E4.2 are read on the primary Δ, the paired mean and GW-4's statistic (both forms).
