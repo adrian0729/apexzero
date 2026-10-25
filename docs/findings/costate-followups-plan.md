@@ -970,3 +970,159 @@ scaffold's `cs-1 --check` ran, which computes nothing.
 7. **Outputs.** `outputs/costate/exploratory/cs-1/summary.json` and `rows.npz` (per row: the tail
    flag, the flags, the contributions, the norms, and the three calibrations' predictions). A copy
    of the summary goes to `docs/findings/costate-followups/cs-1-summary.json`.
+
+### Amendment 2 (2026-10-25)
+
+**What changed.** CS-2 to CS-5's operational details, where Section 4's text leaves a choice;
+two parts that cannot be done as written (CS-3's step 1 measures have no bound sha256, and
+CS-5's |ΔΠ|/SD_T needs BC-a0, which has not run); CS-5 runs in a worker pool. No question, row
+set or expected direction changes. **Why.** To fix these choices before any CS-2 to CS-5 number
+exists. **Computed or seen before it.** No CS-2 to CS-5 number. Read: the frozen code, the
+layouts of the bound files and of step 1's and step 2's outputs, and row counts that involve no
+network output: D's 477 rows are all interior and approach-phase; all 477 of T's keys have a
+step 1 deterministic run at their (cell, phase), 6 of them horizon twins (`w_is_cell` false);
+step 2's rows hold all 477 keys, 48 of them on capped stimuli. CS-1's rule for later items did
+not fire, so every R²_c below is the frozen calibration's only.
+
+1. **Shared.**
+   - **Networks.** The record's 34 pins: the 9 decision networks, the 22 other generalists
+     (`analysis.GENERALISTS` holds all 31) and S1–S3. Each checkpoint is loaded through its pin
+     (`scripts/costate.py`'s `load_agent`) for its obs_rms and PPOConfig only. CS-2 to CS-5
+     evaluate no trained network and do not unlock; CS-5's random-init critics need no unlock.
+   - **The frame.** Per network, `inputs.flags` under its obs_rms, `c1_frame` and its decision
+     mask (sha256 against `decisions.json` for the 9). The frozen C1 is recomputed first
+     (`analysis.c1`, no nulls, no slope CIs, no leave-one-geometry-out sets) and compared with
+     `decisions.json`'s `networks` or `descriptive_networks` record (r2c of s and ξ, stat, ci,
+     the per-fold a and b of s and ξ) to 10⁻⁸, or the item stops. Its calibrated predictions
+     are "the frozen out-of-fold predictions" below.
+   - **Rows, weights, CIs.** C1's rows of component k are `interior & valid[:, k]`, through
+     `guard_rows`. CS-2, CS-3 and CS-4 use C1's weights `w_in`; CS-5 the key weights
+     renormalised on its rows (`states.stratum_weights`). CIs are 95% percentile intervals on
+     the frozen counts (`probes.cluster_counts(48)`, stream costate_boot).
+   - **Reading the expected directions** (as amendment 1 item 5): a condition without a count
+     holds in at least 6 of the 9 decision networks; "every" and "all" mean every network or
+     head the condition names; point estimates unless a CI is named. Counts over the other
+     networks are reported beside, descriptively.
+   - **Outputs.** `outputs/costate/exploratory/<item>/summary.json` per item (CS-3 also
+     `tables.npz`, CS-4 and CS-5 `preds.npz`); a copy of each summary under
+     `docs/findings/costate-followups/`.
+
+2. **CS-2.**
+   - **Networks.** All 34 for steps 1, 2, 5, 6 and 7; the 31 generalists for steps 3 and 4.
+   - **Step 1.** The frozen out-of-fold predictions (clipped to the bounds) against T's
+     unwinsorised `lam_s` and `lam_xi`, R² (R²_wd for ξ) with its CI.
+   - **Step 2.** Raw R²: the frozen predictions against winsorised λ, SST about the overall
+     weighted mean (`analysis.boot_r2` with `odd` false). The floor: per outer fold and turn
+     direction, the `w_in`-weighted mean of winsorised λ over the training folds' C1 rows of the
+     component (the calibration's fit rows), as a prediction, scored by raw R² on C1's rows.
+     Both for s and ξ, with CIs.
+   - **Step 3.** `analysis.c1` on each head's pullback `g[:, 1 + i]` with everything else as
+     the frozen C1's. Per head: r2c of s and ξ, their mean (C1's statistic) and its CI. E2.2
+     reads the statistic: its CI upper end below 0.2, and within 0.1 of the main V's statistic.
+   - **Step 4.** ρ_k = `critic.head_reliability(g[rows, 1:6, k], w_in[rows])` on C1's rows of
+     s and ξ, and √ρ_k. Beside it: ξ's within-direction ρ (the direction-weight-weighted mean of
+     the two directions' ρ); each head's and the main V's weighted Pearson |corr(g_k, λ_k)| on
+     the same rows (within direction for ξ, the same mean), and whether any head's exceeds √ρ_k;
+     and ρ of all 8 components on the whole interior (network-only, no target, R5). Wiring:
+     `analysis.head_disagreement_boot`'s point for g_s and g_ξ on the interior equals
+     `decisions.json`'s C1-heads D to 10⁻⁸.
+   - **Step 5.** Per outer fold, R² (R²_wd for ξ) of the frozen predictions on that fold's C1
+     rows; the SD over the 6 folds (population SD, as `robustness_C1`'s), with the minimum and
+     maximum, for s, ξ and their per-fold mean.
+   - **Step 6.** D's rows are T's t = 0 rows (`d_rows`), all interior and approach-phase.
+     `analysis.c1` refitted on D (fit and scored rows D, each component within its mask), with
+     the key weights renormalised on D and the frozen counts (D spans all 48 geometries); its
+     band by C1's bands (no nulls). Co-reported: the interior-fitted frozen predictions scored
+     on D's rows under the same weights.
+   - **Step 7.** The accel term's share of g_vx per state, |g_vx − g_held,vx| / (|g_held,vx| +
+     |g_vx − g_held,vx|) (`critic.Pullback.accel_share`'s formula, main V). Rows: the interior;
+     C1's rows (the union of s's and ξ's); and each with t ≥ 1 (reset rows carry no accel term).
+     Per set, under the key weights renormalised on it: the weighted mean (E2.6 reads it on C1's
+     rows), the weighted median and the aggregate Σw|term| / Σw(|g_held| + |term|). The
+     accel-channel sensitivity is |`accel_sens[:, 0, 1]`| (σ_R ∂V_c/∂a_y, per m/s²), against
+     util_max = max(channel 212, channel 213) + 1 of the stored raw observation (CS-1's
+     companion): the weighted Spearman, and the weighted median of |sensitivity| in util_max
+     bins [0, 0.25), [0.25, 0.5), [0.5, 0.75), [0.75, 1) and [1, 2], on the same row sets.
+
+3. **CS-3.**
+   - **Residuals** for all 34 networks: per (network, geometry), the `w_in`-weighted mean over
+     the geometry's C1 rows of the component of (frozen prediction − winsorised λ_k), times σ
+     for ξ; missing where the geometry has no such row.
+   - **Step 2's G − 1 and B.** The rows file is read through `outputs/outputs/fields`
+     (`scripts/costate.py`'s `fields_out`). Its sha256 must equal the record's
+     `c3w_inputs.<run>.overlap_sha256` and its provenance stamp's, `opt-fields/rows.jsonl`'s
+     must equal its stamp's, and every row's `ckpt_sha256` must equal the network's pin. Per key,
+     `fields.stages.edge_key_measures(rows, opt, "G")` and `(…, "B")`: step 2's own exclusions,
+     with horizon twins and capped stimuli left out. Keys are matched to T's by key_id. Per
+     (network, geometry): the median over its keys with a finite value; G − 1 is that median of
+     G minus 1.
+   - **Step 1's measures.** `outputs/outputs/psychophysics/analysis/runs/<agent>_<t>.npz`, t the
+     pin's timesteps; its `timesteps` column must equal the pin's. **Cannot be done as written:**
+     step 1 binds no content hash for these tables, so their sha256 is recorded, not checked.
+     Per T key with `w_is_cell`: the `det` run at (cell_id, key_phase), whose stim and W must
+     equal the key's. The entry-speed ratio − 1 is its `e_ve`. The brake-onset residual is
+     s_b − s_b* = −`dd_b` (`dd_b` = d_b − d_b*, s_b = s_c0 − d_b), so earlier braking is
+     negative. Finite values only (a crashed run keeps a finite value, and is counted). Per
+     (network, geometry): the median over its keys.
+   - **Networks.** Per measure, the generalists that have it: G − 1 and B, the 29 whose step 2
+     rows the record binds; the entry speed and the brake onset, step 1's 9 generalist finals.
+     Descriptive: step 1's measures with S1–S3 added (they have no step 2 rows).
+   - **The statistic.** Per pair (s, ξ × the 4 measures): both tables restricted to the pair's
+     networks and double-centred (`analysis.double_centre`); the Pearson correlation over the
+     cells both hold (`analysis._corr_present`).
+   - **The permutation.** 10,000 draws (`constants.analysis.c3_int_perm`), stream costate_c3
+     sub-stream 1 (`analysis.c3_int`'s). Each draw permutes the geometry labels within each
+     network within the R tercile × θ class blocks (`states.r_tercile` and `theta_class` of T's
+     48 geometries), network by network as `c3_int` draws them, over the full list (the 31
+     generalists in `analysis.GENERALISTS` order, then S1–S3). The same draw serves every
+     measure, and the behaviour table is double-centred again in each. The p is two-sided:
+     (1 + #{|r_null| ≥ |r| − 10⁻¹²}) / (1 + draws). Holm's adjustment over the 8 primary pairs;
+     none for the descriptive ones.
+   - **E3.1** holds when every primary |r| < 0.15 and no Holm-adjusted p ≤ 0.05.
+
+4. **CS-4** (the 9 decision networks; per component, its C1 rows).
+   - **Inputs.** z = clip(the activations' z, ±10), the input the networks see (as
+     `probes_of`); winsorised λ; `w_in`; partition 0's folds subset to the rows.
+   - **R²_z** by `probes.ridge_cv` on z; **R²(z ⊕ g)** with g the main V's 8 pulled-back
+     components (`post/critic` `g[:, 0]`) as the hidden block (H_GRID: ∞ nests the base). Both
+     scored by `probes.probe_r2` (R²_wd for ξ). `analysis.delta_c1` on the same rows must agree
+     with them to 10⁻¹², or the item stops.
+   - **The MLP ceiling** by `probes.mlp_cv` on z. One component per call, so both components'
+     seeds are `mlp_rng(0, f, 0, j)`.
+   - **CIs** for R²_z, R²_MLP and R²(z ⊕ g), and the paired CI of ΔC1, on the frozen counts.
+   - **The ratio** `analysis.ratio_to_ceiling(R²_c, R²_MLP)` per component, R²_c the frozen one
+     (recomputed and checked, item 1).
+   - **Pooled:** one unit per (network, component), 18 units on 4 workers.
+   - **Readings.** E4.1 and E4.2 in at least 6 of 9, each component's condition separately;
+     E4.3 in all 9, both components; E4.4 in all 9, both components (point ≤ 0.02 and the CI
+     covering 0).
+
+5. **CS-5** (the 9 decision networks).
+   - **Rows.** T's interior rows of the approach and exit phases (1,581 + 72 = 1,653, the same
+     for every network), through `guard_rows`. Targets: Π^in, Π^out, Π^slip and Π^μ winsorised
+     at `frozen.winsor_bounds`, raw R² (even).
+   - **Probes.** `probes.ridge_cv` on z (clipped, as CS-4), on z ⊕ the actor's h3 and on z ⊕
+     the critic's h3, the four targets in one call (penalties per target).
+   - **Controls.** The actor's h3 against the 20 pool actors' stored h3 (`random0_h3` to
+     `random19_h3`); the critic's h3 against 20 random-init critics computed here
+     (`probes.random_critic(cfg, s)`, s = 0–19, the network's PPOConfig from its pinned
+     checkpoint, h3 on the network's z). Wiring: the pool actor of seed 0, rebuilt by
+     `probes.random_actor(cfg, 0)`, gives the stored `random0_h3` on these rows to 10⁻¹², or the
+     item stops.
+   - **Gains.** Per target, gain = R²(z ⊕ h3) − R²(z); the statistic is the trained gain minus
+     the median of the 20 controls' gains. Its CI is two-level, as C2's: each draw takes the
+     frozen counts' row and the frozen `probes.pool_draws(20)` row, and the median over the
+     drawn controls. The geometry-only CI and the network's rank among the controls are
+     co-reported.
+   - **Scores.** Each probe's R² and weighted Spearman (`analysis.spearman_boot`) of its
+     predictions against the target, with CIs.
+   - **W1 for reference.** `analysis.calibrated_agreement` of `dV_dwin` against Π^in on these
+     rows, in the confirmatory W1's arithmetic (raw target, predictions clipped to Π^in's
+     bounds), with a winsorised-target companion. The confirmatory W1 itself is not re-scored:
+     its rows include braking and corner rows (R5).
+   - **|ΔΠ|/SD_T. Cannot be done now:** BC-a0 has not run. It is reported with BC-a0.
+   - **Pooled:** one unit per network (9 units on 4 workers); CS-5 joins the pooled items.
+   - **Readings.** E5.1: Π^in's and Π^out's R²_z each ≥ 0.3, in at least 6 of 9. E5.2: in all
+     9, for both layers and all 4 targets, the statistic ≤ 0.05; a statistic above 0.05 with its
+     two-level CI's lower end above 0 is named. E5.3: Π^slip's and Π^μ's R²_z each below
+     Π^in's, in at least 6 of 9.
