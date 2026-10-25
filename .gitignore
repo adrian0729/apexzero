@@ -4,6 +4,13 @@
 # Demo exports embed TUMFTM-derived track geometry: regenerate with scripts/export_demo.py.
 /docs/demo/*.json
 /docs/demo/*.html
+# Rendered clips and frame sequences (scripts/render_demo.py) show the same geometry and are
+# large: regenerate them. Stills (*.png) carry the attribution footer and are committed.
+/docs/demo/*.webp
+/docs/demo/*.gif
+/docs/demo/*.apng
+/docs/demo/*.mp4
+/docs/demo/*-frames/
 *.parquet
 *.json.gz
 

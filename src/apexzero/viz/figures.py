@@ -48,6 +48,7 @@ SPEED_RAMP = LinearSegmentedColormap.from_list(
     "speed", ["#86b6ef", "#5598e7", "#2a78d6", "#1c5cab", "#104281", "#0d366b"])
 
 KPH = 3.6
+TUMFTM_ATTRIBUTION = "Track geometry: TUMFTM racetrack-database (LGPL-3.0)"
 
 
 def _style() -> dict:
@@ -325,14 +326,27 @@ def sector_losses(doc: dict, ghost: str | None = None, labelled: int = 3) -> Fig
     return fig
 
 
-def save_figures(doc: dict, out_dir: str | Path, stem: str, dpi: int = 160) -> list[Path]:
-    """Render all three figures to ``<out_dir>/<stem>-{map,speed-delta,sectors}.png``."""
+def add_footer(fig: Figure, text: str, height_in: float = 0.24) -> None:
+    """Reserve a strip of ``height_in`` inches along the bottom of a constrained-layout
+    figure and write ``text`` in it (e.g. the track data's licence)."""
+    strip = height_in / fig.get_figheight()
+    fig.get_layout_engine().set(rect=(0.0, strip, 1.0, 1.0 - strip))
+    with rc_context(_style()):
+        fig.text(0.006, 0.5 * strip, text, fontsize=7, color=MUTED, ha="left", va="center")
+
+
+def save_figures(doc: dict, out_dir: str | Path, stem: str, dpi: int = 160,
+                 footer: str | None = None) -> list[Path]:
+    """Render all three figures to ``<out_dir>/<stem>-{map,speed-delta,sectors}.png``, each
+    with ``footer`` along its bottom edge when given."""
     out = Path(out_dir)
     out.mkdir(parents=True, exist_ok=True)
     paths = []
     for suffix, fn in (("map", track_map), ("speed-delta", speed_and_delta),
                        ("sectors", sector_losses)):
         fig = fn(doc)
+        if footer:
+            add_footer(fig, footer)
         p = out / f"{stem}-{suffix}.png"
         with rc_context(_style()):
             fig.savefig(p, dpi=dpi)

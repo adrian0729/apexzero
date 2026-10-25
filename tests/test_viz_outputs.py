@@ -35,6 +35,23 @@ def test_figures_render(tmp_path):
         assert p.read_bytes()[:8] == b"\x89PNG\r\n\x1a\n" and p.stat().st_size > 5_000
 
 
+def test_the_footer_gets_its_own_strip():
+    from matplotlib.backends.backend_agg import FigureCanvasAgg
+
+    from apexzero.viz import figures
+
+    fig = figures.speed_and_delta(make_doc())
+    figures.add_footer(fig, figures.TUMFTM_ATTRIBUTION)
+    canvas = FigureCanvasAgg(fig)
+    canvas.draw()
+    assert figures.TUMFTM_ATTRIBUTION in [t.get_text() for t in fig.texts]
+    # Every Axes, labels included, sits above the strip the footer is written in.
+    strip = 0.24 / fig.get_figheight()
+    renderer = canvas.get_renderer()
+    for ax in fig.axes:
+        assert ax.get_tightbbox(renderer).y0 / fig.bbox.height >= strip - 1e-3
+
+
 def test_an_uncertified_optimum_is_labelled_so():
     from apexzero.viz import figures
 
