@@ -984,3 +984,250 @@ def test_all_networks_order(cx):
     assert nets[31:] == ["S1", "S2", "S3"]
     assert [cx.network_label(AN.network_of(lb)) for lb in cx.CS1_ORDER] == list(cx.CS1_ORDER)
     assert cx.network_label("S1") == "S1"
+
+
+# ------------------------------------------------------------------------- CS-10 and CS-11
+
+
+def _have_keys() -> bool:
+    from apexzero.costate import data_dirs
+
+    keys, stim = data_dirs()
+    return (keys / "nominal").exists() and (stim / "cells.json").exists()
+
+
+def test_cs10_cs11_are_registered_trained_pooled(cx):
+    for cmd in ("cs-10", "cs-11"):
+        it = cx.BY_CMD[cmd]
+        assert it.id in cx.COMPUTE and it.trained and it.pooled and not it.solves, cmd
+        assert {"world", "critic:decision", "checkpoints"} <= set(it.reads), cmd
+    assert "own" in cx.BY_CMD["cs-10"].reads
+    assert cx.OWN_STEPS == 800 and cx.OWN_QUARTERS == 4
+
+
+def test_own_states_follow_t_end(cx):
+    lm = SimpleNamespace(s_c0=100.0, s_apex=150.0, s_c1=200.0)
+    x = np.zeros((801, 8))
+    x[:, 0] = 3.0 * np.arange(801)                  # s_k = 3 k: s_c1 + 50 at k = 84
+    ks, te = cx.own_states(x, lm, 800)
+    assert te == 84 and ks.tolist() == list(range(0, 85, 5))
+    ks, te = cx.own_states(x, lm, 60)               # H before t_end: states below H, counted
+    assert te == -1 and ks.tolist() == list(range(0, 60, 5))
+    ks, _ = cx.own_states(x, lm, 80)
+    assert ks.max() < 80
+
+
+def test_own_interior_rule(cx):
+    from apexzero.costate import states as ST
+
+    n = 40
+    clear = np.full((n, 2), 1.0)
+    slip = np.full(n, 0.05)
+    clear[20, 1] = 0.2                              # below CLEARANCE_MIN, no contact
+    slip[30] = 5e-5                                 # slip contact
+    inner, contact, ok = cx.own_interior(clear, slip)
+    assert contact.tolist() == [i == 30 for i in range(n)]
+    assert ok.tolist() == [i not in (20, 30) for i in range(n)]
+    want = ST._window_all(ok, ST.INTERIOR_K)
+    assert np.array_equal(inner, want)
+    assert inner[9] and not inner[10] and not inner[20] and not inner[21] and not inner[30]
+    assert inner[31] and inner[n - 1]
+
+
+def test_run_inputs_reset_and_previous(cx):
+    x = np.arange(30.0).reshape(10, 3) @ np.ones((3, 8)) / 3.0
+    a = np.linspace(-2, 2, 20).reshape(10, 2)
+    inp = cx.run_inputs(x, a, [0, 5])
+    assert inp.reset.tolist() == [True, False]
+    assert np.array_equal(inp.x_prev[0], x[0]) and np.array_equal(inp.x_prev[1], x[4])
+    assert np.array_equal(inp.a_prev[0], [0.0, 0.0]) and np.array_equal(inp.a_prev[1], a[4])
+    assert np.array_equal(inp.prev_action[1], np.clip(a[4], -1, 1))
+
+
+def test_drop_reason_and_inside_field(cx):
+    from apexzero.fields import perturb as PT
+
+    assert cx.drop_reason(True, True, "x") == ""
+    assert cx.drop_reason(False, False, "") == "not alive through the horizon"
+    assert cx.drop_reason(False, True, "crashed before the window end") == \
+        "crashed before the window end"
+    assert cx.drop_reason(False, True, "") == "B <= 0"
+    f = PT.Samples(np.zeros(3), np.array([1.0, 2.0, 3.0]), np.array([4.0, 5.0, 6.0]))
+    assert cx.inside_field(f, 1).sum() == 6.0 and cx.inside_field(f, -1).sum() == 15.0
+
+
+def test_c1_own_wiring(cx):
+    a = np.arange(6 * 4 * 2, dtype=float).reshape(6, 4, 2)
+    b = np.arange(24, dtype=float).reshape(6, 4)
+    rec = {"r2c": [0.1, None, 0.2, None], "stat": 0.15, "ci": [-0.1, 0.3],
+           "calibration": {"a": a.tolist(), "b": b.tolist()}}
+    assert all(v == 0.0 for v in cx.c1_own_wiring(rec, json.loads(json.dumps(rec))).values())
+    other = json.loads(json.dumps(rec))
+    other["ci"] = [-0.1, 0.3 + 1e-6]
+    other["calibration"]["b"] = (b + np.array([0.0, 9.0, 0.0, 9.0])).tolist()
+    got = cx.c1_own_wiring(rec, other)
+    assert abs(got["ci"] - 1e-6) < 1e-12 and got["b"] == 0.0
+
+
+def test_cs10_expected(cx):
+    def net(dec, rows, ci, sp_lo):
+        return {"c1_own": {"decision": dec, "n_rows": rows, "ci": ci,
+                           "spearman_ci": [[0.0, 0.1], [sp_lo, 0.5]]},
+                "confirmatory": {"n_rows": [162, 161], "ci": [-0.5, 0.1]}}
+
+    nets = {f"G{i}": net("refute", [1700, 1650], [-0.1, 0.1], 0.1) for i in range(9)}
+    e = cx.cs10_expected(nets)
+    assert e["E10.1"]["holds"] and e["E10.2"]["holds"]
+    assert abs(e["ci_width_ratio"]["G0"] - 0.2 / 0.6) < 1e-12
+    nets["G0"] = net("refute", [1700, 1600], [-0.1, 0.1], -0.1)   # xi rows below 10 x 161
+    nets["G1"] = net("inconclusive", [1700, 1650], [-0.1, 0.25], -0.1)
+    nets["G2"] = net("refute", [1700, 1650], [-0.5, 0.15], -0.1)    # CI not half as wide
+    nets["G3"] = net("refute", [1700, 1650], [-0.1, 0.1], -0.2)
+    e = cx.cs10_expected(nets)
+    assert not e["E10.1"]["holds"]
+    assert e["E10.1"]["rows_x10"]["count"] == 8 and e["E10.1"]["refute"]["count"] == 8
+    assert e["E10.1"]["ci_half_as_wide"]["count"] == 7
+    assert e["E10.2"]["count"] == 5 and not e["E10.2"]["holds"]
+
+
+def test_cs11_expected(cx):
+    def net(r_co, r_copt, b_gl, b_hi, r_oo):
+        return {"common": {"critic_own": {"r2c": r_co}, "critic_optimum": {"r2c": r_copt},
+                           "own_optimum": {"r2c": r_oo, "b_gl": b_gl, "b_gl_ci": [0.0, b_hi]}}}
+
+    nets = {f"G{i}": net(0.3, 0.1, 0.5, 0.8, 0.05) for i in range(6)}
+    nets.update({f"H{i}": net(0.0, 0.1, 0.9, 1.2, 0.3) for i in range(3)})
+    e = cx.cs11_expected(nets)
+    assert all(e[k]["holds"] and e[k]["count"] == 6 for k in ("E11.1", "E11.2", "E11.3"))
+    nets["G0"] = net(0.3, 0.1, float("nan"), 0.8, float("nan"))
+    e = cx.cs11_expected(nets)
+    assert e["E11.2"]["count"] == 5 and e["E11.3"]["count"] == 5 and not e["E11.2"]["holds"]
+
+
+def _own_frame(cx, drop=False):
+    rec = json.loads(PREREG.read_text())
+    geos = rec["frozen"]["geometries"]
+    keys, recs = [], []
+    tab = {c: [] for c in ("key_id", "stim_id", "pair_id", "direction", "R", "theta", "W",
+                           "width", "s_apex", "s_c0", "s_c1", "s_b")}
+    for i, (R, th) in enumerate(geos):
+        for c, v in (("key_id", f"k{i}"), ("stim_id", i), ("pair_id", i), ("direction", 1),
+                     ("R", R), ("theta", th), ("W", 400), ("width", 12.0), ("s_apex", 150.0),
+                     ("s_c0", 100.0), ("s_c1", 200.0), ("s_b", 120.0)):
+            tab[c].append(v)
+        keys.append({"row": i, "lm": (100.0, 150.0, 200.0), "s_b": 120.0})
+        if drop and i == 3:
+            recs.append({"kept": False, "ks": np.array([0]), "t_end": -1,
+                         "x": np.zeros((1, 8))})
+            continue
+        ks = np.arange(0, 30, 5)
+        x = np.zeros((len(ks), 8))
+        x[:, 0] = 90.0 + 25.0 * np.arange(len(ks))       # every phase, approach to exit
+        recs.append({"kept": True, "ks": ks, "t_end": 25, "x": x,
+                     "lam": np.ones((len(ks), 8)), "lam_held": np.ones((len(ks), 8)),
+                     "g": np.ones((len(ks), 8)), "g_held": np.ones((len(ks), 8)),
+                     "clearance": np.ones((len(ks), 2)), "value": np.ones(len(ks)),
+                     "slip_margin": np.ones(len(ks)), "interior": np.ones(len(ks), bool),
+                     "contact": np.zeros(len(ks), bool), "mapped": ks > 0,
+                     "s_unobservable": np.zeros(len(ks), bool)})
+    tab = {k: np.asarray(v) for k, v in tab.items()}
+    return rec, keys, recs, tab
+
+
+def test_own_table_and_its_frame(cx):
+    rec, keys, recs, tab = _own_frame(cx, drop=True)
+    t, arr = cx.own_table(keys, recs, tab)
+    n = len(t["k"])
+    assert n == 6 * 47 + 1 and len(arr["lam"]) == n
+    i3 = np.flatnonzero(t["key_id"] == "k3")
+    assert len(i3) == 1 and not t["kept"][i3[0]] and not t["interior"][i3[0]]
+    assert np.isnan(arr["lam"][i3]).all() and np.isnan(arr["g"][i3]).all()
+    ph = t["phase"][t["key_id"] == "k0"].tolist()
+    assert ph == ["approach", "approach", "braking", "corner", "corner", "exit"]
+    assert cx.own_frame_problems(t, rec["frozen"]) == []
+    sub = {k: v[t["key_id"] != "k5"] for k, v in t.items()}
+    assert cx.own_frame_problems(sub, rec["frozen"]) == [
+        "the own-run table's geometries are not the frozen ones"]
+
+
+def test_own_c1_records_refuse_braking_rows(cx):
+    rec, keys, recs, tab = _own_frame(cx)
+    t, arr = cx.own_table(keys, recs, tab)
+    from apexzero.costate import states as ST
+
+    valid = ST.decision_mask(t, None, rec["frozen"]["k2b_excluded"])
+    rows = t["kept"] & t["interior"]                # includes braking and corner rows
+    with pytest.raises(cx.RowsRefused):
+        cx.own_c1_records(t, arr, rows, valid, rec["frozen"], None, True, True)
+    ok = rows & np.isin(t["phase"], cx.SCORED_PHASES)
+    assert not valid[ok & (t["phase"] == "exit"), 2].any()    # xi: approach only (K2b)
+
+
+_OWN_UNITS = r"""
+import json, sys
+import jax
+jax.config.update("jax_enable_x64", True)
+import numpy as np
+sys.path.insert(0, sys.argv[1])
+import costate_exploratory as cx
+from apexzero.costate import critic as CR, inputs as IN, own as OW
+from apexzero.fields import network as NW, outcomes as O
+
+bank, cells = IN.design()
+st = NW.cell_start(cells[344], 0, bank)
+lm = bank.stimuli[st.stim_id].landmarks
+kd = {"key_id": "cell344", "row": 0, "x0": np.asarray(st.x0, float), "stim_id": int(st.stim_id),
+      "direction": int(st.sigma), "W": 400, "s_b": float(lm.s_c0),
+      "lm": (lm.s_c0, lm.s_apex, lm.s_c1)}
+rng = np.random.default_rng(3)
+crit = CR.linear_critic(rng.standard_normal(222) * 1e-2, 0.1, None, sigma=2.0)
+W, b = NW.linear_driver(kd["direction"])
+W = W.copy()
+W[:, CR.ACCEL] += 0.2 * np.asarray(OW.ACCEL_WEIGHTS, np.float32)   # it reads accel
+net = NW.linear_net(W, b)
+cx.own_nets = lambda agent: (net, crit)             # untrained stand-ins (no unlock needed)
+state, unit = {"keys": [kd]}, {"label": "t", "agent": None, "keys": [0]}
+r10 = cx.cs10_unit(state, unit)
+r11 = cx.cs11_unit(state, unit)
+k10, k11 = r10["keys"][0], r11["keys"][0]
+rd = NW.road(bank, kd["stim_id"])
+oc = OW.own_costate(net, rd.base, cx.own_start(kd["x0"]), 800, k10["H"], reset=True)
+clear, slip = cx.run_margins(rd.base, oc.x)
+side = 0 if kd["direction"] > 0 else 1
+inp = CR.Inputs(kd["x0"][None], kd["x0"][None], np.zeros((1, 2)), np.array([True]))
+pb0 = CR.pullback(crit, None, inp, CR.obs_jacobians(rd.base, inp))
+print(json.dumps({
+  "kept": k10["kept"], "H": k10["H"], "restart": r10["restart"]["error"],
+  "ks0": int(k10["ks"][0]), "mapped0": bool(k10["mapped"][0]), "mapped1": bool(k10["mapped"][1]),
+  "held_differs": float(np.max(np.abs(k10["lam"][1:] - k10["lam_held"][1:]))),
+  "g0_gap": float(np.max(np.abs(k10["g"][0] - pb0.g[0, 0]))),
+  "clear_gap": float(np.max(np.abs(clear[:, side] - O.clearance_np(oc.x, rd.base, kd["direction"])))),
+  "t_end": k10["t_end"], "n_states": len(k10["ks"]),
+  "kept_W": k11["kept_W"], "kept_H": k11["kept_H"], "j_gap": k11["j_gap"],
+  "jvp": r11["checks"]["error"], "fd": r11["fd"]["error_J_env"], "B_W": k11["B_W"],
+  "pi_W": k11["pi_own_W"], "field_sum": float(np.sum(k11["field_W"], dtype=np.float64)),
+  "dv_gap": abs(k11["dV_dwin"] - float(IN.width_derivative(crit, rd, inp, kd["direction"])[0]))}))
+"""
+
+
+@pytest.mark.skipif(not _have_keys(), reason="step 1's keys or stimuli are missing")
+def test_cs10_cs11_units_on_a_planted_driver():
+    """CS-10's and CS-11's units on step 2's linear driver with accel weights (untrained) and
+    a planted linear critic, from cell 344's start: the run is kept, the restarts reproduce
+    the on-manifold sweep (which differs from the held one), state 0 is a reset row whose
+    pullback is the critic's at D, the clearances are outcomes' c(s), the width VJP equals
+    the JVP and Richardson differences, its J is own_return's, and dV_dwin is
+    inputs.width_derivative's (a float64 subprocess)."""
+    r = subprocess.run([sys.executable, "-c", _OWN_UNITS, str(SCRIPTS)], capture_output=True,
+                       text=True, cwd=REPO, timeout=900, check=False)
+    assert r.returncode == 0, r.stderr[-3000:]
+    out = json.loads(r.stdout.strip().splitlines()[-1])
+    assert out["kept"] and out["H"] == 800 and out["n_states"] >= 10 and out["t_end"] > 0
+    assert out["restart"] <= 1e-9
+    assert out["ks0"] == 0 and not out["mapped0"] and out["mapped1"]
+    assert out["held_differs"] > 0.0
+    assert out["g0_gap"] <= 1e-12 and out["clear_gap"] <= 1e-12
+    assert out["kept_W"] and out["kept_H"] and out["B_W"] > 0
+    assert out["j_gap"] <= 1e-12 and out["jvp"] <= 1e-9 and out["fd"] <= 1e-6
+    assert abs(out["field_sum"] - out["pi_W"]) <= 1e-6 * max(abs(out["pi_W"]), 1e-9)
+    assert out["dv_gap"] <= 1e-12
