@@ -222,9 +222,10 @@ MNA equals a port of the reference code to $10^{-10}$ for $\lambda \in \{0.9, 0.
 0.98\}$.
 % src: tests/test_estimators.py (test names E1 ... E19; test_pvl_matches_jaxued_on_completed_episodes;
 %      test_E15_mna_closed_form_equals_reference_port, atol 1e-10)
+% src: tests/test_ued_plr.py (P-1--P-9), tests/test_ued_sfl.py (S-1--S-4): the samplers are built
+%      and their spec tests pass
 \TODO{implement spec tests E-7 (R\textsubscript{max} history), E-12 (MNA incomplete tail),
-E-17 (chunk property test against JaxUED's accumulator), E-18 (online equals offline) and
-the sampler tests P-1--P-9 and S-1--S-4; the samplers themselves are not built yet}
+E-17 (chunk property test against JaxUED's accumulator) and E-18 (online equals offline)}
 
 \subsection{Deviations from the reference code}
 \label{sec:est-deviations}

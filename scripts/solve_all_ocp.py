@@ -1,9 +1,12 @@
-"""Solve the minimum-lap-time OCP on every TUMFTM circuit and check it against the simulator.
+"""Solve the minimum-lap-time OCP on the R-dev circuits and check it against the simulator.
 
     uv run python scripts/solve_all_ocp.py --workers 4
 
-Writes outputs/ocp/<track>.pkl and outputs/ocp/summary.csv. The P2 gate is convergence
-on at least 23 of 25 circuits with shooting consistency under 0.3%.
+Writes outputs/ocp/<track>.pkl and outputs/ocp/summary.csv. With no --tracks it solves R_DEV
+(``apexzero.tracks.corners``). Every requested circuit goes through ``viz.export.lockbox_guard``,
+so no optimum is solved on a lockbox (R_TEST) circuit until protocol-v1 unseals it (STATUS,
+'Protocol deviation'; the first all-circuit batch is sealed). The original P2 gate was
+convergence on at least 23 of 25 circuits with shooting consistency under 0.3%.
 """
 
 import argparse
@@ -56,8 +59,13 @@ if __name__ == "__main__":
     ap.add_argument("--out", default="outputs/ocp")
     ap.add_argument("--tracks", nargs="*")
     args = ap.parse_args()
+    from apexzero.tracks.corners import R_DEV
+    from apexzero.viz.export import lockbox_guard
+
+    names = args.tracks or list(R_DEV)
+    for n in names:
+        lockbox_guard(n)   # refuses R_TEST circuits (and their variants) before any solve
     Path(args.out).mkdir(parents=True, exist_ok=True)
-    names = args.tracks or sorted(p.stem for p in Path("data/tracks/tumftm").glob("*.csv"))
     rows = []
     with ProcessPoolExecutor(args.workers) as pool:
         futs = {pool.submit(solve_one, n, args.ds, args.out): n for n in names}
