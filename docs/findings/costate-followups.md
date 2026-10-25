@@ -498,3 +498,229 @@ CIs and ranks are shown where the CI's lower end is at or above 0; bold marks a 
   shadow price anywhere". It is exploratory, and CS-7 (the critic's layers on λ) is the item that
   tests the same reading for the costate itself.
 - None of this changes a decision of `costate-prereg-v1`.
+
+## CS-10 and CS-11: the runs (exploratory)
+
+- **CS-10 (ii).** `scripts/costate_exploratory.py cs-10` at `705c5c2`, under the plan with
+  amendment 3 (`c9b79db`: CS-10's and CS-11's operational details on D, committed before any of
+  their numbers). It ran 36 units (network × quarter of D's keys) on 4 workers × 2 XLA threads,
+  niced, in 15 min (worker time 372–454 s per network). The plan's estimate was about 45 min
+  plus 4 min per network. The cost had been measured on a random-init stand-in (amendment 3).
+- **CS-11 on D.** `cs-11` at `b340a50`, under the plan with amendments 3–6, with the same pool,
+  in 29 min (worker time 738–879 s per network). The plan's estimate was 15–50 min. The cost was
+  measured on G1 first, in a development run written outside `outputs/costate` (amendment 4).
+  Three earlier canonical runs stopped on wiring round-off and wrote nothing. Amendments 4–6
+  (committed before each rerun) widened two cross-program tolerances to K3's 10⁻⁶, rescaled the
+  dV_dwin check, and made the units stop at the first failure. Each records the single gap that
+  run showed.
+- **Stamps.** Both outputs record an empty `changed_vs_head`, no partial flag, the plan's sha256
+  with its amendment count (3 for CS-10, 6 for CS-11), and the sha256 of every input:
+  - CS-10, 47 files: the world and its summary, the 9 networks' critic and K3 files, their own and
+    K3b files, and their checkpoints through the record's pins;
+  - CS-11, 29 files: the same without the own and K3b files.
+
+  They were re-verified before this note:
+  - each stamp's script sha256 is the script's blob at its HEAD, and its plan sha256 is the plan
+    at `c9b79db` (CS-10) or `d06f28e` (CS-11);
+  - the `rows.npz` sha256s and the summaries' content sha256s were recomputed and match;
+  - every input still has its stamped sha256, and the script's `verify` reports 0 problems.
+
+  CS-10's code is unchanged from `705c5c2` to `b340a50`: amendments 4–6 touched CS-11's checks
+  only.
+- **The runs.** From each of D's 477 keys (x_0, a_{−1} = 0, accel 0), each network's
+  deterministic policy drives for 800 steps.
+  - 1–24 runs per network terminate within 800 steps and are dropped from both items. The counts
+    are the same in both items: G1 9, G1s1 8, G1s2 24, G2 24, G2s1 17, G2s2 20, G3 1, G3s1 8,
+    G3s2 12.
+  - Every other run lasts the full 800 steps (none reaches the strip's end) and passes
+    s_c1 + 50 m. At both of CS-11's horizons it keeps a positive inside buffer (median B
+    0.96–1.55 m).
+  - So CS-11's common rows, its rows kept at H and its rows kept at W are the same 453–476 per
+    network, and its two companions repeat the primary.
+- **Wiring checks (all passed).**
+  - **CS-10.**
+    - The confirmatory C1-own, recomputed on T's restarts, reproduces `decisions.json` exactly
+      (gap 0 in r2c, stat, ci and the per-fold a and b of s and ξ).
+    - The pullback at every kept run's state 0 equals the stored g at the key's D row bit for bit.
+    - The restarts at ⌊0.25 H⌋ and ⌊0.6 H⌋ reproduce the sweep's λ^own and λ^own_held to at most
+      1.5·10⁻¹⁰ of the row's largest |λ| (G2s2; tolerance 10⁻⁹).
+  - **CS-11.**
+    - The recomputed dV_dwin is within 9.0·10⁻¹⁵ of the stored one, as a share of the network's
+      largest |dV_dwin| (tolerance 10⁻⁹).
+    - The width loop's J matches `own_return`'s to at most 4.2·10⁻¹⁰ relative (G1s2; tolerance
+      10⁻⁶).
+    - The JVP matches the VJP's contraction to at most 5.6·10⁻⁸ (G2s2; tolerance 10⁻⁶), on 36 keys
+      (one per unit).
+    - **Descriptive.** On those 36 keys, Richardson differences of J_env at h = 10⁻³ m differ from
+      the AD value by a median of 3·10⁻⁷ relative, at most 8.7·10⁻³ (one G2s1 key). Every perturbed
+      run stays alive.
+- **No calibration but the frozen one** (CS-1's rule for later items did not fire).
+
+## CS-10. C1-own on own-run states (exploratory)
+
+**Outputs.** `outputs/costate/exploratory/cs-10/summary.json` (committed copy:
+[`costate-followups/cs-10-summary.json`](costate-followups/cs-10-summary.json)) and `rows.npz`
+(per state, local).
+
+**Rows.** The scored states are the kept runs' every-5th states up to each run's own t_end, in
+the approach and exit phases, under the own interior flag: 4,079–4,445 per network.
+- λ_s is scored on the 2,223–2,298 of them where s is observable. That is 13.6–14.1 times the
+  confirmatory C1-own's 162–163 s rows.
+- λ_ξ is scored on the approach rows, 1,814–1,853, which is 11.2–11.5 times its 161–162 ξ rows.
+- No braking or corner row is scored (decision #8, plan R5). The own-run tables hold
+  3,248–3,657 braking and 2,555–2,931 corner states, which are only counted.
+
+| Network | runs kept (terminated) | rows s / ξ | R²_c s / ξ | C1-own statistic [CI] | CI width / confirmatory's | ξ Spearman [CI] | confirmatory C1-own [CI] |
+|---|---|---|---|---|---|---|---|
+| G1 | 468 (9) | 2,269 / 1,838 | −0.004 / −0.003 | −0.004 [−0.036, −0.002] | 0.130 | −0.05 [−0.16, 0.07] | −0.122 [−0.313, −0.048] |
+| G1s1 | 469 (8) | 2,298 / 1,849 | −0.010 / −0.003 | −0.006 [−0.023, −0.004] | 0.001 | 0.19 [0.10, 0.26] | −0.054 [−31.190, −0.034] |
+| G1s2 | 453 (24) | 2,238 / 1,820 | 0.003 / −0.009 | −0.003 [−0.040, 0.013] | 0.005 | 0.12 [0.01, 0.23] | −0.047 [−11.153, −0.034] |
+| G2 | 453 (24) | 2,223 / 1,814 | −0.044 / −0.024 | −0.034 [−0.084, −0.021] | 0.194 | −0.12 [−0.25, 0.01] | 0.029 [−0.284, 0.046] |
+| G2s1 | 460 (17) | 2,228 / 1,814 | −0.004 / −0.017 | −0.010 [−0.054, −0.008] | 0.081 | −0.04 [−0.17, 0.09] | 0.026 [−0.425, 0.146] |
+| G2s2 | 457 (20) | 2,247 / 1,833 | −0.005 / −0.017 | −0.011 [−0.055, −0.007] | 0.044 | −0.15 [−0.24, −0.04] | −0.150 [−0.979, 0.115] |
+| G3 | 476 (1) | 2,258 / 1,853 | −0.006 / −0.025 | −0.016 [−0.131, −0.012] | 0.180 | 0.21 [0.09, 0.31] | −0.126 [−0.624, 0.035] |
+| G3s1 | 469 (8) | 2,270 / 1,849 | −0.017 / −0.038 | −0.028 [−0.100, 0.005] | 0.105 | 0.10 [0.01, 0.19] | −0.075 [−0.878, 0.113] |
+| G3s2 | 465 (12) | 2,235 / 1,840 | 0.014 / 0.105 | 0.060 [−0.0005, 0.117] | 0.135 | 0.33 [0.19, 0.45] | −0.031 [−0.716, 0.152] |
+
+The statistic is C1-own's (`analysis.c1_own`: λ^own raw, the frozen calibration, partition 0's
+folds, key weights, the 48-geometry bootstrap). The last column is the confirmatory C1-own on
+T's restarts (`decisions.json`, reproduced here).
+
+- **The refute holds at the states the policies reach.** Every network's statistic is in the
+  refute band; the largest CI upper end is 0.117 (G3s2). R²_c is −0.044 to 0.014 for s and
+  −0.038 to 0.105 for ξ. The CIs are 0.001–0.19 times as wide as the confirmatory C1-own's.
+- **Rank agreement is weak and changes sign.** ξ's Spearman is −0.15 to 0.33: its CI is above 0
+  in 5 networks (0.10–0.33) and below 0 in G2s2 (−0.15). s's Spearman is −0.08 to 0.18, with its
+  CI above 0 in 3 (G1s2, G2, G3s2).
+- **Companions (descriptive).**
+  - With λ^own winsorised at T's frozen bounds and the predictions clipped there, every network
+    is still in the refute band (statistic −0.044 to 0.056, CI upper ends at most 0.107).
+  - The accel-held form repeats the primary. On s, n and ξ the held λ^own and g equal the
+    on-manifold ones to round-off (at most 5·10⁻¹³ on the scored rows); they differ only from vx
+    on.
+- **Where the own runs are.**
+  - The own interior covers almost every run state (median share 1.0); contact touches 0–4 kept
+    states in the scored phases.
+  - The own-run ξ rows sit closer to the apex than T's: key-weighted median s − s_apex is −82.0 to
+    −80.0 m, against T's −89.7 m. Their median vx is 54.7–55.6 m/s, against T's 55.6 m/s.
+
+**Expected directions against the results.**
+- **E10.1** ("C1-own on own-run states is in the refute band in all 9, on at least 10 times
+  C1-own's rows, with CIs at most half as wide"): **holds**, each part in 9 of 9. The rows are
+  13.6–14.1 times (s) and 11.2–11.5 times (ξ) the confirmatory C1-own's, and the CI widths are
+  0.001–0.19 times theirs.
+- **E10.2** ("ξ's Spearman is positive (CI lower end > 0) in at least 6 of 9"): **does not
+  hold**: 5 of 9 (G1s1, G1s2, G3, G3s1, G3s2). G2s2's is negative with its CI below 0, and G1,
+  G2 and G2s1's CIs include 0.
+
+**What CS-10 says (exploratory).**
+- **The gap is in the critic's gradient itself** (the plan's reading of a refute here). The
+  plan offered two other places for it:
+  - T's restarts from the optimum's states. Here the critic is scored where its own policy
+    drives, on 11–14 times the rows.
+  - The optimum-versus-policy terms of design Section 3.3. Here the target is the policy's own
+    costate.
+
+  Neither rescues it. On approach and exit rows no network's R²_c exceeds 0.105, and no CI's
+  upper end reaches 0.12.
+- **Ranks.** On ξ the critic's gradient carries a weak positive rank signal in 5 networks (all
+  three v3 seeds among them). Its sign is not stable across seeds.
+- **Scope.** Approach and exit rows only (decision #8). The braking and corner rows, where most
+  of the own runs' states lie, are untouched and stay open for BC-1. N's C1-own (CS-10 (iii))
+  waits for CS-9.
+
+## CS-11. The policy's own width price Π^{in,own} (exploratory)
+
+**Outputs.** `outputs/costate/exploratory/cs-11/summary.json` (committed copy:
+[`costate-followups/cs-11-summary.json`](costate-followups/cs-11-summary.json)) and `rows.npz`
+(per key, local; it holds the inside-width fields ∂J/∂w_in(s_j) at both horizons).
+
+**Rows.** D's 477 rows are all approach-phase interior rows of T, with no multi-basin row. The
+scored rows are the kept keys' rows, 453–476 per network, under key weights renormalised on
+them.
+
+**What is compared.**
+- Π^{in,own} is the derivative of the policy's discounted return with respect to a uniform inside
+  widening. It is taken at H = W for the comparison with the optimum (W is 400 or 800 at D) and
+  at H = 800 for the comparison with the critic.
+- dV_dwin is the critic's stored derivative at D (σ_R-scaled), and Π^in is the optimum's price
+  (winsorised at its frozen bounds as a target).
+- Every quantity is in reward units per metre.
+
+| Network | rows | critic–own R²_c [CI] | critic–optimum R²_c [CI] | own–optimum R²_c [CI] | Spearman: critic–own / critic–optimum / own–optimum | b_gl, Π^{in,own} on Π^in [CI] | medians: Π^{in,own} (H = W) / Π^in / dV_dwin |
+|---|---|---|---|---|---|---|---|
+| G1 | 468 | 0.047 [−0.045, 0.159] | 0.145 [−0.047, 0.214] | 0.268 [0.062, 0.399] | 0.48 / 0.42 / 0.51 | 0.61 [0.43, 0.82] | 0.143 / 0.230 / 0.306 |
+| G1s1 | 469 | 0.112 [−0.0001, 0.215] | 0.217 [−0.012, 0.327] | 0.390 [0.195, 0.531] | 0.48 / 0.54 / 0.62 | 0.75 [0.53, 0.98] | 0.174 / 0.229 / 0.319 |
+| G1s2 | 453 | 0.008 [−0.024, 0.032] | 0.239 [0.042, 0.322] | 0.079 [−0.200, 0.251] | 0.34 / 0.50 / 0.49 | 0.41 [0.06, 0.81] | 0.198 / 0.233 / 0.412 |
+| G2 | 453 | 0.031 [−0.078, 0.114] | 0.068 [−0.123, 0.144] | 0.291 [0.109, 0.402] | 0.43 / 0.39 / 0.57 | 0.77 [0.49, 1.13] | 0.127 / 0.233 / 0.280 |
+| G2s1 | 460 | 0.019 [−0.165, 0.054] | 0.280 [0.105, 0.378] | 0.076 [−0.130, 0.168] | 0.40 / 0.54 / 0.39 | 0.89 [0.38, 1.57] | 0.065 / 0.231 / 0.278 |
+| G2s2 | 457 | −0.007 [−0.202, 0.021] | 0.129 [−0.093, 0.229] | 0.282 [0.043, 0.436] | 0.26 / 0.46 / 0.61 | 0.82 [0.45, 1.23] | 0.176 / 0.232 / 0.415 |
+| G3 | 476 | −0.030 [−3.824, −0.024] | 0.263 [0.094, 0.338] | 0.275 [0.067, 0.414] | 0.45 / 0.55 / 0.56 | 2.55 [0.67, 6.30] | 0.092 / 0.228 / 0.277 |
+| G3s1 | 469 | 0.037 [−0.212, 0.147] | 0.334 [0.132, 0.445] | 0.343 [0.162, 0.470] | 0.60 / 0.58 / 0.60 | 1.09 [0.62, 1.78] | 0.085 / 0.229 / 0.265 |
+| G3s2 | 465 | 0.013 [−0.102, 0.102] | 0.350 [0.134, 0.463] | 0.049 [−0.199, 0.235] | 0.39 / 0.60 / 0.35 | 0.54 [0.16, 0.97] | 0.090 / 0.230 / 0.365 |
+
+The R²_c is the calibrated R² under C1's rule, out of fold (`analysis.calibrated_agreement`;
+no row went uncalibrated). b_gl is the pooled WLS slope of Π^{in,own} on Π^in. Medians are
+key-weighted.
+
+- **The critic agrees with its own policy's price least.**
+  - Critic–own R²_c is −0.030 to 0.112, with every CI's lower end at or below 0 (upper ends at
+    most 0.215).
+  - On the same rows, critic–optimum is 0.068–0.350 (CI above 0 in 5 of 9) and own–optimum is
+    0.049–0.390 (CI above 0 in 6 of 9).
+  - All three Spearmans are moderate (0.26–0.63).
+- **The policy's price has the optimum's shape at a smaller size.**
+  - In the 6 networks where own–optimum is 0.27–0.39 with its CI above 0, the policy's price
+    tracks the optimum's at least as well as the critic's derivative tracks either (in G3 and
+    G3s1 by only 0.01).
+  - The policy's median price is 28–85% of Π^in's in 9 of 9 (0.065–0.198 against 0.228–0.233).
+    The critic's median dV_dwin (0.265–0.415) is larger than both.
+- **The horizon hardly matters.** Π^{in,own}'s medians at H = W and H = 800 differ by at most
+  0.006, and no kept row has Π^{in,own} = 0.
+
+**Expected directions against the results.**
+- **E11.1** ("The critic agrees better with its own policy's price than with the optimum's
+  (calibrated R² critic–own above critic–optimum) in at least 6 of 9"): **does not hold**: 0 of 9.
+  By Spearman, critic–own is higher in 3 (G1, G2, G3s1).
+- **E11.2** ("The policy's price is smaller than the optimum's: the pooled slope of Π^{in,own} on
+  Π^in is below 1 with its CI below 1, in at least 6 of 9"): **does not hold**: 4 of 9 (G1,
+  G1s1, G1s2, G3s2).
+  - The point slope is below 1 in 7. G3 (2.55 [0.67, 6.30]) and G3s1 (1.09) are above.
+  - The medians are smaller in 9 of 9.
+- **E11.3** ("The own-policy–optimum agreement is low (calibrated R² < 0.2)"): **does not hold**:
+  3 of 9 (G1s2 0.079, G2s1 0.076, G3s2 0.049). In the other 6 it is 0.27–0.39 with its CI above
+  0.
+
+**What CS-11 says (exploratory).**
+- **The plan's first reading is not supported at the level of the policy.** That reading was
+  "the networks do not value the inside wall the way the optimum does", which needed E11.1 with
+  E11.3, and neither holds. In 6 of 9 networks the policy's own price of the inside wall agrees
+  with the optimum's in rank and, moderately, after calibration (R²_c 0.27–0.39). It is smaller,
+  as a policy that keeps a buffer would have it.
+- **The plan's second reading applies.** In all 9 the critic disagrees with its own policy's
+  price (R²_c at most 0.11), more than with the optimum's. So the critic misprices the wall even
+  relative to what its own driving earns.
+  - In 6 of 9 the mismatch W1 found lies in the critic's derivative, not in the policy's
+    valuation.
+  - In G1s2, G2s1 and G3s2 the policy's price also agrees poorly with the optimum's (R²_c below
+    0.08).
+- **Caveats.**
+  - D only (477 reset starts on the approach).
+  - One widening direction, the uniform inside widening.
+  - Π^{in,own} reaches the wall only through the policy's observation: the env's termination
+    test is not differentiated, and kept runs never terminate.
+  - The critic's dV_dwin is the derivative of a learned value at γ = 0.995, compared with the
+    800-step return's.
+  - N's CS-11 waits for CS-9.
+
+## CS-10 and CS-11: where they leave the refute (exploratory)
+
+- **On the policies' own states, the critics' gradients still do not express their policies'
+  costate** on approach and exit rows (CS-10). This holds with 11–14 times the rows and much
+  narrower CIs than the confirmatory C1-own.
+- **In 6 of 9 the policies price the inside wall roughly as the optimum does**, only smaller
+  (Spearman 0.35–0.63; calibrated R² 0.27–0.39, CI above 0). **The critics price it unlike their
+  own policies in all 9** (CS-11).
+- There the networks' driving carries a smaller copy of the wall's price, and the critic's input
+  gradient is what fails to express it.
+- None of this changes a decision of `costate-prereg-v1`.
