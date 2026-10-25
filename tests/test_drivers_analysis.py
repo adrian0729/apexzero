@@ -338,6 +338,42 @@ def test_placebo_and_split_half_separate_real_effects_from_none():
     assert abs(sh0.rho) < 0.5 and sh0.p_value > 0.05
 
 
+def test_profile_removes_a_uniform_pace_gap_and_keeps_a_local_one():
+    tab = _table(np.zeros(6), noise=0.0)
+    slower = tab.phase_t.copy()
+    slower[tab.driver == 2] *= 1.01        # every phase 1% slower
+    tab = _with_phase_times(tab, slower)
+    shares = dl.time_shares(tab)
+    agg = dl.aggregate(dl.pair_delta(tab, "T0").delta, tab.labels, "type")
+    assert min(abs(v) for v in agg.values()) > 1e-3
+    assert all(abs(v) < 1e-12 for v in dl.profile_deltas(agg, shares).values())
+    # A local effect survives (diluted by its share of the lap), and profiles sum to zero.
+    local = slower.copy()
+    local[tab.driver == 2, 0] += 0.05
+    tab = _with_phase_times(tab, local)
+    prof = dl.profile_deltas(dl.aggregate(dl.pair_delta(tab, "T0").delta, tab.labels, "type"),
+                             dl.time_shares(tab))
+    assert prof[("slow", "entry")] > 0.03
+    assert abs(sum(prof.values())) < 1e-12
+
+
+def test_split_half_profile_ignores_a_reliable_overall_gap():
+    """Pairs differ only by a uniform pace gap that repeats in every session: the raw
+    statistic calls that reliable, the profile does not."""
+    gaps = np.linspace(-0.012, 0.012, 8)
+    tabs = []
+    for s in range(4):
+        tab = _table(np.zeros(6), noise=0.002, seed=s, teams=len(gaps))
+        pt = tab.phase_t.copy()
+        for k, g in enumerate(gaps):
+            pt[(np.array(tab.team) == f"T{k}") & (tab.driver % 2 == 0)] *= 1.0 + g
+        tabs.append(_with_phase_times(tab, pt))
+    raw = dl.split_half_across(tabs, n_perm=200)
+    prof = dl.split_half_across(tabs, n_perm=200, profile=True)
+    assert raw.rho > 0.8
+    assert abs(prof.rho) < 0.5 and prof.p_value > 0.05
+
+
 def test_split_half_halves_stay_inside_q_segments():
     tab = _table(np.zeros(6), n_laps=6, noise=0.02, seed=7)
     h1, h2 = dl._halves(tab, "T0")

@@ -21,12 +21,13 @@ import numpy as np
 from apexzero.drivers import deltas as dl
 from apexzero.drivers import recovery
 from apexzero.drivers.pipeline import car_speed
+from apexzero.drivers.registration import EXCURSION_MAX_M
 from apexzero.drivers.segments import PHASES, corner_type
 
 DOCS = Path("docs/findings")
 TYPES = ("slow", "medium", "fast")
 SEASON = 20                 # car-sessions per pair in a season, for the projection
-GATE_EXCURSION_M = 8.0      # proposed corridor-excursion gate (not applied)
+GATE_EXCURSION_M = EXCURSION_MAX_M
 # Categorical slots 1-3 of the reference palette (validated all-pairs, light surface).
 PHASE_COLOURS = {"entry": "#2a78d6", "apex": "#eb6834", "exit": "#1baf7a"}
 INK, MUTED, GRID = "#0b0b0b", "#52514e", "#e4e3df"
@@ -222,8 +223,12 @@ def write_report(out_dir: Path, pilots: list[dict]) -> None:
     w_("## 1. Registration onto the TUMFTM centreline")
     w_("")
     w_("The fit is a similarity transform: a 5-degree rotation grid with both "
-       "handednesses, then trimmed ICP. The gate is the plan's: RMS <= 3 m and lap-length "
-       "mismatch <= 1%. The length is the feed's own driven-line length (a spline through "
+       "handednesses, then trimmed ICP. The gate is the corridor excursion: the 99th "
+       "percentile of the registered points' distance beyond the TUMFTM track edges must be "
+       f"<= {GATE_EXCURSION_M:g} m. RMS and lap-length mismatch are reported as diagnostics. "
+       "They were the plan's gate (RMS <= 3 m, length mismatch <= 1%), which chose the four "
+       "pilot circuits before the excursion gate was adopted (see the reading below). The "
+       "length is the feed's own driven-line length (a spline through "
        "the samples of the fastest laps) times the fitted scale, compared with the "
        "centreline length. Fitted rotations are "
        f"{_range([r['angle_deg'] for r in mapped], '{:+.1f}')} degrees and scales "
@@ -231,8 +236,9 @@ def write_report(out_dir: Path, pilots: list[dict]) -> None:
        "and TUMFTM frames share orientation and units up to a translation.")
     w_("")
     w_("| Circuit (OpenF1) | TUMFTM | Layout | RMS (m) | p95 (m) | Length | Scale | "
-       "Outside corridor | Excursion p99 (m) | Inside offset (m) | Plan gate |")
-    w_("|---|---|---|---|---|---|---|---|---|---|---|")
+       "Outside corridor | Excursion p99 (m) | Inside offset (m) | Plan gate (diagnostic) | "
+       "Gate |")
+    w_("|---|---|---|---|---|---|---|---|---|---|---|---|")
     for r in reg_rows:
         if r.get("tumftm") is None:
             continue
@@ -240,21 +246,26 @@ def write_report(out_dir: Path, pilots: list[dict]) -> None:
         w_(f"| {r['circuit']} | {r['tumftm']} | {lay} | {r['rms_m']:.2f} | {r['p95_m']:.1f} | "
            f"{100 * r['length_mismatch']:+.2f}% | {r['scale']:.4f} | "
            f"{100 * r['outside_corridor']:.1f}% | {r['excursion_p99_m']:+.1f} | "
-           f"{r['inside_offset_m']:+.2f} | {'pass' if r['accepted'] else 'fail'} |")
+           f"{r['inside_offset_m']:+.2f} | {'pass' if r['plan_gate'] else 'fail'} | "
+           f"{'pass' if r['accepted'] else 'fail'} |")
     missing = [r["circuit"] for r in reg_rows if r.get("tumftm") is None]
     w_("")
     w_(f"No TUMFTM centreline: {', '.join(missing)}. *Inside offset* is the mean lateral "
        "offset towards the inside of corners tighter than 150 m radius. *Excursion* is the "
        "distance beyond the nearer TUMFTM track edge (negative = inside the track).")
     w_("")
-    n_open = sum(r["excursion_p99_m"] <= GATE_EXCURSION_M for r in cur)
-    n_old_open = sum(r["excursion_p99_m"] <= GATE_EXCURSION_M for r in old)
+    n_open = sum(r["accepted"] for r in cur)
+    n_old_open = sum(r["accepted"] for r in old)
+    pilot_names = [r["circuit"] for r in pilots]
+    added = [r["circuit"] for r in cur if r["accepted"] and r["circuit"] not in pilot_names]
     w_("**Reading.**")
     w_("")
     w_(f"- The plan's gate rejects all {len(old)} outdated TUMFTM layouts, as it should. It "
-       f"also rejects {sum(not r['accepted'] for r in cur)} of the {len(cur)} current "
-       f"layouts. It passes only {', '.join(r['circuit'] for r in cur if r['accepted'])}, "
-       "and that alone chose the four pilot circuits.")
+       f"also rejects {sum(not r['plan_gate'] for r in cur)} of the {len(cur)} current "
+       f"layouts. It passes only {', '.join(r['circuit'] for r in cur if r['plan_gate'])}, "
+       "and that alone chose the four pilot circuits. They are now pinned by session key "
+       "(`PILOT_KEYS` in `drivers_pilot.py`), so the change of gate does not move the "
+       "pilot.")
     w_("- The likely cause is the feed's track model, which is not the centreline. In "
        "corners tighter than 150 m radius it sits "
        f"{_range([r['inside_offset_m'] for r in cur], '{:.1f}')} m "
@@ -267,18 +278,18 @@ def write_report(out_dir: Path, pilots: list[dict]) -> None:
     w_("- The excursion beyond the TUMFTM edges separates the two groups much more sharply. "
        "At the 99th percentile it is at most "
        f"{max(r['excursion_p99_m'] for r in cur):+.1f} m on current layouts and at least "
-       f"{min(r['excursion_p99_m'] for r in old):+.1f} m on old ones. **Proposal, not "
-       f"applied here:** gate on excursion p99 <= {GATE_EXCURSION_M:g} m and report RMS and "
-       f"length as diagnostics. On this table that would pass {n_open} of {len(cur)} current "
-       f"layouts and {n_old_open} of {len(old)} old ones. The threshold was picked after "
-       "looking at this table, so it is checked on other seasons below.")
+       f"{min(r['excursion_p99_m'] for r in old):+.1f} m on old ones. **This is now the "
+       f"gate** (docs/STATUS.md, Decisions taken): excursion p99 <= {GATE_EXCURSION_M:g} m, "
+       f"with RMS and length as diagnostics. On this table it passes {n_open} of {len(cur)} "
+       f"current layouts and {n_old_open} of {len(old)} old ones. The threshold was picked "
+       "after looking at this table, so it is checked on other seasons below.")
     w_("- Projecting a racing-line model onto the centreline is still a fixed, monotone "
        "map, the same for every car. So s(t) stays comparable between teammates. The cost "
        "is a speed / centreline-rate ratio that varies along the lap. The smoother "
        "estimates it from all laps (section 2).")
     w_("")
     if reg_other:
-        w_(f"**The proposed gate on seasons it was not chosen on.** The same registration on "
+        w_(f"**The gate on seasons it was not chosen on.** The same registration on "
            "every mapped qualifying session of other years (same code, same "
            f"{GATE_EXCURSION_M:g} m threshold):")
         w_("")
@@ -291,18 +302,19 @@ def write_report(out_dir: Path, pilots: list[dict]) -> None:
             o = [r for r in rows if r.get("tumftm") and not r["layout_matches"]]
             exc_c = [r["excursion_p99_m"] for r in c]
             exc_o = [r["excursion_p99_m"] for r in o]
-            w_(f"| {year} | {len(c)} | {sum(r['accepted'] for r in c)} | "
-               f"{sum(e <= GATE_EXCURSION_M for e in exc_c)} | "
+            w_(f"| {year} | {len(c)} | {sum(r['plan_gate'] for r in c)} | "
+               f"{sum(r['accepted'] for r in c)} | "
                f"{max(exc_c) if exc_c else float('nan'):+.1f} | {len(o)} | "
-               f"{sum(e <= GATE_EXCURSION_M for e in exc_o)} | "
+               f"{sum(r['accepted'] for r in o)} | "
                f"{min(exc_o) if exc_o else float('nan'):+.1f} |")
         w_("")
-        w_("The gate definition is the plan owner's call; it is flagged for them, and this "
-           "pilot keeps the plan's gate as written. Checking the TUMFTM length against the "
-           "official circuit length (which would catch layout changes without the line "
-           "bias) was not done: it needs an official-length table that is not in the "
-           "repository.")
-        w_("")
+    w_("The pilot's four sessions were chosen under the plan's gate and are kept; every "
+       "number in sections 2-7 comes from them. The 2025 sessions the excursion gate adds ("
+       f"{', '.join(added) or 'none'}) are not run in this pilot. Checking the TUMFTM length "
+       "against the official circuit length (which would catch layout changes without the "
+       "line bias) was not done: it needs an official-length table that is not in the "
+       "repository.")
+    w_("")
 
     # ------------------------------------------------------------------ 2. s(t)
     best = tune["best"]
@@ -766,10 +778,10 @@ def write_report(out_dir: Path, pilots: list[dict]) -> None:
     # ------------------------------------------------------------------ 8. caveats
     w_("## 8. Not done, or uncertain")
     w_("")
-    w_(f"- **Registration gate.** As written it passes {sum(r['accepted'] for r in cur)} of "
-       f"{len(cur)} current-layout 2025 circuits (section 1), and that is what limits the "
-       "pilot to four circuits. The corridor-excursion gate is a proposal; it is flagged "
-       "to the plan owner, not applied.")
+    w_(f"- **Registration gate.** The plan's gate passed {sum(r['plan_gate'] for r in cur)} "
+       f"of {len(cur)} current-layout 2025 circuits (section 1), and that is what limited "
+       "the pilot to four circuits. The corridor-excursion gate that replaced it passes "
+       f"{n_open} of {len(cur)}; the pilot was not widened to the others.")
     w_("- **Scope.** Four circuits, one qualifying session each. Sprint qualifying was not "
        "run. Most circuits stay below the plan's 12 complexes because chicanes are never "
        "split.")

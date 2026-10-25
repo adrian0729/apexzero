@@ -19,6 +19,8 @@ exactly to the lap-time delta of the same laps; ``pair_delta`` asserts this.
 - **Split-half**: the same delta from two disjoint halves of each driver's laps, split
   inside each Q segment; Spearman rho across cells is the reliability, with a
   permutation p-value that flips whole pairs (cells of one pair are not independent).
+  Across sessions it can be taken on the raw deltas or on their profile (the deltas
+  minus the time-share part of the lap delta), which leaves out the overall gap.
 """
 
 from __future__ import annotations
@@ -351,14 +353,38 @@ def split_half_within(tabs: list[LapTable], level: str = "phase", n_perm: int = 
     return _rho_test(xs, ys, level, n_perm, seed)
 
 
+def time_shares(tab: LapTable) -> dict:
+    """(corner type, phase) -> its share of the lap time, pooled over the session's laps."""
+    mean = tab.phase_t.mean(axis=0)
+    return {k: v / mean.sum() for k, v in aggregate(mean, tab.labels, "type").items()}
+
+
+def profile_deltas(agg: dict, shares: dict) -> dict:
+    """Corner type x phase deltas minus the time-share part of their lap delta.
+
+    What is left is where in the lap the time goes beyond a uniform pace difference: a
+    driver whose every phase is 1% slower has a profile of about zero (exactly zero when
+    the pair's phase proportions are the session's). It sums to zero over cells.
+    """
+    lap = sum(agg.values())
+    return {k: v - shares[k] * lap for k, v in agg.items()}
+
+
 def split_half_across(tabs: list[LapTable], top_n: int | None = 2, n_perm: int = 2000,
-                      seed: int = 0) -> SplitHalf:
+                      seed: int = 0, profile: bool = False) -> SplitHalf:
     """Across-session reliability: alternate sessions into halves, average each driver
-    pair's corner type x phase deltas within a half, correlate pairs present in both."""
+    pair's corner type x phase deltas within a half, correlate pairs present in both.
+
+    ``profile`` correlates ``profile_deltas`` instead (session time shares), so that a
+    pair's overall pace gap, which is reliable on its own, does not count.
+    """
     halves: list[dict] = [{}, {}]
     for i, tab in enumerate(tabs):
+        shares = time_shares(tab) if profile else None
         for d in teammate_deltas(tab, top_n):
             agg = aggregate(d.delta, tab.labels, "type")
+            if profile:
+                agg = profile_deltas(agg, shares)
             for k, v in agg.items():
                 halves[i % 2].setdefault((d.a, d.b), {}).setdefault(k, []).append(v)
     xs, ys = [], []

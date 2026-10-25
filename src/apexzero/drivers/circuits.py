@@ -37,7 +37,8 @@ class Circuit:
 
 
 # Layout notes are from the circuits' published layout changes; the registration gate
-# (RMS residual and length) is the data-driven check that backs them up.
+# (99th-percentile excursion beyond the TUMFTM edges <= 8 m) is the data-driven check
+# that backs them up: in 2023-25 it passes every current layout and no old one.
 _OLD = "TUMFTM centreline predates the current F1 layout"
 CIRCUITS: dict[str, Circuit] = {c.openf1: c for c in [
     Circuit("Austin", "Austin", True),

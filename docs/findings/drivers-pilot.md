@@ -8,44 +8,44 @@ Code: `src/apexzero/drivers/`, run by `scripts/drivers_pilot.py` (stages `regist
 
 ## 1. Registration onto the TUMFTM centreline
 
-The fit is a similarity transform: a 5-degree rotation grid with both handednesses, then trimmed ICP. The gate is the plan's: RMS <= 3 m and lap-length mismatch <= 1%. The length is the feed's own driven-line length (a spline through the samples of the fastest laps) times the fitted scale, compared with the centreline length. Fitted rotations are -0.1 to +0.2 degrees and scales 0.9940 to 1.0029, with no reflection. So the feed and TUMFTM frames share orientation and units up to a translation.
+The fit is a similarity transform: a 5-degree rotation grid with both handednesses, then trimmed ICP. The gate is the corridor excursion: the 99th percentile of the registered points' distance beyond the TUMFTM track edges must be <= 8 m. RMS and lap-length mismatch are reported as diagnostics. They were the plan's gate (RMS <= 3 m, length mismatch <= 1%), which chose the four pilot circuits before the excursion gate was adopted (see the reading below). The length is the feed's own driven-line length (a spline through the samples of the fastest laps) times the fitted scale, compared with the centreline length. Fitted rotations are -0.1 to +0.2 degrees and scales 0.9940 to 1.0029, with no reflection. So the feed and TUMFTM frames share orientation and units up to a translation.
 
-| Circuit (OpenF1) | TUMFTM | Layout | RMS (m) | p95 (m) | Length | Scale | Outside corridor | Excursion p99 (m) | Inside offset (m) | Plan gate |
-|---|---|---|---|---|---|---|---|---|---|---|
-| Melbourne | Melbourne | **old** | 5.42 | 12.7 | -1.38% | 0.9960 | 12.7% | +16.0 | +1.68 | fail |
-| Shanghai | Shanghai | current | 4.46 | 8.4 | -1.36% | 0.9983 | 12.2% | +7.4 | +1.60 | fail |
-| Suzuka | Suzuka | current | 1.72 | 3.4 | -0.36% | 1.0006 | 0.5% | -0.2 | +0.58 | pass |
-| Sakhir | Sakhir | current | 3.35 | 6.2 | -1.31% | 0.9984 | 4.0% | +2.5 | +1.94 | fail |
-| Catalunya | Catalunya | **old** | 6.90 | 16.9 | -0.83% | 0.9987 | 11.3% | +27.5 | +0.14 | fail |
-| Montreal | Montreal | current | 2.46 | 4.5 | -0.83% | 1.0013 | 1.9% | +0.2 | +1.36 | pass |
-| Spielberg | Spielberg | current | 3.48 | 7.0 | -1.07% | 0.9940 | 13.3% | +3.8 | +2.77 | fail |
-| Silverstone | Silverstone | current | 4.00 | 7.9 | -1.16% | 0.9981 | 9.0% | +3.1 | +2.64 | fail |
-| Spa-Francorchamps | Spa | current | 2.62 | 5.3 | -0.72% | 0.9995 | 5.6% | +3.1 | +1.69 | pass |
-| Hungaroring | Budapest | current | 2.66 | 5.0 | -1.16% | 0.9992 | 7.2% | +1.3 | +1.73 | fail |
-| Zandvoort | Zandvoort | **old** | 3.62 | 6.4 | -1.80% | 1.0029 | 7.2% | +11.3 | +2.72 | fail |
-| Monza | Monza | current | 2.36 | 4.5 | -0.46% | 0.9996 | 4.5% | +1.2 | +1.49 | pass |
-| Austin | Austin | current | 3.46 | 6.3 | -1.65% | 0.9984 | 2.7% | +0.8 | +1.98 | fail |
-| Mexico City | MexicoCity | current | 3.48 | 6.3 | -1.44% | 0.9970 | 6.3% | +0.9 | +1.55 | fail |
-| Interlagos | SaoPaulo | current | 3.40 | 6.5 | -1.51% | 1.0004 | 6.5% | +0.9 | +2.78 | fail |
-| Yas Marina Circuit | YasMarina | **old** | 9.17 | 18.9 | -5.98% | 0.9957 | 19.1% | +35.0 | +2.40 | fail |
+| Circuit (OpenF1) | TUMFTM | Layout | RMS (m) | p95 (m) | Length | Scale | Outside corridor | Excursion p99 (m) | Inside offset (m) | Plan gate (diagnostic) | Gate |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| Melbourne | Melbourne | **old** | 5.42 | 12.7 | -1.38% | 0.9960 | 12.7% | +16.0 | +1.68 | fail | fail |
+| Shanghai | Shanghai | current | 4.46 | 8.4 | -1.36% | 0.9983 | 12.2% | +7.4 | +1.60 | fail | pass |
+| Suzuka | Suzuka | current | 1.72 | 3.4 | -0.36% | 1.0006 | 0.5% | -0.2 | +0.58 | pass | pass |
+| Sakhir | Sakhir | current | 3.35 | 6.2 | -1.31% | 0.9984 | 4.0% | +2.5 | +1.94 | fail | pass |
+| Catalunya | Catalunya | **old** | 6.90 | 16.9 | -0.83% | 0.9987 | 11.3% | +27.5 | +0.14 | fail | fail |
+| Montreal | Montreal | current | 2.46 | 4.5 | -0.83% | 1.0013 | 1.9% | +0.2 | +1.36 | pass | pass |
+| Spielberg | Spielberg | current | 3.48 | 7.0 | -1.07% | 0.9940 | 13.3% | +3.8 | +2.77 | fail | pass |
+| Silverstone | Silverstone | current | 4.00 | 7.9 | -1.16% | 0.9981 | 9.0% | +3.1 | +2.64 | fail | pass |
+| Spa-Francorchamps | Spa | current | 2.62 | 5.3 | -0.72% | 0.9995 | 5.6% | +3.1 | +1.69 | pass | pass |
+| Hungaroring | Budapest | current | 2.66 | 5.0 | -1.16% | 0.9992 | 7.2% | +1.3 | +1.73 | fail | pass |
+| Zandvoort | Zandvoort | **old** | 3.62 | 6.4 | -1.80% | 1.0029 | 7.2% | +11.3 | +2.72 | fail | fail |
+| Monza | Monza | current | 2.36 | 4.5 | -0.46% | 0.9996 | 4.5% | +1.2 | +1.49 | pass | pass |
+| Austin | Austin | current | 3.46 | 6.3 | -1.65% | 0.9984 | 2.7% | +0.8 | +1.98 | fail | pass |
+| Mexico City | MexicoCity | current | 3.48 | 6.3 | -1.44% | 0.9970 | 6.3% | +0.9 | +1.55 | fail | pass |
+| Interlagos | SaoPaulo | current | 3.40 | 6.5 | -1.51% | 1.0004 | 6.5% | +0.9 | +2.78 | fail | pass |
+| Yas Marina Circuit | YasMarina | **old** | 9.17 | 18.9 | -5.98% | 0.9957 | 19.1% | +35.0 | +2.40 | fail | fail |
 
 No TUMFTM centreline: Jeddah, Miami, Imola, Monte Carlo, Baku, Singapore, Las Vegas, Lusail. *Inside offset* is the mean lateral offset towards the inside of corners tighter than 150 m radius. *Excursion* is the distance beyond the nearer TUMFTM track edge (negative = inside the track).
 
 **Reading.**
 
-- The plan's gate rejects all 4 outdated TUMFTM layouts, as it should. It also rejects 8 of the 12 current layouts. It passes only Suzuka, Montreal, Spa-Francorchamps, Monza, and that alone chose the four pilot circuits.
+- The plan's gate rejects all 4 outdated TUMFTM layouts, as it should. It also rejects 8 of the 12 current layouts. It passes only Suzuka, Montreal, Spa-Francorchamps, Monza, and that alone chose the four pilot circuits. They are now pinned by session key (`PILOT_KEYS` in `drivers_pilot.py`), so the change of gate does not move the pilot.
 - The likely cause is the feed's track model, which is not the centreline. In corners tighter than 150 m radius it sits 0.6 to 2.8 m to the inside, and its lap is 0.4 to 1.6% shorter. That looks like a racing line (an inference from these two statistics; not checked against an outside source). The 1% length test compares that line's length with the centreline's, so it is biased by design, and the 3 m RMS mixes in the lateral line offset. A twisty circuit can fail on the line alone.
-- The excursion beyond the TUMFTM edges separates the two groups much more sharply. At the 99th percentile it is at most +7.4 m on current layouts and at least +11.3 m on old ones. **Proposal, not applied here:** gate on excursion p99 <= 8 m and report RMS and length as diagnostics. On this table that would pass 12 of 12 current layouts and 0 of 4 old ones. The threshold was picked after looking at this table, so it is checked on other seasons below.
+- The excursion beyond the TUMFTM edges separates the two groups much more sharply. At the 99th percentile it is at most +7.4 m on current layouts and at least +11.3 m on old ones. **This is now the gate** (docs/STATUS.md, Decisions taken): excursion p99 <= 8 m, with RMS and length as diagnostics. On this table it passes 12 of 12 current layouts and 0 of 4 old ones. The threshold was picked after looking at this table, so it is checked on other seasons below.
 - Projecting a racing-line model onto the centreline is still a fixed, monotone map, the same for every car. So s(t) stays comparable between teammates. The cost is a speed / centreline-rate ratio that varies along the lap. The smoother estimates it from all laps (section 2).
 
-**The proposed gate on seasons it was not chosen on.** The same registration on every mapped qualifying session of other years (same code, same 8 m threshold):
+**The gate on seasons it was not chosen on.** The same registration on every mapped qualifying session of other years (same code, same 8 m threshold):
 
 | Season | Current layouts | Plan gate passes | Excursion gate passes | Max excursion p99, current (m) | Old layouts | Excursion gate passes (old) | Min excursion p99, old (m) |
 |---|---|---|---|---|---|---|---|
 | 2023 | 11 | 4 | 11 | +3.8 | 4 | 0 | +11.9 |
 | 2024 | 12 | 4 | 12 | +7.2 | 4 | 0 | +11.8 |
 
-The gate definition is the plan owner's call; it is flagged for them, and this pilot keeps the plan's gate as written. Checking the TUMFTM length against the official circuit length (which would catch layout changes without the line bias) was not done: it needs an official-length table that is not in the repository.
+The pilot's four sessions were chosen under the plan's gate and are kept; every number in sections 2-7 comes from them. The 2025 sessions the excursion gate adds (Shanghai, Sakhir, Spielberg, Silverstone, Hungaroring, Austin, Mexico City, Interlagos) are not run in this pilot. Checking the TUMFTM length against the official circuit length (which would catch layout changes without the line bias) was not done: it needs an official-length table that is not in the repository.
 
 ## 2. s(t) per lap, the held-out sector anchor, and synthetic calibration
 
@@ -221,7 +221,7 @@ The R1 envelope is a minimum over a handful of noisy laps, so it is biased low (
 
 ## 8. Not done, or uncertain
 
-- **Registration gate.** As written it passes 4 of 12 current-layout 2025 circuits (section 1), and that is what limits the pilot to four circuits. The corridor-excursion gate is a proposal; it is flagged to the plan owner, not applied.
+- **Registration gate.** The plan's gate passed 4 of 12 current-layout 2025 circuits (section 1), and that is what limited the pilot to four circuits. The corridor-excursion gate that replaced it passes 12 of 12; the pilot was not widened to the others.
 - **Scope.** Four circuits, one qualifying session each. Sprint qualifying was not run. Most circuits stay below the plan's 12 complexes because chicanes are never split.
 - **Synthetic realism.** The synthetic feed is calibrated on two statistics per session (held-out S2 spread; within-driver spread per corner type x phase). The single wobble knob stands in for every unmodelled error source, so how the measurement error splits between phases is a model assumption (section 2 table). Natural variation is Gaussian and independent between phases. Persistent per-car errors are only a sensitivity scenario with assumed sizes (section 4). The ~0.7 m position pattern common to all cars is not synthesised; it is common-mode, but that it cancels is untested. No clock latency (none was measured). The QSS check profiles are computed on the centreline, not a racing line.
 - **The synthetic budget looks too narrow.** On shuffled real data 11% of cells exceed the claim limits instead of about 5% (section 5); the limits would need to be 1.36x wider. Part of that may be real effects mixed into the shuffles, part unmodelled real error.

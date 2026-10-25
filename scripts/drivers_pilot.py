@@ -13,9 +13,11 @@
 The first ``pilot`` pass (default smoother) only supplies the feed's sampling intervals
 and position noise to ``tune``. Stages cache their results under outputs/drivers-lite/,
 so the report can be rebuilt without recomputing. Single process; run it niced. Pilot
-circuits are the 2025 sessions that pass the registration gate (at most four). The 2023
-and 2024 registrations are only used to check the proposed corridor-excursion gate on
-seasons it was not chosen on.
+circuits are pinned by session key (``PILOT_KEYS``): the four 2025 sessions that passed
+the plan's original registration gate. A change of gate must not silently change the
+pilot, so ``pilot_sessions`` refuses if one of them stops passing. The 2023 and 2024
+registrations are only used to check the corridor-excursion gate on seasons it was not
+chosen on.
 Measured on the busy M3 Pro: registration ~2 s CPU per session, pilot ~80 s CPU for four
 sessions, tune ~2 min, injection ~3 min, persistent ~3 min, report ~10 s.
 
@@ -41,7 +43,7 @@ from apexzero.drivers import recovery
 from apexzero.drivers.circuits import CIRCUITS
 from apexzero.drivers.geometry import Centreline
 from apexzero.drivers.pipeline import register_session, registration_points, run_session
-from apexzero.drivers.registration import corridor_excursion, inside_offset
+from apexzero.drivers.registration import inside_offset
 from apexzero.drivers.session import load
 from apexzero.drivers.smoother import DEFAULT_CONFIG
 from apexzero.drivers.synth import SynthConfig, qss_model
@@ -51,7 +53,9 @@ ROOT = Path("data/raw/openf1")
 TRACKS = Path("data/tracks/tumftm")
 OUT = Path("outputs/drivers-lite")
 YEAR = 2025
-MAX_PILOT = 4
+# The pilot: 2025 qualifying at Suzuka, Montreal, Spa-Francorchamps and Monza (OpenF1
+# session keys), the sessions that passed the plan's original RMS / length gate.
+PILOT_KEYS = (10002, 9959, 9935, 9908)
 SYS_OFFSET_M = 1.0      # per-car along-track position offset in the persistent-error scenario
 TUNE_CIRCUITS = ["Catalunya", "Hockenheim"]      # R-dev geometry only
 QSS_CHECK_CIRCUITS = ["Sepang", "Nuerburgring"]  # R-dev, not used for tuning
@@ -93,7 +97,6 @@ def stage_registration(year=YEAR):
         line = Centreline(load_tumftm(TRACKS / f"{c.tumftm}.csv"))
         reg = register_session(sess, line)
         pts = registration_points(sess)[0]
-        out_frac, exc99 = corridor_excursion(pts, line, reg.transform)
         inside = inside_offset(pts, line, reg.transform)
         rows.append({
             "circuit": meta["circuit"], "key": meta["key"], "dir": str(d), "tumftm": c.tumftm,
@@ -102,16 +105,17 @@ def stage_registration(year=YEAR):
             "scale": reg.transform.scale, "angle_deg": reg.transform.angle_deg,
             "reflected": reg.transform.reflected, "length_openf1_m": reg.length_openf1_m,
             "length_tumftm_m": reg.length_tumftm_m, "length_mismatch": reg.length_mismatch,
-            "outside_corridor": out_frac, "excursion_p99_m": exc99,
+            "outside_corridor": reg.outside_frac, "excursion_p99_m": reg.excursion_p99_m,
             "inside_offset_m": inside,
-            "accepted": reg.accepted, "reason": reg.reason, "n_points": reg.n_points,
+            "accepted": reg.accepted, "reason": reg.reason,
+            "plan_gate": reg.plan_gate, "diagnostics": reg.diagnostics, "n_points": reg.n_points,
             "cpu_s": time.process_time() - t0,
         })
         r = rows[-1]
-        print(f"{meta['circuit']:>20} -> {c.tumftm:<12} RMS {r['rms_m']:.2f} m  "
+        print(f"{meta['circuit']:>20} -> {c.tumftm:<12} p99 exc {reg.excursion_p99_m:+.1f} m  "
+              f"outside {100 * reg.outside_frac:.1f}%  {r['reason']}  | RMS {r['rms_m']:.2f} m  "
               f"length {100 * r['length_mismatch']:+.2f}%  scale {r['scale']:.4f}  "
-              f"outside {100 * out_frac:.1f}%  p99 exc {exc99:+.1f} m  inside {inside:+.2f} m  "
-              f"{r['reason']}  "
+              f"inside {inside:+.2f} m  plan gate {'pass' if reg.plan_gate else 'fail'}  "
               f"[{r['cpu_s']:.0f} s cpu]", flush=True)
     OUT.mkdir(parents=True, exist_ok=True)
     name = "registration.json" if year == YEAR else f"registration_{year}.json"
@@ -119,9 +123,14 @@ def stage_registration(year=YEAR):
 
 
 def pilot_sessions():
-    rows = json.loads((OUT / "registration.json").read_text())
-    ok = [r for r in rows if r.get("accepted") and r.get("layout_matches")]
-    return ok[:MAX_PILOT]
+    rows = {r["key"]: r for r in json.loads((OUT / "registration.json").read_text())}
+    out = []
+    for key in PILOT_KEYS:
+        r = rows.get(key)
+        if r is None or not (r.get("accepted") and r.get("layout_matches")):
+            raise ValueError(f"pilot session {key} is missing or no longer passes registration")
+        out.append(r)
+    return out
 
 
 def stage_pilot():
