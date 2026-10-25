@@ -26,7 +26,7 @@ Files under `outputs/` are local and not in git.
 
   - The late change d_late = C(199.9M) − C(109.9M) has mean +1.57 [+0.96, +2.18]. 19 networks rise, 6 stay level and 3 fall. By the plan's rule that is **rising**.
   - The mid change d_mid = C(199.9M) − C(60.3M) is +0.75 [−0.25, +1.75], not resolved from 0.
-  - 22 of 28 networks have their best C before the final (13 of them at 10.0M), by +2.6 circuits on average.
+  - 22 of 28 networks have their best C before the final (13 of them at 10.0M), by +3.4 circuits on average among those 22 (+2.6 over all 28).
   - Descriptive, added after the results were seen: the early completions are slow laps. The median lap gap of completed circuits falls from 54% at 10.0M to 7.8% at the final. All 157 (network, circuit) pairs completed at both 10.0M and the final are faster at the final.
 - **E2 (platform) is borne out, more strongly than expected.** The Mac re-evaluation of the 28 finals matches the stored A6000 evaluations on 336 of 336 completion calls, with C equal for every network. 334 of 336 completion fractions are identical, but no lap time is identical bit for bit (largest difference 0.40 s).
 - **D2: the finals have mastered their own distribution.**
@@ -70,7 +70,7 @@ Files under `outputs/` are local and not in git.
   - Corners come from `tracks.corners.segment` at its defaults on each refined track: 265 corners on the 12 circuits. W_k = [s_start − 50, s_end + 50] m.
   - Clearance c = w_in − 1.0 − σn, using the environment's own width spline.
   - Amendment 1's rules: passages, overlapping windows, crash, time-out and the Q2 bootstrap.
-- **Compute.** All on the Mac, with at most 4 processes at a time, each at nice 15 with 2 XLA threads. Another workflow shared the machine; load averages were about 40–60 during D1.
+- **Compute.** All on the Mac, with at most 4 processes at a time for this item, each at nice 15 with 2 XLA threads. PS-P4's 4-process pool ran at the same time (its s-OCP solves during D1, its generalist and specialist runs during D2), and another workflow also shared the machine. The load was not recorded.
 
   | Stage | Wall time |
   |---|---|
@@ -179,7 +179,7 @@ Source: `descriptive.json`, written by the `report` stage from the evaluation re
 | Catalunya | 19 | 19 | 25 | 17 | 22 | 26 | 2 | 9 |
 | Zandvoort | 28 | 27 | 23 | 27 | 21 | 23 | 5 | 0 |
 
-"Lost" counts networks that complete the circuit at 10.0M and not at the final; "gained" counts the reverse. Sochi (20 lost) and Melbourne (16) account for most of the fall. Norisring and Yas Marina are rarely completed at any checkpoint.
+"Lost" counts networks that complete the circuit at 10.0M and not at the final; "gained" counts the reverse. Sochi (20 lost) and Melbourne (16) account for most of the fall. Norisring is rarely completed at any checkpoint (at most 9 of 28). Yas Marina peaks at 14 of 28 (18.2M) and is almost never completed from 60.3M on.
 
 ### 4.5 Platform check (Mac against the stored A6000 end-of-training evaluations)
 
@@ -251,14 +251,15 @@ Source: `descriptive.json`, written by the `report` stage from the evaluation re
 | CI includes 0 | no | no |
 | Draws with a corner left out (amendment 1) | 7,871 of 20,000 | 11,600 of 20,000 |
 | Secondary: clearing passages only (selection-biased) | +0.11 [−0.08, +0.29] | +0.16 [+0.10, +0.28] |
-| Secondary: all 265 corners | +0.22 [+0.12, +0.31] | +0.07 [+0.01, +0.20] |
+| Secondary: all 265 corners | +0.215 [+0.12, +0.31] (just below the band) | +0.07 [+0.01, +0.20] |
+| Secondary measures: draws with a corner left out | 20,000 of 20,000 (both measures) | 20,000 of 20,000 (both measures) |
 
 - **What the primary Δc mixes.** It counts every passage, and a passage that ends in an inside-edge exit has c ≤ 0. At former crash corners, much of the arm difference is therefore the difference in how often the corner is survived (Section 6.2), not clearance on a clean pass.
   - On clearing passages only, the v1 shift is +0.11 m. That is below v1's band, with a CI that includes 0.
   - In v3 the clearing-only shift (+0.16 m) stays inside its band.
   - The clearing-only measure is selection-biased toward zero difference: baselines that clear a corner are the ones that keep margin there, and networks that never clear it drop out. It cannot settle the question either way.
-- **Many dropped draws.** Several corners are passed by only one or two networks of an arm, because the rest crash earlier on lap 1: for example Yas Marina corner 12 in the v1 baselines and corner 9 in the v3 baselines. Draws that miss those networks drop the corner. That is why so many draws leave a corner out.
-- **Across all corners** (the general margin on real roads), the shift is +0.22 m in v1, at the lower edge of its band. In v3 it is +0.07 m, below its band.
+- **Many dropped draws.** Several corners are passed by only one or two networks of an arm, because the rest crash earlier on lap 1: for example Yas Marina corner 12 in the v1 baselines and corner 9 in the v3 baselines. Draws that miss those networks drop the corner. That is why so many draws leave a corner out. In both secondary measures, in both variants, every draw (20,000 of 20,000) leaves out at least one corner.
+- **Across all corners** (the general margin on real roads), the shift is +0.215 m in v1, just below its band (0.215 against 0.22). In v3 it is +0.07 m, below its band.
 - **Per circuit** (secondary; `crashes.json`, `Q2_per_circuit`). In v1 the shift is positive on 10 of 11 circuits with former crash corners; the exception is Oschersleben (−0.14, CI −1.33 to +0.60). Its CI excludes 0 on Nürburgring, Sochi, Yas Marina and Catalunya. In v3 it is positive on all 8, with the CI excluding 0 on Norisring, Yas Marina, Melbourne and Zandvoort.
 
 ## 7. Expected directions (plan Section 7) against the results
@@ -267,7 +268,7 @@ Source: `descriptive.json`, written by the `report` stage from the evaluation re
 |---|---|---|---|
 | E1 | C rises with log steps from 10.0M, most of the rise before 60.3M | C falls from 8.79 (10.0M) to 5.54 (109.9M), then rises to 7.11 | **No** |
 | E1 | Late curve "flat" or "unresolved"; median network moves ≤ 1 circuit | "Rising", +1.57 [+0.96, +2.18]; median d_late +1.5 | **No** |
-| E1 | v1 real-width advantage visible by 60.3M | +1.2 circuits at 60.3M (and +1.2, +2.6 later); negative at 10.0M and 18.2M | Yes |
+| E1 | v1 real-width advantage visible by 60.3M | +1.2 circuits at 60.3M (and +1.2, +2.6 later); negative at 10.0M, 18.2M and 33.1M | Yes |
 | E1 | ≥ 1/3 of networks best before the final | 22 of 28 (79%) | Yes |
 | E2 | ≥ 90% of 336 calls agree; C within ±1 for most; disagreements near half completion | 336 of 336; C equal for 28 of 28; no disagreements | Yes |
 | E3 | Deterministic A_DR ≥ 0.90 for the median network of every arm, well above its R-dev c̄ | Arm medians 0.969–0.985 against c̄ medians 0.42–0.67; every network above its c̄ | Yes |
@@ -314,6 +315,7 @@ E5 was held weakly because H4R found the B shift equal in v1 and v3 while the co
 | 02:28–02:31 | **D0**: the first evaluation of any network (`h4r-v1-base-s10` at 10.0M), alone and then 4 concurrent | W = 0.80 h: Mac |
 | About 02:31 | The checkpoint tests ran after D0, as the plan's ordering requires: equality with `timed_laps` and `scripts/eval_rdev.py` on the D0 checkpoint, and the binding of the 28 finals | All passed |
 | 02:34–03:21 | **D1**: 167 evaluations in a 4-process pool. All 168 records carry the sha256 of the committed script (`245a2c4`). HEAD moved during the run (`5226e00`, `5befa05`, `9249e46`), because the parallel agents committed their own files; none touched `src/` or this script | None |
+| About 02:36 (during D1) | Planted D3 tests were added to `tests/test_gate_diagnostics.py` (86 lines: `_planted_d3`, `test_network_crash_data_from_planted_files`, `test_crashes_analysis_on_planted_data`), after `245a2c4`. No analysis code changed: every D1 and D3 record carries the committed script's sha256. The provenance blocks written from 02:36:50 on, `curves.json` and `crashes.json` among them, list the test file as modified | None |
 | 03:22 | **D3**, from D1's final traces | As planned |
 | 03:22–03:42 | **D2**: 28 networks in a 4-process pool | As planned |
 | About 03:23 | **Added after D1's results were seen:** the `report` stage's descriptive block (`descriptive_d1`, Section 4.4). The edit touched only the report stage, while D2 was running; D2's code path is unchanged. The D2 records carry the sha256 of the edited file, because provenance reads the file when it writes | Labelled descriptive. No planned measure or label changed |
