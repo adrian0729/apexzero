@@ -222,4 +222,43 @@ Any change to this plan after its commit is a dated amendment appended here, and
 
 Results computed under the earlier version are kept and reported beside the amended ones. An amendment written after a result was seen is labelled post hoc.
 
-(None yet.)
+### Amendment 1 (25 Oct 2026; written before any computation)
+
+**What changed, and why.** Writing `scripts/gate_diagnostics.py` showed points the plan leaves open. Each is fixed here before any evaluation, the timing run included. None changes a measure, a threshold or an expected direction.
+
+**Results seen when it was written.** None. The only rollouts run so far are the script's unit tests: planted traces, and a fixed hand-written policy (no network) on Norisring, which checks the rollout against `timed_laps`.
+
+- **D0.**
+  - All timed processes run at nice 15 with 2 XLA threads, the one alone included.
+  - The 4 concurrent processes all evaluate the timed checkpoint. Their results must equal the alone run's (a determinism check). Only the alone run's result is kept as the D1 grid point.
+  - t₄ is the longest of the 4 evaluation wall times, from loading the checkpoint to the end of the 12th circuit, JIT compilation included and interpreter start excluded. The D1 pool reuses its processes. The process wall times are recorded beside it.
+- **D1.**
+  - **Two labels at once.** A CI can lie above 0 and inside [−0.5, +0.5] (or below 0 and inside it). Then both labels are reported, and the directional one (rising or falling) is the label read in Section 8. The flat band is meant for a change not resolved from zero.
+  - **Bootstraps.** NumPy `default_rng(0)` is restarted for each summary (d_late and d_mid, for C and for c̄; each Δc of D3). The indices are `integers(0, n, (20000, n))`, and in D3 the baseline arm is drawn before the real-width arm.
+  - **Rise, level, fall.** d > 0, d = 0 and d < 0 exactly (c̄ moves in steps of 1/120).
+  - **Best checkpoint.** The step reported is the earliest checkpoint with the best C.
+  - **Platform check.** The completion fractions themselves are also compared exactly (descriptive).
+- **D2.**
+  - **"Median" in Section 8's D2 rows.** The median over all 28 finals, taken separately for A_DR completion and for R-dev c̄. The per-arm medians, which E3 reads, are reported beside it.
+  - **E3's "well above that network's R-dev c̄".** Read on the arm medians, with each network's difference reported.
+  - **Strip ends.** A window that ends at the strip's end without termination counts as completed, as in the audit.
+- **D3.**
+  - **Crashes.** A crash is a run that terminates without completing. A termination after lap 2 is not one, since that run is complete. A run that neither completes nor terminates by the rollout's last step is a time-out, reported separately and not counted as a termination.
+  - **Passages.**
+    - A passage is a maximal stretch of consecutive post-step samples whose s mod L lies in W_k. Samples run up to the run's end: the terminating step, or for a run that completes, the last sample before s = 2L.
+    - The terminating sample always counts. The initial state is not a sample, as in `timed_laps`'s arrays.
+    - A window that crosses s = 0 gives a partial passage at the start of lap 1 and one at the end of lap 2. A passage across the line is one passage. Its lap is the lap at entry.
+  - **Widths.** The environment's own width spline is used (`widths_at` on the track arrays, float32), so an inside corridor exit has c ≤ 0.
+  - **Overlapping windows.** A termination inside two windows goes to the corner whose span [s_start, s_end] is nearest (distance 0 inside it). A tie goes to the earlier corner. At exactly σn = 0 the side is "outside" (this does not occur in practice).
+  - **Q1.**
+    - ΔT and its inside-edge part are sums over the variant's gain circuits (50 runs per arm per circuit).
+    - s_in is undefined when ΔT ≤ 0.
+    - The termination rate is the terminations assigned to the corner, divided by the passages through its window.
+    - E4's "at corners" means a termination assigned to any corner. The share at former crash corners is reported too.
+  - **Q2.**
+    - A network's median runs over all its passages at the corner, both laps.
+    - A network with no passage at a corner is left out of its arm's mean there.
+    - A corner whose arm mean is undefined in a bootstrap draw is left out of that draw's mean over corners. The number of such draws is reported.
+    - "All corners" (secondary) means every corner of the 12 circuits.
+  - **Leave-out traces.** The leave-out finals' traces are recorded but not used in D3.
+- **Outputs.** Besides the files of Section 9, per-evaluation records `evals/<run>/<step>.json` and per-network `adr/<run>.json`. Like the rest of `outputs/`, they stay local.
