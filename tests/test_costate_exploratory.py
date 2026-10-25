@@ -507,3 +507,270 @@ def test_the_committed_plan_and_the_freeze(cx):
     assert len(dec["inputs"]) == 113 and len(rec["outputs"]) == 23
     assert len(bound) == 127
     assert len(cx.decision_files(bound)) == 9
+
+
+# ------------------------------------------------------------------------- CS-1: the xi tail
+
+
+def test_cs1_is_registered_as_a_trained_item(cx):
+    it = cx.BY_CMD["cs-1"]
+    assert "CS-1" in cx.COMPUTE and it.trained and not it.pooled
+    assert "checkpoints" in it.reads and "gates:k4" in it.reads
+    assert set(cx.CS1_FINDINGS) == set(cx.CS1_ORDER) and len(cx.CS1_ORDER) == 9
+    assert all(len(v) == len(cx.CS1_FINDINGS_FIELDS) for v in cx.CS1_FINDINGS.values())
+    assert [cx.CS1_FINDINGS[k][1] for k in cx.CS1_ORDER] == [286, 247, 259, 283, 315, 229,
+                                                             240, 336, 294]
+
+
+def test_cs1_channel_groups(cx):
+    from apexzero.env import racing
+    from apexzero.fields import network as NW
+
+    assert len(cx.EDGE) == 160 and len(set(cx.EDGE)) == 160
+    assert not set(cx.EDGE) & set(NW.KAPPA_CHANNELS.tolist())
+    assert set(cx.EDGE) | set(NW.KAPPA_CHANNELS.tolist()) == set(range(racing.OBS_PREVIEW))
+    assert max(cx.EDGE_NEAR) < min(cx.EDGE_FAR) and len(cx.EDGE_NEAR) == len(cx.EDGE_FAR)
+    assert cx.LATERAL_XI == (racing.OBS_PREVIEW + 4, racing.OBS_PREVIEW + 5)
+    assert cx.TYRE_UTIL == (racing.OBS_PREVIEW + 12, racing.OBS_PREVIEW + 13)
+    assert abs(6.0 * cx.KINK_VX["kink_vx25"] - 150.0) < 1e-12
+    assert abs(6.0 * cx.KINK_VX["kink_vx83"] - 500.0) < 1e-12
+
+
+def test_xi_tail_is_the_calibrations_leverage_cut(cx):
+    from apexzero.costate import analysis as AN
+
+    rng = np.random.default_rng(0)
+    n = 300
+    d = np.where(rng.random(n) < 0.5, -1, 1)
+    g = rng.standard_normal(n) + 2.0 * d
+    g[:12] += 40.0 * rng.choice([-1, 1], 12)
+    w = rng.random(n) + 0.1
+    tail = cx.xi_tail(g, w, d)
+    assert np.array_equal(tail, AN.cal_weights(g, w, d, True) < w)
+    # by hand: centred on the weighted median within direction, then > 3 robust SDs from the
+    # centred values' weighted median
+    c = g.copy()
+    for s in (-1, 1):
+        m = d == s
+        c[m] -= AN.wmedian(g[m], w[m])
+    med = AN.wmedian(c, w)
+    sd = AN.wmedian(np.abs(c - med), w) / AN.MAD_NORMAL
+    assert np.array_equal(tail, np.abs(c - med) > 3.0 * sd)
+    assert tail[:12].all() and tail.sum() < 40
+
+
+def test_flag_and_category_tables(cx):
+    tail = np.array([1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0], bool)
+    flag = np.array([1, 1, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0], bool)
+    w = np.ones(12)
+    err = np.array([3.0, 1.0, 0.0, 0.0] + [1.0] * 8)
+    t = cx.flag_table(flag, tail, w, err)
+    assert (t["tail_rows"], t["bulk_rows"]) == (2, 1)
+    assert t["tail_share"] == 0.5 and t["bulk_share"] == 0.125
+    assert t["enrichment_rows"] == 4.0 and t["enrichment_weight"] == 4.0
+    assert t["tail_sqerr_share"] == 1.0
+    none = cx.flag_table(np.zeros(12, bool), tail, w, err)
+    assert np.isnan(none["enrichment_rows"]) and none["tail_sqerr_share"] == 0.0
+    only = cx.flag_table(tail, tail, w, err)
+    assert only["enrichment_rows"] == float("inf")
+    cat = np.array([0, 0, 1, 2, 0, 1, 1, 1, 2, 2, 2, 2])
+    tab = cx.category_table(cat, tail, w, err, values=np.arange(4))
+    assert tab["value"] == [0, 1, 2, 3]
+    assert tab["tail_rows"] == [2, 1, 1, 0] and tab["bulk_rows"] == [1, 3, 4, 0]
+    assert tab["tail_sqerr_share"] == [1.0, 0.0, 0.0, 0.0]
+    assert np.isnan(tab["enrichment_rows"][3])
+    assert cx.half_set([0, 1, 2, 3], [0.1, 0.45, 0.05, 0.4]) == [1, 3]
+    assert cx.half_set([7, 8], [0.5, 0.5]) == [7]
+    assert cx.half_set([7, 8], [0.0, 0.0]) == []
+
+
+def test_huber_groups_is_huber_fit_with_one_direction(cx):
+    from apexzero.costate import analysis as AN
+
+    rng = np.random.default_rng(1)
+    for slope in (0.7, -0.4):
+        x = rng.standard_normal(200)
+        y = 1.5 + slope * x + rng.standard_t(2, 200)
+        w = rng.random(200) + 0.2
+        h = AN.huber_fit(x, y, w, nonneg=True)
+        a, b, s, clamped, _ = cx.huber_groups(x, y, w, None)
+        assert abs(a[0] - h.a) <= 1e-12 * (1 + abs(h.a)) and np.isnan(a[1])
+        assert abs(b - h.b) <= 1e-12 * (1 + abs(h.b)) and abs(s - h.scale) <= 1e-12 * h.scale
+        assert clamped == h.clamped == (slope < 0)
+        a1, b1, *_ = cx.huber_groups(x, y, w, np.ones(200, int))     # one side, sigma > 0
+        assert np.isnan(a1[0]) and a1[1] == a[0] and b1 == b
+
+
+def test_huber_groups_direction_intercepts(cx):
+    rng = np.random.default_rng(2)
+    n = 400
+    d = np.where(np.arange(n) % 2 == 0, -1, 1)
+    x = rng.standard_normal(n)
+    y = np.where(d > 0, -3.0, 2.0) + 0.5 * x + 0.01 * rng.standard_normal(n)
+    y[:6] += 50.0                                                    # outliers in y
+    a, b, _, clamped, _ = cx.huber_groups(x, y, None, d)
+    assert abs(b - 0.5) < 0.01 and abs(a[0] - 2.0) < 0.01 and abs(a[1] + 3.0) < 0.01
+    assert not clamped
+    a, b, _, clamped, _ = cx.huber_groups(-x, y, None, d)            # anti-aligned: clamped
+    assert b == 0.0 and clamped and abs(a[0] - 2.0) < 0.05
+    # the calibration: per fold, the odd column by direction, clipped to the bounds
+    outer = np.arange(n) % 3
+    lam = np.stack([y, y], 1)
+    gg = np.stack([x, x], 1)
+    ok = np.ones((n, 2), bool)
+    out = cx.calibrate_huber(gg, lam, outer, np.ones(n), ok[:, 0], ok, d, [False, True],
+                             [[-4.0, 4.0], [-4.0, 4.0]], n_folds=3)
+    assert out["pred"].shape == (n, 2) and np.isfinite(out["pred"]).all()
+    assert out["pred"].max() <= 4.0 and out["pred"].min() >= -4.0
+    assert np.all(out["a"][:, 0, 0] == out["a"][:, 0, 1])           # even: one intercept
+    assert np.all(np.abs(out["a"][:, 1, 1] + 3.0) < 0.05)
+
+
+def test_rank_map_and_calibration(cx):
+    from apexzero.costate import states as ST
+
+    g = np.array([0.0, 1.0, 2.0, 3.0])
+    lam = np.array([10.0, 20.0, 30.0, 40.0])
+    w = np.ones(4)
+    # each training g maps to its own weighted mid-rank: lambda's quantile there is lambda
+    assert np.allclose(cx.rank_map(g, lam, w, g), lam)
+    got = cx.rank_map(g, lam, w, np.array([-5.0, 1.5, 9.0]))
+    assert np.allclose(got, ST.wquantile(lam, w, np.array([0.0, 0.5, 1.0])))
+    assert np.all(np.diff(cx.rank_map(g, lam, w, np.linspace(-1, 4, 50))) >= 0)
+    # a constant g (zero and direction-only plants) has no Spearman: the direction's mean
+    n = 60
+    d = np.where(np.arange(n) % 2 == 0, -1, 1)
+    rng = np.random.default_rng(3)
+    lam2 = np.where(d > 0, 1.0, -1.0) + rng.exponential(1.0, n)
+    outer = np.arange(n) % 3
+    ok = np.ones((n, 1), bool)
+    wv = rng.random(n) + 0.5
+    for gg in (np.zeros((n, 1)), d[:, None].astype(float), -lam2[:, None]):
+        out = cx.calibrate_rank(gg, lam2[:, None], outer, wv, ok[:, 0], ok, d, [[-9, 9]],
+                                n_folds=3)
+        assert out["fallback"].all()
+        for f in range(3):
+            for s in (-1, 1):
+                tr, held = (outer != f) & (d == s), (outer == f) & (d == s)
+                assert np.allclose(out["pred"][held, 0], wv[tr] @ lam2[tr] / wv[tr].sum())
+    out = cx.calibrate_rank(lam2[:, None] + 0.0, lam2[:, None], outer, wv, ok[:, 0], ok, d,
+                            [[-9, 9]], n_folds=3)
+    assert not out["fallback"].any() and np.all(out["spearman"] > 0.99)
+
+
+def test_group_shares_and_sizes(cx):
+    rng = np.random.default_rng(4)
+    n = 50
+    c = rng.standard_normal((n, 5))
+    g = c.sum(1)
+    lam = rng.standard_normal(n)
+    w = rng.random(n) + 0.1
+    sh = cx.group_shares(c, g, lam, w)
+    assert abs(sum(sh["share_signed"]) - 1.0) < 1e-12
+    assert abs(sum(sh["share_unsigned"]) - 1.0) < 1e-12
+    assert all(0 <= v <= 1 for v in sh["sign_agree"] + sh["opposite_lambda"])
+    dy = rng.standard_normal((n, 222))
+    J = rng.standard_normal((n, 222, 8))
+    J[:, 210:, 2] = 0.0
+    clipped = rng.random((n, 222)) < 0.05
+    sd = rng.random(222) + 0.5
+    m, cs, chan = cx.map_and_critic_sizes(dy, clipped, J, sd, 2.0)
+    cos = chan / (cs * m)
+    assert np.all(np.abs(cos) <= 1.0 + 1e-12)
+    contrib = cx.xi_contributions(dy, clipped, J, sd, 2.0, np.zeros((n, 222, 2)),
+                                  np.zeros((n, 2, 8)), np.zeros(n, bool))
+    assert np.allclose(contrib[:, :4].sum(1), chan) and np.all(contrib[:, 4] == 0.0)
+
+
+def test_cs1_expected_and_rule(cx):
+    def net(far_tail, crit, r2_huber, plants=True):
+        fl = {k: {"enrichment_rows": v} for k, v in (
+            ("kink_vx83", 2.0), ("clip_any", 1.0), ("clip_xi_channels", float("nan")),
+            ("clip_other_channels", 1.2), ("kappa_clipped", 1.4), ("tyre_kink_xi", float("nan")))}
+        def r2(v):
+            return {"r2c": v, "ci": [v - 0.1, v + 0.1]}
+
+        return {"where": {"half_set_size": 3, "geometry38_in_half_set": True, "flags": fl,
+                          "vx": {"median_tail": 60.0, "median_bulk": 55.0}},
+                "critic_vs_map": {"tail": {"share_signed": [0.2, far_tail, 0.1, 0, 0]},
+                                  "bulk": {"share_signed": [0.6, 0.3, 0.1, 0, 0]},
+                                  "ratio": {"critic": crit, "map": 1.0}},
+                "calibrations": {"frozen": {"all": {"s": r2(0.0), "xi": r2(-1.0)}},
+                                 "huber": {"plants_pass": plants,
+                                           "all": {"s": r2(0.01), "xi": r2(r2_huber)}},
+                                 "rank": {"plants_pass": False,
+                                          "all": {"s": r2(0.5), "xi": r2(0.0)}}}}
+
+    nets = {f"N{i}": net(0.7, 3.0, -0.02) for i in range(6)}
+    nets |= {f"M{i}": net(0.3, 1.0, -0.3) for i in range(3)}
+    e = cx.cs1_expected(nets)
+    assert e["E1.1"]["holds"] and e["E1.2"]["holds"]
+    assert e["E1.3"]["far_over_half_tail"]["count"] == 6 and e["E1.3"]["holds"]
+    assert e["E1.4"]["huber"]["xi_at_least_-0.05"]["count"] == 6
+    assert not e["E1.4"]["huber"]["holds"] and not e["E1.4"]["rank"]["holds"]
+    r = cx.cs1_rule(nets)
+    assert r["huber"]["count"] == 9 and r["huber"]["fires"] and r["co_report"] == ["huber"]
+    assert r["rank"]["count"] == 0 and not r["rank"]["fires"]
+    nets = {k: net(0.7, 3.0, -0.95, plants=k != "N0") for k in nets}
+    assert cx.cs1_rule(nets)["huber"]["count"] == 0          # a gain of 0.05 does not fire
+
+
+def test_plain_makes_numpy_values_json_safe(cx):
+    from apexzero.interp import io as IO
+
+    obj = {"a": np.float64("nan"), "b": [np.float64(1.5), np.inf], "c": np.arange(2),
+           "d": np.bool_(True)}
+    got = json.loads(IO.json_bytes(cx.plain(obj)))
+    assert got == {"a": None, "b": [1.5, "inf"], "c": [0, 1], "d": True}
+
+
+_CS1_X64 = r"""
+import sys
+import jax
+jax.config.update("jax_enable_x64", True)
+import numpy as np
+sys.path.insert(0, sys.argv[1])
+import costate_exploratory as cx
+from apexzero.agents.ppo import RunningMeanStd
+from apexzero.costate import critic as CR
+
+rng = np.random.default_rng(5)
+n = 9
+rms = RunningMeanStd(rng.standard_normal(222), rng.random(222) + 0.3, np.float64(1.0))
+W = rng.standard_normal(222)
+net = CR.linear_critic(W, 0.3, rms, sigma=3.0)
+reset = np.arange(n) % 3 == 0
+ob = rng.standard_normal((n, 222)) * 2.0
+ob[0, 7] = 1e3                                    # a clipped channel the critic reads
+oj = CR.ObsJac(ob, rng.standard_normal((n, 222, 8)), rng.standard_normal((n, 222, 2)),
+               rng.standard_normal((n, 222, 2)), rng.standard_normal((n, 2, 8)),
+               rng.standard_normal((n, 2, 8)), rng.standard_normal((n, 2, 2)),
+               np.zeros((n, 8)), reset)
+inp = CR.Inputs(np.zeros((n, 8)), np.zeros((n, 8)), np.zeros((n, 2)), reset)
+pb = CR.pullback(net, None, inp, oj)
+z, cl, sd = oj.z(net.obs_rms)
+assert cl[0, 7]
+f = CR._grad_jit(net.fn)
+_, dy = CR._batched(lambda o_: f(net.params, o_), n, np.clip(z, -10, 10))
+assert np.allclose(dy[:, 0], W, rtol=0, atol=1e-14)
+c = cx.xi_contributions(dy[:, 0], cl, oj.J, sd, net.sigma, oj.J_acc, oj.Mx, oj.reset)
+assert np.max(np.abs(c.sum(1) - pb.g[:, 0, 2]) / np.abs(pb.g[:, 0, 2])) < 1e-12
+assert np.all(c[reset, 4] == 0.0) and np.all(c[~reset, 4] != 0.0)
+x = np.column_stack([rng.uniform(0, 5e3, 20), rng.uniform(-3, 3, 20), rng.uniform(-0.3, 0.3, 20),
+                     rng.uniform(0.5, 90, 20), rng.uniform(-3, 3, 20), rng.uniform(-1, 1, 20),
+                     rng.uniform(-0.2, 0.2, 20), rng.uniform(-1, 1, 20)])
+assert not cx.tyre_kink_xi(x).any()
+reg = cx.tyre_region(x)
+assert np.array_equal(reg[:, 2], x[:, 3] <= 1.0)
+print("ok")
+"""
+
+
+def test_cs1_groups_sum_to_the_frozen_pullback():
+    """The channel groups and the accel term sum to critic.pullback's g_xi (a planted linear
+    critic, a clipped channel, reset rows), the fresh VJP route gives dV/do, and the tyre
+    channels' region never moves with xi (a float64 subprocess, as the costate tests run)."""
+    r = subprocess.run([sys.executable, "-c", _CS1_X64, str(SCRIPTS)], capture_output=True,
+                       text=True, cwd=REPO, timeout=600, check=False)
+    assert r.returncode == 0, r.stderr[-3000:]
+    assert r.stdout.strip().endswith("ok")
