@@ -1004,7 +1004,10 @@ def test_cs10_cs11_are_registered_trained_pooled(cx):
     assert "own" in cx.BY_CMD["cs-10"].reads
     assert cx.OWN_STEPS == 800 and cx.OWN_QUARTERS == 4
     # amendment 3's tolerances, with amendment 4's for the two cross-program checks
-    assert cx.J_TOL == 1e-8 and cx.JVP_TOL == 1e-8 and cx.DV_TOL == 1e-9    # amendment 5
+    assert cx.J_TOL == 1e-6 and cx.JVP_TOL == 1e-6 and cx.DV_TOL == 1e-9    # amendments 5, 6
+    from apexzero.costate import critic as CR
+
+    assert cx.J_TOL == CR.FD_TOL
     assert cx.PULLBACK_TOL == 1e-10
 
 
