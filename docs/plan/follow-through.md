@@ -601,3 +601,15 @@ Say if any of these should be scoped.
   round and one GW-6 pilot), then freeze `generator-v1` whatever the result.
 - Still to ask when the item starts: spend beyond the cheapest A6000 (#1), downloads and installs
   (#2), and the item-level choices (#5-#10, #12, #13, #15-#19).
+
+**Decisions taken (25 Oct 2026, second round, after Phase 1)**
+- **#10, the 80% gate:** E0 (5 x 1B) passes if its median seed completes at least 10 of 12 R-dev
+  circuits at its final checkpoint. No checkpoint is chosen on R-dev; GW-1 showed that R-dev
+  completion peaks at slow early checkpoints.
+- **#7, P4:** option A was vacuous (`docs/findings/p4.md`), so P4 is settled by option B2: 5 fresh
+  specialists under a new pre-registration, before `protocol-v1`.
+- **#5, VG:** the manipulation (C1's R^2_c) is primary and completion secondary; 40 runs; a
+  positive result does not change E0's recipe, so VG stays off the lockbox's critical path.
+- **#13, the width model:** build (2a) first and (2b) only if (2a) misses the width-report bands;
+  GW-3 runs v1 and v3 at 5 seeds per cell (about 14 A6000 h); the training margin is tested only
+  in GW-5; SimBa is out of scope.
