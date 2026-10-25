@@ -5,8 +5,8 @@ study lives in the distance domain: time as a function of lap distance along the
 centreline. Modules, in pipeline order:
 
 - ``circuits``: OpenF1 <-> TUMFTM names, and which TUMFTM layouts are out of date;
-- ``registration``: similarity transform of the feed onto the centreline (ICP), with the
-  3 m RMS / 1% length gate;
+- ``registration``: similarity transform of the feed onto the centreline (ICP), gated on
+  the feed's excursion beyond the TUMFTM edges (p99 <= 8 m);
 - ``session``: loading an archived session; race-control parsing;
 - ``progress`` + ``smoother``: s(t) per lap, an RTS smoother on [s, v, a] anchored to the
   official lap and sector times;

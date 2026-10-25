@@ -124,13 +124,48 @@ def test_register_recovers_rotation_scale_and_handedness(reflect):
     assert reg.accepted
 
 
-def test_registration_gate_rejects_a_length_mismatch(rect_line):
+def _offset_line(line, s, n):
+    """Points at signed lateral offset n (positive left) from the centreline at s."""
+    tan = line.tangent(s)
+    return line.point(s) + np.stack([-tan[:, 1], tan[:, 0]], axis=1) * np.asarray(n)[:, None]
+
+
+def test_length_mismatch_is_a_diagnostic_not_the_gate(rect_line):
     rng = np.random.default_rng(2)
     feed = rect_line.point(rng.uniform(0, rect_line.length, 2000))
     reg = register(feed, rect_line, length_openf1=rect_line.length * 1.03)
     assert reg.rms_m < 0.1
+    assert reg.accepted and reg.reason == "accepted"
+    assert not reg.plan_gate
+    assert "length mismatch" in reg.diagnostics
+
+
+def test_registration_gate_rejects_a_displaced_section(rect_line):
+    """5% of the lap 25 m off the corridor (a different layout) fails the excursion gate,
+    though the rest of the lap is a racing line cutting 2 m inside the corners."""
+    s = np.linspace(0, rect_line.length, 4000, endpoint=False)
+    k = rect_line.curvature(s)
+    n = 2.0 * np.sign(k) * (np.abs(k) > 1 / 150)
+    n[:200] += 25.0
+    reg = register(_offset_line(rect_line, s, n), rect_line, length_openf1=rect_line.length)
+    assert reg.outside_frac == pytest.approx(0.05, abs=0.005)
+    assert reg.excursion_p99_m > 15.0
     assert not reg.accepted
-    assert "length mismatch" in reg.reason
+    assert "excursion p99" in reg.reason
+
+
+def test_registration_gate_accepts_a_racing_line_with_a_large_rms(rect_line):
+    """A line swinging to within 2 m of the 6 m edges has an RMS over 3 m, which the plan's
+    gate rejected; it never leaves the corridor, so the excursion gate accepts it."""
+    rng = np.random.default_rng(3)
+    s = rng.uniform(0, rect_line.length, 4000)
+    n = 4.0 * np.tanh(3.0 * np.sin(2 * np.pi * s / 250.0))
+    reg = register(_offset_line(rect_line, s, n), rect_line, length_openf1=rect_line.length)
+    assert reg.rms_m > 3.0
+    assert not reg.plan_gate and "RMS" in reg.diagnostics
+    # The fit shifts the line a little towards one edge, so p99 is under 2 m inside.
+    assert reg.outside_frac == 0.0 and reg.excursion_p99_m < 0.0
+    assert reg.accepted
 
 
 def test_corridor_and_inside_offset_diagnostics(rect_line):

@@ -9,17 +9,19 @@ onto the other:
    scale, picks the basin; a few trimmed ICP iterations score each candidate.
 2. Full trimmed ICP (Umeyama's closed form on nearest-point correspondences) refines it.
 
-The gate (plan section 6): reject a session if the RMS distance of the registered points
-from the centreline exceeds 3 m, or if the two track models disagree on lap length by
-more than 1%. The length check is what catches an old TUMFTM layout whose changed
-section is short enough to hide inside the RMS.
+The gate (docs/STATUS.md, "Decisions taken"): reject a session if the 99th percentile of
+the registered points' excursion beyond the TUMFTM track edges exceeds 8 m
+(``corridor_excursion``). A racing line stays inside the corridor up to survey error; a
+section of a different layout leaves it by tens of metres. The RMS distance from the
+centreline and the lap-length mismatch are reported as diagnostics.
 
-Caveat found on the 2025 data: the feed's track model is not the centreline. In tight
-corners it sits 1.5-2.8 m to the inside and its lap is 0.4-1.7% shorter, i.e. it looks
-like a racing line. Both gate statistics therefore carry a racing-line component, and
-the gate as written also rejects some current layouts. ``corridor_excursion`` (how far
-outside the TUMFTM track edges the feed goes) separates an old layout much more sharply
-and is reported alongside; the gate itself is left as the plan specifies.
+They were the plan's gate (section 6: RMS <= 3 m, lengths within 1%), replaced because
+the feed's track model is not the centreline. In tight corners it sits 0.6-2.8 m to the
+inside and its lap is 0.4-1.7% shorter, i.e. it looks like a racing line, so both
+statistics carry a racing-line component and that gate rejected 8 of 12 current 2025
+layouts. On excursion p99, current layouts reach at most +7.4 m and old ones at least
++11.3 m in 2023-25 (docs/findings/drivers-pilot.md, section 1). The 8 m threshold was
+picked on 2025 and checked on 2023 and 2024.
 """
 
 from __future__ import annotations
@@ -30,8 +32,10 @@ import numpy as np
 
 from apexzero.drivers.geometry import Centreline
 
-RMS_MAX_M = 3.0
-LENGTH_TOL = 0.01
+EXCURSION_MAX_M = 8.0     # the gate: p99 excursion beyond the TUMFTM edges
+EXCURSION_Q = 99.0
+RMS_DIAG_M = 3.0          # the plan's original gate, now a reported diagnostic
+LENGTH_DIAG_TOL = 0.01
 
 
 @dataclass(frozen=True)
@@ -121,8 +125,11 @@ class Registration:
     n_points: int
     length_openf1_m: float    # the feed's own lap length, measured in its frame (metres)
     length_tumftm_m: float
-    rms_max_m: float = RMS_MAX_M
-    length_tol: float = LENGTH_TOL
+    outside_frac: float       # share of points beyond the TUMFTM edges
+    excursion_p99_m: float    # 99th percentile of the excursion (negative = inside)
+    excursion_max_m: float = EXCURSION_MAX_M
+    rms_diag_m: float = RMS_DIAG_M
+    length_diag_tol: float = LENGTH_DIAG_TOL
 
     @property
     def length_mismatch(self) -> float:
@@ -131,17 +138,29 @@ class Registration:
 
     @property
     def accepted(self) -> bool:
-        return self.rms_m <= self.rms_max_m and abs(self.length_mismatch) <= self.length_tol
+        return self.excursion_p99_m <= self.excursion_max_m
 
     @property
     def reason(self) -> str:
+        if self.accepted:
+            return "accepted"
+        return f"excursion p99 {self.excursion_p99_m:+.1f} m > {self.excursion_max_m:g} m"
+
+    @property
+    def plan_gate(self) -> bool:
+        """The plan's original gate (RMS and length), kept as a diagnostic only."""
+        return self.rms_m <= self.rms_diag_m and abs(self.length_mismatch) <= self.length_diag_tol
+
+    @property
+    def diagnostics(self) -> str:
+        """Where the RMS and length diagnostics exceed the plan's original limits."""
         why = []
-        if self.rms_m > self.rms_max_m:
-            why.append(f"RMS {self.rms_m:.2f} m > {self.rms_max_m:g} m")
-        if abs(self.length_mismatch) > self.length_tol:
+        if self.rms_m > self.rms_diag_m:
+            why.append(f"RMS {self.rms_m:.2f} m > {self.rms_diag_m:g} m")
+        if abs(self.length_mismatch) > self.length_diag_tol:
             why.append(f"length mismatch {100 * self.length_mismatch:+.2f}% "
-                       f"(limit {100 * self.length_tol:g}%)")
-        return "; ".join(why) or "accepted"
+                       f"(limit {100 * self.length_diag_tol:g}%)")
+        return "; ".join(why) or "within the plan's RMS and length limits"
 
 
 def register(points: np.ndarray, line: Centreline, length_openf1: float,
@@ -150,7 +169,8 @@ def register(points: np.ndarray, line: Centreline, length_openf1: float,
     """Register OpenF1 positions (metres, feed frame) onto ``line``.
 
     ``points`` should be on-track samples (flying laps): pit-lane samples are what the
-    95% trim is for, but they also inflate the reported (untrimmed) RMS.
+    95% trim is for, but they also inflate the reported (untrimmed) RMS and the
+    excursion the gate reads.
     ``length_openf1`` is the feed's lap length in its own frame (``lap_path_length``).
     """
     pts = np.asarray(points, dtype=float)
@@ -170,10 +190,11 @@ def register(points: np.ndarray, line: Centreline, length_openf1: float,
                 best = (rms, tf)
     tf, _ = icp(fit, line, best[1], iters=60, trim=0.95, tol=1e-6)
     _, dist = line.nearest(tf.apply(pts))
+    out_frac, exc = corridor_excursion(pts, line, tf, q=EXCURSION_Q)
     return Registration(
         transform=tf, rms_m=float(np.sqrt(np.mean(dist**2))), p95_m=float(np.percentile(dist, 95)),
         max_m=float(dist.max()), n_points=len(pts), length_openf1_m=float(length_openf1),
-        length_tumftm_m=line.length,
+        length_tumftm_m=line.length, outside_frac=out_frac, excursion_p99_m=exc,
     )
 
 
@@ -197,11 +218,11 @@ def lateral_offsets(points: np.ndarray, line: Centreline,
 
 
 def corridor_excursion(points: np.ndarray, line: Centreline, transform: Similarity,
-                       q: float = 99.0) -> tuple[float, float]:
+                       q: float = EXCURSION_Q) -> tuple[float, float]:
     """(share of points outside the TUMFTM edges, q-th percentile of the excursion in m).
 
     A racing line stays inside the corridor up to survey error; a section of a
-    different layout leaves it by tens of metres.
+    different layout leaves it by tens of metres. The 99th percentile is the gate.
     """
     _, _, exc = lateral_offsets(points, line, transform)
     return float(np.mean(exc > 0)), float(np.percentile(exc, q))

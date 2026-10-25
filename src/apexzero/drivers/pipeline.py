@@ -172,8 +172,8 @@ def run_session(directory: str | Path, tracks_dir: str | Path = TRACKS,
     circuit = circuit_for(sess.circuit)
     line = Centreline(load_tumftm(Path(tracks_dir) / f"{circuit.tumftm}.csv"))
     reg = register_session(sess, line)
-    log(f"{label}: registration RMS {reg.rms_m:.2f} m, length {100 * reg.length_mismatch:+.2f}%"
-        f" -> {reg.reason}")
+    log(f"{label}: registration excursion p99 {reg.excursion_p99_m:+.1f} m (RMS {reg.rms_m:.2f} m,"
+        f" length {100 * reg.length_mismatch:+.2f}%) -> {reg.reason}")
     if not reg.accepted:
         raise ValueError(f"{label}: registration rejected ({reg.reason})")
     statuses = lapf.classify(sess)

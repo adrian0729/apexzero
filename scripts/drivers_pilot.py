@@ -43,7 +43,7 @@ from apexzero.drivers import recovery
 from apexzero.drivers.circuits import CIRCUITS
 from apexzero.drivers.geometry import Centreline
 from apexzero.drivers.pipeline import register_session, registration_points, run_session
-from apexzero.drivers.registration import corridor_excursion, inside_offset
+from apexzero.drivers.registration import inside_offset
 from apexzero.drivers.session import load
 from apexzero.drivers.smoother import DEFAULT_CONFIG
 from apexzero.drivers.synth import SynthConfig, qss_model
@@ -97,7 +97,6 @@ def stage_registration(year=YEAR):
         line = Centreline(load_tumftm(TRACKS / f"{c.tumftm}.csv"))
         reg = register_session(sess, line)
         pts = registration_points(sess)[0]
-        out_frac, exc99 = corridor_excursion(pts, line, reg.transform)
         inside = inside_offset(pts, line, reg.transform)
         rows.append({
             "circuit": meta["circuit"], "key": meta["key"], "dir": str(d), "tumftm": c.tumftm,
@@ -106,16 +105,17 @@ def stage_registration(year=YEAR):
             "scale": reg.transform.scale, "angle_deg": reg.transform.angle_deg,
             "reflected": reg.transform.reflected, "length_openf1_m": reg.length_openf1_m,
             "length_tumftm_m": reg.length_tumftm_m, "length_mismatch": reg.length_mismatch,
-            "outside_corridor": out_frac, "excursion_p99_m": exc99,
+            "outside_corridor": reg.outside_frac, "excursion_p99_m": reg.excursion_p99_m,
             "inside_offset_m": inside,
-            "accepted": reg.accepted, "reason": reg.reason, "n_points": reg.n_points,
+            "accepted": reg.accepted, "reason": reg.reason,
+            "plan_gate": reg.plan_gate, "diagnostics": reg.diagnostics, "n_points": reg.n_points,
             "cpu_s": time.process_time() - t0,
         })
         r = rows[-1]
-        print(f"{meta['circuit']:>20} -> {c.tumftm:<12} RMS {r['rms_m']:.2f} m  "
+        print(f"{meta['circuit']:>20} -> {c.tumftm:<12} p99 exc {reg.excursion_p99_m:+.1f} m  "
+              f"outside {100 * reg.outside_frac:.1f}%  {r['reason']}  | RMS {r['rms_m']:.2f} m  "
               f"length {100 * r['length_mismatch']:+.2f}%  scale {r['scale']:.4f}  "
-              f"outside {100 * out_frac:.1f}%  p99 exc {exc99:+.1f} m  inside {inside:+.2f} m  "
-              f"{r['reason']}  "
+              f"inside {inside:+.2f} m  plan gate {'pass' if reg.plan_gate else 'fail'}  "
               f"[{r['cpu_s']:.0f} s cpu]", flush=True)
     OUT.mkdir(parents=True, exist_ok=True)
     name = "registration.json" if year == YEAR else f"registration_{year}.json"
