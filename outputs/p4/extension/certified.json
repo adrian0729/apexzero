@@ -1,0 +1,270 @@
+{
+ "braking": [
+  0,
+  1,
+  3,
+  4,
+  7,
+  8,
+  14,
+  16,
+  17
+ ],
+ "conditions": {
+  "P4A/Kstr/16e-3": {
+   "amplitude": 0.016,
+   "certified_corners": [
+    0,
+    1,
+    3,
+    4,
+    7,
+    8,
+    14,
+    16,
+    17
+   ],
+   "enters_p4": true,
+   "evaluated": true,
+   "f6_scale": null,
+   "family": "Kstr",
+   "kind": "knoise",
+   "ladder": "Kstr",
+   "median_C_G": 1.0,
+   "passes_generalists": true,
+   "socp_corners": [
+    0,
+    1,
+    3,
+    4,
+    7,
+    8,
+    14,
+    16,
+    17
+   ],
+   "socp_ratio": {
+    "0": 1.0000000017118704,
+    "1": 0.9999948297565182,
+    "14": 1.007930418847545,
+    "16": 1.0000000112589653,
+    "17": 0.9999994129271034,
+    "3": 0.9999982838474795,
+    "4": 0.9999939235242525,
+    "7": 1.000460472861095,
+    "8": 1.0
+   },
+   "strip_sha256_per_corner": {
+    "0": "6499549fde25dca95c2348978464261a3028f2505a7d7bacba2b2b103824594b",
+    "1": "cc46f5cba65aef591273eca1989f6073a3f7212cdc734993e225f720f420da96",
+    "14": "4cfc2a2ecb6e00556b414a44ad4f9b5382fc9c8c1425f6c2aaffaceab4d1a821",
+    "16": "0e95c1338a4a158d61eca5d457f31f96e0ce432aca4354af28db1d54a434d36b",
+    "17": "e9bc47fc65e5a22bd6e56c1c8e1a0564d32fa6c1a25abc9a61905c93f7f9d402",
+    "3": "d230c98b952a4108e41b973ffc053b1f5be1db2df4e2aa9dad0c44776b75ace0",
+    "4": "053cffcf415416c197f00f791eed1554cc5f3059700ae6c832a78f52414a1cec",
+    "7": "e0090ed7b0c264fc0e9dc08496ee7aa775ccd8a4f1ecc3b6ccdca138159a1dd1",
+    "8": "9ddcdf2ac55cf7424c4a34d6ab88a0175dbbb60ac4ebe5cbc8947898d499efbe"
+   },
+   "strips_sha256": "3908af2ad9f7cdcaaeaa21d62cf073ea43b95326e5f03c56df146755dff2a8cc",
+   "unit": "1/m"
+  },
+  "P4A/Kstr/32e-3": {
+   "amplitude": 0.032,
+   "certified_corners": [],
+   "enters_p4": false,
+   "evaluated": true,
+   "f6_scale": null,
+   "family": "Kstr",
+   "kind": "knoise",
+   "ladder": "Kstr",
+   "median_C_G": 0.875,
+   "passes_generalists": false,
+   "socp_corners": [
+    0,
+    1,
+    3,
+    4,
+    7,
+    8,
+    16,
+    17
+   ],
+   "socp_ratio": {
+    "0": 0.9994683718702373,
+    "1": 0.9999999868175836,
+    "14": 1.0526609456880744,
+    "16": 1.0003826794048518,
+    "17": 0.9999819727741646,
+    "3": 0.9999810402284599,
+    "4": 1.0000565473824392,
+    "7": 1.0071153636267016,
+    "8": 1.0
+   },
+   "strip_sha256_per_corner": {},
+   "strips_sha256": null,
+   "unit": "1/m"
+  },
+  "P4A/Kstr/64e-3": {
+   "amplitude": 0.064,
+   "certified_corners": [
+    0,
+    1,
+    3,
+    4,
+    8,
+    17
+   ],
+   "enters_p4": false,
+   "evaluated": true,
+   "f6_scale": null,
+   "family": "Kstr",
+   "kind": "knoise",
+   "ladder": "Kstr",
+   "median_C_G": 1.0,
+   "passes_generalists": true,
+   "socp_corners": [
+    0,
+    1,
+    3,
+    4,
+    8,
+    17
+   ],
+   "socp_ratio": {
+    "0": 0.9994683965074599,
+    "1": 0.9999996989465082,
+    "14": 1.0281200426380372,
+    "16": 0.9839763156228605,
+    "17": 0.9953234350543162,
+    "3": 0.9994831209640753,
+    "4": 1.0004858206047222,
+    "7": 1.0143140661451995,
+    "8": 1.0
+   },
+   "strip_sha256_per_corner": {
+    "0": "b837745ae68100a41cd310d117edaac244141277bb690b484e702ec6d2e02ea1",
+    "1": "1c13349317f16cae7498637e49018d7700ec5751b509da49e18f3b70eb7b4bc7",
+    "17": "761121ed5c26c3f0838d8741b0efe7556400df4260cde4177b203eb26adff081",
+    "3": "3f6ecccad96e85dbcbb9c8e29128db4d3e97db6f6e940a3616c1e83b31953a00",
+    "4": "520976439ba4415abb6b7bd6706601438fc3b02b92113fc4e8871f8ab6aaca21",
+    "8": "3997b6a716a6a6d45c89d23531a0ebe3919e2b7248d64850192298e8619295e8"
+   },
+   "strips_sha256": "fccc6d1d688fb615ee553a863b3c61bcf187d13e909129a671721498d24cb036",
+   "unit": "1/m"
+  }
+ },
+ "contingency": {
+  "applicable": false,
+  "note": "the extension has no W+ members (Amendment 2)",
+  "triggered": false
+ },
+ "criterion": {
+  "C_G_a": {
+   "G1": 0.6666666666666666,
+   "G1s1": 1.0,
+   "G1s2": 1.0,
+   "G2": 1.0,
+   "G2s1": 1.0,
+   "G2s2": 1.0,
+   "G3": 0.8888888888888888,
+   "G3s1": 1.0,
+   "G3s2": 1.0
+  },
+  "fallback": false,
+  "median_C_G_a": 1.0,
+  "rule": "median C_G >= 0.9",
+  "stored_bitwise": {
+   "G1": {
+    "bitwise_equal": 72,
+    "max_abs_diff_unequal": 0.0,
+    "n": 72
+   },
+   "G1s1": {
+    "bitwise_equal": 72,
+    "max_abs_diff_unequal": 0.0,
+    "n": 72
+   },
+   "G1s2": {
+    "bitwise_equal": 72,
+    "max_abs_diff_unequal": 0.0,
+    "n": 72
+   },
+   "G2": {
+    "bitwise_equal": 72,
+    "max_abs_diff_unequal": 0.0,
+    "n": 72
+   },
+   "G2s1": {
+    "bitwise_equal": 72,
+    "max_abs_diff_unequal": 0.0,
+    "n": 72
+   },
+   "G2s2": {
+    "bitwise_equal": 72,
+    "max_abs_diff_unequal": 0.0,
+    "n": 72
+   },
+   "G3": {
+    "bitwise_equal": 72,
+    "max_abs_diff_unequal": 0.0,
+    "n": 72
+   },
+   "G3s1": {
+    "bitwise_equal": 72,
+    "max_abs_diff_unequal": 0.0,
+    "n": 72
+   },
+   "G3s2": {
+    "bitwise_equal": 72,
+    "max_abs_diff_unequal": 0.0,
+    "n": 72
+   }
+  },
+  "threshold": 0.9
+ },
+ "design_hash": "5e1a1c7a5a4a77b085378b9c41611e368ee4dbd6c1880acd5e22fb4bf80525e4",
+ "entering": [
+  "P4A/Kstr/16e-3"
+ ],
+ "frozen": {
+  "at": "2026-10-25T03:53:50",
+  "git_head": "a45514c83bfac00be8f0b0643ce8d419d0d982f7"
+ },
+ "inputs_sha256": {
+  "build.json": "20f4ce1d009a739e7d35689244c58b532ab5d4e4307162cf946cebc7f4d2a481",
+  "generalists.json": "562d1e46bd0b6f9cecb08aec7d2188fe4d626d3fac0ef361ff18407764fb42c4",
+  "socp.json": "ffeea7b77c72827a096f30523b8128578bd49137d477e5fd27169df6116d9efa"
+ },
+ "status": "EXPLORATORY and POST HOC (p4-plan.md Amendment 2): frozen before any specialist is rolled out on an extension rung",
+ "timing": {
+  "cpu_s": [
+   21.72721,
+   22.048097,
+   13.284197,
+   12.838673,
+   21.191068,
+   24.370092,
+   25.193399,
+   21.641795000000002,
+   11.906064,
+   25.455296000000004
+  ],
+  "cut": false,
+  "mean_s": 84.01571552498498,
+  "n": 10,
+  "rule": "plan Section 9: mean wall seconds of the first 10 IPOPT solves > 120 s cuts F6s to f6_scale 1, 2, 4, 8 before any further solve",
+  "solve_seconds": [
+   89.93399754201528,
+   91.22303966700565,
+   49.29143366694916,
+   46.90209370793309,
+   115.61999224999454,
+   132.38350333296694,
+   117.13333729200531,
+   112.1499853329733,
+   42.451188749982975,
+   43.06858370802365
+  ],
+  "threshold_s": 120.0
+ }
+}

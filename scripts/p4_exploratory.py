@@ -1166,7 +1166,9 @@ def stage_certify_generalists(args) -> None:
     primary = [c for c in conds if not BY_NAME[c]["contingency"]]
     status = evaluate(primary, "new")
     if cont is None:
-        cont = contingency_rule(status)
+        cont = (dict(applicable=False, triggered=False,
+                     note="the extension has no W+ members (Amendment 2)") if EXTENSION
+                else contingency_rule(status))
         write_json(GEN / "contingency.json", cont)
         print(f"contingency: {cont}", flush=True)
     if cont["triggered"]:
