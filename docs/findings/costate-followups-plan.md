@@ -1301,3 +1301,35 @@ unchanged.
 - The canonical run computed all 9 networks in its pool, then stopped at the first failing check
   (G1s1's J), before any summary was formed or written. No other network's CS-11 number was seen.
   G1s1's J gap is the only number from that run.
+
+### Amendment 5 (2026-10-25)
+
+**What changed.**
+- **The dV_dwin check's measure.** CS-11's check of the recomputed `dV_dwin` against the stored
+  one (amendment 3 item 3) now reads |recomputed − stored| / (the network's largest |stored
+  dV_dwin| over D's rows), at most 10⁻⁹. It was the per-row relative difference, at most 10⁻¹⁰.
+- **Where the checks stop the item.** CS-11's three stopping checks now also run inside each pool
+  unit, on each key as it is computed, so a failure stops the pool at once instead of after every
+  unit has finished. The parent still checks them all again, as before.
+
+No question, row set, statistic, expected direction, or other check changes.
+
+**Why.** The second canonical CS-11 run, after amendment 4, stopped on G1s2's dV_dwin check:
+1.59·10⁻¹⁰ per row, against 10⁻¹⁰. It wrote nothing.
+- The check compares the critic's JVP at D's state 0, evaluated alone, with the stored one,
+  which the critic stage evaluated in a batch with the key's other T rows. XLA orders the two
+  computations differently.
+- On a row where dV_dwin is small next to the terms that make it up, the relative difference
+  grows. So the per-row relative measure is the wrong scale for round-off.
+- Scaled by the network's largest |dV_dwin|, the measure reads as the pullback check does (each
+  difference against the row's largest |g|). A wiring error (the wrong state, road, side or
+  critic) moves dV_dwin by a large fraction of its scale, so 10⁻⁹ still catches it.
+
+The units now stop early because two full runs (30 minutes each) were lost to checks that could
+have stopped them in their first minutes.
+
+**Computed or seen before it.**
+- The second run computed all 9 networks in its pool, then checked them in order. G1's and
+  G1s1's checks passed; G1s2 failed its first check (dV_dwin).
+- No summary was formed or written. G1s2's gap (1.59·10⁻¹⁰) is the only number from that run.
+- Nothing else was seen beyond amendment 4's list.
