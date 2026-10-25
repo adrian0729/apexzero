@@ -13,9 +13,11 @@
 The first ``pilot`` pass (default smoother) only supplies the feed's sampling intervals
 and position noise to ``tune``. Stages cache their results under outputs/drivers-lite/,
 so the report can be rebuilt without recomputing. Single process; run it niced. Pilot
-circuits are the 2025 sessions that pass the registration gate (at most four). The 2023
-and 2024 registrations are only used to check the proposed corridor-excursion gate on
-seasons it was not chosen on.
+circuits are pinned by session key (``PILOT_KEYS``): the four 2025 sessions that passed
+the plan's original registration gate. A change of gate must not silently change the
+pilot, so ``pilot_sessions`` refuses if one of them stops passing. The 2023 and 2024
+registrations are only used to check the corridor-excursion gate on seasons it was not
+chosen on.
 Measured on the busy M3 Pro: registration ~2 s CPU per session, pilot ~80 s CPU for four
 sessions, tune ~2 min, injection ~3 min, persistent ~3 min, report ~10 s.
 
@@ -51,7 +53,9 @@ ROOT = Path("data/raw/openf1")
 TRACKS = Path("data/tracks/tumftm")
 OUT = Path("outputs/drivers-lite")
 YEAR = 2025
-MAX_PILOT = 4
+# The pilot: 2025 qualifying at Suzuka, Montreal, Spa-Francorchamps and Monza (OpenF1
+# session keys), the sessions that passed the plan's original RMS / length gate.
+PILOT_KEYS = (10002, 9959, 9935, 9908)
 SYS_OFFSET_M = 1.0      # per-car along-track position offset in the persistent-error scenario
 TUNE_CIRCUITS = ["Catalunya", "Hockenheim"]      # R-dev geometry only
 QSS_CHECK_CIRCUITS = ["Sepang", "Nuerburgring"]  # R-dev, not used for tuning
@@ -119,9 +123,14 @@ def stage_registration(year=YEAR):
 
 
 def pilot_sessions():
-    rows = json.loads((OUT / "registration.json").read_text())
-    ok = [r for r in rows if r.get("accepted") and r.get("layout_matches")]
-    return ok[:MAX_PILOT]
+    rows = {r["key"]: r for r in json.loads((OUT / "registration.json").read_text())}
+    out = []
+    for key in PILOT_KEYS:
+        r = rows.get(key)
+        if r is None or not (r.get("accepted") and r.get("layout_matches")):
+            raise ValueError(f"pilot session {key} is missing or no longer passes registration")
+        out.append(r)
+    return out
 
 
 def stage_pilot():
