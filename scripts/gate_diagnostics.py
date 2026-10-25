@@ -1381,7 +1381,51 @@ def stage_crashes(args) -> None:
 # ------------------------------------------------------------------------- report
 
 
+def descriptive_d1(ev: dict[tuple[str, int], dict]) -> dict:
+    """DESCRIPTIVE, added after D1's results were seen (not in the plan): lap gaps by
+    checkpoint, circuits completed by checkpoint, and networks at the gate's 10 of 12."""
+    names = [n.name for n in NETWORKS]
+    gaps, per_circuit, ge10 = {}, {}, {}
+    for s in GRID_STEPS:
+        g = [ev[k, s]["circuits"][c]["gap"] for k in names for c in R_DEV
+             if ev[k, s]["circuits"][c]["completion"] > COMPLETION_MIN]
+        gaps[s] = {"median": float(np.median(g)), "n_pairs": len(g)}
+        per_circuit[s] = {c: int(sum(ev[k, s]["circuits"][c]["completion"] > COMPLETION_MIN
+                                     for k in names)) for c in R_DEV}
+        ge10[s] = sorted(k for k in names if ev[k, s]["C"] >= 10)
+    first, last = GRID_STEPS[0], FINAL
+    paired = [(ev[k, first]["circuits"][c]["gap"], ev[k, last]["circuits"][c]["gap"])
+              for k in names for c in R_DEV
+              if min(ev[k, first]["circuits"][c]["completion"],
+                     ev[k, last]["circuits"][c]["completion"]) > COMPLETION_MIN]
+    p = np.array(paired)
+    lost = {c: int(sum(ev[k, first]["circuits"][c]["completion"] > COMPLETION_MIN
+                       and ev[k, last]["circuits"][c]["completion"] <= COMPLETION_MIN
+                       for k in names)) for c in R_DEV}
+    gained = {c: int(sum(ev[k, first]["circuits"][c]["completion"] <= COMPLETION_MIN
+                         and ev[k, last]["circuits"][c]["completion"] > COMPLETION_MIN
+                         for k in names)) for c in R_DEV}
+    return {"label": "descriptive (added after D1's results were seen; not in the plan)",
+            "median_gap_of_completed_pairs": gaps,
+            "networks_completing_each_circuit": per_circuit,
+            "networks_C_ge_10": {s: {"n": len(v), "runs": v} for s, v in ge10.items()},
+            "networks_C_ge_10_at_any_checkpoint": sorted({k for v in ge10.values() for k in v}),
+            "paired_gap_10M_vs_final": {"n_pairs": len(p),
+                                        "median_10M": float(np.median(p[:, 0])),
+                                        "median_final": float(np.median(p[:, 1])),
+                                        "median_change": float(np.median(p[:, 1] - p[:, 0])),
+                                        "n_final_faster": int((p[:, 1] < p[:, 0]).sum())},
+            "circuits_lost_10M_to_final": lost, "circuits_gained_10M_to_final": gained}
+
+
 def stage_report(args) -> None:
+    if (OUT / "curves.json").exists():
+        start = time.time()
+        ev = load_evals()
+        rec = descriptive_d1(ev)
+        rec["provenance"] = provenance({rel(eval_path(k, s)): sha256_file(eval_path(k, s))
+                                        for k, s in ev}, start)
+        write_json(OUT / "descriptive.json", rec)
     for f in ("timing.json", "curves.json", "adr.json", "crashes.json"):
         p = OUT / f
         if not p.exists():

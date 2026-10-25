@@ -272,6 +272,92 @@ def test_section8_d3_rows(gd):
     assert gd.section8_d3(0.7, q, 0.5, q)["v3"] == "1/3 <= s_in < 2/3 (no row)"
 
 
+def _planted_d3(gd):
+    """20 networks; v1 baselines crash 6 of 10 runs by the inside edge at Sochi's corner 0
+    (c = 0.5 there), v1 real-width networks 2 of 10 (c = 0.9); nothing else crashes."""
+    wins = {c: [gd.Window(c, 0, +1, 100.0, 50.0, 1000.0),
+                gd.Window(c, 1, -1, 500.0, 50.0, 1000.0)] for c in gd.R_DEV}
+    data, stored = {}, {}
+    for net in gd.NETWORKS:
+        if net.arm not in gd.H4R_ARMS:
+            continue
+        data[net.name], stored[net.name] = {}, {}
+        for c in gd.R_DEV:
+            k_crash = 0
+            if c == "Sochi" and net.arm == "v1-base":
+                k_crash, cv = 6, 0.5
+            elif c == "Sochi" and net.arm == "v1-realw":
+                k_crash, cv = 2, 0.9
+            else:
+                cv = 1.0
+            crashes = [{"run": r, "s": 120.0, "lap": 1, "n": 4.0, "vx": 50.0,
+                        "cause": "corridor", "corner": 0, "side": "inside"}
+                       for r in range(k_crash)]
+            passages = {0: [{"c": -0.2 if r < k_crash else cv, "terminated": r < k_crash,
+                             "lap": 1, "run": r} for r in range(10)],
+                        1: [{"c": 1.0, "terminated": False, "lap": 1, "run": r}
+                            for r in range(k_crash, 10)]}
+            frac = 1.0 - k_crash / 10
+            data[net.name][c] = {"crashes": crashes, "passages": passages, "completion": frac}
+            stored[net.name][c] = {"completion": frac}
+    return data, wins, stored
+
+
+def test_network_crash_data_from_planted_files(gd, tmp_path, monkeypatch):
+    """The stage's reading of a trace file and an evaluation record: one run completes, one
+    leaves by the inside edge of corner 0 on lap 2."""
+    monkeypatch.setattr(gd, "OUT", tmp_path)
+    L = 1000.0
+    wins = {c: [gd.Window(c, 0, +1, 100.0, 50.0, L), gd.Window(c, 1, -1, 500.0, 50.0, L)]
+            for c in gd.R_DEV}
+    s0, n0, wl0, wr0, e0, _ = _planted_run(L)
+    s1, n1, _, _, e1, _ = _planted_run(L, crash_at=1120.0)
+    n0 = np.where((np.mod(s0, L) >= 100) & (np.mod(s0, L) <= 150), 4.0, 0.0)
+    n1 = np.where((np.mod(s1, L) >= 100) & (np.mod(s1, L) <= 150), 4.0, 0.0)
+    n1[e1] = 5.5
+    flat, circuits = {}, {}
+    for c in gd.R_DEV:
+        flat.update({f"{c}__s": np.stack([s0, s1], 1), f"{c}__n": np.stack([n0, n1], 1),
+                     f"{c}__wl": np.stack([wl0, wl0], 1), f"{c}__wr": np.stack([wr0, wr0], 1),
+                     f"{c}__end": np.array([e0, e1]), f"{c}__crash": np.array([False, True])})
+        circuits[c] = {"crash": [False, True], "term_s": [None, float(s1[e1] % L)],
+                       "term_lap": [-1, 2], "term_n": [None, 5.5], "term_vx": [None, 50.0],
+                       "cause": ["", "corridor"], "completion": 0.5}
+    gd.trace_path("planted").parent.mkdir(parents=True)
+    np.savez(gd.trace_path("planted"), **flat)
+    gd.write_json(gd.eval_path("planted", gd.FINAL), {"circuits": circuits})
+    data = gd.network_crash_data("planted", wins)
+    for c in gd.R_DEV:
+        assert data[c]["crashes"] == [{"run": 1, "s": 120.0, "lap": 2, "n": 5.5, "vx": 50.0,
+                                       "cause": "corridor", "corner": 0, "side": "inside"}]
+        p0 = data[c]["passages"][0]
+        assert [(p["run"], p["lap"], p["terminated"]) for p in p0] == [
+            (0, 1, False), (0, 2, False), (1, 1, False), (1, 2, True)]
+        assert [p["c"] for p in p0] == pytest.approx([1.0, 1.0, 1.0, -0.5])
+        assert [p["run"] for p in data[c]["passages"][1]] == [0, 0, 1]
+
+
+def test_crashes_analysis_on_planted_data(gd):
+    data, wins, stored = _planted_d3(gd)
+    res = gd.crashes_analysis(data, wins, stored)
+    v1, v3 = res["variants"]["v1"], res["variants"]["v3"]
+    assert v1["former_crash_corners"] == ["Sochi#0"] and v3["former_crash_corners"] == []
+    assert v1["gain_circuits"] == v1["gain_circuits_stored"] == ["Sochi"]
+    assert v3["gain_circuits"] == []
+    assert (v1["Q1"]["dT"], v1["Q1"]["dT_in"], v1["Q1"]["s_in"]) == (20, 20, 1.0)
+    assert v3["Q1"]["s_in"] is None
+    rate = v1["termination_rates_at_former"]["Sochi#0"]
+    assert rate["base"]["rate"] == pytest.approx(0.6) and rate["realw"]["rate"] == pytest.approx(0.2)
+    # Network medians over 10 passages: baseline (6 x -0.2, 4 x 0.5) -> -0.2; real width
+    # (2 x -0.2, 8 x 0.9) -> 0.9; dc = 1.1 (above v1's band); clearing passages only: 0.4.
+    assert v1["Q2"]["dc"] == pytest.approx(1.1) and not v1["Q2"]["in_band"]
+    assert v1["secondary"]["Q2_clearing_passages_only"]["dc"] == pytest.approx(0.4)
+    assert v3["Q2"]["dc"] is None
+    assert v1["census"]["base"]["share_inside_corridor_at_corner"] == 1.0
+    assert v1["census"]["base"]["terminations"] == 30
+    assert res["readings"]["section8_row"]["v1"] == "s_in >= 2/3 but dc above the band"
+
+
 def test_platform_check_and_wilson(gd):
     full = {c: {"completion": 1.0} for c in gd.R_DEV}
     stored = {"a": dict(full), "b": dict(full)}
