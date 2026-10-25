@@ -197,4 +197,51 @@ Results computed under the earlier version are kept and reported beside the amen
 - within certification;
 - labelled post hoc, because d_OOD values would by then be known.
 
-(None yet.)
+### Amendment 1 (25 Oct 2026): implementation details, fixed before any computation
+
+**What had been seen.** No new condition had been built into a bank, solved or driven. Before writing this, I read the frozen code and reran 16 stored deterministic runs of S2 on four registered cells (corner 0: (a), road after straightened, F6 wobble 0.6; corner 3: (a)), to see whether the frozen rollout code reproduces step 1's runs. Those are registered conditions with results already in `decisions_all.json`. The unit tests of `scripts/p4_exploratory.py` build corner 0's new strips as stimuli only; nothing is solved or driven on them.
+
+**What changed, and why.** Nothing in Sections 1–8 changes. The items below fix details the plan leaves open, so that none of them is chosen after a result is seen.
+
+1. **Batch shape.** Every rollout chunk is padded to exactly 2048 runs (step 1's `CHUNK`) with copies of its own runs, which are then dropped. XLA's float32 results depend on the batch shape. In the check above, a 16-run batch differed from the stored runs by up to 5e-4 m in s, while 2048-run batches matched them bit for bit. All of step 1's tier D runs, for all 12 agents, were made in 2048-run batches. No definition changes.
+2. **d_OOD per run.** It is computed on the deterministic phase-0 run, as step 1's code does (`scripts/psychophysics.py`, `_d_ood_from_det`, imported read-only). The "median over its runs" of Section 5 is then `cond_table`'s median over the corner's runs that have a d_OOD, which is the phase-0 value, and P4's D is the median of that over the condition's corners. The reproduction check (Section 5) needs exactly this.
+3. **C.** C is the frozen `cond_table`'s `complete` (at least 3 of 4 phases) on run rows computed by `measures.response_metrics`, as `analysis.run_table` computes them. Tier D cells have no null run. `completion_by_condition` then averages it over the corners present, which for a new condition are its certified corners.
+4. **K-str's straights.**
+   - `corners.segment` runs, with its defaults, on the float32 Track of condition (a)'s strip (what `StimulusBank.track` returns).
+   - Each corner spans [s_start, s_end + 2 m], extended by 50 m on both sides.
+   - Straight knots lie after the lead-in (knot > `lead1`) and no later than the excision's last knot `i_b`, the range the frozen κ noise uses.
+   - A maximal run of straight knots a..b is kept when (b − a)·2 m > 200 m. It gets `_kappa_noise(rng, i, a, b, level)`: noise on the open run, 20 m tapers inside it, zero net heading over it, and peak `level`.
+   - Runs are drawn in order of position from one generator per (corner, family, level). The frozen inside cap is then applied with `mask = w_lead < 1`, as the frozen κ noise does.
+   - The build stops (an amendment would be needed) if K-str's footprint reaches [s_c0 − 50, s_c1 + 50] of the scored corner.
+5. **W+.**
+   - φ = `rng.uniform(0, 2π)` from the new stream, with s = knot index × 2 m, as the frozen wobble uses.
+   - "The modified knots" for the cap are the knots where the widening is positive.
+   - The build stops if the cap leaves any knot narrower than condition (a)'s road on either side.
+6. **W+str, the contingency's rebuild.** W+ again, with the footprint (1 − w_lead) multiplied by K-str's window: the frozen κ noise's taper window on each straight run, 0 at the run's ends, with 20 m ramps. W+str is built with the rest. It is solved and driven only if the contingency triggers.
+7. **Streams and names.**
+   - The new stream is `default_rng([ROOT_SEED, STREAM_OFFSET + 401, corner, family, level])`, with family 1 for K-str, 2 for W+ and 3 for W+str, and level the position in the family's list.
+   - Offset 401 differs from step 1's offsets (1–9), step 2's (101–105) and the costate's (3xx).
+   - Conditions are named `P4A/F6s/<registered tail>/x<scale>`, `P4A/Kstr/<peak>`, `P4A/Wplus/<A>m` and `P4A/WplusStr/<A>m`.
+8. **The timing rule (Section 9).**
+   - The first 10 solves, in job order, are condition (a) on the 9 braking corners and then `P4A/F6s/wobble0.3/x1` on corner 0, run in the pool of 4.
+   - The time of a solve is the wall-clock seconds of its IPOPT call in its worker (`OCPResult.solve_seconds`). CPU seconds are recorded beside it.
+   - Condition (a)'s reproduction check (Section 4.1) is read on the same 9 solves, before any further solve.
+9. **Generalists.**
+   - The generalists run condition (a) and the isolated road (F1/straight/straight/const) on the 9 braking corners first. (a) fixes the rule or its fallback before any new condition is run. Both feed the memorisation index MI that the classifier reports, as in step 1 (G1–G3).
+   - They then run every condition with at least one s-OCP-certified corner, on those corners.
+   - For the contingency, a W+ member's count is its number of s-OCP-certified corners if it passes the generalists' rule, and 0 otherwise.
+   - As an extra check, the reference runs are compared bit for bit with step 1's stored runs.
+10. **Specialists.**
+    - S1–S3 rerun all 23 registered conditions on the 9 braking corners. P4 reads all of them: classes 3–6, S_spec, φ and m.
+    - Nothing on a new condition is run unless the check of Section 5 passes.
+    - As an extra check, the runs are also compared bit for bit with step 1's stored runs.
+11. **Inputs to the classifier.**
+    - The tier G crash flag is taken from `decisions_all.json` (S1 none, S2 and S3 a crash).
+    - The tier A table is not loaded. It matters only for class 4 against class 5, which need all eight F1 conditions at C ≥ 0.8, and no specialist has that on the registered conditions, which the extended set does not change. The script stops if it ever reaches class 4 or 5.
+12. **How the expected directions are read** (Section 7). "Enters P4" means that the generalists pass the condition and it is certified at 7 or more corners.
+    - **E1, part 1.** The κ-noise members reach a higher rung than the wobble. A rung is the f6_scale for F6s members and level / 1e-3 for K-str, so K-str at 8e-3 sits on the same rung as F6s knoise1e-3 at scale 8. E1 part 1 holds if the highest rung entering P4 among the F6s κ-noise members, and the one among the K-str members, both exceed the highest among the F6s wobble members. None entering counts as 0.
+    - **E1, part 2.** W+ at A = 0.5 and 1 m enters P4, and W+ at 4 m has fewer s-OCP-certified corners than at 0.5 m.
+    - **E1, part 3.** Every evaluated F6s wobble member of 1.8 m or more fails the s-OCP rule at 3 or more corners and does not enter P4.
+    - **E2, part 1.** For each specialist and each sub-ladder with 2 or more members entering P4 (F6s by registered tail, K-str, W+, W+str), the Spearman ρ between amplitude and d_OOD is positive. With 2 members, the larger amplitude has the larger d_OOD. It holds if this is true for every pair of specialist and sub-ladder.
+    - **E2, part 2.** At least one condition entering P4 has d_OOD ≥ 2.37 for S2 and one has d_OOD ≥ 2.75 for S3, and every such condition is a wobble or widening member.
+    - **E3–E6** are read off the extended-set classes and the recipe rule as Section 7 states them.
