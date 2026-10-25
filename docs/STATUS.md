@@ -1,4 +1,4 @@
-# Status (22 Oct 2026)
+# Status (24 Oct 2026)
 
 Phases follow [the two-track plan](plan/two-track-plan.md): K = shared core, P = paper, D = demo.
 
@@ -91,15 +91,29 @@ new networks, trained on one machine with one commit. It answers step 2's untest
 - it raises R-dev completion (S1, p 0.026);
 - whether the margin explains the completion is not established (S3).
 
-**Idea 2: does the network encode the costate?** Design v2.2
-([costate-design](interp/costate-design.md)); code merged (`src/apexzero/costate`, 117 tests).
-- Primary questions:
-  - C1: is the critic's gradient the costate?
-  - C2: does the actor carry costate information beyond its input?
-  - C3-w: does the fidelity of the inside-wall price go with completion?
-- **In progress:** the last pre-tag items (value accuracy, per-stratum reports, K3's rule).
-- **Then:** the stamped pre-tag stages, a final review and the tag `costate-prereg-v1`. Only
-  after that are the trained networks' activations and gradients computed.
+**Idea 2, the costate (confirmatory, done; [findings](findings/costate.md);
+[design v2.8](interp/costate-design.md)).** Pre-registered at `costate-prereg-v1` (record
+`11dc9bc`); the confirmatory decisions ran once (`9b25cc2`). The gate and analysis rules were
+revised in rounds before the tag (design Sections 12–18). The last narrowed K0's verdict after K0
+had failed the canonical pass, which the stated procedure said blocks the tag (design 18.4); the
+re-run passed every gate with a verdict.
+- **The question.** The costate λ is the gradient of the optimum's remaining value with respect
+  to the car's state. Is a critic's input gradient, pulled back to the state, the costate (C1)?
+  Does the actor's last layer carry costate information beyond its input (C2)? Does the critic's
+  inside-wall price go with completion (C3-w)?
+- **What could decide:** λ_s and λ_ξ at approach-phase interior states (and 62 exit states for
+  λ_s) only. Braking and corner states, λ_n and λ_vx were excluded before the tag, because there
+  λ depends on road beyond the networks' preview.
+- **C1: refute** in all 9 step 1 generalists and in each variant. Calibrated R² −2.57 to 0.01,
+  every CI upper end ≤ 0.025 (band 0.2); rank agreement weak but often positive.
+- **C2: inconclusive** in 7, refute in 2; no variant confirms.
+- **C3-w: rules out a strong association** (weighted ρ −0.17, 95% upper bound 0.17).
+- **Secondary.** C2-sw refutes in all 9 by its band. Descriptively the trained layer's gain
+  ranks above all 20 random actors in 7, but its target is not residualised on position and
+  speed, so this does not isolate the switching function. C1-own refutes in all 9. The critics'
+  values fit their own returns (R² 0.80–0.93) while their gradients do not.
+- **Exploratory:** λ_ξ's very negative score comes from a tail of large critic gradients with
+  the wrong sign, present in every critic; the refute does not depend on it.
 
 `scripts/dashboard.py` shows everything running: stages, agent workflows, GPU boxes.
 
@@ -120,7 +134,9 @@ later task carries the lockbox rule explicitly.
 
 ## Next
 
-1. Idea 1 step 2 (receptive fields), then idea 2 (costate), as above.
+1. Idea 2's follow-ups ([costate findings](findings/costate.md), Section 10): exploratory
+   analyses of the bound arrays, each with a plan committed first; a new pre-registration for
+   braking and corner states, or for a value-gradient term in the critic's loss.
 2. Width in the generator: real profiles help unseen circuits by about half the in-sample gain.
    Before a default (`generator-v1`): more leave-out seeds, or a statistical width model that
    copies no evaluation circuit.
