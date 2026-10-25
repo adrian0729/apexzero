@@ -1273,3 +1273,31 @@ VJP, after a compile of about 10 s per worker.
      window end not reached, B ≤ 0); the weighted medians of Π^{in,own} at both horizons, Π^in
      and `dV_dwin`; the share of rows where Π^{in,own} = 0. `rows.npz` also holds the
      inside-width field ∂J/∂w_in(s_j) at both horizons, as float32.
+
+### Amendment 4 (2026-10-25)
+
+**What changed.** Two of CS-11's wiring tolerances (amendment 3 item 3). The width loop's J at
+d = 0 against `own_return`'s J goes from 10⁻¹² to 10⁻⁸ relative, and the JVP against the VJP's
+contraction from 10⁻⁹ to 10⁻⁸. Nothing else changes: no question, row set, statistic, expected
+direction, or other check.
+
+**Why.** The canonical CS-11 run stopped at its J check on G1s1, with a gap of 5.4·10⁻¹² against
+the 10⁻¹² tolerance, and wrote nothing. Each check compares two separately compiled programs over
+the same 800-step closed loop:
+- `own_return`'s vmapped forward against the width VJP's forward pass;
+- the JVP's forward-mode pass against the VJP.
+
+XLA orders their floating-point operations differently, and the closed loop amplifies the
+round-off. CS-10's restart checks, the same kind of comparison, reached 1.5·10⁻¹⁰. The checks
+are there to catch wiring errors: a miscounted step, the wrong road, the wrong side, or a dropped
+term. Each of those moves J or Π^{in,own} by 10⁻⁴ relative or more, so 10⁻⁸ still catches every
+one of them. The dV_dwin check (10⁻¹⁰) evaluates one critic at one state, with no loop, and is
+unchanged.
+
+**Computed or seen before it.**
+- CS-10 is complete; this amendment does not touch it.
+- For CS-11, G1's development run (written outside `outputs/costate`) had been seen in full,
+  including its wiring gaps: J 1.9·10⁻¹⁴, JVP 4.6·10⁻¹², dV_dwin 2.6·10⁻¹³.
+- The canonical run computed all 9 networks in its pool, then stopped at the first failing check
+  (G1s1's J), before any summary was formed or written. No other network's CS-11 number was seen.
+  G1s1's J gap is the only number from that run.
