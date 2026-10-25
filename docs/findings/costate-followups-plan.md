@@ -1126,3 +1126,150 @@ not fire, so every R²_c below is the frozen calibration's only.
      9, for both layers and all 4 targets, the statistic ≤ 0.05; a statistic above 0.05 with its
      two-level CI's lower end above 0 is named. E5.3: Π^slip's and Π^μ's R²_z each below
      Π^in's, in at least 6 of 9.
+
+### Amendment 3 (2026-10-25)
+
+**What changed.** CS-10's and CS-11's operational details on D, where Section 4's text leaves a
+choice; their pooled units; descriptive companions. CS-10 (iii) and N's CS-11 wait for CS-9 and
+are not covered here. No question, row set or expected direction changes. **Why.** To fix these
+choices before any CS-10 or CS-11 number exists. **Computed or seen before it.** No CS-10 or
+CS-11 number, and no trained network. Read: the frozen code, the layouts of the bound files, and
+row counts that involve no network output (D's 477 keys: 360 with W = 400, 117 with W = 800; T's
+t_end at D 70–199 steps). The cost was measured on a random-init stand-in (step 2's hybrid
+control under G1's obs_rms, crashing early, since every scan runs all its steps anyway): about
+0.6 s per key for CS-10's loop, sweep and pullbacks and 0.9 s per key for CS-11's two-horizon
+VJP, after a compile of about 10 s per worker.
+
+1. **Shared.**
+   - **Networks.** The 9 decision networks, each loaded through its pin (`load_agent`); its
+     actor through `network.agent_net` and its critic through `critic.trained_critic`, after
+     `unlock` (R4).
+   - **The runs.** From each of D's 477 keys: x_0 with a_{−1} = 0 and accel 0 (a reset start,
+     as D's rows), hidden μ = 1, s_stop = +∞, on the stimulus's float64 road
+     (`network.road`). `own.own_return` over 800 steps gives the run's H (800, or fewer where
+     the run reaches the strip's end) and whether it terminated within them. A run that
+     terminates within its 800 steps is dropped from both items and counted.
+   - **Weights, folds, CIs.** Key weights renormalised on the scored rows
+     (`states.stratum_weights`); partition 0's folds and the geometry clusters of a table that
+     holds every D key, so all 48 of T's geometries are present (its geometry labels and folds
+     must equal the record's `frozen.geometries` and `frozen.fold_partition0`, or the item
+     stops); the frozen counts `probes.cluster_counts(48)` (stream costate_boot), 95%
+     percentile CIs.
+   - **Reading the expected directions** (as amendment 1 item 5): a condition without a count
+     holds in at least 6 of 9; "all 9" means all 9; point estimates unless a CI is named. Every
+     part of a condition is counted and reported.
+   - **Pooled:** one unit per (network, quarter of D's keys in T's key order): 36 units on 4
+     workers × 2 threads.
+   - **Outputs.** `outputs/costate/exploratory/cs-10/` and `cs-11/`: `summary.json` and
+     `rows.npz`; a copy of each summary under `docs/findings/costate-followups/`.
+
+2. **CS-10 (ii).**
+   - **Requirement.** Each network's K3b trained analogue passed (`post/own/<f>.k3b.json`'s
+     decision and the npz's `k3b_pass`), or the item stops. Value accuracy's pass is read from
+     `decisions.json` and passed to `analysis.c1_own` for its status field only.
+   - **The sweep.** `own.own_costate(net, road, li, 800, H, reset=True, all_states=True)` on a
+     kept run: λ^own_k on the manifold for k ≥ 1 (the maps at the run's own (x_k, x_{k−1},
+     clip(a_{k−1}))), held at k = 0 (a reset start), the held forms beside them. λ^own_k is
+     the gradient of the return from k to H, so its horizon is H − k (at least about 600 steps
+     at the states below). There is no K2 horizon cut.
+   - **States.** k = 0, 5, 10, … up to the run's own t_end, the first k with s_k ≥ s_c1 + 50 m
+     (`states.t_end`'s rule on the run's states, the key's landmarks), and k < H. A kept run
+     that never reaches s_c1 + 50 m keeps its states below H and is counted.
+   - **The critic.** `critic.pullback` (main V) at those states, from `critic.Inputs`(x_k,
+     x_{k−1}, clip(a_{k−1}), reset at k = 0) and their `critic.obs_jacobians` on the same road:
+     the on-manifold g, with the accel-held g_held beside it.
+   - **Phases.** `states.phases`(s_k, the key's landmarks from the bank, T's `s_b` at the key's
+     D row: the optimum's brake onset). The landmarks must equal T's `s_c0`, `s_apex` and
+     `s_c1` columns.
+   - **The own interior flag.** At every run state j = 0..H:
+     - the clearance to the env's termination boundary, w_left(s_j) − 1 − n_j and
+       w_right(s_j) − 1 + n_j (racing.py's off-track rule, the road's width splines);
+     - the slip margin α_max − max(|α_f|, |α_r|) (`dynamics.tyre_forces` at x_j, μ = 1);
+     - contact: a clearance below the OCP's corridor margin (`ocp.window.WindowSpec.safety`,
+       0.03 m, T's `edge_safety`) or a slip margin below its slip margin (`slip_safety`,
+       10⁻⁴ rad). The thresholds below imply no contact; it is recorded anyway.
+
+     ok_j means no contact, both clearances ≥ `states.CLEARANCE_MIN` (0.25 m) and the slip
+     margin ≥ `states.SLIP_MARGIN_MIN` (0.01 rad). The flag at k is ok over j ∈ [k, min(k + 10,
+     H)] (`states._window_all`, k = 10).
+   - **The mask.** s's observability by `states.observability` on J_z under the network's
+     obs_rms (`ObsJac.jz`); the decision mask by `states.decision_mask` on the own-run table
+     with the frozen `k2b_excluded`: s on approach and exit rows, ξ on approach rows.
+   - **Rows.** A kept run's states with the own interior flag, finite λ^own and g, in the
+     approach or exit phase (the stratum, and the weights' rows); each component's rows are
+     these within its mask, through `guard_rows` with its mask.
+   - **The statistic.** `analysis.c1_own` as the confirmatory C1-own calls it: λ^own raw (not
+     winsorised), no bounds, the frozen calibration, the key weights renormalised on the rows,
+     partition 0's folds, the frozen counts. **Companions (descriptive):** the same with λ^own
+     winsorised at T's frozen `lam_s` and `lam_xi` bounds and the predictions clipped there;
+     the accel-held form (λ^own_held against g_held, as `C1-own_held`); the confirmatory
+     C1-own on T's restarts (item 2's wiring) beside each.
+   - **Wiring (each stops the item).**
+     - The confirmatory C1-own recomputed from `post/own` and `post/critic` on T's restarts
+       reproduces `decisions.json`'s `C1-own` (r2c of s and ξ, stat, ci, the per-fold a and b
+       of s and ξ) to 10⁻⁸.
+     - The pullback at every run's state 0 equals the stored g at the key's D row (main V, 8
+       components) to 10⁻¹⁰ of the row's largest |g|.
+     - In each unit, on its first kept run, restarts at k = ⌊0.25 H⌋ and ⌊0.6 H⌋
+       (`own.own_costate` from x_k with x_{k−1}, clip(a_{k−1}), accel_of(x_k, x_{k−1}),
+       count H − k) reproduce the sweep's λ^own_k and λ^own_held,k to `own.RESTART_RTOL`
+       (10⁻⁹) of the row's largest |λ|.
+   - **Readings.**
+     - E10.1 holds when, in all 9 networks, the decision is 'refute' (CI upper end < 0.2), both
+       s and ξ have at least 10 times the confirmatory C1-own's rows, and the CI is at most half
+       as wide as the confirmatory C1-own's. Each part is counted.
+     - E10.2 reads ξ's Spearman CI in the c1_own record.
+   - **Descriptives.** Runs kept, terminated and reaching the strip's end; H; rows by phase;
+     the own interior's share; the own-run states' s − s_apex and vx against T's.
+
+3. **CS-11 on D.**
+   - **Π^{in,own}.** The deterministic policy's discounted return J (`own.own_loop`'s rebuilt
+     reward, δ = 0, s_stop = +∞) on the road `perturb.perturbed_arrays`(base, samples, d), d
+     the perturbation of the strip's samples (κ, w_left, w_right). One forward pass gives J
+     over count = W (H = W − t at D, the comparison with Π^in) and count = H (800 or to the
+     strip's end, the comparison with the critic), as two `own_loop` scans. Two reverse sweeps
+     give ∂J/∂d. Π^{in,own} is the sum over the inside width samples (w_left on a left corner):
+     `inputs.inside_widening`, a uniform widening of every inside sample, as the critic's
+     `dV_dwin`. `own.own_loop` is costate's frozen rebuild of `network.closed_loop`; K3b showed
+     its trace equals `closed_loop`'s to round-off. The widening reaches J through the policy's
+     observation (the edges and the lateral channel); the env's termination test is not
+     differentiated (a kept run never terminates).
+   - **Kept.**
+     - At H = W: no termination within W steps, and B_W > 0, with B_W step 2's buffer
+       (`outcomes.c_min_plan` on the run's states 0..W: c_min over [s_c0 − 50, s_c1 + 50],
+       invalid unless the run is alive through s_c1 + 50 m).
+     - At H: the run kept (shared item) and B_H > 0 on its states 0..H.
+   - **Rows.** D's rows (all approach-phase interior), through `guard_rows`. The primary rows
+     are those kept at both horizons (the common rows): all three comparisons are made on them.
+     Companions: the critic–own comparison on the rows kept at H, the own–optimum one on those
+     kept at W.
+   - **The comparisons** (`analysis.calibrated_agreement`, C1's calibration, raw targets; W1's
+     arithmetic):
+     - critic–own: x = the stored `dV_dwin` at D, target Π^{in,own} at H (no bounds: it has no
+       frozen ones);
+     - own–optimum: x = Π^{in,own} at W, target Π^in at D (Π^in's frozen bounds);
+     - critic–optimum: x = `dV_dwin`, target Π^in (Π^in's frozen bounds).
+
+     For each: the calibrated R² with its CI, the weighted Spearman with its CI, and the pooled
+     slopes (`analysis.pooled_slopes`, the frozen counts): b_lg (target on x) and b_gl (x on
+     target), with CIs. `dV_dwin` is σ_R dV_c/dΔ, and every Π is in reward units per metre, so
+     the slopes are σ_R-scaled already.
+   - **Wiring (each stops the item).**
+     - `dV_dwin` recomputed at every D row (`inputs.width_derivative` on the key's reset row)
+       equals the stored one to 10⁻¹⁰ relative.
+     - Per key, the VJP loop's J at d = 0 and count H equals `own_return`'s J to 10⁻¹²
+       relative.
+     - In each unit, on its first kept key, the JVP of J along the uniform inside widening
+       equals the VJP's contraction to 10⁻⁹ relative, at both horizons.
+     - **Descriptive only:** on the same key, Richardson differences (h = 10⁻³ m and h/2) of
+       J_env along the widening (secant mode) at count W, with the error against the AD value.
+   - **Readings.**
+     - E11.1: critic–own's calibrated R² above critic–optimum's, on the common rows.
+     - E11.2: own–optimum's b_gl (Π^{in,own} on Π^in) below 1 with its CI's upper end below 1.
+     - E11.3: own–optimum's calibrated R² below 0.2 (point).
+
+     Each needs at least 6 of 9.
+   - **Descriptives.** Runs kept at each horizon, and the reasons for drops (terminated,
+     window end not reached, B ≤ 0); the weighted medians of Π^{in,own} at both horizons, Π^in
+     and `dV_dwin`; the share of rows where Π^{in,own} = 0. `rows.npz` also holds the
+     inside-width field ∂J/∂w_in(s_j) at both horizons, as float32.
