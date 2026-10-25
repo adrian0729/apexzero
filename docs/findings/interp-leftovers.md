@@ -15,11 +15,12 @@ Code: `scripts/interp_leftovers.py` (subcommands `in1` to `in4`) with `tests/tes
 
 **IN-1: the anchored-key G with step 2's pair weighting and CIs (exploratory).**
 - The pre-registered summary that came out empty in step 2 now exists for all 12 finals and 8 earlier snapshots. It is computed by the frozen `stages.anchored_edges` on copies of the anchored rows with `w_is_cell` set to true.
-- **The nine generalists' anchored G is 0.719–0.859 against 0.760–0.851 on the shared A2 states.**
-  - Every anchored CI overlaps the network's A2 CI.
+- **The nine generalists' anchored G is 0.719–0.859 against 0.760–0.851 on the shared A2 states.** The ranges overlap; the anchored one is wider.
+  - Every anchored CI overlaps the network's A2 CI, and none lies wholly below it.
   - Every CI's upper end is at least 0.832, far from a deficit (0.5).
-  - No generalist tracks the edge less on its own fast approaches than on the shared states. Step 2's sentence "on each agent's own fast-approach states, G is the same range as on the shared A2 states" stands with intervals.
-- E1.1's first clause holds for 7 of 9 networks. It asks that the pair-weighted value lie within ±0.03 of the per-key median. G1s2 (+0.039) and G3s2 (+0.060) fall outside, both upward.
+  - No generalist tracks the edge less on its own fast approaches than on the shared states.
+- **E1.1 does not hold as a whole.** Its first clause, that the pair-weighted value lie within ±0.03 of the per-key median, holds for 7 of 9 networks. G1s2 (+0.039) and G3s2 (+0.060) fall outside, both upward. Its other two clauses hold.
+- **Step 2's sentence stands with intervals, by judgement.** The sentence is "on each agent's own fast-approach states, G is the same range as on the shared A2 states". The plan lets it stand with intervals if E1.1 holds, and E1.1 did not. It is applied here anyway, as a judgement beyond the plan's condition: both deviations are upward, and no anchored CI lies wholly below its A2 CI, the case the plan names as qualifying the sentence.
 - **E1.2 holds.**
   - The earlier snapshots' G is 0.806–0.888.
   - No later snapshot's CI lies wholly above the agent's earliest one.
@@ -31,12 +32,13 @@ Code: `scripts/interp_leftovers.py` (subcommands `in1` to `in4`) with `tests/tes
 - **On the common keys, G3 is no longer the only lawful generalist: G2 is lawful too.**
   - G2: 0.852 [0.827, 0.863], against its confirmatory 0.832 [0.791, 0.854].
   - G3: 0.851 [0.827, 0.867], almost exactly its confirmatory 0.851 [0.825, 0.867].
-- **E2.1 holds.**
+- **E2.1 holds, on a knife-edge.**
   - G3's median lies inside the other eight's range, 0.789–0.852.
   - Another generalist's CI also clears 0.8.
+  - E2.1's range clause holds by 0.0006 in the primary (G2 0.8521 against G3 0.8514) and fails under sensitivity (a) by 0.0008. Its CI clause holds in both.
 - **E2.2 holds.** 8 of 9 medians rise, by up to +0.042 (G3's by only +0.0001). G1s1's falls by 0.0003.
 - **E2.3 holds.** The lowest upper end is 0.814.
-- The two sensitivities give the same labels.
+- The two sensitivities give the same network labels (E2.1 itself fails under (a), as above).
 - **Reading.** G3's own number does not depend on its exclusions. What made it the only lawful network is the key set: the tight-corner keys it loses to "argmin off plateau" are the keys where the other networks score lowest (step 2, Section 5.1). Step 2's "about 80% for a corner-wide shift, in all three variants" is the better summary.
 
 **IN-3: step 1's outputs never written up (descriptive).**
@@ -58,11 +60,13 @@ Code: `scripts/interp_leftovers.py` (subcommands `in1` to `in4`) with `tests/tes
 - **The real-width networks are slightly slower where both arms finish.**
   - Median Δ: v1 +0.56 points (8 of 9 circuits positive), v3 +0.02 points (5 of 9).
   - Paired by seed: +0.37 points [+0.09, +0.64]. That is 8 of 10 pairs positive, with a descriptive two-sided p of 0.039.
-- **E4.2 holds.** Every form of the rise is below 1 point; the largest is +0.56.
+- **E4.2 holds on point estimates.** Every form it is read on is below 1 point; the largest is +0.56 (v1's primary Δ). The seed study's pooled statistic (measure 4, which mixes circuit sets) gives +0.82 in v1, also below 1.
 - **E4.1 holds only in v1.** The paired mean is above 0, but v3's Δ (+0.02) is below the expected +0.2 to +0.8.
-- **For GW-4.** The copied-width arm costs well under 1 point, so criterion 3 stands as written, with this as its reference.
-  - With 5 seeds per arm, the per-network median gap varies by an SD of 0.23–0.70 points within an arm.
-  - So a variant's arm difference is known only to about ±0.45–0.8 points (95%, normal approximation).
+- **For GW-4, whether criterion 3 is adequate is unresolved for a read on one variant.**
+  - Every arm-level point estimate is below 1 point (single circuits reach +2.61), so the plan's "well under 1 point" branch holds only on point estimates.
+  - v1's interval includes 1 point. GW-4's statistic is +0.52 with an SE of 0.42, so its 95% upper end is about 1.34 (normal approximation).
+  - Pooled over the two variants the intervals lie below 1 point: GW-4's statistic is +0.30 (upper end about 0.76), and the paired mean's CI ends at +0.64.
+  - With 5 seeds per arm, the per-network median gap varies by an SD of 0.23–0.70 points within an arm. So a variant's arm difference is known only to about ±0.45–0.8 points (95%, normal approximation).
 
 ## 2. Inputs and checks (all passed)
 
@@ -160,11 +164,13 @@ T is "mixed" for every snapshot except G3 at 109.9M, where it is "corridor-ancho
 
 ### 3.3 Against the expected directions
 
-- **E1.1 holds in two of its three clauses.**
+- **E1.1 holds in two of its three clauses**, so it does not hold as a whole (`in1.json`: `holds` false).
   - Every generalist's CI upper end is above 0.5. The lowest is 0.832, for G3s2.
   - Every anchored CI overlaps the network's A2 CI, and none lies wholly below it.
   - The pair-weighted G lies within ±0.03 of the per-key median for 7 of 9 networks. The exceptions are G1s2 (0.852 against 0.814, +0.039) and G3s2 (0.790 against 0.730, +0.060). Both are upward: the plain per-key medians understated these two networks against the pre-registered weighting.
-  - Reading (plan, Section 2): step 2's sentence stands, now with intervals. On their own fast-approach states the generalists' G is 0.72–0.86, the same range as on the shared A2 states (0.76–0.85). The anchored CIs are wider, on 18–26 geometries against 36–47.
+  - Reading (plan, Section 2). The plan's reading is conditional on E1.1 holding, and E1.1 fails on its ±0.03 clause. The reading is applied here by judgement: both deviations are upward, and no anchored CI lies wholly below its A2 CI, which is the case the plan names as qualifying step 2's sentence. On that basis step 2's sentence stands, now with intervals.
+  - On their own fast-approach states the generalists' G is 0.72–0.86. That range overlaps the shared A2 states' (0.76–0.85) and is wider.
+  - The anchored CIs are wider for 8 of 9 networks (G3's is slightly narrower: 0.036 against 0.042), on 18–26 geometries against 36–47.
 - **E1.2 holds.**
   - Every earlier snapshot's G is in [0.78, 0.90] (0.806–0.888).
   - No later snapshot's CI lies wholly above the agent's earliest one. G3 peaks at 134.1M (0.888) and ends at 0.859 on A1.
@@ -431,12 +437,12 @@ Per same-seed pair, the mean over circuits both networks complete of (real width
 
 | Pair | Circuits | Mean difference |
 |---|---|---|
-| v1 / s10 | 4 | +1.01 |
+| v1 / s10 | 4 | +1.00 |
 | v1 / s11 | 4 | +0.84 |
 | v1 / s12 | 6 | +0.77 |
 | v1 / s13 | 3 | +0.74 |
 | v1 / s14 | 2 | +0.15 |
-| v3 / s10 | 6 | +0.33 |
+| v3 / s10 | 6 | +0.32 |
 | v3 / s11 | 6 | +0.01 |
 | v3 / s12 | 6 | −0.43 |
 | v3 / s13 | 5 | +0.46 |
@@ -478,11 +484,17 @@ This is the width test's Section 5.3 statistic. It compares different circuit se
   - v1's primary Δ (+0.56) is inside +0.2 to +0.8; v3's (+0.02) is below it.
   - The paired mean (+0.37) is above 0.
   - On fresh seeds and same-commit code, the slower-where-both-finish effect of the width test replicates in v1 (+0.56 against +0.30). It is close to zero in v3 (+0.02 against +0.57). This mirrors H4R's completion result, where v1 carried the gain (h4r.md, Section 6.1).
-- **E4.2 holds.** Every form of the rise is below 1 point:
+- **E4.2 holds on point estimates.** Every form it is read on (amendment 1) is below 1 point:
   - the primary Δ (+0.56, +0.02);
   - the paired mean (+0.37, CI upper end +0.64);
   - GW-4's statistic, +0.52, +0.09 and +0.30 (v1, v3, both) on all completed circuits, and +0.47, −0.08 and +0.20 on common circuits.
-- **Reading for GW-4** (plan, Section 5). Copying the real widths costs well under 1 point of lap gap, so criterion 3 ("the median lap gap rises by under about 1 point") stands as written, with this as its copied-width reference: about +0.5 points in v1, about 0 in v3, about +0.3 for both variants together.
+  - The seed study's pooled statistic (Section 6.4; not one of E4.2's forms) is +0.82 in v1 and −0.07 in v3, also below 1.
+  - Single circuits exceed 1 point in v1: Moscow Raceway +2.61 and Hockenheim +1.51 (Section 6.1).
+- **Reading for GW-4** (plan, Section 5). The plan has two branches: "1 point or more" (restate criterion 3) and "well under 1 point" (criterion 3, "the median lap gap rises by under about 1 point", stands as written).
+  - The point estimates fall in the second: about +0.5 points in v1, about 0 in v3, about +0.3 for both variants together.
+  - But v1's interval includes 1 point: GW-4's statistic is +0.52 with an SE of 0.42, a 95% upper end of about 1.34 (1.23 on common circuits). So the "well under 1 point" branch holds only on point estimates.
+  - Whether criterion 3 is adequate as written is therefore unresolved for a read on one variant. Pooled over both variants, the intervals lie below 1 point (upper ends about 0.76 for GW-4's statistic and +0.64 for the paired mean).
+  - Either way, these numbers are criterion 3's copied-width reference.
 - **How well it can be read.**
   - With 5 seeds per arm, the per-network median gap has a within-arm SD of 0.2–0.7 points.
   - A variant's arm difference therefore carries a standard error of about 0.23–0.42 points, so a 95% half-width of about 0.45–0.8 points.
@@ -520,5 +532,5 @@ This is the width test's Section 5.3 statistic. It compares different circuit se
   - The P6 curves show caution decreasing smoothly with training and overspeed never appearing.
   - Competence arrives for the mid radii at one checkpoint and never for the largest. That points to the competence criterion or the checkpoint gate, rather than an order of learning by size, as what shapes P6a and P6d. Checking it needs the competence matrix, which needs an amendment.
 - **GW-4.**
-  - Criterion 3 has a reference: copying real widths cost +0.5 points in v1, about 0 in v3, and +0.3 points pooled, all below 1 point.
+  - Criterion 3 has a reference: copying real widths cost +0.5 points in v1, about 0 in v3, and +0.3 points pooled, all below 1 point as point estimates. v1's interval reaches about 1.3 points, so whether the criterion is adequate for a read on one variant is unresolved.
   - With 5 seeds per arm a variant's difference is known to about ±0.5–0.8 points. GW-3's pre-registration should fix the statistic (per-network median gap on common circuits, or the per-circuit Δ), the pooling over variants and how a borderline value is read.
