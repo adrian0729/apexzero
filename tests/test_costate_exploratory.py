@@ -1004,7 +1004,7 @@ def test_cs10_cs11_are_registered_trained_pooled(cx):
     assert "own" in cx.BY_CMD["cs-10"].reads
     assert cx.OWN_STEPS == 800 and cx.OWN_QUARTERS == 4
     # amendment 3's tolerances, with amendment 4's for the two cross-program checks
-    assert cx.J_TOL == 1e-8 and cx.JVP_TOL == 1e-8 and cx.DV_TOL == 1e-10
+    assert cx.J_TOL == 1e-8 and cx.JVP_TOL == 1e-8 and cx.DV_TOL == 1e-9    # amendment 5
     assert cx.PULLBACK_TOL == 1e-10
 
 
@@ -1189,15 +1189,21 @@ W = W.copy()
 W[:, CR.ACCEL] += 0.2 * np.asarray(OW.ACCEL_WEIGHTS, np.float32)   # it reads accel
 net = NW.linear_net(W, b)
 cx.own_nets = lambda agent: (net, crit)             # untrained stand-ins (no unlock needed)
+rd = NW.road(bank, kd["stim_id"])
+inp = CR.Inputs(kd["x0"][None], kd["x0"][None], np.zeros((1, 2)), np.array([True]))
+dv = float(IN.width_derivative(crit, rd, inp, kd["direction"])[0])
 state, unit = {"keys": [kd]}, {"label": "t", "agent": None, "keys": [0]}
 r10 = cx.cs10_unit(state, unit)
-r11 = cx.cs11_unit(state, unit)
+try:                                                # a wrong stored dV_dwin stops the unit
+    cx.cs11_unit(state, {**unit, "dv": {"0": dv + 1.0}, "dv_scale": 1.0})
+    stopped = False
+except RuntimeError:
+    stopped = True
+r11 = cx.cs11_unit(state, {**unit, "dv": {"0": dv}, "dv_scale": abs(dv)})
 k10, k11 = r10["keys"][0], r11["keys"][0]
-rd = NW.road(bank, kd["stim_id"])
 oc = OW.own_costate(net, rd.base, cx.own_start(kd["x0"]), 800, k10["H"], reset=True)
 clear, slip = cx.run_margins(rd.base, oc.x)
 side = 0 if kd["direction"] > 0 else 1
-inp = CR.Inputs(kd["x0"][None], kd["x0"][None], np.zeros((1, 2)), np.array([True]))
 pb0 = CR.pullback(crit, None, inp, CR.obs_jacobians(rd.base, inp))
 print(json.dumps({
   "kept": k10["kept"], "H": k10["H"], "restart": r10["restart"]["error"],
@@ -1209,7 +1215,7 @@ print(json.dumps({
   "kept_W": k11["kept_W"], "kept_H": k11["kept_H"], "j_gap": k11["j_gap"],
   "jvp": r11["checks"]["error"], "fd": r11["fd"]["error_J_env"], "B_W": k11["B_W"],
   "pi_W": k11["pi_own_W"], "field_sum": float(np.sum(k11["field_W"], dtype=np.float64)),
-  "dv_gap": abs(k11["dV_dwin"] - float(IN.width_derivative(crit, rd, inp, kd["direction"])[0]))}))
+  "dv_gap": abs(k11["dV_dwin"] - dv), "unit_dv_gap": k11["dv_gap"], "stopped": stopped}))
 """
 
 
@@ -1233,4 +1239,4 @@ def test_cs10_cs11_units_on_a_planted_driver():
     assert out["kept_W"] and out["kept_H"] and out["B_W"] > 0
     assert out["j_gap"] <= 1e-12 and out["jvp"] <= 1e-9 and out["fd"] <= 1e-6
     assert abs(out["field_sum"] - out["pi_W"]) <= 1e-6 * max(abs(out["pi_W"]), 1e-9)
-    assert out["dv_gap"] <= 1e-12
+    assert out["dv_gap"] <= 1e-12 and out["unit_dv_gap"] <= 1e-12 and out["stopped"]

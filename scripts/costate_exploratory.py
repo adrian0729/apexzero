@@ -3043,7 +3043,8 @@ PULLBACK_TOL = 1e-10                     # the pullback at state 0 against the s
 J_TOL = 1e-8                             # the width loop's J at d = 0 against own_return's
 JVP_TOL = 1e-8                           # the width VJP's contraction against the JVP (both
                                          # amendment 4: two programs over an 800-step loop)
-DV_TOL = 1e-10                           # dV_dwin recomputed against the stored one
+DV_TOL = 1e-9                            # dV_dwin recomputed against the stored one, over
+                                         # the network's largest |dV_dwin| on D (amendment 5)
 FD_STEP = 1e-3                           # m: the descriptive Richardson differences
 E10_ROWS, E10_WIDTH = 10.0, 0.5          # E10.1: rows x 10, CI at most half as wide
 E11_R2 = 0.2                             # E11.3
@@ -3836,6 +3837,10 @@ def cs11_unit(state, unit) -> dict:
         x0 = np.asarray(kd["x0"], float)
         inp = CR.Inputs(x0[None], x0[None], np.zeros((1, 2)), np.array([True]))
         rec = {"key": int(i), "dV_dwin": float(IN.width_derivative(crit, rd, inp, sig)[0])}
+        rec["dv_gap"] = abs(rec["dV_dwin"] - unit["dv"][str(i)]) / unit["dv_scale"]
+        if not rec["dv_gap"] <= DV_TOL:                       # amendment 5: stop at once
+            raise RuntimeError(f"key {kd['key_id']}: dV_dwin recomputed is not the stored one "
+                               f"({rec['dv_gap']:.3g})")
         li = own_start(x0)
         rec.update(own_horizon(net, rd.base, li))
         H = rec["H"]
@@ -3860,12 +3865,18 @@ def cs11_unit(state, unit) -> dict:
                    why_H=drop_reason(kept_h, bool(valid[:H + 1].all()), why_h),
                    j_gap=abs(float(r["J"][1]) - rec["J_return"])
                    / max(abs(rec["J_return"]), 1e-300))
+        if not rec["j_gap"] <= J_TOL:
+            raise RuntimeError(f"key {kd['key_id']}: the width loop's J is not own_return's "
+                               f"({rec['j_gap']:.3g})")
         if checks is None and kept_w and kept_h:
             jv = width_jvp(net, rd, li, sig, cw, H)
             got = np.array([rec["pi_own_W"], rec["pi_own_H"]])
             checks = {"key": int(i), "jvp": jv.tolist(), "vjp": got.tolist(),
                       "error": float(np.max(np.abs(jv - got))
                                      / max(float(np.max(np.abs(jv))), 1e-300))}
+            if not checks["error"] <= JVP_TOL:
+                raise RuntimeError(f"key {kd['key_id']}: the width VJP is not the JVP "
+                                   f"({checks['error']:.3g})")
             fd = {"key": int(i), "ad": rec["pi_own_W"], **width_fd(net, rd, li, sig, cw)}
             ref = fd["J_env"]["richardson"]
             fd["error_J_env"] = abs(fd["ad"] - ref) / max(abs(ref), 1e-300)
@@ -3934,6 +3945,10 @@ def cs11(run: Run) -> None:
     labels = decision_labels(run)
     stored = {lb: read_critic(run, AN.network_of(lb), ("dV_dwin",))["dV_dwin"] for lb in labels}
     units, names, _ = network_units(run, labels, len(keys))
+    scale = {lb: float(np.max(np.abs(v[d0]))) for lb, v in stored.items()}
+    for u in units:
+        u["dv"] = {str(i): float(stored[u["label"]][d0[i]]) for i in u["keys"]}
+        u["dv_scale"] = scale[u["label"]]
     print(f"CS-11: {len(units)} units over {len(labels)} networks, {len(keys)} D keys "
           f"({time.time() - t0:.0f} s)", flush=True)
     t1 = time.time()
@@ -3947,7 +3962,7 @@ def cs11(run: Run) -> None:
             raise SystemExit(f"CS-11 {lb}: the pool did not return every D key")
         idx = d0[[r["key"] for r in recs]]
         dv = stored[lb]
-        dv_err = max(abs(r["dV_dwin"] - dv[i]) / max(abs(dv[i]), 1e-12)
+        dv_err = max(abs(r["dV_dwin"] - dv[i]) / scale[lb]
                      for r, i in zip(recs, idx, strict=True))
         if not dv_err <= DV_TOL:
             raise SystemExit(f"CS-11 {lb}: dV_dwin recomputed is not the stored one "
@@ -4000,7 +4015,8 @@ def cs11(run: Run) -> None:
                              "dropped": why},
                     "B": {h: float(np.nanmedian([r.get(f"B_{h}", np.nan) for r in recs]))
                           for h in ("W", "H")},
-                    "wiring": {"dV_dwin": dv_err, "J": j_gap, "jvp": jvp,
+                    "wiring": {"dV_dwin": dv_err, "dV_dwin_scale": scale[lb], "J": j_gap,
+                               "jvp": jvp,
                                "jvp_keys": o.get("checks", [])},
                     "fd_descriptive": o.get("fd", []), "seconds": o["seconds"]}
         m = max(len(r.get("field_W", [])) for r in recs)
