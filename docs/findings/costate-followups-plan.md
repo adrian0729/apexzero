@@ -1359,3 +1359,208 @@ wrote nothing.
 - The third run's units checked each key as it was computed and stopped the pool at the first
   failure: G2s2/q3's JVP gap (5.6·10⁻⁸). That gap is the only number from the run.
 - No summary was formed or written. Nothing else was seen beyond amendment 5's list.
+
+### Amendment 7 (2026-10-26)
+
+**What changed.** CS-7's and CS-8's operational details, where Section 4's text leaves a
+choice; their pooled units; descriptive companions; one part that cannot be done as written
+(the plan's 'Reuse' check for C2 and C2-sw, item 3). No question or expected direction
+changes. One row set the plan does not name is fixed: the stratum CS-8 (c)'s probes are fitted
+on (item 3). **Why.** To fix these choices before any CS-7 or CS-8 number exists. **Computed or
+seen before it.** No CS-7 or CS-8 number, and no network output: no trained or random-init
+network's activation, probe or gain. Read: the frozen code, the layouts of the bound files,
+and these facts, which involve targets and strata only:
+- T's interior rows of the approach and exit phases: 1,581 + 72 = 1,653. T's pedal-switching
+  rows in those phases: 976 + 1,531 = 2,507 (of 2,911; 404 are braking or corner rows). Each
+  set spans all 48 geometries. T has no multi-basin row.
+- The frozen f̂_D's geometry-6 shares on C2's confirmatory scored rows, under the definition of
+  item 3, reproduce design 17.6: λ's sum of squares s 11.78%, ξ 9.00%; λ_res's s 70.45%, ξ
+  64.66%. With the key weights renormalised on CS-8 (c)'s stratum instead: λ s 7.88%, ξ 7.52%;
+  λ_res s 74.85%, ξ 54.46%.
+- θ × turn direction: θ 60° is one geometry (72 rows, 42 of them interior approach or exit
+  rows), all in outer fold 2, so no fit that leaves fold 2 out of its training rows has a 60°
+  row (item 3, candidate 1). Every other group has hundreds of training rows in every fit.
+- The cost of one ridge probe at these sizes, on synthetic data at one BLAS thread: about 9 s
+  with a 256-unit hidden block and 12 s with 320.
+
+1. **Shared.**
+   - **Networks.** The 9 decision networks, each loaded through its pin (`load_agent`) for its
+     obs_rms and PPOConfig only. Its flags, `c1_frame` and decision mask are rebuilt, and the
+     mask is checked against `decisions.json`'s `decision_mask_sha256`. Both items read the
+     bound activations and compute random-init networks only, so neither unlocks (plan R4).
+   - **z** is clip(the activations' z, ±10), as `probes_of`.
+   - **The frozen λ_res** is `probes_of`'s: `states.cross_fit` on T's D₁ (`decoy_d1`) and T's
+     four K_P targets winsorised at their frozen bounds, with partition 0's outer folds, T's
+     key weights and f̂_D's frozen k (8, `prereg.decoy_k`). It reads targets only, so it uses
+     every row of T (R5). Wiring: its interior residual shares (`states.decoy_shares`) equal
+     the record's `frozen.residual_share_interior` to 10⁻¹⁰ for all four components, or the
+     item stops.
+   - **CIs.** 95% percentile intervals on the frozen counts (`probes.cluster_counts(48)`,
+     stream costate_boot). A statistic against controls carries the two-level CI on the
+     frozen pool draws (`probes.pool_draws(20)`, stream costate_c2_pool), with the
+     geometry-only CI and the rank of 21 beside it.
+   - **The pool actors** are the stored `random0_h3` to `random19_h3` (and `random<s>_m`).
+     Wiring in each unit that reads them: `probes.random_actor(cfg, 0)` on the unit's rows
+     gives the stored `random0_h3` to 10⁻¹², or the item stops.
+   - **Reading the expected directions** (as amendment 1 item 5): a condition stated without
+     a count holds in at least 6 of the 9; "no" and "all" mean all 9; point estimates unless
+     a CI is named. Every part is counted and reported.
+   - **Outputs.** `outputs/costate/exploratory/cs-7/` and `cs-8/`: `summary.json` and
+     `preds.npz`. A copy of each summary goes under `docs/findings/costate-followups/`.
+
+2. **CS-7.**
+   - **Rows.** Per component, C1's rows (`interior & valid[:, k]`, through `guard_rows` with
+     the component's mask): λ_s 1,643 and λ_ξ 1,581, with C1's weights `w_in`, as CS-4.
+   - **Targets.** Per component k, two targets in one probe call: λ_k winsorised, and
+     λ_res,k, the frozen λ_res's column k by fold (each held-out fold's own residual is
+     scored; the training rows' cross-fitted residuals are fitted, as in C2). Both of ξ's are
+     scored by R²_wd, both of s's by R².
+   - **Layers.** The trained critic's h1, h2 and h3 (`critic_h1`, `critic_h2`, `critic_h3`,
+     256 units each) and its 5 heads' hidden units (`head_units` [5, n, 64], concatenated in
+     head order to 320 columns). The trained actor's h3 (`actor_h3`) is the comparator.
+   - **Controls.** For the critic's layers, 20 random-init critics (`probes.random_critic(cfg,
+     s)`, s = 0–19, the network's PPOConfig): their h1, h2, h3 and head units (concatenated in
+     the same way) by `probes.hidden` on the network's z, which is what "under the network's
+     obs_rms" means here. For the actor's h3, the 20 pool actors. Wiring in each unit that
+     builds random critics: the critic of seed 0 matches `Critic.apply` on the unit's first 64
+     rows (`probes.extractor_gap`: V and the heads, to `probes.EXTRACTOR_TOL`), and every
+     random critic has 5 heads.
+   - **Probes.** `probes.ridge_cv` on z (the base) and on z ⊕ h (H_GRID's ∞ nests the base),
+     out of fold on the component's rows.
+   - **The statistic.** Per (component, target, layer): gain = R²(z ⊕ h) − R²(z). The
+     statistic is the trained gain minus the median of the 20 controls' gains in the same
+     layer (`control_gain`, as CS-5), with its two-level CI, geometry-only CI and rank of 21.
+     The mean over s and ξ of each (target, layer)'s statistic, on the same draws, is
+     co-reported (descriptive).
+   - **"C2's records."** The comparator is the actor's h3 computed here, on the same rows,
+     targets and base (z). `decisions.json`'s C2 gain per component (λ_res, base [z, m], the
+     confirmatory stratum) is quoted beside it, descriptively.
+   - **Pooled.** Per (network, component), its 106 probe fits (the base, the 4 trained critic
+     layers, the actor's h3, the 80 random-critic layers and the 20 pool actors) in 4 chunks
+     of similar cost: 72 units on 4 workers × 2 threads.
+   - **Readings.**
+     - E7.1 holds when no (network, critic layer, target, component) has a statistic above
+       0.05 with its two-level CI's lower end above 0. Each such case is named, and so is each
+       case under the geometry-only CI.
+     - E7.2: per (target, component), the critic h3's statistic is at least the actor h3's.
+       It holds when each of the four does in at least 6 of 9.
+     - E7.3: per (target, component), the head units' statistic is at most the critic h3's.
+       It holds when each of the four does in at least 6 of 9.
+
+3. **CS-8.**
+   - **(a) and (b): rows.** T's pedal-switching rows (`states.SW_STRATUM`) in the approach and
+     exit phases, 2,507, through `guard_rows`. Weights: the key weights renormalised on them
+     (`states.stratum_weights`). Folds: partition 0's, subset to them. σ^ped is winsorised at
+     its frozen bounds, as in the confirmatory C2-sw.
+   - **(a) The statistic** is `analysis.c2_sw_network`'s. That is `probes.c2_sw`'s conditional
+     probes on z (the base) and on z ⊕ h3, the host's gain minus the median of the 20 pool
+     actors' gains with the two-level draws, and the single-geometry rule's sets ('rule',
+     with `analysis.geometry_labels`), with ρ(m_pedal − 1, σ^ped) beside it. Within a scaling,
+     the base's and the 20 pool actors' probes have the same inputs for every host, and
+     `ridge_cv` is deterministic. So each is fitted once per scaling, and every host's record
+     is assembled from them by `probes.gain`, as `c2_sw_network` assembles its own (a test
+     checks that the two give the same record).
+     - **Hosts:** `gates.C2_NULL_SEEDS` (20–39): `probes.random_actor(cfg, s)`'s h3 and m on
+       the scaling's z, with cfg the scaling network's PPOConfig.
+     - **G1's scaling:** G1's z (its activations, under G1's obs_rms), G1's PPOConfig (its
+       pin) and the pool actors stored with G1.
+     - **The trained networks** (step 3): each on its own z, with its own h3, m and pool.
+     - **Reported:** the null's summary (`gates.c2_null_summary`: count, mean, SD (ddof 1),
+       range, percentiles, decisions, CIs above and below 0, the rule's counts). For each
+       trained network: its statistic, its pool rank, and the share of hosts whose statistic
+       is at or above its own (`analysis.c2_null_note`'s 'share_at_or_above').
+     - **R6's 3 h rule.** T_G1 is the wall time of G1's scaling's pooled units (its hosts, G1's
+       own trained probes and (b)'s probes on G1's z). The other 8 scalings are the same work
+       on the same 4 workers, so their projected pooled cost is 8 T_G1. Per network runs when
+       that is under 3 h (10,800 s); both numbers are recorded. Per network, each network's
+       hosts are on its own z, with its own PPOConfig and pool, and its share of its own hosts
+       is reported.
+     - **E8a.1** holds when all three parts do. The G1-scaling null's mean is below 0.005 (it
+       rounds to 0.00 or less: "near or below 0"). Its SD lies in [0.005, 0.025) (it rounds to
+       0.01 or 0.02: "about 0.01–0.02"). Each of the 7 networks that rank first of 21 in the
+       confirmatory C2-sw (G1, G1s1, G1s2, G2, G2s2, G3s1, G3s2) has a statistic above the
+       largest host's. Co-reported: the networks that rank first on these 2,507 rows, and the
+       same comparison against each network's own hosts, if run.
+   - **(b) σ_res.** `states.cross_fit` on T's D₁ and T's winsorised σ^ped, with partition 0's
+     outer folds, T's key weights and k = 8 ("as C2's λ_res"; targets only, every row of T).
+     It is used by fold, with each held-out fold's own residual scored. Its residual share on
+     the 2,507 rows (the weighted variance ratio, under the rows' weights) is reported. The
+     statistic is (a)'s on σ_res for the trained h3 against the pool: the two-level CI, the
+     rule's sets and the rank, with ρ(m_pedal − 1, σ_res) beside it. Its probes are fitted in
+     (a)'s units.
+     - **E8b.1** holds when both parts do. (i) In at least 6 of 9, the statistic on σ_res is
+       at most half the statistic on σ^ped on the same rows, where the latter is positive (a
+       network whose statistic on σ^ped is at most 0 does not count toward the 6, and is
+       named). (ii) The trained h3 ranks first of 21 on σ_res in at most 4 of 9. Whether the
+       rank-1 pattern survives (first of 21 with the two-level CI's lower end above 0, in at
+       least 7 of 9) is reported beside it.
+   - **(c) The candidates**, in the plan's order. Each is cross-fitted with
+     `states.cross_fit`'s scheme: outer fold f's rows from a model fitted on the other 5 folds,
+     and the training rows of fold g ≠ f from a model fitted on the 4 folds other than f and
+     g. Each uses T's key weights and T's four winsorised K_P targets (targets only, every
+     row). Wiring: the scheme with f̂_D's own kNN reproduces `states.cross_fit` to 10⁻¹², or
+     the item stops.
+     1. **Same θ and direction.** f̂_D's kNN (k = 8, standardised by the weighted mean and SD of
+        all the fit's training rows, as `states.knn_fit`), with each predicted row's neighbours
+        searched only among the fit's training rows of the same θ and turn direction. Where
+        that group has fewer than 8 training rows, the search falls back to the fit's training
+        rows of the same turn direction. That happens only for θ 60° when fold 2's rows are
+        predicted; the rows that fall back are counted.
+     2. **log R × 3.** As 1, with the standardised log R coordinate multiplied by 3.
+     3. **Spline ridge.** Per target column, a weighted ridge on the tensor product of two
+        cubic B-spline bases, in s − s_apex and in vx. Each basis has 5 interior knots at the
+        fit's training rows' weighted quantiles 1/6, …, 5/6 and boundary knots at their
+        minimum and maximum, with values clipped to that range: 9 functions each, 81 in all.
+        Each of the 81 columns is multiplied by each of (1, log R, θ class 1, θ class 2, w,
+        σ): 486 columns, with θ class from `states.theta_class` and class 0 the reference.
+        Columns are z-scored on the training rows (those with an SD below `probes.MIN_SD`
+        dropped), the target is centred, and the weights are normalised to sum 1. Each
+        column's penalty is chosen from `probes.GRID` by leave-one-outer-fold-out over the
+        fit's training folds (the smallest weighted squared error, ties within
+        `probes.TIE_RTOL` going to the larger penalty), then the model is refitted on all of
+        them.
+   - **(c) The choice** reads targets only and is made before any network's probe is fitted.
+     - **The share.** Geometry 6's share of a target's sum of squares on C2's confirmatory
+       scored rows (T's interior within G1's decision mask: s 1,643, ξ 1,581), under the key
+       weights renormalised on T's interior (C2's confirmatory stratum). The sum of squares is
+       about the weighted mean for s and about each turn direction's weighted mean for ξ (R²'s
+       and R²_wd's denominators), with λ_res the own-fold residual. With f̂_D it must reproduce
+       design 17.6 at its printed rounding (λ: 11.8% and 9.0%; λ_res: 70% and 65%), or the
+       item stops.
+     - **The rule.** A candidate passes when its λ_res shares are at most twice λ's, for s and
+       for ξ. The first that passes is kept. If none passes, (c) reports that and computes
+       nothing more.
+     - **Reported for every candidate tried:** its shares; the same shares under the key
+       weights renormalised on (c)'s stratum; the rows that fell back; its interior residual
+       shares and the power floor they imply (`states.decoy_shares`, `states.power_floor`).
+       That last is "the frozen power floor re-reported": the statistic still uses the frozen
+       floor (s and ξ).
+   - **(c) The statistic** is the confirmatory primary C2's, `analysis.c2_network`: the base
+     [z, m]; the trained h3 against the 20 pool actors, with the two-level draws; the by-fold
+     λ_res of all four K_P components; the frozen power floor; the network's decision mask;
+     the single-geometry rule's sets ('rule'). It is fitted on a stratum the plan does not
+     name: T's interior rows of the approach and exit phases (1,653, through `guard_rows`),
+     under the key weights renormalised on it. Each component is scored on its decision rows
+     (s 1,643, ξ 1,581, each through `guard_rows` with its mask). The confirmatory C2 fitted
+     its probes on all 3,951 interior rows, braking and corner rows included; under R5 an
+     exploratory probe is fitted on approach and exit rows only. The statistic is computed
+     with the chosen decoy and, as the reference on the same stratum, with f̂_D.
+     - **Cannot be done as written:** the plan's 'Reuse' check (Section 3) would recompute
+       the confirmatory C2 and C2-sw on their own rows. Those fits read braking and corner
+       rows (C2's 3,951 interior rows; 404 of C2-sw's 2,911), which R5 does not allow. The
+       checks above replace it: the λ_res shares, design 17.6's shares, the pool actor's
+       rebuild and the cross-fit scheme. `decisions.json`'s records are quoted beside.
+     - **E8c.1** holds when all three parts do. (i) Geometry 6's share of the base's squared
+       error (the rule's record, `logo.shares` 'sse_base') is below 0.3 for both s and ξ, in
+       at least 6 of 9. (ii) The two-level CI is at most two thirds as wide as the f̂_D
+       reference's on the same stratum, in at least 6 of 9; its width against the
+       confirmatory CI's is co-reported. (iii) No point reaches 0.05, in all 9.
+   - **Pooled.**
+     - (a) and (b): per scaling, its 63 probe fits (the base, the trained h3 and the 20 pool
+       actors, each on σ^ped and on σ_res, and the 20 hosts on σ^ped) in 4 chunks. G1's 4
+       units run first and are timed, then the other networks' (with their hosts only under
+       R6's rule).
+     - (c): one unit per (network, decoy), 18 units.
+     - 4 workers × 2 threads throughout.
+   - **Outputs.** `summary.json`, and `preds.npz`: the probes' out-of-fold predictions on
+     σ^ped and σ_res per scaling, and the chosen decoy's by-fold residuals (float32).
