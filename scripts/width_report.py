@@ -1,7 +1,7 @@
 """GW-2's width report: generated strip widths against the R-dev circuits as evaluated.
 
     uv run python scripts/width_report.py                       # default, copied and 2a
-    uv run python scripts/width_report.py --models 2b --tag 2b  # a later model, same bands
+    uv run python scripts/width_report.py --models 2b --tag 2b  # model 2b, same bands
 
 Exploratory. The statistics and the bands (what counts as matching R-dev) are fixed in
 docs/findings/width-model-plan.md, which must be committed, unchanged, before this runs
@@ -336,7 +336,12 @@ def real_profiles(names: list[str], cache: dict) -> list[Profile]:
 def strips(g, variant: str, n: int = N_STRIPS, seed: int = SEED) -> list[Profile]:
     """n strips of a grammar: v1 all from g; v3 the odd ones from tilted(g, 2)."""
     keys = jax.random.split(jax.random.PRNGKey(seed), n)
-    gen = lambda gg: [np.asarray(a, float) for a in jax.jit(jax.vmap(lambda k: generate(k, gg)))(keys)]
+    # Model 2b solves a QP per strip, so its strips are generated in batches of 25.
+    if g.reexpress_lams is None:
+        gen = lambda gg: [np.asarray(a, float) for a in jax.jit(jax.vmap(lambda k: generate(k, gg)))(keys)]
+    else:
+        gen = lambda gg: [np.asarray(a, float) for a in jax.jit(
+            lambda ks: jax.lax.map(lambda k: generate(k, gg), ks, batch_size=25))(keys)]
     k, wl, wr = gen(g)
     if variant == "v3":
         kt, wlt, wrt = gen(tilted(g, alpha=TILT_ALPHA))
@@ -346,13 +351,17 @@ def strips(g, variant: str, n: int = N_STRIPS, seed: int = SEED) -> list[Profile
 
 
 def grammar(model: str, dev: list, width_tracks: list | None):
+    """The grammar of a model: curvature from ``dev`` (raw), widths from ``width_tracks``
+    (default all of ``dev``): evaluated tracks for copied and 2a, raw ones for 2b."""
     if model == "default":
         return fit_grammar(dev)
     if model == "copied":
         return fit_grammar(dev, real_widths=True, width_tracks=width_tracks)
     if model == "2a":
         return fit_grammar(dev, stat_widths=True, width_tracks=width_tracks)
-    raise SystemExit(f"unknown model {model!r} (2b is added here when it is built)")
+    if model == "2b":
+        return fit_grammar(dev, stat_widths=True, width_tracks=width_tracks, reexpress=True)
+    raise SystemExit(f"unknown model {model!r}")
 
 
 def model_leaf_size(g) -> int:
@@ -425,13 +434,13 @@ def clean(x):
 # ------------------------------------------------------------------------------- main
 
 
-def timing(dev) -> dict:
+def timing(dev, models) -> dict:
     """Seconds to generate a 256-strip bank refresh (the training bank's per-update work)
-    on this machine, jitted, median of 5 after a warm-up: default, copied and 2a."""
+    on this machine, jitted, median of 5 after a warm-up, for each model reported."""
     from apexzero.env.adapters import generate_bank
 
     out = {}
-    for model in ("default", "copied", "2a"):
+    for model in models:
         g = grammar(model, dev, None)
         f = jax.jit(lambda k, g=g: generate_bank(k, g, 256, tilted(g, alpha=TILT_ALPHA), 0.5))
         jax.block_until_ready(f(jax.random.PRNGKey(0)))
@@ -463,6 +472,7 @@ def main(argv=None):
         lockbox_guard(name)
     inputs = {f"data/tracks/tumftm/{n}.csv": sha256_file(TUMFTM / f"{n}.csv") for n in R_DEV}
     dev = [load_tumftm(TUMFTM / f"{n}.csv") for n in R_DEV]
+    raw_by_name = dict(zip(R_DEV, dev, strict=True))
     cache: dict = {}
     real_all = real_profiles(R_DEV, cache)
     evaluated = {p.name: refine_reference(load_tumftm(TUMFTM / f"{p.name}.csv")) for p in real_all}
@@ -495,7 +505,8 @@ def main(argv=None):
         results[model], fits[model] = {}, {}
         failed, checked = [], 0
         for fold in ("f1", "f2", "all"):
-            wt = None if fold == "all" else [evaluated[n] for n in FOLDS[fold]]
+            source = raw_by_name if model == "2b" else evaluated   # 2b fits raw profiles
+            wt = None if fold == "all" else [source[n] for n in FOLDS[fold]]
             g = grammar(model, dev, wt)
             fits[model][fold] = fitted_summary(g)
             results[model][fold] = {}
@@ -532,7 +543,7 @@ def main(argv=None):
                       f"nocopy {cs['share_within']:.4f}", flush=True)
         verdict[model] = {"meets_bands": not failed, "n_checks": checked, "failed": failed}
 
-    timing_s = None if args.no_timing else timing(dev)
+    timing_s = None if args.no_timing else timing(dev, models)
     report = {"label": "exploratory", "folds": FOLDS, "held_out": HELD_OUT,
               "constants": {"seed": SEED, "n_strips": args.strips, "k_tight": K_TIGHT,
                             "range_knots": RANGE_KNOTS, "thresholds": THRESHOLDS,

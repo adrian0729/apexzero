@@ -100,3 +100,29 @@ Descriptive only: the total-width and half-difference spectra, per-circuit value
 - **No agent.** The report trains and evaluates nothing, and it says nothing about completion. GW-3 tests that.
 - **R-dev erosion.** It reads R-dev geometry only, as the generator fit already does, and evaluates no agent there. So it adds no use of R-dev under #11's erosion bound.
 - **Cost.** A few minutes of one Mac process at nice 10.
+
+## 7. Amendment 1 (26 Oct 2026): model (2b), after (2a)'s report and before (2b)'s
+
+**What had been seen.** (2a)'s report (`outputs/width-report/report.json`, sha256 `5871664be5a6…`, computed once at commit `bdfd442`) gives "misses the bands". 3 of its 90 checks fail, all in v3: `f1/v3/share_1m`, `f1/v3/spectrum:8-16` and `f2/v3/share_1m`. Every v1 check passes. So (2b) is built (Section 4, #13). Its details below were written after that result was seen; the bands, statistics, keys and verdict rule are unchanged.
+
+**(2b), fixed here** (`src/apexzero/tracks/reexpress.py`; `fit_grammar(..., stat_widths=True, reexpress=True)`; `train_dr.py --stat-widths --reexpress`).
+- **Fit input: the raw centreline profiles** (`load_tumftm`) of the fitting circuits, not the evaluated ones.
+  - The re-expression supplies what `refine_reference` adds. Fitting on the evaluated profiles and then re-expressing would count it twice.
+  - The generation procedure is (2a)'s; only the fit input differs from Section 4's "as (2a) does".
+- **No fixed share.** A strip is re-expressed exactly when `refine_reference` would re-express it: when the drivable margin of the raw strip (before the inside cap) exceeds 0.6 on the part that is output. This replaces Section 4's share "fixed in an amendment" with refine's own trigger. In the port's validation (below), 13 of 80 strips triggered.
+- **Regularisation:** refine's ladder (0.03, 0.01, 0.003, 0.001) and its choice: the first weight whose reference radius stays ≥ 6 m and whose drivable margin is ≤ 0.6; else the valid weight with the lowest margin below the raw strip's; else the raw strip.
+- **The port:**
+  - FISTA, 1,500 iterations per weight, warm-started down the ladder;
+  - the bounds widened to include 0 where the road is narrower than 6 m (refine's `lsq_linear` refuses such a road);
+  - discrete curvature of the offset line in place of the 1 cm quintic smoothing spline;
+  - `rebase`'s ray search (window 40, hint refined within 120);
+  - the raw strip 256 knots longer, the output its first 4,096 knots, then the inside cap.
+- **Validation against numpy** (80 strips, 40 base and 40 tilted; `tests/test_reexpress.py` keeps 3 of them).
+  - The reference is built from refine's own pieces (`_offsets_qp`, `from_centreline`, `rebase`), with the score taken on the output part. On an open strip numpy's `rebase` wraps its hint modulo n, which puts a spurious inside width of 365–1,240 m at the last knot.
+  - The same weight was chosen on 75 of 78 strips. Numpy could not solve 2, roads narrower than 6 m. The 3 others are threshold cases one rung apart, with margins within 0.03 of 0.6.
+  - Where both re-express, widths agree to p99 ≤ 0.07 m (max 0.15 m) and curvature to p99 ≤ 0.003 m⁻¹.
+- **Report:** `--models 2b --tag 2b`, once, with Sections 2–4 unchanged. (2b)'s strips are generated in batches of 25 (`lax.map`), because each solves a QP.
+
+**Expected directions for (2b), before computing.**
+- E5: (2b)'s v3 tight-knot inside-range shares lie below (2a)'s, because the raw profiles carry smaller corner terms and most strips are not re-expressed. That would cure (2a)'s v3 overshoot, but it may undershoot H in v1.
+- E6: (2b) meets the bands. Held weakly, below even odds: it is the less direct fit.

@@ -29,6 +29,12 @@ only, no profile), and each strip's widths are drawn from it, coupled to the str
 corners (``widths.stat_widths``), under the same inside cap. Curvature is unchanged, and
 the two options cannot be combined.
 
+Opt-in re-expression (``fit_grammar(..., stat_widths=True, reexpress=True)``, GW-2's model
+2b): the width model is fitted on the circuits' raw centreline profiles instead, each strip
+is drawn without the inside cap, and it is then re-expressed on a smoothed reference line
+where and as ``refine_reference`` would (``reexpress.reexpress``, a JAX port), before the
+cap. Here the curvature changes too: it is the new reference line's.
+
 Because the simulator is local in Frenet coordinates, open strips need no closure or
 self-intersection checks.
 """
@@ -77,6 +83,9 @@ class Grammar(NamedTuple):
     # Opt-in statistical widths (None = off, the default): GW-2's model 2a, fitted on the
     # fitting circuits' evaluated profiles (summaries only; see tracks/widths.py).
     width_model: WidthModel | None = None
+    # Opt-in re-expression (None = off, the default): GW-2's model 2b; refine_reference's
+    # regularisation ladder (see tracks/reexpress.py).
+    reexpress_lams: jax.Array | None = None
 
 
 def _refuse_lockbox(tracks: list[Track]) -> None:
@@ -110,7 +119,8 @@ def width_profiles(tracks: list[Track], ds: float = DS):
 def fit_grammar(tracks: list[Track], min_angle_deg: float = 0.0, jitter: float = 0.15,
                 r_floor: float = 8.0, margin: float = 0.6, ramp_min: float = 10.0,
                 gap_scale: float = 1.0, real_widths: bool = False,
-                width_tracks: list[Track] | None = None, stat_widths: bool = False) -> Grammar:
+                width_tracks: list[Track] | None = None, stat_widths: bool = False,
+                reexpress: bool = False) -> Grammar:
     """Fit the grammar on development circuits (raw ``load_tumftm`` centrelines). With
     ``real_widths`` it also stores their per-side width profiles, which switches ``generate``
     to real-width strips; every other field is the same either way. The profiles are taken
@@ -120,9 +130,13 @@ def fit_grammar(tracks: list[Track], min_angle_deg: float = 0.0, jitter: float =
     ``width_tracks`` (default: ``tracks``) restricts the profiles to a subset, so a run can be
     evaluated on circuits whose widths it never trained on (leave-circuits-out).
     With ``stat_widths`` it instead stores the statistical width model (``widths``) fitted
-    on the same evaluated profiles of ``width_tracks`` (default: ``tracks``)."""
+    on the same evaluated profiles of ``width_tracks`` (default: ``tracks``). With
+    ``reexpress`` as well (model 2b), the width model is fitted on their raw centreline
+    profiles, and every strip is re-expressed as ``refine_reference`` would (``reexpress``)."""
     if real_widths and stat_widths:
         raise ValueError("real_widths and stat_widths are alternatives; choose one")
+    if reexpress and not stat_widths:
+        raise ValueError("reexpress needs stat_widths (model 2b re-expresses 2a's strips)")
     ang, rmin, clen, straights, alt_s, alt_l, widths = [], [], [], [], [], [], []
     for tr in tracks:
         seg = segment(tr)
@@ -147,6 +161,14 @@ def fit_grammar(tracks: list[Track], min_angle_deg: float = 0.0, jitter: float =
         jitter=f(jitter), r_floor=f(r_floor), margin=f(margin), ramp_min=f(ramp_min),
         gap_scale=f(gap_scale), corner_logits=f(np.zeros(len(ang))), width_scale=f(1.0),
     )
+    if reexpress:
+        from apexzero.tracks.reexpress import LAMS
+
+        src = tracks if width_tracks is None else width_tracks
+        if any(t.meta.get("reference") == "refined" for t in src):
+            raise ValueError("model 2b is fitted on raw centrelines; pass load_tumftm tracks")
+        return g._replace(width_model=fit_width_model(src),
+                          reexpress_lams=jnp.asarray(LAMS, dtype=jnp.float32))
     if real_widths or stat_widths:
         from apexzero.tracks.reference import refine_reference  # only these paths need scipy
 
@@ -210,7 +232,10 @@ def generate(key: jax.Array, g: Grammar, n_points: int = N_POINTS, ds: float = D
     """Return (kappa, w_left, w_right), each [n_points], for one open strip. A grammar with
     real width profiles (``fit_grammar(..., real_widths=True)``) takes the widths from
     ``real_width_segment``, and one with a width model (``stat_widths=True``) from
-    ``widths.stat_widths``, instead of the median-width model; kappa is the same either way."""
+    ``widths.stat_widths``, instead of the median-width model; kappa is the same either way.
+    A grammar with ``reexpress_lams`` (model 2b) goes to ``_generate_reexpressed``."""
+    if g.reexpress_lams is not None:
+        return _generate_reexpressed(key, g, n_points, ds, max_segments)
     keys = jax.random.split(key, 10)
     m = max_segments
     jit = lambda k, shape: jnp.exp(g.jitter * jax.random.normal(k, shape))
@@ -271,6 +296,21 @@ def generate(key: jax.Array, g: Grammar, n_points: int = N_POINTS, ds: float = D
         wr = 0.5 * w_total - asym
     else:
         wl, wr = real_width_segment(keys[9], g, n_points)
+    cap = 1.0 + g.margin / jnp.maximum(jnp.abs(kappa), 1e-6)
+    wl = jnp.where(kappa > 0, jnp.minimum(wl, cap), wl)
+    wr = jnp.where(kappa < 0, jnp.minimum(wr, cap), wr)
+    return kappa, wl, wr
+
+
+def _generate_reexpressed(key: jax.Array, g: Grammar, n_points: int, ds: float,
+                          max_segments: int):
+    """Model 2b: a raw strip ``reexpress.EXTRA_KNOTS`` longer, drawn without the inside cap,
+    re-expressed as ``refine_reference`` would, cut to ``n_points``, then capped."""
+    from apexzero.tracks.reexpress import EXTRA_KNOTS, reexpress
+
+    raw = g._replace(reexpress_lams=None, margin=jnp.full_like(g.margin, jnp.inf))
+    kappa, wl, wr = generate(key, raw, n_points + EXTRA_KNOTS, ds, max_segments)
+    kappa, wl, wr, _ = reexpress(kappa, wl, wr, g.reexpress_lams, n_points, ds)
     cap = 1.0 + g.margin / jnp.maximum(jnp.abs(kappa), 1e-6)
     wl = jnp.where(kappa > 0, jnp.minimum(wl, cap), wl)
     wr = jnp.where(kappa < 0, jnp.minimum(wr, cap), wr)

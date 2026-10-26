@@ -7,7 +7,8 @@ With --real-widths each strip's per-side widths are a wrapped segment of an R-de
 circuit's own width profile, measured from its refine_reference line as in the evaluation
 below, instead of the median-width model (curvature unchanged). With --stat-widths they are
 drawn from the statistical width model (GW-2's 2a, tracks/widths.py) fitted on those
-profiles, which copies no circuit; both options are off by default. Only training changes:
+profiles, which copies no circuit (with --reexpress, model 2b: fitted on the raw profiles
+and re-expressed as refine_reference would); all are off by default. Only training changes:
 the audit level sets (tracks/levels.py, pilot_audit.py, interp/) keep the default width
 model, as they already ignore --tilt-*, so they stay fixed across runs.
 Cars: context sampled per reset in the plan's ranges, plus hidden +/-2% grip.
@@ -65,6 +66,9 @@ def main():
     ap.add_argument("--stat-widths-from", default="",
                     help="with --stat-widths: comma-separated R-dev circuits the model is fitted "
                          "on (default all), for leave-circuits-out tests")
+    ap.add_argument("--reexpress", action="store_true",
+                    help="with --stat-widths: model 2b, fitted on the raw centreline profiles and "
+                         "re-expressed on a smoothed reference as refine_reference would")
     ap.add_argument("--ensemble-heads", type=int, default=5)
     ap.add_argument("--seed", type=int, default=0)
     args = ap.parse_args()
@@ -86,10 +90,13 @@ def main():
         raise SystemExit("--stat-widths-from needs --stat-widths")
     if args.stat_widths and args.real_widths:
         raise SystemExit("--stat-widths and --real-widths are alternatives; choose one")
+    if args.reexpress and not args.stat_widths:
+        raise SystemExit("--reexpress needs --stat-widths")
     width_from = width_from or stat_from
     width_tracks = [d for n, d in zip(R_DEV, dev) if n in width_from] if width_from else None
     if args.stat_widths:
-        g = fit_grammar(dev, width_tracks=width_tracks, stat_widths=True)
+        g = fit_grammar(dev, width_tracks=width_tracks, stat_widths=True,
+                        **({"reexpress": True} if args.reexpress else {}))
     else:
         g = fit_grammar(dev, real_widths=args.real_widths, width_tracks=width_tracks)
     env = procedural_env(g, bank_size=args.bank, refresh_per_update=args.refresh,

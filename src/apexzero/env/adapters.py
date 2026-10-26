@@ -22,6 +22,7 @@ from apexzero.tracks.track import Track
 from apexzero.vehicle.params import CONTEXT_RANGES, F1_2025
 from apexzero.vehicle.sim import TrackArrays, track_arrays
 
+REEXPRESS_BATCH = 64   # strips per batch when a bank re-expresses (GW-2's model 2b)
 _CTX_LO = np.array([CONTEXT_RANGES[k][0] for k in CONTEXT_RANGES])
 _CTX_HI = np.array([CONTEXT_RANGES[k][1] for k in CONTEXT_RANGES])
 
@@ -99,6 +100,9 @@ def generate_bank(key: jax.Array, g: Grammar, size: int, g_alt: Grammar | None =
     if g_alt is not None and (g.width_model is None) != (g_alt.width_model is None):
         raise ValueError("g and g_alt must both have a width model or neither "
                          "(derive g_alt from g, e.g. tilted(g))")
+    if g_alt is not None and (g.reexpress_lams is None) != (g_alt.reexpress_lams is None):
+        raise ValueError("g and g_alt must both re-express or neither "
+                         "(derive g_alt from g, e.g. tilted(g))")
 
     def one(k):
         if g_alt is not None:
@@ -111,7 +115,11 @@ def generate_bank(key: jax.Array, g: Grammar, size: int, g_alt: Grammar | None =
         tr = _strip_arrays(kappa, wl, wr)
         return tr, speed_profile_jax(kappa, 2.0, F1_2025)
 
-    tracks, v = jax.vmap(one)(jax.random.split(key, size))
+    keys = jax.random.split(key, size)
+    if g.reexpress_lams is None:
+        tracks, v = jax.vmap(one)(keys)
+    else:   # model 2b solves a QP per strip: batches bound the memory of a 4,096-strip bank
+        tracks, v = jax.lax.map(one, keys, batch_size=REEXPRESS_BATCH)
     return TrackBank(tracks, v)
 
 
