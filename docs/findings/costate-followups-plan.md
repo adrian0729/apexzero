@@ -1564,3 +1564,21 @@ and these facts, which involve targets and strata only:
      - 4 workers × 2 threads throughout.
    - **Outputs.** `summary.json`, and `preds.npz`: the probes' out-of-fold predictions on
      σ^ped and σ_res per scaling, and the chosen decoy's by-fold residuals (float32).
+
+### Amendment 8 (2026-10-26)
+
+**What changed.** Two corrections to amendment 7's text, made before any CS-7 or CS-8 number.
+Nothing else changes: no question, row set, statistic, expected direction or check.
+1. **A fact.** In amendment 7's list of what was read, "Every other group has hundreds of
+   training rows in every fit" is wrong. Every other θ × turn-direction group has at least 20
+   training rows in every fit that predicts it: θ 45° 20, 135° 156, 90° and 180° over 1,000.
+   So candidate 1's fallback is still needed only for θ 60°.
+2. **A count.** (a)'s and (b)'s probe fits per scaling (amendment 7 item 3, 'Pooled') are 64,
+   not 63: the base, the trained h3 and the 20 pool actors on each of σ^ped and σ_res (44),
+   and the 20 hosts on σ^ped. Without the hosts they are 44. They are dealt round-robin into 4
+   chunks of 16.
+
+**Why.** Both are slips in amendment 7, found when its tests were written. **Computed or seen
+before it.** No CS-7 or CS-8 number, and no network output. Since amendment 7: the code and its
+tests on synthetic data, and the training-row counts of θ × turn-direction groups in each
+cross-fit fit (strata only).
