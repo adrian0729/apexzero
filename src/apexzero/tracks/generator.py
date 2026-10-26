@@ -23,6 +23,12 @@ The profiles are measured as every R-dev evaluation measures them, from the
 so one side narrows to ~3 m and the other widens to ~14 m on Norisring). Curvature
 generation is unchanged, and with the option off (the default) so is everything.
 
+Opt-in statistical widths (``fit_grammar(..., stat_widths=True)``, GW-2's model 2a): the
+grammar stores a ``widths.WidthModel`` fitted on the same evaluated profiles (summaries
+only, no profile), and each strip's widths are drawn from it, coupled to the strip's own
+corners (``widths.stat_widths``), under the same inside cap. Curvature is unchanged, and
+the two options cannot be combined.
+
 Because the simulator is local in Frenet coordinates, open strips need no closure or
 self-intersection checks.
 """
@@ -39,6 +45,7 @@ import numpy as np
 from apexzero.tracks.corners import R_TEST, segment
 from apexzero.tracks.spline import coeffs_open_jax, values_from_coeffs
 from apexzero.tracks.track import Track
+from apexzero.tracks.widths import WidthModel, fit_width_model, stat_widths
 from apexzero.vehicle.sim import TrackArrays
 
 N_POINTS = 4096
@@ -67,6 +74,9 @@ class Grammar(NamedTuple):
     real_w_left: jax.Array | None = None    # [Nt, Lmax] left width (m)
     real_w_right: jax.Array | None = None   # [Nt, Lmax] right width (m)
     real_len: jax.Array | None = None       # [Nt] knots per circuit (int32)
+    # Opt-in statistical widths (None = off, the default): GW-2's model 2a, fitted on the
+    # fitting circuits' evaluated profiles (summaries only; see tracks/widths.py).
+    width_model: WidthModel | None = None
 
 
 def _refuse_lockbox(tracks: list[Track]) -> None:
@@ -100,7 +110,7 @@ def width_profiles(tracks: list[Track], ds: float = DS):
 def fit_grammar(tracks: list[Track], min_angle_deg: float = 0.0, jitter: float = 0.15,
                 r_floor: float = 8.0, margin: float = 0.6, ramp_min: float = 10.0,
                 gap_scale: float = 1.0, real_widths: bool = False,
-                width_tracks: list[Track] | None = None) -> Grammar:
+                width_tracks: list[Track] | None = None, stat_widths: bool = False) -> Grammar:
     """Fit the grammar on development circuits (raw ``load_tumftm`` centrelines). With
     ``real_widths`` it also stores their per-side width profiles, which switches ``generate``
     to real-width strips; every other field is the same either way. The profiles are taken
@@ -108,7 +118,11 @@ def fit_grammar(tracks: list[Track], min_angle_deg: float = 0.0, jitter: float =
     geometry every R-dev evaluation drives, so training shows the lopsided widths the agent
     meets there (the raw centreline profiles are much more symmetric on 6 of 12 circuits).
     ``width_tracks`` (default: ``tracks``) restricts the profiles to a subset, so a run can be
-    evaluated on circuits whose widths it never trained on (leave-circuits-out)."""
+    evaluated on circuits whose widths it never trained on (leave-circuits-out).
+    With ``stat_widths`` it instead stores the statistical width model (``widths``) fitted
+    on the same evaluated profiles of ``width_tracks`` (default: ``tracks``)."""
+    if real_widths and stat_widths:
+        raise ValueError("real_widths and stat_widths are alternatives; choose one")
     ang, rmin, clen, straights, alt_s, alt_l, widths = [], [], [], [], [], [], []
     for tr in tracks:
         seg = segment(tr)
@@ -133,11 +147,13 @@ def fit_grammar(tracks: list[Track], min_angle_deg: float = 0.0, jitter: float =
         jitter=f(jitter), r_floor=f(r_floor), margin=f(margin), ramp_min=f(ramp_min),
         gap_scale=f(gap_scale), corner_logits=f(np.zeros(len(ang))), width_scale=f(1.0),
     )
-    if real_widths:
-        from apexzero.tracks.reference import refine_reference  # only this path needs scipy
+    if real_widths or stat_widths:
+        from apexzero.tracks.reference import refine_reference  # only these paths need scipy
 
         src = tracks if width_tracks is None else width_tracks
         evaluated = [t if t.meta.get("reference") == "refined" else refine_reference(t) for t in src]
+        if stat_widths:
+            return g._replace(width_model=fit_width_model(evaluated))
         wl, wr, lens = width_profiles(evaluated)
         g = g._replace(real_w_left=f(wl), real_w_right=f(wr),
                        real_len=jnp.asarray(lens, dtype=jnp.int32))
@@ -193,7 +209,8 @@ def generate(key: jax.Array, g: Grammar, n_points: int = N_POINTS, ds: float = D
              max_segments: int = MAX_SEGMENTS):
     """Return (kappa, w_left, w_right), each [n_points], for one open strip. A grammar with
     real width profiles (``fit_grammar(..., real_widths=True)``) takes the widths from
-    ``real_width_segment`` instead of the median-width model; kappa is the same either way."""
+    ``real_width_segment``, and one with a width model (``stat_widths=True``) from
+    ``widths.stat_widths``, instead of the median-width model; kappa is the same either way."""
     keys = jax.random.split(key, 10)
     m = max_segments
     jit = lambda k, shape: jnp.exp(g.jitter * jax.random.normal(k, shape))
@@ -238,7 +255,12 @@ def generate(key: jax.Array, g: Grammar, n_points: int = N_POINTS, ds: float = D
     kappa = jnp.where(is_corner, sign[c] * kp * prof, 0.0)
 
     # Widths: development-circuit median, low-frequency variation, asymmetry, Frenet cap.
-    if g.real_w_left is None:
+    if g.width_model is not None and g.real_w_left is not None:
+        raise ValueError("a grammar has real width profiles or a width model, not both")
+    if g.width_model is not None:
+        shape = jnp.where(is_corner, prof, 0.0)
+        wl, wr = stat_widths(keys[9], g.width_model, g.width_scale, c, shape, sign, k_peak, ds)
+    elif g.real_w_left is None:
         ti = jax.random.randint(keys[9], (), 0, g.width.shape[0])
         kw = jax.random.split(keys[9], 3)
         w_total = g.width_scale * g.width[ti] * jnp.exp(0.08 * jax.random.normal(kw[0], ()))

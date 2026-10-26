@@ -5,7 +5,9 @@
 Tracks: a rotating on-device bank of generated strips (grammar fitted on R-dev only).
 With --real-widths each strip's per-side widths are a wrapped segment of an R-dev
 circuit's own width profile, measured from its refine_reference line as in the evaluation
-below, instead of the median-width model (curvature unchanged). Only training changes:
+below, instead of the median-width model (curvature unchanged). With --stat-widths they are
+drawn from the statistical width model (GW-2's 2a, tracks/widths.py) fitted on those
+profiles, which copies no circuit; both options are off by default. Only training changes:
 the audit level sets (tracks/levels.py, pilot_audit.py, interp/) keep the default width
 model, as they already ignore --tilt-*, so they stay fixed across runs.
 Cars: context sampled per reset in the plan's ranges, plus hidden +/-2% grip.
@@ -57,6 +59,12 @@ def main():
     ap.add_argument("--real-widths-from", default="",
                     help="with --real-widths: comma-separated R-dev circuits whose width profiles "
                          "are used (default all), for leave-circuits-out tests")
+    ap.add_argument("--stat-widths", action="store_true",
+                    help="strip widths drawn from the statistical width model (tracks/widths.py) "
+                         "fitted on the R-dev circuits' evaluated width profiles; copies none")
+    ap.add_argument("--stat-widths-from", default="",
+                    help="with --stat-widths: comma-separated R-dev circuits the model is fitted "
+                         "on (default all), for leave-circuits-out tests")
     ap.add_argument("--ensemble-heads", type=int, default=5)
     ap.add_argument("--seed", type=int, default=0)
     args = ap.parse_args()
@@ -70,8 +78,20 @@ def main():
         raise SystemExit(f"--real-widths-from: not R-dev circuits: {unknown}")
     if width_from and not args.real_widths:
         raise SystemExit("--real-widths-from needs --real-widths")
+    stat_from = [n for n in args.stat_widths_from.split(",") if n]
+    unknown = sorted(set(stat_from) - set(R_DEV))
+    if unknown:
+        raise SystemExit(f"--stat-widths-from: not R-dev circuits: {unknown}")
+    if stat_from and not args.stat_widths:
+        raise SystemExit("--stat-widths-from needs --stat-widths")
+    if args.stat_widths and args.real_widths:
+        raise SystemExit("--stat-widths and --real-widths are alternatives; choose one")
+    width_from = width_from or stat_from
     width_tracks = [d for n, d in zip(R_DEV, dev) if n in width_from] if width_from else None
-    g = fit_grammar(dev, real_widths=args.real_widths, width_tracks=width_tracks)
+    if args.stat_widths:
+        g = fit_grammar(dev, width_tracks=width_tracks, stat_widths=True)
+    else:
+        g = fit_grammar(dev, real_widths=args.real_widths, width_tracks=width_tracks)
     env = procedural_env(g, bank_size=args.bank, refresh_per_update=args.refresh,
                          randomize_car=not args.fixed_car, g_alt=tilted(g, alpha=args.tilt_alpha),
                          alt_fraction=args.tilt_fraction)
