@@ -554,3 +554,114 @@ def test_family_summary(lb):
     assert np.isclose(out["median_gap_crash_inf"], 0.07)
     rows[1]["gap"]["+0.0"] = None                    # a missing reference: not smaller
     assert np.isnan(lb.family_summary(rows, 0.5)["median_gap_crash_inf"])
+
+
+# ------------------------------------------------------------------------- analyse end to end
+
+
+def _planted_reference(track, scale: float = 1.0, success: bool = True):
+    """An OCPResult-shaped reference on the track's own stations: QSS speeds, t from ds/v."""
+    from apexzero.env.adapters import reference_speed
+    from apexzero.ocp.min_time import OCPResult
+
+    n = round(track.length / 3.0)
+    h = track.length / n
+    s = np.arange(n) * h
+    v = np.interp(s, track.s, reference_speed(track)) * scale
+    seg = h / v
+    t = np.r_[0.0, np.cumsum(seg)[:-1]]
+    z = np.zeros((n, 7))
+    z[:, 2] = v
+    zeros = np.zeros(n)
+    return OCPResult(s=s, z=z, u=np.zeros((n, 2)), t=t, lap_time=float(seg.sum()),
+                     success=success, status="planted", iterations=0, solve_seconds=0.0,
+                     kappa=zeros, w_left=zeros, w_right=zeros, dual_left=zeros,
+                     dual_right=zeros, meta={"ds": h})
+
+
+@needs_tracks
+def test_analyse_end_to_end_on_a_planted_root(lb, tmp_path):
+    """Planted references and laps on Norisring's three variants: one reference failed, one
+    subject completes everything, one nothing. analyse runs to the end, its sectors close,
+    its gaps are the planted ones, and it refuses a second run."""
+    root = tmp_path / "dry"
+    root.mkdir()
+    csv_rel = "data/tracks/tumftm/Norisring.csv"
+    fid = "f" * 32
+    protocol = json.loads(json.dumps(lb.PROTOCOL))
+    protocol["laps"]["runs"] = 4
+    protocol["stats"]["n_boot"] = 50
+    subs = [{"name": "good", "sha256": "1" * 64}, {"name": "bad", "sha256": "2" * 64}]
+    rec = {"mode": "dryrun", "freeze_id": fid, "circuits": ["Norisring"],
+           "variants": list(lb.VARIANTS), "protocol": protocol, "subjects": subs,
+           "circuit_files_sha256": {csv_rel: lb.sha256_file(ROOT / csv_rel)}, "tag": None,
+           "label": "DRY RUN: planted"}
+    lb.write_json_new(root / "freeze.json", rec)
+    clr = lb.clear(["Norisring"], "dryrun")
+    failed = lb.ocp_key("Norisring", "reversed", 0.5)
+    for c, v, d in lb.ocp_tasks(rec):
+        key = lb.ocp_key(c, v, d)
+        tr = lb.widen(lb.load_variant(c, v, clr), d)
+        res = _planted_reference(tr, 1.0 + 0.02 * d, success=key != failed)
+        sha = lb.write_new(root / "ocp" / f"{key}.pkl", pickle.dumps(res))
+        lb.write_json_new(root / "ocp" / f"{key}.json", {
+            "freeze_id": fid, "pkl_sha256": sha, "success": key != failed,
+            "attempts": [{}] if key != failed else [{}, {}],
+            "shooting_rel_err": 1e-5 if key != failed else float("nan")})
+    nominal = {}
+    for v in lb.VARIANTS:
+        tr = lb.load_variant("Norisring", v, clr)
+        res = _planted_reference(tr)
+        nominal[v] = res.lap_time
+        stations = np.r_[tr.s, tr.length]
+        t_ocp = lb.ocp_time_at(res, stations)
+        for sub in subs:
+            ok = sub["name"] == "good"
+            tau = np.full((4, len(stations)), np.nan)
+            if ok:
+                for r in range(4):
+                    tau[r] = t_ocp * (1.05 + 0.001 * r)
+            lap = tau[:, -1]
+            npz = lb.npz_bytes(stations=stations, tau=tau, ood_s=stations[:-1:5].copy(),
+                               ood_d=np.linspace(0.5, 3.0, len(stations[:-1:5]),
+                                                 dtype=np.float32))
+            name = tr.name
+            sha = lb.write_new(root / "laps" / sub["name"] / f"{name}.npz", npz)
+            lb.write_json_new(root / "laps" / sub["name"] / f"{name}.json", {
+                "freeze_id": fid, "checkpoint_sha256": sub["sha256"],
+                "completed": [ok] * 4, "lap_time_s": lap, "crash": [not ok] * 4,
+                "timeout": [False] * 4, "term_s": [np.nan] * 4 if ok else [100.0] * 4,
+                "cause": [""] * 4 if ok else ["corridor"] * 4,
+                "npz": f"laps/{sub['name']}/{name}.npz", "npz_sha256": sha})
+    lb.main(["analyse", "--root", str(root)])
+    out = json.loads((root / "analysis.json").read_text())
+    assert out["checks"]["references_converged"] == "8/9"
+    assert out["checks"]["unconverged"] == [failed] and out["checks"]["retried"] == [failed]
+    assert out["checks"]["sector_sum_closure_s"] < 1e-6
+    good, bad = out["per_subject"]["good"], out["per_subject"]["bad"]
+    assert good["all"]["circuits_completed"] == 3 and bad["all"]["circuits_completed"] == 0
+    assert np.isclose(good["original"]["median_gap"], 1.0515 - 1.0, atol=1e-9)
+    assert bad["all"]["median_gap"] is None and bad["all"]["median_gap_crash_inf"] == "inf"
+    assert good["reversed"]["median_gap_wide"] is None          # its reference failed
+    assert good["h1_as_written"] == {"laps_ok": True, "gap_ok": False}
+    rows = {(r["subject"], r["name"]): r for r in out["rows"]}
+    assert rows[("good", "Norisring")]["gap"]["+0.0"] == pytest.approx(0.0515)
+    assert rows[("bad", "Norisring-mirrored")]["causes"]["corridor"] == 4
+    corners = list(csv_rows(root / "corners.csv"))
+    assert {r["subject"] for r in corners} == {"good", "bad"}
+    for v in lb.VARIANTS:
+        dts = [float(r["dt_median_s"]) for r in corners
+               if r["subject"] == "good" and r["variant"] == v]
+        # per sector the median of the 4 runs' (0.050 ... 0.053) x sector time: 0.0515 x it
+        assert np.isclose(sum(dts), 0.0515 * nominal[v], rtol=1e-9)
+    assert any(int(r["crashes_here"]) for r in corners if r["subject"] == "bad")
+    assert out["iqm_gap"]["all"]["uncompleted_as_inf"]["n_inf"] == 3
+    with pytest.raises(lb.CheckFailed, match="runs once"):
+        lb.main(["analyse", "--root", str(root)])
+
+
+def csv_rows(path: Path):
+    import csv
+
+    with open(path, newline="") as fh:
+        yield from csv.DictReader(fh)

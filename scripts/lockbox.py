@@ -141,6 +141,7 @@ NICE = 15
 SUBJECT_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
 CAUSES = ("corridor", "slip", "spin", "stall")
 CORNER_TYPES = ("slow", "medium", "fast", "unknown")
+P2_SHOOTING_LIMIT = 3e-3          # the P2 gate's shooting consistency (0.3% of the lap)
 
 PROTOCOL = {
     "laps": {"runs": 10, "laps": 2, "start_fraction": 0.9, "seed": 0, "completion_min": 0.5,
@@ -190,6 +191,9 @@ def sha256_file(path: Path) -> str:
     return sha256_bytes(Path(path).read_bytes())
 
 
+SCRIPT_SHA256 = sha256_file(SCRIPT)     # the code this process loaded
+
+
 def rel(path: Path) -> str:
     """Repo-relative where possible, so no output carries an absolute local path."""
     p = Path(path).resolve()
@@ -210,7 +214,7 @@ def environment() -> dict:
 
 def provenance(start: float, inputs: dict[str, str] | None = None) -> dict:
     return {
-        "script": rel(SCRIPT), "script_sha256": sha256_file(SCRIPT),
+        "script": rel(SCRIPT), "script_sha256": SCRIPT_SHA256,
         "git_head": git("rev-parse", "HEAD"),
         "changed_paths": [ln for ln in git("status", "--porcelain", "--untracked-files=no")
                           .splitlines() if ln.strip()],
@@ -653,13 +657,18 @@ def solve_task(root: str, rec: dict, clearance: Clearance, circuit: str, variant
         attempts.append({"init": "failed iterate", "tol": 1e-5, "success": res.success,
                          "status": res.status, "iterations": res.iterations,
                          "solve_s": round(res.solve_seconds, 1)})
-    chk = shooting_check(res, F1_2025)
+    try:
+        chk = shooting_check(res, F1_2025)
+        shoot = {"shooting_rel_err": float(chk.rel_lap_error),
+                 "max_dv_mps": float(chk.max_speed_error), "shooting_error": None}
+    except Exception as exc:  # noqa: BLE001  (recorded; analyse reports it)
+        shoot = {"shooting_rel_err": float("nan"), "max_dv_mps": float("nan"),
+                 "shooting_error": repr(exc)}
     pkl_sha = write_new(safe_path(root, "ocp", f"{key}.pkl"), pickle.dumps(res))
     out = {"key": key, "circuit": circuit, "variant": variant, "name": track.name,
            "width_delta_m": delta, "freeze_id": rec["freeze_id"], "success": bool(res.success),
            "status": res.status, "attempts": attempts, "lap_time_s": float(res.lap_time),
-           "length_m": float(track.length), "shooting_rel_err": float(chk.rel_lap_error),
-           "max_dv_mps": float(chk.max_speed_error),
+           "length_m": float(track.length), **shoot,
            "min_width_m": float(min(track.w_left.min(), track.w_right.min())),
            "drivable_margin": float(drivable_margin(track)),
            "pkl": f"ocp/{key}.pkl", "pkl_sha256": pkl_sha,
@@ -1111,6 +1120,11 @@ def spearman(x, y) -> dict:
     return {"rho": float(spearmanr(x[m], y[m]).statistic), "n": int(m.sum())}
 
 
+def _nanmax(x) -> float:
+    x = np.asarray(x, float)
+    return float(np.nanmax(x)) if np.isfinite(x).any() else float("nan")
+
+
 def _med(x) -> float:
     """Median with NaN (missing) dropped; infinities are kept."""
     x = np.asarray(x, float).ravel()
@@ -1407,8 +1421,10 @@ def stage_analyse(args) -> Path:
         "checks": {"references_converged": f"{len(refs) - len(unconverged)}/{len(refs)}",
                    "unconverged": unconverged,
                    "retried": [k for k, r in refs.items() if len(r["attempts"]) > 1],
-                   "max_abs_shooting_rel_err": max(abs(r["shooting_rel_err"])
-                                                   for r in refs.values()),
+                   "max_abs_shooting_rel_err": _nanmax([abs(unclean(r["shooting_rel_err"]))
+                                                        for r in refs.values()]),
+                   "shooting_over_p2_limit": [k for k, r in refs.items() if not abs(
+                       unclean(r["shooting_rel_err"])) < P2_SHOOTING_LIMIT],
                    "mirror_ocp_lap_rel_diff": mirror, "sector_sum_closure_s": closure,
                    "stored_eval_agreement": stored_eval_agreement(rec, rows)},
         "per_subject": per_subject, "headline_median_subject": headline, "iqm_gap": iqms,
