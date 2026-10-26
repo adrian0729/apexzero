@@ -1,0 +1,439 @@
+# Maze E5 (PA-3): do level scores track exact regret on JaxUED's own agents? (pre-registration, DRAFT)
+
+**Status.** DRAFT, 26 Oct 2026, for review. Nothing here is tagged, and none of the 30 runs below
+exists. After review the lead commits the final text. The SFL source is vendored only after the
+user approves the download (Section 10). The runs are trained, their checkpoint manifest is
+committed, and the tag `maze-e5-prereg-v1` is placed before any audit of an E5 checkpoint
+(Section 8). E5 uses no racing circuit, so the lockbox is untouched.
+
+## 1. Why
+
+- **Its place in the paper.** E5 is the paper's external check, contribution 4 in
+  [two-track-plan.md](../plan/two-track-plan.md) Section 2.1: the level scores of curriculum
+  methods (PVL, MaxMC, learnability) audited against an exact optimum, on a standard benchmark,
+  with the methods' own code.
+- **The maze has an exact optimum.** J\* comes from a breadth-first search (`apexzero.maze.oracle`),
+  so regret is known exactly, with no OCP labels and no label noise in J\*.
+- **The pilot** ([maze-audit-pilot.md](../findings/maze-audit-pilot.md)): one seed, 200 of
+  30,000 updates, the 5×5 view, no SFL.
+  - At 12–34% solve rates, PVL, MaxMC and L1 ranked mazes the wrong way round. ρ with regret was
+    −0.26 to +0.02, and −0.53 to −0.31 with normalised regret. All six headline scores were below
+    the best baseline at every checkpoint.
+  - It sized E5: 4 target episodes estimate regret with reliability 0.21–0.45, and 32 are
+    projected at 0.68–0.87.
+  - It left the question open: "whether the sign changes once the agent solves most mazes".
+- **The specification** comes from the follow-through ([follow-through.md](../plan/follow-through.md),
+  PA-3): JaxUED maze at its defaults, 5 seeds × {DR, PLR-MaxMC, SFL} × 2 view sizes, 30,000
+  updates each, 16 log-spaced checkpoints, BFS regret on 2,000 mazes, about 32 target episodes.
+
+## 2. Runs (fixed now)
+
+| Arm | Code | Flags beyond the shared ones |
+|---|---|---|
+| DR | JaxUED `examples/maze_plr.py`, vendored unmodified (`third_party/jaxued_examples/`) | `--replay_prob 0 --exploratory_grad_updates`, as in the pilot |
+| PLR-MaxMC | the same file | none: `--score_function MaxMC` is its default (PLR⊥: replay 0.8, rank β 0.3, staleness 0.3, buffer 4,000) |
+| SFL | SFL's `sfl/train/minigrid_sfl.py`, vendored unmodified once approved (`third_party/sfl/`) | its own config defaults (`minigrid-sfl.yaml`, `learning/ippo-minigrid.yaml`, `env/minigrid.yaml`) |
+
+**Shared settings:**
+- **View sizes:** 5 (the default) and 13. For JaxUED: `--agent_view_size 5|13`. For SFL: its
+  own configuration key for the same quantity.
+- **Seeds:** 1–5 in every arm × view cell, so 30 runs. The pilot used seed 0 and was seen.
+- **Length:** 30,000 PPO updates for every arm. That is JaxUED's default `--num_updates`. For SFL,
+  its run length is set to 30,000 updates if its default differs (DEV-E5-3).
+- **Calling the code:**
+  - JaxUED runs go through `scripts/run_jaxued_maze.py`, with its compatibility shim and wandb
+    offline;
+  - SFL runs go through a new shim of the same kind, `scripts/run_sfl_maze.py`.
+- **Hyperparameters:** each arm at its own defaults, so the arms differ in more than the sampler.
+  - JaxUED: 32 envs × 256 steps per update, γ 0.995, λ 0.98, lr 1e-4.
+  - SFL's MiniGrid code, as the repo's notes record it (`docs/paper/sources-sfl.md` Section 2.3;
+    to be confirmed against the vendored files):
+    - 256 envs × 256 steps per update, γ 0.99, λ 0.95;
+    - every 100 updates, 25,000 fresh mazes are scored by learnability from 2,000-step rollouts,
+      and the top 1,000 form the buffer;
+    - half of each batch is drawn from that buffer.
+
+  Comparisons between arms are therefore descriptive (Section 5.4).
+
+**Checkpoints.** 16, log-spaced from 1% of the run to its end, at update counts
+u_k = 100·round(3·100^((k−1)/15)), k = 1…16:
+
+> 300, 400, 600, 800, 1000, 1400, 1900, 2600, 3500, 4800, 6500, 8800, 11900, 16200, 22100, 30000
+
+- **JaxUED runs** save at every eval block: `--eval_freq 100 --checkpoint_save_interval 1
+  --max_number_of_checkpoints 300`. Orbax step e then holds update 100(e + 1). Only the 16
+  selected steps are copied back; the rest are deleted with the box (DEV-E5-1).
+- **SFL runs** save at the same 16 update counts (DEV-E5-2).
+
+**Machine and queue.**
+- **One commit, one box.** All 30 runs train from one commit on one rented NVIDIA RTX A6000 (the
+  cheapest Massed Compute instance), set up with `scripts/gpu_setup.sh`. No racing data is needed
+  on the box.
+- **The queue,** `scripts/gpu_queue_maze_e5.sh` (to be written), interleaves the cells so that each
+  round mixes arms and views.
+  - The lane count is fixed by the timing calibration (Section 9).
+  - A failed run is re-run once with the same arguments. A run that fails twice is missing
+    (Section 8).
+- **Integrity.** The vendored files are checked against their git blob hashes before every stage:
+  - `maze_plr.py`, blob `a7b6164d…`, which equals JaxUED's at the pinned commit (checked);
+  - SFL's files (Section 10).
+
+**Deviations from the reference code's defaults (fixed now):**
+
+| ID | Item | Default | E5 | Reason |
+|---|---|---|---|---|
+| DEV-E5-1 | JaxUED checkpoint cadence | eval every 250 updates, save every second eval, keep 60 | eval every 100, save every eval, keep 300; 16 selected | log-spaced checkpoints without editing the file. `maze_plr.py` splits its key at every eval block, so the runs are statistically equivalent to default runs, not bit copies (the pilot's precedent) |
+| DEV-E5-2 | SFL checkpoints | to be read from the vendored file | if it cannot save the parameters and its learnable set D at the 16 updates unmodified, a minimal logged patch adds those saves only. A test shows the parameters after a short run are bit-identical with and without it | the checkpoints and the in-buffer audit |
+| DEV-E5-3 | SFL run length | to be read | 30,000 PPO updates | the follow-through's equal-update rule |
+| DEV-E5-4 | View 13 | 5 | 13 | the observability manipulation (outcome row F) |
+| DEV-E5-5 | Episodes per score | JaxUED: whatever completes in 256 steps; SFL: up to 10 in 2,000 steps | 4 operational episodes (score spec DEV-5). The native scores are reported beside them | score noise that does not depend on the agent's speed, as in the pilot |
+| DEV-E5-6 | DR | JaxUED also ships `examples/maze_dr.py` | `maze_plr.py` with replay 0 and exploratory gradient updates (the pilot's) | DR and PLR then share one script and differ only in the sampler |
+
+## 3. The audit (fixed now)
+
+This is the pilot's protocol (`apexzero.maze.audit`) at E5's size.
+
+**Mazes.**
+- 2,000 from JaxUED's default generator, `make_level_generator(13, 13, 25)`, drawn with level
+  seed 2027. The pilot used 2026, with 500 mazes.
+- The same 2,000 serve every run and checkpoint.
+- If SFL's default training generator differs from JaxUED's (to be read from its
+  `env/minigrid.yaml`), SFL's runs are also audited on 2,000 mazes from their own generator, as a
+  secondary set.
+
+**The optimum.** J\* by BFS with the run's own γ and time limit (250 steps). J\* > 0 exactly when
+the goal is reachable within the limit.
+
+**Streams.**
+- One AutoReplay stream per maze, with the stochastic policy. The LSTM resets on done. It runs
+  until 36 episodes are complete.
+- Episodes 1–4 give the operational scores.
+- Episodes 5–36 give the target: Ĵ^π is their mean discounted return (32 target episodes).
+- Score and target therefore share no sampling noise.
+
+**Native scores** (independent streams):
+- JaxUED's own new-level score: one 256-step rollout from a reset with a fresh carry, giving
+  native PVL and MaxMC, as in the pilot.
+- SFL's own learnability: one 2,000-step AutoReplay stream, counting at most 10 completed episodes
+  and dropping the truncated last one, as SFL's MiniGrid code counts them (`sources-sfl.md`
+  Section 1.3).
+
+**Scores.**
+- **Six headline scores:** PVL, MaxMC, L1 value loss, MaxMC-unit, learnability p(1 − p) (success =
+  goal reached) and MNA.
+  - All use the run's own γ and λ. PVL and MaxMC are checked against JaxUED's own functions.
+- **The natives,** as above.
+- **λ variants** 0.9, 0.95, 1.0 and the run's own, for PVL and L1.
+
+**Baselines.**
+- agent-only −Ĵ^π on the operational episodes;
+- J\* and BFS path length, both policy-agnostic;
+- random, on a fixed key;
+- oracle-operational, a reference and not a ceiling.
+
+**Targets** (both primary):
+- absolute regret J\* − Ĵ^π, on all 2,000 mazes;
+- normalised regret (J\* − Ĵ^π)/J\*, on the mazes with J\* > 0.
+
+**Phase** of a checkpoint: p, the share of its target episodes that reach the goal, over the
+mazes with J\* > 0. Early is p < 0.5, mid is 0.5 ≤ p < 0.9, late is p ≥ 0.9 (the plan's bands).
+
+**In-buffer audit** (PLR-MaxMC and SFL runs, every checkpoint):
+- **PLR.** The valid entries of the sampler state stored in the checkpoint. If there are more than
+  1,000, a fixed-key uniform 1,000 are used. Each comes with its stored score and its staleness
+  (the update counter minus its timestamp).
+- **SFL.** The learnable set D in force at the checkpoint: K levels with the learnability of the
+  last refresh, and the score age in updates since that refresh.
+- **Current regret** on those levels comes from BFS and the same 36-episode streams.
+
+**Built-in checks** (each stops the item for an amendment):
+- PVL and MaxMC equal JaxUED's functions to 1e-6. The pilot got 2.8e-7.
+- No episode beats J\*: regret ≥ 0 per episode, not only on average.
+- BFS matches executed optimal plans (the existing test).
+- SFL's native learnability equals a line-for-line port of SFL's MiniGrid outcome counting on test
+  vectors, and its top-K follows the score spec's S-1 to S-3.
+- **Pilot reproduction.** Run on the pilot's checkpoints with the pilot's settings (500 mazes,
+  level seed 2026, 8 episodes), the E5 audit reproduces the pilot's `fidelity.json` exactly. The
+  default path of `scripts/maze_audit.py` stays unchanged.
+
+## 4. Estimators and statistics
+
+**Per checkpoint.** For run r (arm, view, seed), checkpoint k, score j and target t:
+- **ρ:** the Spearman correlation between score and target over the mazes, with average ranks for
+  ties. z = atanh(ρ), with ρ clipped to ±0.999.
+- **RC@10%:** the expected share of total regret in the score's top 10% (200 mazes), with ties at
+  the cut-off sharing the remaining slots (`apexzero.maze.fidelity`).
+- **nRC = (RC − 0.1)/(RC\* − 0.1):** the share of the achievable excess capture, where RC\* is
+  regret's own capture.
+  - It is undefined when RC\* − 0.1 < 0.02. The pilot showed RC\* of only 0.11–0.12 at low
+    competence, so raw RC must be read against its ceiling.
+
+**Per arm and phase** (the unit of every decision):
+- Each run's mean z over its checkpoints in the phase. Then the mean over the arm's runs that
+  have one: Z. Then ρ̄ = tanh(Z).
+- Runs weigh equally, and so do the two view sizes (5 runs each).
+- A phase is **reached** by an arm when at least 3 of its runs have a checkpoint in it.
+- nRC is averaged in the same way, without the transform.
+
+**Δ against the best baseline.** ρ̄(score) − ρ̄(best baseline). In each bootstrap draw, the best
+baseline is the largest of agent-only, J\* and BFS steps (the pilot's rule).
+
+**Two-way bootstrap.**
+- B = 4,000 draws. Each resamples the mazes (2,000 with replacement, one draw shared by every run
+  and checkpoint; the normalised target uses the J\* > 0 mazes within the draw), and the runs
+  (with replacement within each arm × view cell).
+- Phase membership is fixed from the full sample.
+- CIs are 95% percentile intervals.
+- A two-sided p is min(1, 2(1 + n_opposite)/(B + 1)), where n_opposite counts the draws on the
+  other side of 0 from the point estimate.
+
+**The trend test** (the plan's seed-slope t-test):
+- Per run, the OLS slope of z on log10(u_k) over all 16 checkpoints.
+- Per arm, a two-sided one-sample t-test of its 10 slopes against 0 (df 9).
+
+**Labels**, per arm, score, target and reached phase (the plan's provisional thresholds, fixed
+here for the maze):
+- **Faithful:** ρ̄ ≥ 0.5, nRC ≥ 0.6, and Δ > 0 with its CI excluding 0.
+- **Uninformative:** ρ̄ ≤ 0.2, or nRC ≤ 0.2, or Δ's CI includes 0 or lies below it.
+- **Intermediate:** otherwise.
+- Where nRC is undefined, its conditions are dropped and the label is flagged.
+
+## 5. Hypotheses, tests and decisions
+
+### 5.1 Primary family (confirmatory; Holm at α = 0.05 over 36 tests)
+
+The primary scores are the three the plan's outcome rows are read on: PVL, MaxMC and learnability.
+For each arm (3), primary score (3) and target (2):
+- **PF-trend:** the trend test. 18 tests.
+- **PF-late:** Δ in the latest reached phase (late if reached), two-sided. 18 tests.
+
+The late-phase labels of the primary scores use PF-late's Holm decision for their Δ condition.
+Every other label uses the unadjusted CI.
+
+### 5.2 Outcome rows (the maze's entry in the plan's outcome table, Section 2.5)
+
+Per arm and primary score, read on both targets:
+
+| Row | Rule | Reading |
+|---|---|---|
+| A, faithful | Faithful in every reached phase on both targets, and no row G for the arm's stored score | "On JaxUED's own [arm] agents, [score] tracks exact regret throughout training" |
+| B, degrades late | ρ̄_late − ρ̄_early ≤ −0.1 with its CI excluding 0, and PF-trend negative and significant after Holm, on either target (which one is reported) | "The score tracks regret only while the agent is incompetent" |
+| B′, improves with competence (not in the plan's table) | The mirror image: ≥ +0.1, and a positive PF-trend | "The score tracks regret only once the agent solves most mazes" |
+| C, uninformative | Uninformative in every reached phase on both targets | "Ground truth confirms No Regrets on the maze" |
+| F, observability | S3 (Section 5.3) significant after Holm, with \|difference\| ≥ 0.2 | "Fidelity depends on observability" |
+| G, fresh ≠ buffer | S2 significant after Holm, with \|difference\| ≥ 0.2 | "Fresh audits misstate what the curriculum actually sees" |
+| none of these | | reported per phase as mixed |
+
+- "Late" means the latest reached phase. If only one phase is reached, B and B′ are not testable.
+- Rows can co-occur, except A with B, B′ or C.
+- Rows D and E of the plan need track types and curricula on a shared pool, and do not apply.
+
+### 5.3 Secondary family (pre-registered; Holm at α = 0.05 over 28 tests)
+
+- **S1, the plan's MaxMC prediction** ("high ρ against absolute regret but near zero against
+  normalised"). Per arm, in the latest reached phase, two tests:
+  - ρ̄_abs − ρ̄_norm > 0 (one-sided);
+  - |ρ̄_norm| < 0.2, by TOST: the larger of the two one-sided p values.
+
+  The prediction holds for an arm when both pass. 6 tests.
+- **S2, in-buffer against fresh** (the plan's prediction that in-buffer fidelity is lower).
+  - PLR runs: stored MaxMC against fresh native MaxMC. SFL runs: stored learnability against fresh
+    native learnability. Both targets.
+  - The run-level mean z over all 16 checkpoints, two-sided.
+  - 4 tests.
+- **S3, view size.** Per arm, primary score and target: ρ̄(13) − ρ̄(5) on the run-level mean z over
+  all 16 checkpoints, two-sided. 18 tests.
+
+### 5.4 Descriptive (no test)
+
+- per-checkpoint ρ and nRC curves per arm × view;
+- labels for L1, MaxMC-unit, MNA and the natives;
+- λ sensitivity;
+- the score against the solve rate, and ρ on solved mazes only;
+- reliability: an odd/even split of the 32 target episodes, Spearman–Brown to 32, and
+  reliability-corrected ρ;
+- the two-loading regression rank(S) ~ a·rank(J\*) + b·rank(Ĵ^π);
+- partial ρ, P@10% and contamination;
+- admission AUROC for top-10% regret;
+- lagged fidelity (the score at checkpoint k − 1 against regret at k);
+- in-buffer ρ by score-age tercile;
+- arm-to-arm differences;
+- SFL on its own generator, if it differs.
+
+## 6. Expected directions (stated before training; from the pilot, held weakly)
+
+- **X1.** In the early phase, PVL, MaxMC, L1 and MaxMC-unit are uninformative and below the best
+  baseline on both targets, for DR and PLR-MaxMC. Basis: the pilot, every Holm-adjusted p < 0.05,
+  below.
+- **X2.** PVL and MaxMC rise with training on absolute regret (row B′). This is held weakly. In the
+  pilot the scores track the solve rate (ρ +0.39 to +0.90), which tracks regret negatively while
+  most mazes are failed. Once most are solved, regret is about speed.
+- **X3.** Learnability is uninformative in every phase. Basis: the pilot (−0.18 to +0.03 absolute,
+  −0.47 to −0.09 normalised); p(1 − p) peaks at p = 0.5, while regret peaks at p = 0.
+- **X4.** The plan's MaxMC prediction (S1) holds. This is held weakly: its premise failed in the
+  pilot's early phase.
+- **X5.** In-buffer fidelity is below fresh fidelity (the plan's prediction).
+- **X6.** No direction for view size, nor for differences between arms.
+- **X7.** Agent-only −Ĵ^π and BFS steps are the strongest baselines early (the pilot).
+
+## 7. What E5 decides, and what it does not
+
+- **It decides** the maze's entry in the paper's outcome table (Section 5.2), and what
+  contribution 4 can claim.
+- **It changes no racing decision.** E0's recipe, `generator-v1`, the lockbox and the E4 trigger
+  (racing only) are untouched.
+- **`audit-v1`** may cite E5 as prior information. It is not bound by it.
+- **Its tag is its own.** E5 has its own tag and does not wait for `protocol-v1`. That is a choice
+  for the user (#17; Section 11).
+
+## 8. Procedure
+
+**Before the tag:**
+1. **The user approves** the SFL download (and any installs it turns out to need; Section 10).
+2. **Vendoring.**
+   - SFL's files are copied byte for byte into `third_party/sfl/` and checked against their blob
+     hashes.
+   - A README records the source, commit, licence, files, hashes and DEV-E5-2, as
+     `third_party/jaxued_examples/README.md` does.
+3. **The build,** committed and given an adversarial review:
+   - `scripts/run_sfl_maze.py`;
+   - the DEV-E5-2 patch, only if needed;
+   - an SFL checkpoint loader and policy adapter in `apexzero.maze`;
+   - E5 options in the audit, off by default;
+   - `scripts/maze_e5.py`, with the stages `manifest`, `audit` and `analyse` and the tag gate;
+   - `scripts/gpu_queue_maze_e5.sh`;
+   - `tests/test_maze_e5.py`. It covers planted scores with a known ρ, the bootstrap, Holm, the
+     phase assignment, the slopes, nRC, the labels and rows, the SFL loader's round trip, and the
+     patch equivalence.
+4. **A dry run** on the pilot's checkpoints: the pilot reproduction (Section 3), then `analyse`
+   end to end on one seed. This is a machinery check only.
+5. **Timing calibration** on the box (Section 9). It fixes the lanes and the projection.
+6. **Training.** The 30 runs; the 16 selected checkpoints per run are pulled back with their
+   sha256 checked; the training logs and wandb offline files are kept.
+   - Training computes no score-against-regret outcome. The logs hold JaxUED's own eval solve
+     rates and the samplers' statistics only.
+7. **The manifest** (every checkpoint's path, update and sha256; every run's config and queue
+   events) is committed.
+8. **The tag** `maze-e5-prereg-v1`, placed by the lead.
+
+**After the tag:**
+
+9. **The audit,** at the tagged commit. It runs on the same box, kept up while steps 7 and 8 take
+   their few minutes, or on a second rental.
+10. **`analyse`** on the Mac, once. It refuses to run if its output exists. Then the decisions are
+    committed.
+11. **The findings.**
+
+**Missing and failed runs.**
+- A run that fails twice is missing. Its arm's statistics use the runs that remain.
+- An arm × view cell with fewer than 3 runs drops out of S3 for that arm.
+- A pipeline crash after the tag voids it. The fix is re-registered as `maze-e5-prereg-v2` before
+  any decision.
+
+## 9. Budget: GPU time from what the repo records
+
+**What is recorded:**
+
+| Source | What it says |
+|---|---|
+| Two-track plan, Section 8 | E5 3–6 GPU-h (on a 4090; unmeasured). The follow-through carries it to the A6000 as "3–6 (unmeasured)" |
+| Pilot timing (`runs/maze-audit/pilot-v2/timing.json`) | Mac CPU, single-thread XLA, nice 10, on a shared, overloaded machine. DR: 642 s wall and 1,015 CPU-s for 200 updates. PLR-MaxMC: 387 s and 726 CPU-s. Audit: 4.0 CPU-min for 8 checkpoints × 500 mazes × 8 episodes plus the native rollouts. Checkpoints are 4.8 MB each |
+| A6000, racing PPO (`h4r.md` Section 4.2) | 386k steps/s alone and 145k–179k at 4 lanes, with 2,048 envs and an MLP. This does not transfer to a 32-env LSTM maze agent |
+| SFL's MiniGrid code (`sources-sfl.md`) | 256 levels × 256 steps per update; 25,000 levels × 2,000 steps scored every 100 updates |
+
+**What follows from it:**
+- **Steps.** A JaxUED run is 30,000 × 32 × 256 = 246M env steps. An SFL run at its defaults for
+  30,000 updates is 1.97B training steps plus 300 refreshes × 50M = 15B scoring steps (inference
+  only).
+- **Not a Mac job.** At the pilot's rate, a JaxUED run is 30–42 CPU-h, so the 20 JaxUED runs alone
+  are about 730 CPU-h.
+- **The fresh audit** is bounded by the slowest maze: unsolvable ones time out, so 36 × 250 =
+  9,000 steps. That is 18 times the pilot's per-checkpoint work, about 9 CPU-min per checkpoint.
+  - Over 480 checkpoints, plus the in-buffer audit on 320 of them, that comes to about 100 CPU-h
+    on the Mac.
+  - The follow-through's "about 38 h" is low for 36 episodes per maze. The audit runs on the box
+    instead.
+- **No maze GPU timing exists in the repo.**
+
+**Estimate** (the assumptions are labelled; the calibration replaces them):
+
+| Part | Assumption | Box-h |
+|---|---|---|
+| 20 JaxUED runs | an update takes 0.1–0.3 s on the A6000 (10–30 times faster than the pilot's 3.2 s wall on the Mac), so 0.8–2.5 h per run; 8 lanes with little slowdown, so 3 rounds | 2.5–7.5 |
+| 10 SFL runs | an update costs 1.5–2 times JaxUED's; a refresh is 10,000 sequential steps at a batch of 5,000 mazes, at 0.3–1 ms each, so 3–10 s; 1.5–5.8 h per run; 5 lanes, so 2 rounds | 3–11.6 |
+| Audit, 480 checkpoints | 9,000 sequential steps at a batch of 2,000 (1,000 for in-buffer), at 1–3 ms each; 4 lanes | 0.5–1.5 |
+| Setup, calibration, pull-backs | H4R's setup took 7 min; 30 × 16 × 4.8 MB is about 2.3 GB to pull back | about 1 |
+| **Total** | | **about 7–22 (about 12 at the geometric midpoint)** |
+
+- That is 2–4 times the plan's figure, and SFL dominates it. At the plan's assumed $0.5–1 per
+  box-hour it costs about $4–22.
+
+**Timing calibration (fixed now; decided on time alone):**
+- Before the queue, each of the 6 arm × view cells trains seed 99 for 500 updates (SFL through 5
+  refreshes) at candidate lane counts.
+- One audit of a calibration checkpoint is timed in a timing-only mode that writes no scores.
+- The calibration runs are discarded and never audited.
+- The lane count is the one with the shortest projected total.
+
+**Budget rule:**
+- If the projection is at most 12 box-hours, the queue starts under the standing permission.
+- If it is more, the lead asks the user before starting.
+- If the user caps the budget, cells are dropped in this fixed order:
+  1. SFL at the 13×13 view;
+  2. the 13×13 view in every arm (S3 and row F are then not tested);
+  3. seed 5, then seed 4, of every remaining cell, so that at least 3 seeds remain.
+
+**Mac.** `analyse` only: bootstrap and tests over stored per-maze arrays, estimated under 1
+CPU-hour, niced, with at most 4 processes. BFS on 2,000 mazes takes seconds.
+
+## 10. The SFL source (to vendor; the download needs the user's OK)
+
+- **Repository:** `amacrutherford/sampling-for-learnability` on GitHub (Rutherford et al. 2024,
+  "No Regrets", arXiv 2408.15099).
+- **Commit:** `8b14e2ec07b38dc33a9df476b84faa2f3ca5fd3b` (21 Oct 2025, "Fix typo in Sampling For
+  Learnability description").
+  - It is the commit `docs/paper/score-spec.md` and `sources-sfl.md` pinned, and still the head of
+    `main` on 26 Oct 2026 (GitHub API, metadata only).
+- **Licence:** Apache-2.0 (GitHub's licence metadata; `LICENSE` is 11,357 bytes). That is the same
+  licence as JaxUED.
+
+**Files to vendor** (sizes and git blob SHA-1 from the GitHub tree API; nothing downloaded):
+
+| Path | Bytes | Blob |
+|---|---|---|
+| `sfl/train/minigrid_sfl.py` | 33,866 | `6436f5f659fa5fd0992c3ce479054eacb0353fdd` |
+| `sfl/train/config/minigrid-sfl.yaml` | 466 | `41a016967485abcc8001b24ec91ddca783e54e6e` |
+| `sfl/train/config/learning/ippo-minigrid.yaml` | 423 | `633e1793c235cce1f3b046075d7f14a1d68ac67d` |
+| `sfl/train/config/env/minigrid.yaml` | 247 | `8df39e2c6881321897748e2450b51d43f3ad5b5c` |
+| `LICENSE` | 11,357 | `261eeb9e9f8b2b4b0d119366dda99c6fd7d35c64` |
+| If imported: `sfl/train/common/network.py` | 14,510 | `b3a951dd184455f51627acc5881add9830849578` |
+| If imported: `sfl/__init__.py`, `sfl/train/__init__.py`, `sfl/train/common/__init__.py` | 21, 0, 0 | `b3c06d48…`, `e69de29b…`, `e69de29b…` |
+
+- **Size:** 46,359 bytes for the five core files, and 60,890 bytes with `network.py` and the
+  package files.
+- The whole repository (757 entries, about 124 MB of files, mostly data) is not needed.
+- `minigrid_sfl.py` was last changed in the repository's first commit (`626971979b0f`, 2 Sep
+  2024). `sources-sfl.md` dates the config fix to `09946071de` (6 Mar 2025).
+
+**Not yet known** (it needs the file's contents, which were not read): which packages
+`minigrid_sfl.py` imports. Its YAML configs suggest Hydra or OmegaConf, and neither is installed
+here. Any such install also needs the user's OK. The repo's environment has `jaxued` 0.0.1, whose
+maze env equals the pinned JaxUED commit's (blob `34291f1a…`, checked), and wandb, orbax, distrax
+and chex.
+
+**Optional, not proposed:** JaxUED's `examples/maze_dr.py` (28,606 bytes, blob `d367205a…`, the
+same pinned commit `0f8f128`, Apache-2.0). It is needed only if review prefers it to DEV-E5-6.
+
+## 11. Choices for review
+
+1. **E5's own tag now** (this draft), or E5 inside `protocol-v1`. Also whether to add a PLR-PVL arm
+   (10 more runs). Both are #17, the user's.
+2. **Equal updates (30,000) for SFL.** The alternative is equal env steps or SFL's own default
+   length.
+3. **Arms pooled over the two views** in the primary family, with view as a secondary moderator.
+   The alternative is per arm and view: 72 primary tests.
+4. **DR through `maze_plr.py`** (DEV-E5-6), or JaxUED's `maze_dr.py` (one more small download).
+5. **Seeds 1–5.** The alternative is 0–4, which overlaps the pilot's seen seed 0.
+6. **The thresholds** (ρ 0.5 / 0.2, nRC 0.6 / 0.2). They are the plan's provisional values, with
+   RC read against its ceiling, and fixed here for the maze.
+7. **The budget gate** of 12 box-hours, and the drop order.
