@@ -22,7 +22,8 @@ from apexzero.tracks.track import Track
 from apexzero.vehicle.params import CONTEXT_RANGES, F1_2025
 from apexzero.vehicle.sim import TrackArrays, track_arrays
 
-REEXPRESS_BATCH = 64   # strips per batch when a bank re-expresses (GW-2's model 2b)
+REEXPRESS_BATCH = 256  # strips per batch when a bank re-expresses (GW-2's model 2b): one
+                       # batch per 256-strip refresh, 16 for the initial 4,096-strip bank
 _CTX_LO = np.array([CONTEXT_RANGES[k][0] for k in CONTEXT_RANGES])
 _CTX_HI = np.array([CONTEXT_RANGES[k][1] for k in CONTEXT_RANGES])
 
