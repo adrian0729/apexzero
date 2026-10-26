@@ -1243,3 +1243,392 @@ def test_cs10_cs11_units_on_a_planted_driver():
     assert out["j_gap"] <= 1e-12 and out["jvp"] <= 1e-9 and out["fd"] <= 1e-6
     assert abs(out["field_sum"] - out["pi_W"]) <= 1e-6 * max(abs(out["pi_W"]), 1e-9)
     assert out["dv_gap"] <= 1e-12 and out["unit_dv_gap"] <= 1e-12 and out["stopped"]
+
+
+# ------------------------------------------------------------------------- CS-7 and CS-8
+
+
+def test_cs7_cs8_are_registered_untrained_pooled(cx):
+    for cmd in ("cs-7", "cs-8"):
+        it = cx.BY_CMD[cmd]
+        assert it.id in cx.COMPUTE and not it.trained and not it.solves and it.pooled, cmd
+        assert {"world", "activations:decision", "checkpoints"} <= set(it.reads), cmd
+    assert "gates:c2_null" in cx.BY_CMD["cs-8"].reads
+
+
+def test_cs7_cs8_stay_locked(cx, monkeypatch, tmp_path, locked):
+    monkeypatch.setattr(cx, "preflight", lambda root=None: [])
+    monkeypatch.setattr(cx, "load_context", lambda root=None: ({}, {}, {}))
+    monkeypatch.setattr(cx, "check_inputs", lambda run: [])
+    for cmd in ("cs-7", "cs-8"):
+        seen = []
+        it = cx.BY_CMD[cmd]
+        monkeypatch.setitem(cx.COMPUTE, it.id, lambda run, seen=seen: seen.append(locked()))
+        cx.run_item(it, _args(out=str(tmp_path)))
+        assert seen == [[False, False, False]], cmd
+
+
+def test_cs7_chunks_cover_every_fit(cx):
+    from apexzero.costate import critic as CR
+    from apexzero.costate import probes as PB
+
+    assert len(CR.RANDOM_SEEDS) == 20 and tuple(PB.POOL_SEEDS) == tuple(range(20))
+    chunks = cx.cs7_chunks()
+    assert len(chunks) == 4
+    keys = []
+    for ch in chunks:
+        for j in ch:
+            if j[0] == "base":
+                keys.append("base")
+            elif j[0] == "critic":
+                keys.append(f"critic_{j[1]}")
+            elif j[0] == "actor":
+                keys.append("actor")
+            elif j[0] == "pool":
+                keys.append(f"pool{j[1]}")
+            else:
+                keys += [f"random{j[1]}_{L}" for L in cx.CS7_LAYERS]
+    assert sorted(keys) == sorted(cx.cs7_keys()) and len(keys) == len(set(keys)) == 106
+    # similar cost: about 9 s per 256-unit fit and 12 s per 320-unit fit (amendment 7)
+    cost = []
+    for ch in chunks:
+        c = 0.0
+        for j in ch:
+            c += {"base": 0.5, "actor": 9, "pool": 9}.get(j[0], 0.0)
+            c += (12 if j[1] == "heads" else 9) if j[0] == "critic" else 0.0
+            c += 39.0 if j[0] == "random" else 0.0
+        cost.append(c)
+    assert max(cost) / min(cost) < 1.25
+    a = np.arange(2 * 5 * 3, dtype=float).reshape(2, 5, 3)
+    assert np.array_equal(cx.heads_block(a), np.concatenate([a[0], a[1]], axis=1))
+
+
+def test_control_draws_match_control_gain(cx):
+    from apexzero.costate import analysis as AN
+
+    rng = np.random.default_rng(21)
+    B, J = 60, 20
+    base = rng.random(1 + B) * 0.1
+    full = base + 0.1 + 0.01 * rng.standard_normal(1 + B)
+    ctl = base[None] + rng.normal(0.05, 0.02, (J, 1 + B))
+    pool = rng.integers(0, J, (B, J))
+    g = cx.control_gain(full, ctl, base, pool)
+    stat, two, geo = cx.control_draws(full, ctl, base, pool)
+    assert stat == g["stat"]
+    assert list(AN._ci(two)) == g["ci"] and list(AN._ci(geo)) == g["ci_geometry"]
+    other = cx.control_draws(full + 0.02, ctl, base, pool)
+    m = cx.mean_of_draws([(stat, two, geo), other])
+    assert abs(m["stat"] - (stat + other[0]) / 2) < 1e-15
+    assert m["ci"] == list(AN._ci((two + other[1]) / 2))
+
+
+def test_cs7_component_scores_layers_against_their_controls(cx):
+    from apexzero.costate import analysis as AN
+    from apexzero.costate import probes as PB
+
+    rng = np.random.default_rng(22)
+    n, G = 120, 12
+    cl = np.arange(n) % G
+    d = np.where(np.arange(n) % 2 == 0, -1, 1)
+    y = np.stack([rng.standard_normal(n) + d, rng.standard_normal(n)], 1)
+    w = np.full(n, 1.0 / n)
+    preds = {}
+    for k in cx.cs7_keys():
+        noise = 0.4 if k.startswith("critic_") else (0.9 if k == "base" else 0.8)
+        preds[k] = y + noise * rng.standard_normal((n, 2))
+    counts = PB.cluster_counts(G)
+    pool = PB.pool_draws(20)
+    rec, draws = cx.cs7_component(preds, y, w, cl, G, counts, pool, d, True)
+    assert set(rec) == set(cx.CS7_TARGETS)
+    keys = cx.cs7_keys()
+    pt, dr = AN.boot_r2(y[:, 1], [preds[k][:, 1] for k in keys], w, cl, G, counts, d, True)
+    allr = np.vstack([pt[None], dr])
+    col = {k: allr[:, i] for i, k in enumerate(keys)}
+    ctl = np.stack([col[f"random{s}_h2"] for s in range(20)])
+    want = cx.control_gain(col["critic_h2"], ctl, col["base"], pool)
+    got = rec["res"]["layers"]["h2"]
+    assert got["stat"] == want["stat"] and got["ci"] == want["ci"] and got["rank"] == 1
+    act = np.stack([col[f"pool{s}"] for s in range(20)])
+    assert rec["res"]["layers"]["actor_h3"]["stat"] == cx.control_gain(
+        col["actor"], act, col["base"], pool)["stat"]
+    assert draws[("res", "h2")][0] == want["stat"]
+    bad = dict(preds)
+    bad.pop("pool7")
+    with pytest.raises(ValueError, match="missing"):
+        cx.cs7_component(bad, y, w, cl, G, counts, pool, d, True)
+
+
+def _cs7_net(stat_h3=0.01, ci_lo=-0.01, heads=0.0, actor=0.0):
+    def g(stat, lo=-0.01):
+        return {"stat": stat, "ci": [lo, stat + 0.02], "ci_geometry": [lo, stat + 0.01]}
+
+    layers = {"h1": g(0.0), "h2": g(0.0), "h3": g(stat_h3, ci_lo), "heads": g(heads),
+              "actor_h3": g(actor)}
+    return {"components": {c: {t: {"layers": layers} for t in ("lam", "res")}
+                           for c in ("s", "xi")}}
+
+
+def test_cs7_expected(cx):
+    nets = {f"N{i}": _cs7_net() for i in range(9)}
+    e = cx.cs7_expected(nets)
+    assert e["E7.1"]["holds"] and e["E7.2"]["holds"] and e["E7.3"]["holds"]
+    nets["N0"] = _cs7_net(stat_h3=0.08, ci_lo=0.01)
+    e = cx.cs7_expected(nets)
+    assert not e["E7.1"]["holds"]
+    assert e["E7.1"]["above_0.05_with_ci_above_0"] == [f"N0/{c}/{t}/h3" for c in ("s", "xi")
+                                                        for t in ("lam", "res")]
+    nets = {f"N{i}": _cs7_net(stat_h3=0.0, actor=0.02 if i < 4 else -0.01, heads=0.03)
+            for i in range(9)}
+    e = cx.cs7_expected(nets)
+    assert e["E7.2"]["lam:s"]["count"] == 5 and e["E7.2"]["holds"] is False
+    assert e["E7.3"]["res:xi"]["count"] == 0 and not e["E7.3"]["holds"]
+
+
+def test_trim_logo(cx):
+    rec = {"stat": 0.1, "logo": {
+        "kind": "rule", "geometry": [0, 6, 7, 9], "decision": ["refute", "inconclusive",
+                                                              "refute", "refute"],
+        "most_influential": {"geometry": 6, "move": 0.2},
+        "shares": {"lam_s": {"weight": [0.3, 0.1, 0.4, 0.2],
+                             "sse_base": [0.1, 0.7, float("nan"), 0.2]}}}}
+    out = cx.trim_logo(rec)
+    assert out["stat"] == 0.1 and "geometry" not in out["logo"]
+    lg = out["logo"]
+    assert lg["n_sets"] == 4 and lg["decisions"] == {"refute": 3, "inconclusive": 1}
+    assert lg["shares"]["lam_s"]["geometry6"] == {"weight": 0.1, "sse_base": 0.7}
+    assert [r["geometry"] for r in lg["shares"]["lam_s"]["top_sse_base"]] == [6, 9, 0]
+    assert cx.trim_logo({"decision": "not testable"}) == {"decision": "not testable"}
+
+
+def test_cs8_rows_are_approach_and_exit_switching(cx):
+    ph = np.array(["approach", "braking", "corner", "exit", "approach", "exit"])
+    sw = np.array([1, 1, 1, 1, 0, 1], bool)
+    tab = {"phase": ph, "pedal_switching": sw, "multi_basin": np.zeros(6, bool)}
+    assert cx.cs8_rows(tab).tolist() == [True, False, False, True, False, True]
+
+
+def test_cs8_jobs_and_chunks(cx):
+    from apexzero.costate import gates as GT
+
+    full, bare = cx.cs8_jobs(True), cx.cs8_jobs(False)
+    assert len(full) == 64 and len(bare) == 44 and set(bare) < set(full)
+    assert {j[1] for j in full if j[0] == "host"} == set(GT.C2_NULL_SEEDS)
+    assert all(j[-1] == "sigma" for j in full if j[0] == "host")
+    ch = cx.chunked(full, 4)
+    flat = [j for c in ch for j in c]
+    assert len(ch) == 4 and sorted(flat, key=str) == sorted(full, key=str)
+    assert max(map(len, ch)) - min(map(len, ch)) <= 1
+    assert cx.chunked([1, 2], 4) == [[1], [2]]
+
+
+def _same(a, b) -> bool:
+    if isinstance(a, dict) and isinstance(b, dict):
+        return a.keys() == b.keys() and all(_same(a[k], b[k]) for k in a)
+    if isinstance(a, list | tuple) and isinstance(b, list | tuple):
+        return len(a) == len(b) and all(_same(x, y) for x, y in zip(a, b, strict=True))
+    if isinstance(a, np.ndarray) or isinstance(b, np.ndarray):
+        return np.array_equal(np.asarray(a), np.asarray(b), equal_nan=True)
+    if isinstance(a, float) and isinstance(b, float) and np.isnan(a) and np.isnan(b):
+        return True
+    return a == b
+
+
+def _synthetic_folds(n: int, G: int, rng):
+    from apexzero.costate import probes as PB
+
+    cl = rng.permutation(np.arange(n) % G)
+    outer = cl % 6
+    inner = np.stack([np.where(outer == f, -1, (cl // 6) % 5) for f in range(6)])
+    fo = PB.Folds(outer, inner, cl, 0)
+    fo.check()
+    return fo
+
+
+def test_sw_record_equals_c2_sw_network(cx):
+    """The probes fitted once and assembled by ``sw_record`` give analysis.c2_sw_network's
+    record exactly (amendment 7 item 3: the base and the pool's probes are shared by every
+    host of a scaling)."""
+    from apexzero.costate import analysis as AN
+    from apexzero.costate import probes as PB
+
+    rng = np.random.default_rng(23)
+    n, G, J = 240, 12, 4
+    fo = _synthetic_folds(n, G, rng)
+    z = rng.standard_normal((n, 5))
+    sigma = np.abs(z[:, 0] + 0.5 * rng.standard_normal(n))
+    h3 = np.tanh(z @ rng.standard_normal((5, 4)) + 0.3 * sigma[:, None])
+    rnd = [np.tanh(z @ rng.standard_normal((5, 4))) for _ in range(J)]
+    m_pedal = 1.0 + 0.1 * rng.standard_normal(n)
+    rows = rng.random(n) < 0.85
+    ws = rng.random(n) + 0.5
+    ws = ws / ws[rows].sum()
+    labels = np.stack([np.arange(G) + 5.0, np.full(G, 90.0)], 1)
+    draws = PB.pool_draws(J)
+    seeds = tuple(range(J))
+    want = AN.c2_sw_network(h3, rnd, z, sigma, m_pedal, fo, ws[rows], rows, pool=draws,
+                            controls=seeds, logo="rule", labels=labels)
+    sub = fo.subset(rows)
+    names = ("sigma_pedal",)
+    base = PB.ridge_cv(z[rows], sigma[rows], sub, ws[rows], None, names)
+    full = PB.ridge_cv(z[rows], sigma[rows], sub, ws[rows], h3[rows], names)
+    ctl = [PB.ridge_cv(z[rows], sigma[rows], sub, ws[rows], r[rows], names) for r in rnd]
+    got = cx.sw_record(base, full, ctl, ws[rows], sub, draws, labels, m_pedal[rows],
+                       sigma[rows], seeds)
+    assert _same(got, want)
+    e = cx.null_entry(26, got)
+    assert e["seed"] == 26 and e["stat"] == got["stat"]
+    assert e["decision_geometry_ci"] == PB.decide(got["stat"], *got["ci_geometry"])
+    assert cx.share_at_or_above([0.1, None, 0.3, float("nan"), -0.2], 0.1) == 2 / 3
+
+
+def _d1(n: int, rng, thetas=(90.0, 180.0, 45.0)):
+    th = rng.choice(thetas, n)
+    d = rng.choice([-1.0, 1.0], n)
+    return np.stack([rng.uniform(-150, 50, n), rng.uniform(20, 80, n),
+                     np.log(rng.choice([8.4, 9.4, 10.5, 30.0, 60.0], n)), th,
+                     rng.uniform(8, 12, n), d], 1)
+
+
+def test_cross_fit_with_reproduces_states_cross_fit(cx):
+    from apexzero.costate import states as ST
+
+    rng = np.random.default_rng(24)
+    n = 300
+    X = _d1(n, rng)
+    Y = np.stack([np.sin(X[:, 0] / 40.0) + 0.01 * X[:, 1], X[:, 5] * X[:, 2]], 1)
+    fold = rng.integers(0, 6, n)
+    w = rng.random(n) + 0.2
+    got, info = cx.cross_fit_with(X, Y, fold, w, cx.knn_fitpred(8))
+    want = ST.cross_fit(X, Y, fold, w, 8).by_fold
+    assert np.array_equal(got, want)
+    assert info["fits"] == 36 and info["fallback_rows"] == 0
+
+
+def test_group_knn_searches_its_theta_and_direction(cx):
+    rng = np.random.default_rng(25)
+    n = 400
+    X = _d1(n, rng)
+    X[:, 0] = np.round(X[:, 0], -1)                  # many cross-group near neighbours
+    grp = 10.0 * np.searchsorted([45.0, 90.0, 180.0], X[:, 3]) + X[:, 5]
+    Y = grp[:, None] + 0.01 * rng.standard_normal((n, 1))
+    w = np.ones(n)
+    tr, te = np.arange(n) < 300, np.arange(n) >= 300
+    p, info = cx.group_knn_fitpred(8)(X[tr], Y[tr], w[tr], np.zeros(300, int), X[te])
+    assert info["fallback_rows"] == 0
+    assert np.max(np.abs(p[:, 0] - grp[te])) < 0.05     # only its own group's values
+    p0, _ = cx.knn_fitpred(8)(X[tr], Y[tr], w[tr], None, X[te])
+    assert np.max(np.abs(p0[:, 0] - grp[te])) > 1.0      # f_D's own search mixes groups
+    # a theta with no training row falls back to its turn direction, and is counted
+    Xte = X[te].copy()
+    Xte[:5, 3] = 60.0
+    p2, info2 = cx.group_knn_fitpred(8)(X[tr], Y[tr], w[tr], None, Xte)
+    assert info2["fallback_rows"] == 5 and np.isfinite(p2).all()
+    # log R x 3 changes which rows are neighbours
+    p3, _ = cx.group_knn_fitpred(8, 3.0)(X[tr], X[tr][:, [2]], w[tr], None, X[te])
+    p1, _ = cx.group_knn_fitpred(8, 1.0)(X[tr], X[tr][:, [2]], w[tr], None, X[te])
+    err3 = np.mean(np.abs(p3[:, 0] - X[te][:, 2]))
+    err1 = np.mean(np.abs(p1[:, 0] - X[te][:, 2]))
+    assert err3 < err1
+
+
+def test_spline_ridge_pieces(cx):
+    from apexzero.costate import probes as PB
+
+    u = np.linspace(-1.0, 2.0, 50)
+    B = cx.bspline_basis(u, 0.0, 1.0, [0.2, 0.4, 0.6, 0.8, 0.9])
+    assert B.shape == (50, 9) and np.allclose(B.sum(1), 1.0)
+    assert np.array_equal(B[u <= 0], np.tile(B[np.argmin(np.abs(u))], ((u <= 0).sum(), 1)))
+    rng = np.random.default_rng(26)
+    X = _d1(80, rng)
+    spec = cx.spline_spec(X, np.ones(80))
+    A = cx.spline_design(X, spec)
+    assert A.shape == (80, 486)
+    assert spec[0][0] == X[:, 0].min() and spec[1][1] == X[:, 1].max()
+    # the ridge path at a vanishing penalty is weighted least squares
+    Xr = rng.standard_normal((60, 4))
+    yr = Xr @ np.array([1.0, -2.0, 0.5, 0.0]) + 3.0 + 0.1 * rng.standard_normal(60)
+    wr = rng.random(60) + 0.5
+    P = cx.wridge_path(Xr, yr[:, None], wr, Xr[:5], [1e-12, 1e4])
+    D = np.hstack([np.ones((60, 1)), Xr])
+    beta = np.linalg.lstsq(D * np.sqrt(wr)[:, None], yr * np.sqrt(wr), rcond=None)[0]
+    assert np.allclose(P[0, :, 0], D[:5] @ beta, atol=1e-8)
+    assert np.allclose(P[1, :, 0], np.average(yr, weights=wr), atol=1e-2)
+    assert cx.choose_penalty(np.array([[3.0, 2.0], [1.0, 2.0], [1.0, 5.0]])).tolist() == [2, 1]
+    assert len(PB.GRID) == 17
+
+
+def test_spline_ridge_fits_a_smooth_decoy(cx):
+    rng = np.random.default_rng(27)
+    n = 700
+    X = _d1(n, rng)
+    # in the model class: B(ds, vx) times each of (1, log R, theta class, w, sigma)
+    f = (np.sin(X[:, 0] / 50.0) * (1 + 0.02 * X[:, 1]) * (1 + 0.3 * X[:, 5])
+         + 0.4 * X[:, 2] * np.cos(X[:, 1] / 30.0))
+    Y = np.stack([f, -f], 1) + 0.05 * rng.standard_normal((n, 2))
+    ftr = rng.integers(0, 5, n)
+    tr, te = np.arange(n) < 600, np.arange(n) >= 600
+    p, info = cx.spline_fitpred(X[tr], Y[tr], np.ones(600), ftr[tr], X[te])
+    r2 = 1 - np.sum((Y[te] - p) ** 2, 0) / np.sum((Y[te] - Y[te].mean(0)) ** 2, 0)
+    assert (r2 > 0.9).all() and len(info["penalties"]) == 2
+
+
+def test_geometry_shares_and_the_rule(cx):
+    v = np.array([1.0, -1.0, 3.0, -3.0])
+    w = np.ones(4)
+    geo = np.array([6, 1, 6, 1])
+    assert cx.geometry_share(v, w, geo) == 10.0 / 20.0
+    d = np.array([1, 1, -1, -1])
+    # within direction: means 0 and 0, so the same here; shifting one direction changes
+    # the pooled share but not the within-direction one
+    vs = v + np.where(d > 0, 10.0, 0.0)
+    assert cx.geometry_share(vs, w, geo, d, True) == 0.5
+    assert cx.geometry_share(vs, w, geo) != 0.5
+    good = {("lam", "s"): 0.11780, ("lam", "xi"): 0.0900, ("res", "s"): 0.7045,
+            ("res", "xi"): 0.6466}
+    assert cx.design_g6_problems(good) == []
+    bad = {**good, ("lam", "s"): 0.1134}
+    assert len(cx.design_g6_problems(bad)) == 1
+    assert not cx.passes_g6(good)
+    assert cx.passes_g6({**good, ("res", "s"): 0.2356, ("res", "xi"): 0.18})
+    assert not cx.passes_g6({**good, ("res", "s"): 0.2356, ("res", "xi"): 0.1801})
+
+
+def _sw_rec(stat, lo, rank):
+    return {"stat": stat, "ci": [lo, stat + 0.02], "pool": {"rank": rank}}
+
+
+def test_cs8_expected(cx):
+    labels = ("G1", "G1s1", "G1s2", "G2", "G2s1", "G2s2", "G3", "G3s1", "G3s2")
+    sw = {lb: {"sigma": _sw_rec(0.03, 0.01, 1), "res": _sw_rec(0.01, -0.01, 3)}
+          for lb in labels}
+    null = {"summary": {"mean": -0.002, "sd": 0.015, "max": 0.025}}
+    e = cx.cs8_expected(sw, null, {}, None)
+    assert e["E8a.1"]["holds"] and e["E8b.1"]["holds"]
+    assert e["E8b.1"]["count_at_most_half"] == 9 and e["E8b.1"]["count_rank1_on_res"] == 0
+    sw["G2"]["sigma"]["stat"] = 0.02
+    e = cx.cs8_expected(sw, null, {}, None)
+    assert not e["E8a.1"]["holds"] and not e["E8a.1"]["confirmatory_rank1_above_every_host"]["G2"]
+    e = cx.cs8_expected(sw, {"summary": {"mean": 0.006, "sd": 0.015, "max": 0.0}}, {}, None)
+    assert not e["E8a.1"]["mean_part"] and e["E8a.1"]["sd_part"]
+    sw["G3"]["sigma"]["stat"] = -0.01
+    sw["G3s1"]["res"] = _sw_rec(0.03, 0.01, 1)
+    e = cx.cs8_expected(sw, null, {}, None)
+    assert e["E8b.1"]["sigma_stat_not_positive"] == ["G3"]
+    assert e["E8b.1"]["count_at_most_half"] == 7 and e["E8b.1"]["rank1_with_ci_above_0"]["G3s1"]
+
+    def c2net(share, width, stat):
+        sh = {f"lam_{c}": {"geometry6": {"sse_base": share}} for c in ("s", "xi")}
+        return {"chosen": {"stat": stat, "ci": [0.0, width], "logo": {"shares": sh}},
+                "frozen": {"stat": 0.0, "ci": [0.0, 0.3]}}
+
+    c2 = {"networks": {lb: c2net(0.2, 0.15, 0.01) for lb in labels}}
+    e = cx.cs8_expected(sw, null, {}, c2)
+    assert e["E8c.1"]["holds"]
+    c2["networks"]["G1"] = c2net(0.2, 0.15, 0.06)
+    assert not cx.cs8_expected(sw, null, {}, c2)["E8c.1"]["holds"]
+    c2 = {"networks": {lb: c2net(0.5 if i < 4 else 0.2, 0.25, 0.0) for i, lb in
+                       enumerate(labels)}}
+    e = cx.cs8_expected(sw, null, {}, c2)["E8c.1"]
+    assert e["count_geometry6"] == 5 and e["count_narrower"] == 0 and not e["holds"]
+    e = cx.cs8_expected(sw, null, {}, {"reason": "no candidate"})
+    assert e["E8c.1"]["holds"] is None

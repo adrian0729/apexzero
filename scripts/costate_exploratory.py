@@ -91,6 +91,14 @@ process reniced by ``--nice`` (default 10) before any item runs.
   flag (``cs10``, pooled), and the policy's own inside-width price Pi^in,own by a VJP through
   the own loop on the perturbed road, with W1's three comparisons (``cs11``, pooled). Both
   unlock. CS-10 (iii) and N's CS-11 wait for CS-9.
+- CS-7 and CS-8 (plan Section 4 with amendment 7; the sections 'CS-7, CS-8: shared', 'CS-7:
+  critic layers' and 'CS-8: C2-sw and C2'): ridge probes of lambda and the frozen lambda_res
+  on z and z + each of the critic's layers and head units against 20 random-init critics,
+  with the actor's h3 against the pool as the comparator (``cs7``, pooled); C2-sw's
+  random-only null on the approach and exit pedal-switching rows (G1's scaling first, per
+  network under R6's 3 h rule), C2-sw on sigma^ped residualised on f_D's decoys, and C2 with
+  a decoy chosen on targets alone to fit geometry 6 (``cs8``, pooled). Neither evaluates a
+  trained network, so neither unlocks.
 """
 
 from __future__ import annotations
@@ -213,10 +221,10 @@ ITEMS: tuple[Item, ...] = (
          ("world", "critic:decision", "activations:decision", "checkpoints"), needs=("CS-1",)),
     Item("CS-6", "C1-dev over the 16 snapshots", ("world", "snapshots"), trained=True,
          needs=("CS-1",)),
-    Item("CS-7", "Critic-layer and head-unit probes", ("world", "activations:decision"),
-         needs=("CS-1",)),
+    Item("CS-7", "Critic-layer and head-unit probes",
+         ("world", "activations:decision", "checkpoints"), needs=("CS-1",)),
     Item("CS-8", "C2-sw's random-only null; C2-sw residualised; C2 with a decoy that fits "
-         "geometry 6", ("world", "activations:decision", "probes", "gates:c2_null")),
+         "geometry 6", ("world", "activations:decision", "gates:c2_null", "checkpoints")),
     Item("CS-9", "N: per-agent replication of C1, C2 and C2-sw, with K2b on N",
          ("world", "keys:n", "gates:k0", "gates:k2b", "checkpoints"), trained=True,
          solves=True),
@@ -4038,6 +4046,1181 @@ def cs11(run: Run) -> None:
            "definitions": "plan Section 4 CS-11 and amendment 3 items 1 and 3",
            "n_boot": len(counts), "pool_seconds": pool_s, "seconds": time.time() - t0}
     run.write_npz("rows", arrays)
+    run.write_json("summary", plain(out))
+
+
+# ------------------------------------------------------------------------- CS-7, CS-8: shared
+#
+# Plan Section 4 CS-7 and CS-8 with amendment 7 (their operational details). Both read the 9
+# decision networks' bound activations and compute random-init networks only, so neither
+# unlocks. The frozen lambda_res (``frozen_lam_res``) is ``probes_of``'s, checked against the
+# record's interior residual shares before anything else (amendment 7 item 1).
+
+RES_TOL = 1e-10                          # the frozen lambda_res's shares against the record
+FIT_TOL = 1e-12                          # the cross-fit scheme against states.cross_fit
+
+
+def frozen_lam_res(tab, frozen: dict) -> tuple:
+    """(lam [n, 4] the winsorised K_P targets, lambda_res by fold [F, n, 4], each row's
+    own-fold residual [n, 4], partition 0's folds): ``probes_of``'s frozen f_D cross-fit on
+    every row of T (targets only; amendment 7 item 1)."""
+    from apexzero.costate import prereg as PR
+    from apexzero.costate import probes as PB
+    from apexzero.costate import states as ST
+    from apexzero.costate import targets as TG
+
+    lam = CS._winsorised(tab, frozen, TG.K_P)
+    fo = PB.folds(tab)
+    k = PR.decoy_k(frozen)
+    res = ST.cross_fit(ST.decoy_d1(tab), lam, fo.outer, ST.weights(tab, "key"),
+                       k=ST.KNN_K if k is None else k)
+    return lam, res.by_fold, res.oof, fo
+
+
+def residual_share_gap(tab, lam, oof, frozen: dict) -> dict:
+    """{component: |the interior residual share of ``oof`` - the record's|}
+    (``states.decoy_shares``; the record's ``frozen.residual_share_interior``)."""
+    from apexzero.costate import states as ST
+    from apexzero.costate import targets as TG
+
+    _, inner = ST.decoy_shares(tab, lam, oof)
+    want = frozen["residual_share_interior"]
+    return {c: abs(float(inner[i]) - float(want[c])) for i, c in enumerate(TG.K_P)}
+
+
+def checked_lam_res(run: Run, tab) -> tuple:
+    """``frozen_lam_res`` and its gaps, after its wiring check: the item stops on a gap above
+    ``RES_TOL`` (amendment 7 item 1)."""
+    frozen = run.rec["frozen"]
+    lam, by_fold, oof, fo = frozen_lam_res(tab, frozen)
+    gap = residual_share_gap(tab, lam, oof, frozen)
+    if not all(v <= RES_TOL for v in gap.values()):
+        raise SystemExit(f"{run.item.id}: the frozen lambda_res does not reproduce the record's "
+                         f"interior residual shares: {gap}")
+    return lam, by_fold, oof, fo, gap
+
+
+def pool_actor_gap(cfg, z, stored) -> float:
+    """max |h3 of ``probes.random_actor(cfg, 0)`` on z - the stored ``random0_h3``| (amendment
+    7 item 1: the pool actor's rebuild)."""
+    import numpy as np
+
+    from apexzero.costate import probes as PB
+
+    return float(np.max(np.abs(PB.hidden(PB.random_actor(cfg, 0), z)["h3"] - stored)))
+
+
+def control_draws(dr_full, dr_controls, dr_base, pool) -> tuple:
+    """``control_gain``'s statistic with its two-level and geometry-only draws [B], so that a
+    mean over components can be taken on the same draws."""
+    import numpy as np
+
+    gt = np.asarray(dr_full) - np.asarray(dr_base)
+    gc = np.asarray(dr_controls) - np.asarray(dr_base)[None]
+    B = len(gt) - 1
+    two = gt[1:] - np.median(gc[:, 1:][np.asarray(pool), np.arange(B)[:, None]], axis=1)
+    geo = gt[1:] - np.median(gc[:, 1:], axis=0)
+    return float(gt[0] - np.median(gc[:, 0])), two, geo
+
+
+def mean_of_draws(parts) -> dict:
+    """{stat, ci, ci_geometry} of the mean of several ``control_draws`` on the same draws."""
+    import numpy as np
+
+    from apexzero.costate import analysis as AN
+
+    stat = float(np.mean([p[0] for p in parts]))
+    two = np.mean([p[1] for p in parts], axis=0)
+    geo = np.mean([p[2] for p in parts], axis=0)
+    return {"stat": stat, "ci": list(AN._ci(two)), "ci_geometry": list(AN._ci(geo))}
+
+
+def trim_logo(rec: dict, focus: int = 6, top: int = 3) -> dict:
+    """A C2 or C2-sw record with its leave-one-geometry-out sets summarised: the sets'
+    decisions counted, the most influential geometry, and each component's shares of the
+    weight and of the base's squared error at geometry ``focus`` and at the ``top`` largest
+    (the full sets stay in no output: the summary would carry 48 per record)."""
+    import math
+
+    lg = rec.get("logo") if isinstance(rec, dict) else None
+    if not isinstance(lg, dict):
+        return rec
+    out = {k: v for k, v in rec.items() if k != "logo"}
+    ids = [int(g) for g in (lg.get("geometry") or [])]
+    dec: dict = {}
+    for d in lg.get("decision") or []:
+        dec[str(d)] = dec.get(str(d), 0) + 1
+
+    def key(v):
+        return float(v) if v is not None and math.isfinite(float(v)) else -math.inf
+
+    shares = {}
+    for comp, sh in (lg.get("shares") or {}).items():
+        sse, wt = list(sh.get("sse_base") or []), list(sh.get("weight") or [])
+        at = ids.index(focus) if focus in ids else None
+        order = sorted(range(len(sse)), key=lambda i: -key(sse[i]))[:top]
+        shares[comp] = {
+            f"geometry{focus}": None if at is None else {"weight": wt[at], "sse_base": sse[at]},
+            "top_sse_base": [{"geometry": ids[i], "sse_base": sse[i], "weight": wt[i]}
+                             for i in order]}
+    out["logo"] = {"kind": lg.get("kind"), "n_sets": len(ids), "decisions": dec,
+                   "most_influential": lg.get("most_influential"), "shares": shares}
+    return out
+
+
+def ci_width(ci) -> float:
+    return float(ci[1]) - float(ci[0])
+
+
+# ------------------------------------------------------------------------- CS-7: critic layers
+#
+# Plan Section 4 CS-7 with amendment 7 item 2, on the 9 decision networks and C1's rows per
+# component: ridge probes of lambda_k and of the frozen lambda_res,k on z and on z + each of
+# the critic's h1, h2, h3 and head units (320), the trained gain against the median of 20
+# random-init critics' same layer, and the actor's h3 against the 20 pool actors as the
+# comparator. Pooled: per (network, component) its 106 fits in 4 chunks (``cs7_chunks``).
+
+CS7_LAYERS = ("h1", "h2", "h3", "heads")
+CS7_TARGETS = ("lam", "res")             # lambda_k winsorised; the frozen lambda_res,k
+CS7_ACTOR = "actor_h3"
+E71_GAIN = 0.05
+
+
+def heads_block(u):
+    """Head units [E, n, 64] as one block [n, 64 E], in head order (amendment 7 item 2)."""
+    import numpy as np
+
+    return np.concatenate(list(np.asarray(u)), axis=1)
+
+
+def cs7_chunks() -> list[list[tuple]]:
+    """The 106 probe fits of one (network, component) in 4 chunks of similar cost: the base,
+    the trained critic's 4 layers, the actor's h3 and the 20 pool actors; then the 20
+    random-init critics (4 layers each) in three runs of seeds."""
+    from apexzero.costate import critic as CR
+    from apexzero.costate import probes as PB
+
+    first = [("base",), *[("critic", L) for L in CS7_LAYERS], ("actor",),
+             *[("pool", int(s)) for s in PB.POOL_SEEDS]]
+    rc = [("random", int(s)) for s in CR.RANDOM_SEEDS]
+    return [first, rc[:7], rc[7:14], rc[14:]]
+
+
+def cs7_keys() -> list[str]:
+    """Every prediction set of one (network, component), in the scoring order: the base, the
+    trained critic's layers, the actor's h3, the random critics' layers, the pool actors."""
+    from apexzero.costate import critic as CR
+    from apexzero.costate import probes as PB
+
+    return ["base", *[f"critic_{L}" for L in CS7_LAYERS], "actor",
+            *[f"random{s}_{L}" for s in CR.RANDOM_SEEDS for L in CS7_LAYERS],
+            *[f"pool{s}" for s in PB.POOL_SEEDS]]
+
+
+def cs7_unit(state, unit) -> dict:
+    """One chunk of one (network, component)'s CS-7 probes in a worker (``cs7_chunks``): the
+    ridge probe on z and on z + each layer of the chunk, out of fold, both targets per call.
+    Random critics are built from the network's PPOConfig on its z; the pool actor of seed 0
+    and the random critic of seed 0 are checked where the chunk reads them."""
+    import numpy as np
+
+    from apexzero.costate import probes as PB
+
+    t0 = time.time()
+    idx, cfg, jobs, comp = unit["idx"], unit["cfg"], unit["jobs"], unit["comp"]
+    kinds = {j[0] for j in jobs}
+    with np.load(unit["path"]) as d:
+        z = np.clip(d["z"][idx], -10.0, 10.0)
+        trained = {}
+        if "critic" in kinds:
+            trained = {L: d[f"critic_{L}"][idx] for L in ("h1", "h2", "h3")}
+            trained["heads"] = heads_block(d["head_units"][:, idx])
+        if "actor" in kinds:
+            trained["actor"] = d["actor_h3"][idx]
+        pool = {j[1]: d[f"random{j[1]}_h3"][idx] for j in jobs if j[0] == "pool"}
+    Y, fo, w = unit["Y"], unit["fo"], unit["w"]
+    names = (f"lam_{comp}", f"res_{comp}")
+    preds: dict = {}
+    checks: dict = {}
+    y = [None]
+    tag = f"CS-7 {unit['label']}/{comp}/{unit['chunk']}"
+
+    def fit(key: str, h) -> None:
+        p = PB.ridge_cv(z, Y, fo, w, h, names)
+        if y[0] is None:
+            y[0] = p.y
+        elif not np.array_equal(y[0], p.y, equal_nan=True):
+            raise RuntimeError(f"{tag}: the probes were not fitted on the same targets")
+        preds[key] = p.pred
+
+    if 0 in pool:
+        checks["random0_gap"] = pool_actor_gap(cfg, z, pool[0])
+        if not checks["random0_gap"] <= RANDOM_TOL:
+            raise RuntimeError(f"{tag}: the pool actor of seed 0 does not rebuild its stored h3 "
+                               f"({checks['random0_gap']:.3g})")
+    for job in jobs:
+        kind = job[0]
+        if kind == "base":
+            fit("base", None)
+        elif kind == "critic":
+            fit(f"critic_{job[1]}", trained[job[1]])
+        elif kind == "actor":
+            fit("actor", trained["actor"])
+        elif kind == "pool":
+            fit(f"pool{job[1]}", pool[job[1]])
+        elif kind == "random":
+            s = int(job[1])
+            net = PB.random_critic(cfg, s)
+            if s == 0:
+                gap = PB.extractor_gap(PB.random_actor(cfg, 0), net, z[:64])
+                checks["extractor_seed0"] = gap
+                worst = max(gap["actor_mean"], gap["critic_v"], gap.get("critic_heads", np.inf))
+                if not worst <= PB.EXTRACTOR_TOL:
+                    raise RuntimeError(f"{tag}: the random critic of seed 0 does not match "
+                                       f"Critic.apply ({worst:.3g})")
+            hid = PB.hidden(net, z)
+            if hid.u is None or hid.u.shape[0] != PB.N_HEADS_GENERALIST:
+                raise RuntimeError(f"{tag}: the random critic of seed {s} has no 5 heads")
+            for L in ("h1", "h2", "h3"):
+                fit(f"random{s}_{L}", hid[L])
+            fit(f"random{s}_heads", heads_block(hid.u))
+        else:
+            raise ValueError(f"{tag}: unknown job {job}")
+    return {"preds": preds, "y": y[0], "checks": checks, "seconds": time.time() - t0}
+
+
+def cs7_component(preds: dict, y, w, cl, G: int, counts, pool, direction=None,
+                  odd: bool = False) -> tuple[dict, dict]:
+    """(record, draws) of one (network, component): per target, R2(z) and per layer the
+    trained gain against the controls (``control_gain``: the critic's layers against the
+    random critics' same layer, the actor's h3 against the pool actors), with R2(z + h);
+    ``draws`` {(target, layer): ``control_draws``} for the mean over components."""
+    import numpy as np
+
+    from apexzero.costate import analysis as AN
+    from apexzero.costate import critic as CR
+    from apexzero.costate import probes as PB
+
+    keys = cs7_keys()
+    missing = [k for k in keys if k not in preds]
+    if missing:
+        raise ValueError(f"CS-7: prediction sets missing: {missing[:5]}")
+    rec, draws = {}, {}
+    for t, tname in enumerate(CS7_TARGETS):
+        P = [np.asarray(preds[k])[:, t] for k in keys]
+        if not all(np.isfinite(p).all() for p in P):
+            raise ValueError(f"CS-7: rows without an out-of-fold prediction ({tname})")
+        pt, dr = AN.boot_r2(np.asarray(y)[:, t], P, w, cl, G, counts, direction, odd)
+        allr = np.vstack([pt[None], dr])                                 # [1 + B, K]
+        col = {k: allr[:, i] for i, k in enumerate(keys)}
+        out = {"r2_base": {"r2": float(pt[0]), "ci": list(AN._ci(dr[:, 0]))}, "layers": {}}
+        sets = [(L, f"critic_{L}", [f"random{s}_{L}" for s in CR.RANDOM_SEEDS])
+                for L in CS7_LAYERS]
+        sets.append((CS7_ACTOR, "actor", [f"pool{s}" for s in PB.POOL_SEEDS]))
+        for L, full, ctl_keys in sets:
+            ctl = np.stack([col[k] for k in ctl_keys])
+            g = control_gain(col[full], ctl, col["base"], pool)
+            g["r2_full"] = {"r2": float(col[full][0]), "ci": list(AN._ci(col[full][1:]))}
+            g["controls"] = ("random-init critics 0-19" if L != CS7_ACTOR
+                             else "the pool actors 0-19")
+            out["layers"][L] = g
+            draws[(tname, L)] = control_draws(col[full], ctl, col["base"], pool)
+        rec[tname] = out
+    return rec, draws
+
+
+def cs7_expected(nets: dict) -> dict:
+    """E7.1 to E7.3 (amendment 7 item 2) over the networks' records."""
+    def layer(v, c, t, L):
+        return v["components"][c][t]["layers"][L]
+
+    named, named_geo = [], []
+    for lb, v in nets.items():
+        for c in SX:
+            for t in CS7_TARGETS:
+                for L in CS7_LAYERS:
+                    g = layer(v, c, t, L)
+                    if g["stat"] > E71_GAIN and g["ci"][0] > 0:
+                        named.append(f"{lb}/{c}/{t}/{L}")
+                    if g["stat"] > E71_GAIN and g["ci_geometry"][0] > 0:
+                        named_geo.append(f"{lb}/{c}/{t}/{L}")
+    e72 = {f"{t}:{c}": _count_of(nets, lambda v, c=c, t=t: layer(v, c, t, "h3")["stat"]
+                                 >= layer(v, c, t, CS7_ACTOR)["stat"])
+           for t in CS7_TARGETS for c in SX}
+    e73 = {f"{t}:{c}": _count_of(nets, lambda v, c=c, t=t: layer(v, c, t, "heads")["stat"]
+                                 <= layer(v, c, t, "h3")["stat"])
+           for t in CS7_TARGETS for c in SX}
+    n = len(nets)
+    return {
+        "E7.1": {"above_0.05_with_ci_above_0": named,
+                 "above_0.05_with_geometry_ci_above_0": named_geo, "holds": not named},
+        "E7.2": {**e72, "holds": all(p["count"] >= min(E_COUNT, n) for p in e72.values())},
+        "E7.3": {**e73, "holds": all(p["count"] >= min(E_COUNT, n) for p in e73.values())},
+        "reading": "amendment 7 item 2"}
+
+
+@computes("CS-7")
+def cs7(run: Run) -> None:
+    """CS-7 (plan Section 4, amendment 7 item 2): the frozen lambda_res checked; per network
+    its frame and decision mask; per (network, component) 4 pool units (``cs7_unit``); then
+    the gains against the controls, their means over s and xi and the expected directions;
+    outputs summary.json and preds.npz."""
+    import numpy as np
+
+    from apexzero.costate import analysis as AN
+    from apexzero.costate import prereg as PR
+    from apexzero.costate import probes as PB
+
+    t0 = time.time()
+    world = load_world(run)
+    tab = world.tab
+    frozen = run.rec["frozen"]
+    lam, by_fold, oof, _fo, res_gap = checked_lam_res(run, tab)
+    direction = np.asarray(tab["direction"])
+    G = AN.geometry_clusters(tab)[1]
+    counts = PB.cluster_counts(G)
+    pool = PB.pool_draws(PB.N_POOL)
+    chunks = cs7_chunks()
+    units, names, frames = [], [], {}
+    for lb in decision_labels(run):
+        name = AN.network_of(lb)
+        agent, _, fr = network_frame(run, name, world)
+        if not np.array_equal(fr.lam, lam):
+            raise SystemExit(f"CS-7 {lb}: C1's frame's lambda is not the frozen lambda_res's")
+        rows = c1_rows(fr, frozen["k2b_excluded"])
+        act = run.read(f"post/activations/{PR.net_file(name)}.npz")
+        frames[lb] = (fr, rows, name)
+        for c, k in zip(SX, K_SX, strict=True):
+            idx = np.flatnonzero(rows[c])
+            F = by_fold.shape[0]
+            Y = np.concatenate([np.broadcast_to(fr.lam[idx, k][None, :, None], (F, len(idx), 1)),
+                                by_fold[:, idx, k][:, :, None]], axis=2)
+            for i, jobs in enumerate(chunks):
+                units.append({"label": lb, "comp": c, "chunk": i, "path": str(act),
+                              "cfg": agent.cfg, "idx": idx, "Y": Y, "w": fr.w_in[idx],
+                              "fo": fr.fo.subset(rows[c]), "jobs": jobs})
+                names.append(f"{lb}/{c}/{i}")
+    lim = getattr(run.args, "limit", None)
+    if lim is not None:
+        units, names = units[:int(lim)], names[:int(lim)]
+    print(f"CS-7: {len(units)} units ({time.time() - t0:.0f} s)", flush=True)
+    t_pool = time.time()
+    got = run.pool(cs7_unit, units, names=names)
+    pool_s = time.time() - t_pool
+    by: dict = {}
+    for u, r in zip(units, got, strict=True):
+        o = by.setdefault((u["label"], u["comp"]), {"preds": {}, "y": None, "checks": {},
+                                                    "seconds": 0.0, "chunks": 0, "unit": u})
+        if o["y"] is None:
+            o["y"] = r["y"]
+        elif not np.array_equal(o["y"], r["y"], equal_nan=True):
+            raise SystemExit(f"CS-7 {u['label']}/{u['comp']}: the chunks' targets differ")
+        o["preds"].update(r["preds"])
+        o["checks"].update(r["checks"])
+        o["seconds"] += float(r["seconds"])
+        o["chunks"] += 1
+    nets, arrays, partial_units, draws_of = {}, {}, [], {}
+    for (lb, c), o in by.items():
+        if o["chunks"] != len(chunks):
+            partial_units.append(f"{lb}/{c}")
+            continue
+        fr, rows, name = frames[lb]
+        u = o["unit"]
+        idx = u["idx"]
+        k = K_SX[SX.index(c)]
+        y = np.asarray(o["y"])
+        if not (np.array_equal(y[:, 0], fr.lam[idx, k]) and np.array_equal(y[:, 1], oof[idx, k])):
+            raise SystemExit(f"CS-7 {lb}/{c}: the probes' targets are not lambda and the "
+                             "frozen lambda_res's own-fold residual")
+        odd = c == "xi"
+        rec, dr = cs7_component(o["preds"], y, u["w"], fr.cl[idx], G, counts, pool,
+                                direction[idx] if odd else None, odd)
+        draws_of[(lb, c)] = dr
+        c2g = ((run.decisions.get("networks") or {}).get(name) or {}).get("C2", {}).get("gain")
+        net = nets.setdefault(lb, {"run": name, "components": {}, "checks": {}})
+        net["components"][c] = {**rec, "rows": len(idx), "seconds": o["seconds"],
+                                "c2_confirmatory_gain": None if c2g is None else c2g[k]}
+        net["checks"][c] = o["checks"]
+        keys = cs7_keys()
+        arrays[f"{lb}/{c}/rows"] = idx
+        arrays[f"{lb}/{c}/y"] = y
+        for kk in keys[:6]:
+            arrays[f"{lb}/{c}/{kk}"] = np.asarray(o["preds"][kk])
+        arrays[f"{lb}/{c}/random"] = np.stack([o["preds"][kk] for kk in keys[6:6 + 80]]
+                                              ).astype(np.float32)
+        arrays[f"{lb}/{c}/pool"] = np.stack([o["preds"][kk] for kk in keys[86:]]
+                                            ).astype(np.float32)
+    for lb, net in nets.items():
+        if all((lb, c) in draws_of for c in SX):
+            net["mean_over_s_xi"] = {
+                t: {L: mean_of_draws([draws_of[(lb, c)][(t, L)] for c in SX])
+                    for L in (*CS7_LAYERS, CS7_ACTOR)} for t in CS7_TARGETS}
+    complete = {lb: v for lb, v in nets.items() if set(v["components"]) == set(SX)}
+    out = {"item": "CS-7", "networks": nets,
+           "expected": cs7_expected(complete) if complete else None,
+           "incomplete": partial_units, "layers": list(CS7_LAYERS), "targets": {
+               "lam": "lambda_k winsorised at its frozen bounds",
+               "res": "the frozen lambda_res,k (f_D, k = 8), by fold"},
+           "controls": {"critic": "random-init critics, seeds 0-19 (computed here)",
+                        "actor_h3": "the pool actors, seeds 0-19 (stored h3)"},
+           "residual_share_gap": res_gap,
+           "definitions": "plan Section 4 CS-7 and amendment 7 items 1 and 2",
+           "n_boot": len(counts), "pool_seconds": pool_s, "seconds": time.time() - t0}
+    run.write_npz("preds", arrays)
+    run.write_json("summary", plain(out))
+
+
+# ------------------------------------------------------------------------- CS-8: C2-sw and C2
+#
+# Plan Section 4 CS-8 with amendment 7 item 3. (a) C2-sw's random-only null: hosts 20-39
+# scored as the network against the pool on the 2,507 approach- and exit-phase
+# pedal-switching rows, G1's scaling first, per network under R6's 3 h rule, and the trained
+# networks' C2-sw on the same rows. (b) C2-sw on sigma^ped residualised on f_D's decoys. (c) C2
+# with a decoy that fits geometry 6, chosen on targets alone, on the interior's approach and
+# exit rows, against f_D on the same rows. The probes of (a) and (b) are fitted once per
+# scaling and every record is assembled from them (``sw_record``).
+
+CS8_TARGETS = ("sigma", "res")           # sigma^ped winsorised; sigma_res (f_D, k = 8)
+CS8_CHUNKS = 4
+R6_BUDGET = 3 * 3600.0                   # s: R6's 'about 3 h'
+E8A_MEAN = 0.005                         # the null's mean rounds to 0.00 or less
+E8A_SD = (0.005, 0.025)                  # its SD rounds to 0.01 or 0.02
+CONFIRMATORY_RANK1 = ("G1", "G1s1", "G1s2", "G2", "G2s2", "G3s1", "G3s2")
+E8B_HALF, E8B_RANK1_MAX, E8B_SURVIVE = 0.5, 4, 7
+E8C_SHARE, E8C_NARROW = 0.3, 2.0 / 3.0
+DECOYS = ("same_theta_direction", "log_r_x3", "spline_ridge")   # the plan's order
+G6 = 6                                   # geometry 6: R 9.4 m, theta 90 deg (design 17.6)
+G6_DESIGN = {("lam", "s"): (11.8, 1), ("lam", "xi"): (9.0, 1),
+             ("res", "s"): (70.0, 0), ("res", "xi"): (65.0, 0)}  # design 17.6: %, decimals
+LOG_R_COL, THETA_COL, DIR_COL = 2, 3, 5  # in states.decoy_d1
+LOG_R_WEIGHT = 3.0
+SPLINE_KNOTS, SPLINE_DEGREE = 5, 3
+
+
+def cs8_rows(tab):
+    """[n] (a)'s and (b)'s rows: T's pedal-switching rows (``states.SW_STRATUM``) in the
+    approach and exit phases (amendment 7 item 3), through the row guard."""
+    import numpy as np
+
+    from apexzero.costate import states as ST
+
+    rows = np.asarray(tab[ST.SW_STRATUM], bool) & np.isin(
+        np.asarray(tab["phase"]).astype(str), SCORED_PHASES)
+    return guard_rows(tab, rows)
+
+
+def sw_record(base, full, controls, w, fo, draws, labels, m_pedal, y, seeds) -> dict:
+    """``analysis.c2_sw_network``'s record from fitted probes on the stratum's rows: the gain
+    of ``full`` over ``base`` against the median of ``controls`` (``probes.gain`` with the
+    two-level draws and the single-geometry rule's sets, as ``probes.c2_sw`` calls it), the
+    stratum's size, rho(m_pedal - 1, y) and the controls' label."""
+    import numpy as np
+
+    from apexzero.costate import analysis as AN
+    from apexzero.costate import probes as PB
+
+    g = PB.gain(base, full, list(controls), w, fo, None, None, None, None, pool=draws,
+                logo="rule", labels=labels)
+    rec = g.record()
+    rec["n_stratum"] = len(w)
+    rec["spearman_margin"] = PB.wspearman(np.asarray(m_pedal) - 1.0, np.asarray(y), w)
+    rec.update({"controls": AN.controls_label(seeds, True)})
+    return rec
+
+
+def null_entry(seed: int, rec: dict) -> dict:
+    """A host's entry as ``gates.c2_null`` records it (its summary reads these fields)."""
+    from apexzero.costate import probes as PB
+
+    ci_g = rec.get("ci_geometry")
+    return {"seed": int(seed), **{k: rec.get(k) for k in (
+        "stat", "ci", "ci_geometry", "gain", "raw", "decision", "decision_all_geometries",
+        "geometry_sensitive", "reason", "n_stratum", "pool", "spearman_margin")},
+        "decision_geometry_ci": None if ci_g is None else PB.decide(
+            float(rec["stat"]), float(ci_g[0]), float(ci_g[1]))}
+
+
+def share_at_or_above(stats, stat: float) -> float | None:
+    """``analysis.c2_null_note``'s share of the null's finite statistics at or above ``stat``."""
+    import numpy as np
+
+    st = np.asarray([v for v in stats if v is not None], float)
+    st = st[np.isfinite(st)]
+    return float(np.mean(st >= float(stat))) if st.size else None
+
+
+def cs8_jobs(hosts: bool) -> list[tuple]:
+    """One scaling's probe fits (amendment 7 item 3): the base, the trained h3 and the 20
+    pool actors on sigma^ped and on sigma_res, and, with ``hosts``, the 20 null hosts on
+    sigma^ped."""
+    from apexzero.costate import gates as GT
+    from apexzero.costate import probes as PB
+
+    jobs = [("base", t) for t in CS8_TARGETS] + [("trained", t) for t in CS8_TARGETS]
+    jobs += [("pool", int(s), t) for t in CS8_TARGETS for s in PB.POOL_SEEDS]
+    if hosts:
+        jobs += [("host", int(s), "sigma") for s in GT.C2_NULL_SEEDS]
+    return jobs
+
+
+def chunked(jobs: Sequence, n: int) -> list[list]:
+    """``jobs`` dealt round-robin into ``n`` chunks (similar cost, the cheap base fits
+    spread)."""
+    return [list(jobs[i::n]) for i in range(n) if jobs[i::n]]
+
+
+def cs8_sw_unit(state, unit) -> dict:
+    """One chunk of one scaling's (a) and (b) probes in a worker: each job's ridge probe on z
+    (``probes.ridge_cv``; base None, the trained h3, a pool actor's stored h3, or a null
+    host's h3 built from the scaling's PPOConfig, ``probes.random_actor``), on sigma^ped or
+    on sigma_res by fold. The pool actor of seed 0 is rebuilt and checked first."""
+    import numpy as np
+
+    from apexzero.costate import probes as PB
+
+    t0 = time.time()
+    idx, cfg, jobs = unit["idx"], unit["cfg"], unit["jobs"]
+    seeds = sorted({int(j[1]) for j in jobs if j[0] == "pool"} | {0})
+    with np.load(unit["path"]) as d:
+        z = np.clip(d["z"][idx], -10.0, 10.0)
+        h3 = d["actor_h3"][idx]
+        m_tr = d["m"][idx, 1]
+        pool = {s: d[f"random{s}_h3"][idx] for s in seeds}
+    tag = f"CS-8 {unit['label']}/{unit['chunk']}"
+    gap = pool_actor_gap(cfg, z, pool[0])
+    if not gap <= RANDOM_TOL:
+        raise RuntimeError(f"{tag}: the pool actor of seed 0 does not rebuild its stored h3 "
+                           f"({gap:.3g})")
+    Y = {"sigma": unit["sigma"], "res": unit["res"]}
+    names = {"sigma": ("sigma_pedal",), "res": ("sigma_res",)}
+    probes, m_host = {}, {}
+    for job in jobs:
+        kind, t = job[0], job[-1]
+        if kind == "base":
+            h = None
+        elif kind == "trained":
+            h = h3
+        elif kind == "pool":
+            h = pool[int(job[1])]
+        elif kind == "host":
+            hid = PB.hidden(PB.random_actor(cfg, int(job[1])), z)
+            h = hid["h3"]
+            m_host[int(job[1])] = hid["m"][:, 1]
+        else:
+            raise ValueError(f"{tag}: unknown job {job}")
+        probes[job] = PB.ridge_cv(z, Y[t], unit["fo"], unit["w"], h, names[t])
+    return {"probes": probes, "m_host": m_host, "m_trained": m_tr, "random0_gap": gap,
+            "seconds": time.time() - t0}
+
+
+def cs8_scaling(probes: dict, m_host: dict, m_trained, sigma, res_y, w, fo, draws, labels,
+                hosts: bool) -> dict:
+    """One scaling's records from its probes: the trained h3's C2-sw on sigma^ped and on
+    sigma_res, and, with ``hosts``, every null host's record and the null's summary
+    (``gates.c2_null_summary``)."""
+    from apexzero.costate import gates as GT
+    from apexzero.costate import probes as PB
+
+    seeds = tuple(int(s) for s in PB.POOL_SEEDS)
+    out: dict = {}
+    for t, y in (("sigma", sigma), ("res", res_y)):
+        ctl = [probes[("pool", s, t)] for s in seeds]
+        out[t] = sw_record(probes[("base", t)], probes[("trained", t)], ctl, w, fo, draws,
+                           labels, m_trained, y, seeds)
+    if hosts:
+        ctl = [probes[("pool", s, "sigma")] for s in seeds]
+        nets = []
+        for s in GT.C2_NULL_SEEDS:
+            rec = sw_record(probes[("base", "sigma")], probes[("host", int(s), "sigma")], ctl,
+                            w, fo, draws, labels, m_host[int(s)], sigma, seeds)
+            nets.append({**null_entry(int(s), rec), "most_influential": (
+                rec.get("logo") or {}).get("most_influential")})
+        out["null"] = {"seeds": [int(s) for s in GT.C2_NULL_SEEDS], "networks": nets,
+                       "summary": GT.c2_null_summary(nets)}
+    return out
+
+
+# -- (c): the decoy candidates (amendment 7 item 3)
+
+
+def cross_fit_with(X, Y, fold, w, fitpred) -> tuple:
+    """(by fold [F, n, m], info): ``states.cross_fit``'s scheme with any decoy model
+    ``fitpred(X_train, Y_train, w_train, fold_train, X_pred) -> (pred, info)``: outer fold f's
+    rows from a model fitted on the other folds, and the training rows of fold g != f from a
+    model fitted on the folds other than f and g. ``info`` sums the models' integer counts
+    (rows that fell back)."""
+    import numpy as np
+
+    X, Y = np.asarray(X, float), np.asarray(Y, float)
+    Y = Y[:, None] if Y.ndim == 1 else Y
+    fold = np.asarray(fold, int)
+    w = np.asarray(w, float)
+    F = int(fold.max()) + 1
+    out = np.full((F, *Y.shape), np.nan)
+    info: dict = {"fits": 0, "fallback_rows": 0, "fallback_rows_held_out": 0}
+
+    def one(fit, pred, held_out: bool):
+        p, inf = fitpred(X[fit], Y[fit], w[fit], fold[fit], X[pred])
+        info["fits"] += 1
+        fb = int((inf or {}).get("fallback_rows", 0))
+        info["fallback_rows"] += fb
+        if held_out:
+            info["fallback_rows_held_out"] += fb
+        return Y[pred] - p
+
+    for f in range(F):
+        test, train = fold == f, fold != f
+        out[f, test] = one(train, test, True)
+        for g in range(F):
+            if g == f:
+                continue
+            out[f, fold == g] = one(train & (fold != g), fold == g, False)
+    return out, info
+
+
+def knn_fitpred(k: int):
+    """f_D's own model (``states.knn_fit``) as a ``cross_fit_with`` model."""
+    from apexzero.costate import states as ST
+
+    def fp(Xtr, Ytr, wtr, ftr, Xte):
+        return ST.knn_fit(Xtr, Ytr, wtr, k).predict(Xte), {}
+
+    return fp
+
+
+def group_knn_fitpred(k: int, log_r_weight: float = 1.0):
+    """Candidates 1 and 2: f_D's kNN standardised by all the fit's training rows (as
+    ``states.knn_fit``), each predicted row's neighbours searched among the training rows of
+    its own theta and turn direction (fewer than k there: of its turn direction), with the
+    standardised log R coordinate times ``log_r_weight``."""
+    import numpy as np
+    from scipy.spatial import cKDTree
+
+    from apexzero.costate import states as ST
+
+    def fp(Xtr, Ytr, wtr, ftr, Xte):
+        mean = ST.wmean(Xtr, wtr)
+        sd = np.sqrt(ST.wvar(Xtr, wtr))
+        sd = np.where(sd > 0, sd, 1.0)
+        sd[LOG_R_COL] = sd[LOG_R_COL] / float(log_r_weight)
+        out = np.full((len(Xte), Ytr.shape[1]), np.nan)
+        fallback = 0
+        keys_te = np.stack([Xte[:, THETA_COL], Xte[:, DIR_COL]], 1)
+        for th, dr in np.unique(keys_te, axis=0):
+            te = (Xte[:, THETA_COL] == th) & (Xte[:, DIR_COL] == dr)
+            tr = (Xtr[:, THETA_COL] == th) & (Xtr[:, DIR_COL] == dr)
+            if tr.sum() < k:
+                tr = Xtr[:, DIR_COL] == dr
+                fallback += int(te.sum())
+            if tr.sum() < k:
+                raise ValueError(f"fewer than {k} training rows of direction {dr}")
+            knn = ST.KNN(mean=mean, sd=sd, tree=cKDTree((Xtr[tr] - mean) / sd), y=Ytr[tr],
+                         w=wtr[tr], k=int(k))
+            out[te] = knn.predict(Xte[te])
+        return out, {"fallback_rows": fallback}
+
+    return fp
+
+
+def bspline_basis(u, lo: float, hi: float, interior, degree: int = SPLINE_DEGREE):
+    """[n, len(interior) + degree + 1] the cubic B-spline basis on [lo, hi] with the given
+    interior knots, u clipped to [lo, hi] (amendment 7 item 3, candidate 3)."""
+    import numpy as np
+    from scipy.interpolate import BSpline
+
+    t = np.r_[np.full(degree + 1, lo), np.asarray(interior, float), np.full(degree + 1, hi)]
+    return BSpline.design_matrix(np.clip(np.asarray(u, float), lo, hi), t, degree).toarray()
+
+
+def spline_spec(Xtr, wtr) -> list:
+    """[(lo, hi, interior knots)] of s - s_apex and vx on a fit's training rows: their range
+    and the weighted quantiles 1/6, ..., 5/6."""
+    import numpy as np
+
+    from apexzero.costate import states as ST
+
+    qs = np.arange(1, SPLINE_KNOTS + 1) / (SPLINE_KNOTS + 1)
+    out = []
+    for j in (0, 1):                     # decoy_d1's ds_apex and vx
+        u = np.asarray(Xtr[:, j], float)
+        out.append((float(u.min()), float(u.max()),
+                    [float(v) for v in ST.wquantile(u, wtr, qs)]))
+    return out
+
+
+def spline_design(X, spec) -> object:
+    """[n, 486] candidate 3's columns: the tensor product of the two bases (81), each times
+    (1, log R, theta class 1, theta class 2, w, sigma)."""
+    import numpy as np
+
+    from apexzero.costate import states as ST
+
+    X = np.asarray(X, float)
+    n = len(X)
+    B1 = bspline_basis(X[:, 0], *spec[0])
+    B2 = bspline_basis(X[:, 1], *spec[1])
+    T = (B1[:, :, None] * B2[:, None, :]).reshape(n, -1)
+    tc = ST.theta_class(X[:, THETA_COL])
+    M = np.stack([np.ones(n), X[:, LOG_R_COL], (tc == 1).astype(float), (tc == 2).astype(float),
+                  X[:, 4], X[:, DIR_COL]], 1)
+    return (T[:, :, None] * M[:, None, :]).reshape(n, -1)
+
+
+def wridge_path(Xtr, Ytr, wtr, Xte, alphas):
+    """[A, n_te, m] weighted ridge predictions for every penalty: columns z-scored on the
+    training rows (an SD below ``probes.MIN_SD`` dropped), the target centred, the weights
+    normalised to sum 1."""
+    import numpy as np
+
+    from apexzero.costate import probes as PB
+
+    w = np.asarray(wtr, float) / np.sum(wtr)
+    mu = w @ Xtr
+    sd = np.sqrt(w @ (Xtr - mu) ** 2)
+    keep = sd >= PB.MIN_SD
+    Xs = (Xtr[:, keep] - mu[keep]) / sd[keep]
+    Xt = (Xte[:, keep] - mu[keep]) / sd[keep]
+    yb = w @ Ytr
+    Gm = Xs.T @ (Xs * w[:, None])
+    c = Xs.T @ ((Ytr - yb) * w[:, None])
+    e, V = np.linalg.eigh(Gm)
+    e = np.clip(e, 0.0, None)
+    Vc, XtV = V.T @ c, Xt @ V
+    return np.stack([yb + XtV @ (Vc / (e[:, None] + float(a))) for a in alphas])
+
+
+def choose_penalty(sse) -> object:
+    """[m] per column, the index of the smallest SSE [A, m]; near-ties (``probes.TIE_RTOL``)
+    to the larger penalty (``probes._choose``'s rule)."""
+    import numpy as np
+
+    from apexzero.costate import probes as PB
+
+    sse = np.asarray(sse, float)
+    out = np.empty(sse.shape[1], int)
+    for j in range(sse.shape[1]):
+        ok = sse[:, j] <= sse[:, j].min() * (1.0 + PB.TIE_RTOL) + 1e-300
+        out[j] = int(np.flatnonzero(ok).max())
+    return out
+
+
+def spline_fitpred(Xtr, Ytr, wtr, ftr, Xte):
+    """Candidate 3 as a ``cross_fit_with`` model: the spline design from the fit's training
+    rows, each column's penalty from ``probes.GRID`` by leave-one-outer-fold-out over the
+    fit's training folds, then refitted on all of them."""
+    import numpy as np
+
+    from apexzero.costate import probes as PB
+
+    spec = spline_spec(Xtr, wtr)
+    Atr, Ate = spline_design(Xtr, spec), spline_design(Xte, spec)
+    alphas = PB.GRID
+    sse = np.zeros((len(alphas), Ytr.shape[1]))
+    for h in np.unique(ftr):
+        tr, te = ftr != h, ftr == h
+        P = wridge_path(Atr[tr], Ytr[tr], wtr[tr], Atr[te], alphas)
+        sse += np.einsum("n,anm->am", wtr[te], (Ytr[te][None] - P) ** 2)
+    pick = choose_penalty(sse)
+    P = wridge_path(Atr, Ytr, wtr, Ate, alphas)
+    return np.stack([P[pick[j], :, j] for j in range(Ytr.shape[1])], 1), {
+        "penalties": [float(alphas[i]) for i in pick]}
+
+
+def decoy_models(k: int) -> dict:
+    """{name: ``cross_fit_with`` model} of the candidates, in the plan's order."""
+    return {"same_theta_direction": group_knn_fitpred(k),
+            "log_r_x3": group_knn_fitpred(k, LOG_R_WEIGHT),
+            "spline_ridge": spline_fitpred}
+
+
+def geometry_share(v, w, geo, direction=None, odd: bool = False, g: int = G6) -> float:
+    """Geometry g's share of v's weighted sum of squares about its weighted mean (about each
+    turn direction's when ``odd``: R2_wd's denominator; amendment 7 item 3)."""
+    import numpy as np
+
+    v, w = np.asarray(v, float), np.asarray(w, float)
+    if odd:
+        d = np.asarray(direction)
+        mu = np.zeros_like(v)
+        for s in np.unique(d):
+            m = d == s
+            mu[m] = np.sum(w[m] * v[m]) / np.sum(w[m])
+    else:
+        mu = np.sum(w * v) / np.sum(w)
+    q = w * (v - mu) ** 2
+    return float(q[np.asarray(geo) == g].sum() / q.sum())
+
+
+def g6_shares(lam, oof, valid, rows, w, geo, direction) -> dict:
+    """{('lam' | 'res', component): geometry 6's share} of lambda and of the own-fold residual
+    on ``rows`` within each component's decision rows, under the weights ``w`` [n]."""
+    import numpy as np
+
+    out = {}
+    for c, k in zip(SX, K_SX, strict=True):
+        r = np.asarray(rows, bool) & np.asarray(valid, bool)[:, k]
+        odd = c == "xi"
+        for name, v in (("lam", lam), ("res", oof)):
+            out[(name, c)] = geometry_share(np.asarray(v)[r, k], np.asarray(w)[r],
+                                            np.asarray(geo)[r], np.asarray(direction)[r], odd)
+    return out
+
+
+def design_g6_problems(shares: dict) -> list[str]:
+    """Where f_D's shares do not reproduce design 17.6 at its printed rounding."""
+    bad = []
+    for key, (want, dec) in G6_DESIGN.items():
+        got = round(100.0 * shares[key], dec)
+        if got != want:
+            bad.append(f"{key[0]}_{key[1]}: {100.0 * shares[key]:.3f}% against {want}%")
+    return bad
+
+
+def passes_g6(shares: dict) -> bool:
+    """The rule: lambda_res's geometry-6 shares at most twice lambda's, for s and for xi."""
+    return all(shares[("res", c)] <= 2.0 * shares[("lam", c)] for c in SX)
+
+
+def _shares_json(shares: dict) -> dict:
+    return {f"{a}_{c}": float(v) for (a, c), v in shares.items()}
+
+
+def cs8_c2_unit(state, unit) -> dict:
+    """One (network, decoy)'s C2 in a worker: ``analysis.c2_network`` as the confirmatory
+    primary (base [z, m], the trained h3 against the 20 pool actors with the two-level draws,
+    the by-fold lambda_res, the frozen power floor, the decision mask, the rule's sets) on
+    (c)'s stratum. The pool actor of seed 0 is rebuilt and checked first."""
+    import numpy as np
+
+    from apexzero.costate import analysis as AN
+    from apexzero.costate import probes as PB
+    from apexzero.costate import targets as TG
+
+    t0 = time.time()
+    rows = np.asarray(unit["rows"], bool)
+    with np.load(unit["path"]) as d:
+        z = np.clip(d["z"], -10.0, 10.0)
+        h3, m = d["actor_h3"], d["m"]
+        pool = [d[f"random{s}_h3"] for s in PB.POOL_SEEDS]
+    gap = pool_actor_gap(unit["cfg"], z[rows], pool[0][rows])
+    if not gap <= RANDOM_TOL:
+        raise RuntimeError(f"CS-8 {unit['label']}/{unit['decoy']}: the pool actor of seed 0 "
+                           f"does not rebuild its stored h3 ({gap:.3g})")
+    try:
+        rec = AN.c2_network(h3, pool, z, m, unit["lam_res"], unit["fo"], None,
+                            unit["direction"], TG.K_P, unit["power_floor"], rows,
+                            weights=unit["w"][rows], mask=unit["valid"],
+                            pool=PB.pool_draws(len(pool)), controls=PB.POOL_SEEDS, logo="rule",
+                            labels=unit["labels"])
+    except PB.NotTestable as e:
+        rec = {"decision": "not testable", "reason": str(e)}
+    return {"record": rec, "random0_gap": gap, "seconds": time.time() - t0}
+
+
+def cs8_expected(sw: dict, null_g1: dict | None, own_null: dict, c2: dict | None) -> dict:
+    """E8a.1, E8b.1 and E8c.1 (amendment 7 item 3)."""
+    from apexzero.costate import probes as PB
+
+    out: dict = {"reading": "amendment 7 item 3"}
+    stat = {lb: v["sigma"]["stat"] for lb, v in sw.items()}
+    rank1 = [lb for lb, v in sw.items() if (v["sigma"].get("pool") or {}).get("rank") == 1]
+    if null_g1 is not None:
+        s = null_g1["summary"]
+        mx = s.get("max")
+        above = {lb: (lb in stat and mx is not None and stat[lb] > mx) for lb in
+                 CONFIRMATORY_RANK1}
+        out["E8a.1"] = {
+            "null_mean": s.get("mean"), "mean_part": bool(s.get("mean") is not None
+                                                          and s["mean"] < E8A_MEAN),
+            "null_sd": s.get("sd"), "sd_part": bool(s.get("sd") is not None
+                                                    and E8A_SD[0] <= s["sd"] < E8A_SD[1]),
+            "null_max": mx, "confirmatory_rank1_above_every_host": above,
+            "rank1_part": bool(all(above.values())),
+            "rank1_on_these_rows": rank1,
+            "rank1_on_these_rows_above_every_host": {
+                lb: bool(mx is not None and stat[lb] > mx) for lb in rank1},
+            "own_scaling_above_every_host": {
+                lb: bool(v["summary"].get("max") is not None and lb in stat
+                         and stat[lb] > v["summary"]["max"]) for lb, v in own_null.items()}}
+        e = out["E8a.1"]
+        e["holds"] = bool(e["mean_part"] and e["sd_part"] and e["rank1_part"])
+    half, nonpos, r1, survive = {}, [], {}, {}
+    for lb, v in sw.items():
+        a, b = v["sigma"]["stat"], v["res"]["stat"]
+        if a is None or b is None:
+            continue
+        if a <= 0:
+            nonpos.append(lb)
+        else:
+            half[lb] = bool(b <= E8B_HALF * a)
+        rk = (v["res"].get("pool") or {}).get("rank")
+        r1[lb] = rk == 1
+        survive[lb] = bool(rk == 1 and v["res"]["ci"][0] > 0)
+    out["E8b.1"] = {"at_most_half": half, "count_at_most_half": int(sum(half.values())),
+                    "sigma_stat_not_positive": nonpos, "rank1_on_res": r1,
+                    "count_rank1_on_res": int(sum(r1.values())),
+                    "rank1_with_ci_above_0": survive,
+                    "survives": bool(sum(survive.values()) >= E8B_SURVIVE),
+                    "holds": bool(sum(half.values()) >= E_COUNT
+                                  and sum(r1.values()) <= E8B_RANK1_MAX)}
+    if c2 is not None and c2.get("networks"):
+        p1, p2, p3 = {}, {}, {}
+        for lb, v in c2["networks"].items():
+            ch, ref = v.get("chosen") or {}, v.get("frozen") or {}
+            g6 = ((ch.get("logo") or {}).get("shares") or {})
+            sh = [((g6.get(f"lam_{c}") or {}).get(f"geometry{G6}") or {}).get("sse_base")
+                  for c in SX]
+            p1[lb] = bool(all(x is not None and x < E8C_SHARE for x in sh))
+            if ch.get("ci") is not None and ref.get("ci") is not None:
+                p2[lb] = bool(ci_width(ch["ci"]) <= E8C_NARROW * ci_width(ref["ci"]))
+            p3[lb] = bool(ch.get("stat") is not None and ch["stat"] < PB.C2_BAND)
+        n = len(c2["networks"])
+        out["E8c.1"] = {"geometry6_below_0.3": p1, "count_geometry6": int(sum(p1.values())),
+                        "narrower_by_a_third": p2, "count_narrower": int(sum(p2.values())),
+                        "point_below_0.05": p3, "count_below_0.05": int(sum(p3.values())),
+                        "holds": bool(sum(p1.values()) >= min(E_COUNT, n)
+                                      and sum(p2.values()) >= min(E_COUNT, n)
+                                      and sum(p3.values()) == n)}
+    elif c2 is not None:
+        out["E8c.1"] = {"holds": None, "reason": c2.get("reason")}
+    return out
+
+
+@computes("CS-8")
+def cs8(run: Run) -> None:
+    """CS-8 (plan Section 4, amendment 7 item 3): the frozen lambda_res and sigma_res; (a) and
+    (b)'s probes per scaling in pool units (``cs8_sw_unit``), G1's first and timed, the other
+    networks' with their hosts only under R6's 3 h rule; (c)'s decoy chosen on targets alone
+    (``cross_fit_with``), then C2 per (network, decoy) in pool units (``cs8_c2_unit``);
+    outputs summary.json and preds.npz."""
+    import numpy as np
+
+    from apexzero.costate import analysis as AN
+    from apexzero.costate import gates as GT
+    from apexzero.costate import prereg as PR
+    from apexzero.costate import probes as PB
+    from apexzero.costate import states as ST
+
+    t0 = time.time()
+    world = load_world(run)
+    tab = world.tab
+    frozen = run.rec["frozen"]
+    lam, by_fold, oof, fo, res_gap = checked_lam_res(run, tab)
+    null_conf = json.loads(run.read("gates/c2_null.json").read_text())
+    direction = np.asarray(tab["direction"])
+    geo = AN.geometry_clusters(tab)[0]
+    labels_geo = AN.geometry_labels(tab)
+    draws = PB.pool_draws(PB.N_POOL)
+    k_d = PR.decoy_k(frozen)
+    k_d = ST.KNN_K if k_d is None else k_d
+    w_key = ST.weights(tab, "key")
+    D1 = ST.decoy_d1(tab)
+    # -- (a) and (b): rows, sigma^ped and sigma_res (targets only, every row of T)
+    rs = cs8_rows(tab)
+    idx = np.flatnonzero(rs)
+    ws = ST.stratum_weights(tab, rs)[idx]
+    fo_s = fo.subset(rs)
+    sig = ST.winsorise(np.asarray(tab["sigma_pedal"], float),
+                       frozen["winsor_bounds"]["sigma_pedal"])
+    sres = ST.cross_fit(D1, sig, fo.outer, w_key, k=k_d)
+    sres_rows = sres.by_fold[:, idx, :]                              # [F, n_rows, 1]
+    sres_y = sres.oof[idx, 0]
+    share_sres = float(ST.wvar(sres_y, ws) / ST.wvar(sig[idx], ws))
+    labels = decision_labels(run)
+    frames, agents = {}, {}
+    for lb in dict.fromkeys(["G1", *labels]):
+        name = AN.network_of(lb)
+        agents[lb], _, frames[lb] = network_frame(run, name, world)
+    acts = {lb: run.read(f"post/activations/{PR.net_file(AN.network_of(lb))}.npz")
+            for lb in labels}
+
+    def sw_units(lb: str, hosts: bool) -> tuple:
+        jobs = cs8_jobs(hosts)
+        us = [{"label": lb, "chunk": i, "path": str(acts[lb]), "cfg": agents[lb].cfg,
+               "idx": idx, "sigma": sig[idx], "res": sres_rows, "w": ws, "fo": fo_s,
+               "jobs": ch} for i, ch in enumerate(chunked(jobs, CS8_CHUNKS))]
+        return us, [f"{lb}/{u['chunk']}" for u in us]
+
+    def gather(us, got) -> dict:
+        out: dict = {}
+        for u, r in zip(us, got, strict=True):
+            o = out.setdefault(u["label"], {"probes": {}, "m_host": {}, "seconds": 0.0,
+                                            "random0_gap": 0.0, "m_trained": r["m_trained"]})
+            o["probes"].update(r["probes"])
+            o["m_host"].update(r["m_host"])
+            o["seconds"] += float(r["seconds"])
+            o["random0_gap"] = max(o["random0_gap"], float(r["random0_gap"]))
+        return out
+
+    lim = getattr(run.args, "limit", None)
+    phases: dict = {}
+    got_by: dict = {}
+    first = [lb for lb in labels if lb == "G1"]
+    rest = [lb for lb in labels if lb != "G1"]
+    t_g1 = None
+    if first:
+        us, nm = sw_units("G1", True)
+        if lim is not None:
+            us, nm = us[:int(lim)], nm[:int(lim)]
+        print(f"CS-8: G1's scaling, {len(us)} units ({time.time() - t0:.0f} s)", flush=True)
+        t1 = time.time()
+        got_by.update(gather(us, run.pool(cs8_sw_unit, us, names=nm)))
+        t_g1 = time.time() - t1
+    projection = None if t_g1 is None else 8.0 * t_g1
+    per_network = bool(projection is not None and projection < R6_BUDGET)
+    phases["r6"] = {"g1_wall_seconds": t_g1, "projected_other_8_seconds": projection,
+                    "budget_seconds": R6_BUDGET, "per_network": per_network,
+                    "rule": "plan R6 and amendment 7 item 3: per network when 8 x G1's "
+                            "measured pooled time is under about 3 h"}
+    if rest and lim is None:
+        us, nm = [], []
+        for lb in rest:
+            u1, n1 = sw_units(lb, per_network)
+            us += u1
+            nm += n1
+        print(f"CS-8: the other scalings, {len(us)} units (hosts: {per_network}; "
+              f"{time.time() - t0:.0f} s)", flush=True)
+        t2 = time.time()
+        got_by.update(gather(us, run.pool(cs8_sw_unit, us, names=nm)))
+        phases["other_wall_seconds"] = time.time() - t2
+    sw, own_null, arrays = {}, {}, {}
+    null_g1 = None
+    complete_jobs = {lb: set(cs8_jobs(lb == "G1" or per_network)) for lb in got_by}
+    for lb, o in got_by.items():
+        if set(o["probes"]) != complete_jobs[lb]:
+            continue                                     # a partial run's incomplete scaling
+        pr = o["probes"]
+        if not (np.array_equal(pr[("base", "sigma")].y[:, 0], sig[idx])
+                and np.array_equal(pr[("base", "res")].y[:, 0], sres_y)):
+            raise SystemExit(f"CS-8 {lb}: the probes' targets are not sigma^ped and sigma_res")
+        hosts = ("host", int(GT.C2_NULL_SEEDS[0]), "sigma") in pr
+        rec = cs8_scaling(pr, o["m_host"], o["m_trained"], sig[idx], sres_y, ws, fo_s, draws,
+                          labels_geo, hosts)
+        name = AN.network_of(lb)
+        conf = ((run.decisions.get("networks") or {}).get(name) or {}).get("C2-sw") or {}
+        sw[lb] = {"run": name, "sigma": trim_logo(rec["sigma"]), "res": trim_logo(rec["res"]),
+                  "random0_gap": o["random0_gap"], "seconds": o["seconds"],
+                  "confirmatory_c2sw": {k: conf.get(k) for k in ("stat", "ci", "decision",
+                                                                 "n_stratum")}
+                  | {"rank": (conf.get("pool") or {}).get("rank")}}
+        if hosts:
+            nl = rec["null"]
+            if lb == "G1":
+                null_g1 = nl
+            else:
+                own_null[lb] = nl
+        arrays[f"{lb}/sigma"] = np.stack(
+            [pr[("base", "sigma")].pred[:, 0], pr[("trained", "sigma")].pred[:, 0],
+             *[pr[("pool", int(s), "sigma")].pred[:, 0] for s in PB.POOL_SEEDS]]
+        ).astype(np.float32)
+        arrays[f"{lb}/res"] = np.stack(
+            [pr[("base", "res")].pred[:, 0], pr[("trained", "res")].pred[:, 0],
+             *[pr[("pool", int(s), "res")].pred[:, 0] for s in PB.POOL_SEEDS]]
+        ).astype(np.float32)
+        if hosts:
+            arrays[f"{lb}/hosts"] = np.stack([pr[("host", int(s), "sigma")].pred[:, 0]
+                                              for s in GT.C2_NULL_SEEDS]).astype(np.float32)
+    if null_g1 is not None:
+        for lb, v in sw.items():
+            v["share_of_g1_hosts_at_or_above"] = share_at_or_above(
+                [r["stat"] for r in null_g1["networks"]], v["sigma"]["stat"])
+    for lb, nl in own_null.items():
+        sw[lb]["share_of_own_hosts_at_or_above"] = share_at_or_above(
+            [r["stat"] for r in nl["networks"]], sw[lb]["sigma"]["stat"])
+    arrays["rows_sw"] = idx
+    arrays["sigma"] = sig[idx]
+    arrays["sigma_res"] = sres_y
+    # -- (c): the decoy, chosen on targets alone before any network's probe is fitted
+    c2 = None
+    if lim is None:
+        inner = np.asarray(tab["interior"], bool)
+        w_conf = ST.stratum_weights(tab, inner)
+        rows_c = cs5_rows(tab)
+        w_c = ST.stratum_weights(tab, rows_c)
+        valid_g1 = frames["G1"].valid
+        sh_frozen = g6_shares(lam, oof, valid_g1, inner, w_conf, geo, direction)
+        bad = design_g6_problems(sh_frozen)
+        if bad:
+            raise SystemExit(f"CS-8: f_D's geometry-6 shares do not reproduce design 17.6: "
+                             f"{'; '.join(bad)}")
+        by_knn, _ = cross_fit_with(D1, lam, fo.outer, w_key, knn_fitpred(k_d))
+        fit_gap = float(np.max(np.abs(by_knn - by_fold)))
+        if not fit_gap <= FIT_TOL:
+            raise SystemExit(f"CS-8: the cross-fit scheme does not reproduce states.cross_fit "
+                             f"({fit_gap:.3g})")
+        tried, chosen = [], None
+        for nm_d, model in decoy_models(k_d).items():
+            t3 = time.time()
+            bf, info = cross_fit_with(D1, lam, fo.outer, w_key, model)
+            oof_d = bf[fo.outer, np.arange(len(fo.outer))]
+            sh = g6_shares(lam, oof_d, valid_g1, inner, w_conf, geo, direction)
+            sh_c = g6_shares(lam, oof_d, valid_g1, rows_c, w_c, geo, direction)
+            share_t, share_in = ST.decoy_shares(tab, lam, oof_d)
+            rec_d = {"decoy": nm_d, "shares": _shares_json(sh), "shares_on_stratum": _shares_json(
+                sh_c), "passes": passes_g6(sh), "fallback": info,
+                "residual_share_interior": dict(zip(("s", "n", "xi", "vx"), share_in.tolist())),
+                "residual_share_T": dict(zip(("s", "n", "xi", "vx"), share_t.tolist())),
+                "power_floor": ST.power_floor(share_in), "seconds": time.time() - t3}
+            tried.append(rec_d)
+            print(f"CS-8 (c): {nm_d}: passes {rec_d['passes']}", flush=True)
+            if rec_d["passes"]:
+                chosen = (nm_d, bf)
+                break
+        c2 = {"frozen_shares": _shares_json(sh_frozen),
+              "frozen_shares_on_stratum": _shares_json(
+                  g6_shares(lam, oof, valid_g1, rows_c, w_c, geo, direction)),
+              "thresholds": {c: 2.0 * sh_frozen[("lam", c)] for c in SX},
+              "cross_fit_gap": fit_gap, "tried": tried,
+              "chosen": None if chosen is None else chosen[0],
+              "stratum_rows": int(rows_c.sum())}
+        if chosen is None:
+            c2["reason"] = "no candidate fits geometry 6: nothing more is computed"
+        else:
+            arrays["c/lam_res_chosen"] = chosen[1].astype(np.float32)
+            us, nm = [], []
+            for lb in labels:
+                fr = frames[lb]
+                for c, k in zip(SX, K_SX, strict=True):
+                    guard_rows(tab, rows_c & fr.valid[:, k], c, frozen["k2b_excluded"],
+                               fr.valid[:, k])
+                for dname, lr in (("frozen", by_fold), ("chosen", chosen[1])):
+                    us.append({"label": lb, "decoy": dname, "path": str(acts[lb]),
+                               "cfg": agents[lb].cfg, "rows": rows_c, "lam_res": lr, "fo": fo,
+                               "direction": direction, "power_floor": frozen["power_floor"],
+                               "w": w_c, "valid": fr.valid, "labels": labels_geo})
+                    nm.append(f"{lb}/{dname}")
+            print(f"CS-8 (c): {len(us)} units ({time.time() - t0:.0f} s)", flush=True)
+            t4 = time.time()
+            got = run.pool(cs8_c2_unit, us, names=nm)
+            phases["c_wall_seconds"] = time.time() - t4
+            nets_c: dict = {}
+            for u, r in zip(us, got, strict=True):
+                v = nets_c.setdefault(u["label"], {"run": AN.network_of(u["label"])})
+                v[u["decoy"]] = trim_logo(r["record"])
+                v[f"{u['decoy']}_seconds"] = r["seconds"]
+                v["random0_gap"] = max(v.get("random0_gap", 0.0), r["random0_gap"])
+            for lb, v in nets_c.items():
+                conf = ((run.decisions.get("networks") or {}).get(v["run"]) or {}).get("C2") or {}
+                v["confirmatory_c2"] = {k: conf.get(k) for k in ("stat", "ci", "decision",
+                                                                 "n_stratum", "scored_rows")}
+                ch, ref = v.get("chosen") or {}, v.get("frozen") or {}
+                if ch.get("ci") is not None and ref.get("ci") is not None:
+                    v["ci_width"] = {"chosen": ci_width(ch["ci"]), "frozen": ci_width(ref["ci"]),
+                                     "confirmatory": None if conf.get("ci") is None
+                                     else ci_width(conf["ci"])}
+            c2["networks"] = nets_c
+    out = {"item": "CS-8", "rows": {"sw": len(idx), "sw_by_phase": {
+               p: int((rs & (np.asarray(tab["phase"]).astype(str) == p)).sum())
+               for p in SCORED_PHASES}},
+           "sigma_res_share": share_sres, "residual_share_gap": res_gap,
+           "a_b": {"networks": sw, "null_g1": null_g1, "null_own": own_null,
+                   "confirmatory_c2_null": {"summary": (null_conf.get("summary")),
+                                            "rows": null_conf.get("rows"),
+                                            "statistic": "C2 (not C2-sw), its 3,951 rows"}},
+           "c": c2, "phases": phases, "expected": cs8_expected(sw, null_g1, own_null, c2),
+           "definitions": "plan Section 4 CS-8 and amendment 7 items 1 and 3",
+           "partial": lim is not None, "seconds": time.time() - t0}
+    run.write_npz("preds", arrays)
     run.write_json("summary", plain(out))
 
 
