@@ -209,7 +209,7 @@ def environment() -> dict:
     return {"python": platform.python_version(), "jax": jax.__version__,
             "numpy": np.__version__, "machine": platform.machine(),
             "system": platform.system(), "xla_flags": os.environ.get("XLA_FLAGS", ""),
-            "nice": os.nice(0), "cpu_count": os.cpu_count()}
+            "nice": current_nice(), "cpu_count": os.cpu_count()}
 
 
 def provenance(start: float, inputs: dict[str, str] | None = None) -> dict:
@@ -277,10 +277,20 @@ def npz_bytes(**arrays) -> bytes:
     return buf.getvalue()
 
 
+def current_nice() -> int | None:
+    try:
+        return os.getpriority(os.PRIO_PROCESS, 0)
+    except OSError:
+        return None
+
+
 def lower_priority(level: int = NICE) -> None:
-    cur = os.nice(0)
-    if cur < level:
-        os.nice(level - cur)
+    """Best effort: raise this process's nice value to ``level`` (never lower it)."""
+    try:
+        if os.getpriority(os.PRIO_PROCESS, 0) < level:
+            os.setpriority(os.PRIO_PROCESS, 0, level)
+    except OSError:
+        pass
 
 
 # ------------------------------------------------------------------------- the lockbox gate
