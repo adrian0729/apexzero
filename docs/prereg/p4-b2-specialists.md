@@ -413,10 +413,10 @@ From S1–S3 and option A. They are held weakly, and none of them decides anythi
    -s' < scripts/gpu_setup.sh`, then `scripts/gpu_sync.sh <box>`), or taken over, set up, from
    a round that has finished on it and been pulled back (VG-1's pilot, say; P4-B2's GPU time
    starts then), and checked out at `p4-b2-train-v1`. The queue's schedule is shown with
-   `DRY_RUN=1` first, then it runs the five runs (Section 2, Queue). The runs are pulled back with `scripts/gpu_sync.sh <box> pull-round
-   p4b2 scripts/p4b2_runs.py`. Before the box is deleted, the box's sha256 of each run's
-   `agent.pkl` and checkpoints is written to a file on the Mac, from the repo root
-   (`p4_b2.BOX_SHA256_CMD`):
+   `DRY_RUN=1` first, then it runs the five runs (Section 2, Queue). The runs are pulled back
+   with `scripts/gpu_sync.sh <box> pull-round p4b2 scripts/p4b2_runs.py`. Before the box is
+   deleted, the box's sha256 of each run's `agent.pkl` and checkpoints is written to a file on
+   the Mac, from the repo root (`p4_b2.BOX_SHA256_CMD`):
    `ssh <box> 'cd ~/apexzero && sha256sum runs/hockenheim-specialist-mlp-200M-s[4-8]/agent.pkl
    runs/hockenheim-specialist-mlp-200M-s[4-8]/ckpt/*.pkl' > runs/p4b2-box-sha256-0of1.txt`.
    Then the box is deleted.
