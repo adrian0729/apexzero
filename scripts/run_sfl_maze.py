@@ -19,7 +19,7 @@ What the shim does instead of editing the file (as run_jaxued_maze.py does for J
   checkpoint writer. With ``learning.NUM_CHECKPOINTS`` = updates / EVAL_FREQ the script calls
   it after every refresh block, and the writer keeps the selected updates only.
 - ``sfl.train.minigrid_plr`` (SFL's network and ``evaluate_rnn``) is the vendored file,
-  hash-checked; while it is not vendored the shim stops (its download needs the user's OK).
+  hash-checked, with the three SFL files it imports (``sfl.MINIGRID_PLR_IMPORTS``).
 - ``jax.tree_map`` (removed from JAX) comes from ``apexzero.compat``; the script's 0/1
   integer ``where=`` masks, which today's JAX refuses, are cast to booleans
   (``sfl.install_mask_where``: what older JAX did with them); and matplotlib's
@@ -162,8 +162,8 @@ class _JaxView(types.ModuleType):
 
 def load_module(rec: Recorder, network_module=None):
     """minigrid_sfl.py as a module, with the stand-ins above (``sfl.stub_modules``).
-    ``network_module`` replaces sfl.train.minigrid_plr (the tests' stand-in); otherwise the
-    vendored file is used."""
+    ``network_module`` replaces sfl.train.minigrid_plr (an alternative network for a test; none
+    uses it now that SFL's own is complete); otherwise the vendored file is used."""
     stubs = sfl.stub_modules(rec.save_params)
     if network_module is not None:
         stubs["sfl.train.minigrid_plr"] = network_module

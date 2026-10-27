@@ -697,12 +697,17 @@ def analyse(runs: Sequence[Run], boot: dict, pt: dict | None = None) -> dict:
             # Faithful in every reached phase is A, even with a significant shift: B's reading
             # ("only while the agent is incompetent") overstates a score still faithful late,
             # and B's mirror one that was faithful early (decided 27 Oct 2026). The shift stays
-            # in row["shift"]. G still blocks A.
+            # in row["shift"]. G still blocks A: the arm's row G (for its stored score) blocks A
+            # for every score of the arm, and B and B' are still not reported for a score
+            # faithful throughout. Such a score is not "mixed": it is labelled A_WITHHELD.
             faithful_all = bool(labs) and all(x == "faithful" for x in labs)
             if faithful_all:
                 b, bp = [], []
             a_row = faithful_all and not g_targets and not c_row
-            for name, holds, targets in (("A", a_row, list(TARGETS)), ("B", bool(b), b),
+            a_withheld = faithful_all and bool(g_targets) and not c_row
+            for name, holds, targets in (("A", a_row, list(TARGETS)),
+                                         (A_WITHHELD, a_withheld, list(TARGETS)),
+                                         ("B", bool(b), b),
                                          ("B'", bool(bp), bp), ("C", c_row, list(TARGETS)),
                                          ("F", bool(f_t), f_t), ("G", g_here, g_targets)):
                 if holds:
@@ -715,8 +720,10 @@ def analyse(runs: Sequence[Run], boot: dict, pt: dict | None = None) -> dict:
     return out
 
 
+A_WITHHELD = "A-withheld-by-G"
 READINGS = {
     "A": "On {owner} own {arm} agents, {score} tracks exact regret throughout training",
+    A_WITHHELD: "Faithful in every reached phase; A withheld by row G",
     "B": "The score tracks regret only while the agent is incompetent",
     "B'": "The score tracks regret only once the agent solves most mazes",
     "C": "Ground truth confirms No Regrets on the maze",

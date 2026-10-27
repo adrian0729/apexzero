@@ -21,6 +21,9 @@ copied here; `apexzero.maze.sfl.check_vendored` checks them again before every E
 | `sfl/train/__init__.py` | 0 | `e69de29bb2d1d6434b8b29ae775ad8c2e48c5391` |
 | `sfl/train/minigrid_sfl.py` | 33,866 | `6436f5f659fa5fd0992c3ce479054eacb0353fdd` |
 | `sfl/train/minigrid_plr.py` | 38,737 | `9537a794b7df09c76bf816215b366b03eb10b682` |
+| `sfl/util/__init__.py` | 0 | `e69de29bb2d1d6434b8b29ae775ad8c2e48c5391` |
+| `sfl/util/jaxued/__init__.py` | 0 | `e69de29bb2d1d6434b8b29ae775ad8c2e48c5391` |
+| `sfl/util/jaxued/jaxued_utils.py` | 2,942 | `f491626f2164e2b36b06c8e4977b672588c985ab` |
 | `sfl/train/config/minigrid-sfl.yaml` | 466 | `41a016967485abcc8001b24ec91ddca783e54e6e` |
 | `sfl/train/config/learning/ippo-minigrid.yaml` | 423 | `633e1793c235cce1f3b046075d7f14a1d68ac67d` |
 | `sfl/train/config/env/minigrid.yaml` | 247 | `8df39e2c6881321897748e2450b51d43f3ad5b5c` |
@@ -30,21 +33,27 @@ the user approved its download (maze-e5.md Section 11, item 8): downloaded from
 raw.githubusercontent.com at the commit above into a scratch directory, its size and
 `git hash-object` blob checked against the values in the table, then copied here unmodified.
 
-**Not vendored.** `minigrid_sfl.py` also imports `save_params` from the SFL repository's
-`train_utils`, and `minigrid_plr.py` imports `l1_value_loss` from `sfl/util/jaxued/jaxued_utils.py`.
-Neither file is in an approval:
+`sfl/util/jaxued/jaxued_utils.py` (`l1_value_loss`, which `minigrid_plr.py` imports at line 34) and
+the two empty package files `sfl/util/__init__.py` and `sfl/util/jaxued/__init__.py` were added the
+same day (27 Oct 2026), after the user approved them: downloaded from raw.githubusercontent.com at
+the commit above into a scratch directory, size and `git hash-object` blob checked against the
+values in the table, then copied here unmodified. `jaxued_utils.py` imports only `jax` and
+`jax.numpy` (it calls `jax.tree_map`, which `apexzero.compat` provides). With it, SFL's source for
+the maze is complete: `minigrid_plr.py` imports (`apexzero.maze.sfl.minigrid_plr`), and the SFL
+network adapter (`sfl_network_policy`) is tested on SFL's real `ActorCritic`
+(`tests/test_maze_e5.py`, 27 Oct 2026).
+
+**Not vendored.** `minigrid_sfl.py` and `minigrid_plr.py` also import `save_params` from the SFL
+repository's `train_utils`, which is not in an approval:
 
 | Path | Bytes | Git blob SHA-1 | Imported for |
 |---|---|---|---|
 | `sfl/train/train_utils/__init__.py` | 44 | `b5437dc2e9f5ed3a6700b5414702fe5ba7902394` | `save_params` |
 | `sfl/train/train_utils/common.py` | 6,308 | `be4f1f26619dc302aae1a23882ed287c93ebc01c` | (presumably `save_params`) |
-| `sfl/util/jaxued/jaxued_utils.py` | not known | not known | `l1_value_loss` (by `minigrid_plr.py`, line 34) |
 
-The shim replaces `save_params` with E5's checkpoint writer, so `train_utils` is never needed.
-`jaxued_utils.py` is: `minigrid_plr.py` cannot be imported without it (nor is it installed), so
-SFL's runs and the SFL network adapter stop until its download is approved
-(`apexzero.maze.sfl.MISSING_IMPORTS`). The other imports of `minigrid_plr.py` (numpy, jax, flax,
-optax, distrax, orbax, wandb, chex, jaxued; hydra and omegaconf stood in) are installed.
+The shim replaces `save_params` with E5's checkpoint writer, so `train_utils` is never needed. The
+other imports of `minigrid_plr.py` (numpy, jax, flax, optax, distrax, orbax, wandb, chex, jaxued;
+hydra and omegaconf stood in) are installed.
 
 **DEV-E5-2, how E5 gets checkpoints without editing these files.** `minigrid_sfl.py` saves only
 its parameters, overwriting one file every `NUM_UPDATES / EVAL_FREQ / NUM_CHECKPOINTS` refresh

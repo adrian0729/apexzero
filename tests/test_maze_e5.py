@@ -2,11 +2,11 @@
 train stage, the config and round checks, the tag gate, the audit's additions, and the
 statistics on planted data.
 
-SFL's own network file (sfl/train/minigrid_plr.py) is vendored but imports a second SFL file
-(sfl/util/jaxued/jaxued_utils.py) that is not, so the shim's end-to-end test still runs the
-vendored minigrid_sfl.py with JaxUED's maze_plr.py network as a stand-in
-(``network_module``), at a toy size. The planted analyses use 120 mazes and fewer bootstrap
-draws than the pre-registered 4,000, enough for every planted effect to clear Holm.
+SFL's own network file (sfl/train/minigrid_plr.py) and the file it imports
+(sfl/util/jaxued/jaxued_utils.py) are vendored (27 Oct 2026), so the shim's end-to-end test runs
+the vendored minigrid_sfl.py with SFL's real network at a toy size, and the network adapter is
+tested on that network. The planted analyses use 120 mazes and fewer bootstrap draws than the
+pre-registered 4,000, enough for every planted effect to clear Holm.
 """
 
 import importlib
@@ -17,6 +17,7 @@ from collections import Counter
 from pathlib import Path
 
 import jax
+import jax.numpy as jnp
 import numpy as np
 import pytest
 
@@ -68,8 +69,9 @@ def test_readme_records_source_commit_and_every_blob():
         assert path in text and blob in text
     for path, (blob, _) in sfl.NOT_VENDORED.items():
         assert path in text and blob in text
-    for path in sfl.MISSING_IMPORTS:
-        assert path in text
+    for path in sfl.MINIGRID_PLR_IMPORTS:
+        assert path in text and path in sfl.VENDORED
+    assert "not known" not in text
 
 
 def test_minigrid_plr_is_vendored_at_the_approved_blob():
@@ -82,18 +84,40 @@ def test_minigrid_plr_is_vendored_at_the_approved_blob():
     assert sfl.check_vendored()[f"third_party/sfl/{sfl.MINIGRID_PLR}"] == got
 
 
-def test_sfls_network_needs_the_import_it_has_not_got():
-    """minigrid_plr.py imports sfl.util.jaxued.jaxued_utils, which is neither vendored nor
-    installed (not approved): the SFL network stops with a message naming it."""
-    missing = [p for p in sfl.MISSING_IMPORTS if not (sfl.VENDOR / p).exists()]
-    if not missing:
-        pytest.skip("minigrid_plr.py's imports are all vendored")
+def test_jaxued_utils_is_vendored_at_the_approved_blob():
+    """The second 27 Oct 2026 download (sfl/util/jaxued/jaxued_utils.py, 2,942 bytes, blob
+    f491626f...) and the two empty package files, at the same commit; what minigrid_plr.py
+    imports from SFL's repository is complete."""
+    want = {"sfl/util/jaxued/jaxued_utils.py": ("f491626f2164e2b36b06c8e4977b672588c985ab", 2942),
+            "sfl/util/__init__.py": ("e69de29bb2d1d6434b8b29ae775ad8c2e48c5391", 0),
+            "sfl/util/jaxued/__init__.py": ("e69de29bb2d1d6434b8b29ae775ad8c2e48c5391", 0)}
+    assert set(want) == set(sfl.MINIGRID_PLR_IMPORTS) and sfl.JAXUED_UTILS_BYTES == 2942
+    for rel, (blob, size) in want.items():
+        f = sfl.VENDOR / rel
+        got = subprocess.run(["git", "hash-object", "--no-filters", str(f)], capture_output=True,
+                             text=True, check=True).stdout.strip()
+        assert f.stat().st_size == size and got == sfl.VENDORED[rel] == blob
+    assert not hasattr(sfl, "MISSING_IMPORTS")
+    assert sfl.check_minigrid_plr() == sfl.VENDORED[sfl.MINIGRID_PLR]
+    assert sfl.check_vendored(network=True)[f"third_party/sfl/{sfl.MINIGRID_PLR}"]
+
+
+def test_missing_or_altered_import_of_the_network_file_stops_it(tmp_path, monkeypatch):
+    """check_minigrid_plr names a file minigrid_plr.py imports that is absent, and refuses one
+    that is not the pinned blob."""
+    (tmp_path / "sfl" / "train").mkdir(parents=True)
+    src = sfl.VENDOR / sfl.MINIGRID_PLR
+    (tmp_path / sfl.MINIGRID_PLR).write_bytes(src.read_bytes())
+    monkeypatch.setattr(sfl, "VENDOR", tmp_path)
     with pytest.raises(sfl.MissingSFLSource, match="jaxued_utils.py"):
         sfl.check_minigrid_plr()
-    with pytest.raises(sfl.MissingSFLSource, match="needs the user's OK"):
-        sfl.check_vendored(network=True)
-    with pytest.raises(sfl.MissingSFLSource):
-        sfl.minigrid_plr()
+    for rel in sfl.MINIGRID_PLR_IMPORTS:
+        (tmp_path / rel).parent.mkdir(parents=True, exist_ok=True)
+        (tmp_path / rel).write_bytes((sfl.ROOT / "third_party" / "sfl" / rel).read_bytes())
+    assert sfl.check_minigrid_plr() == sfl.VENDORED[sfl.MINIGRID_PLR]
+    (tmp_path / "sfl/util/jaxued/jaxued_utils.py").write_bytes(b"x")
+    with pytest.raises(sfl.VendorMismatch, match="jaxued_utils.py"):
+        sfl.check_minigrid_plr()
 
 
 # --------------------------------------------------------------------------- the config
@@ -260,8 +284,7 @@ def shim_runs(tmp_path_factory):
     for capture in (True, False):
         d = tmp_path_factory.mktemp("capture" if capture else "plain")
         with jax.enable_x64(False):
-            saved = shim.run(SMALL, [4, 6], capture=capture, out=d,
-                             network_module=maze.maze_plr())
+            saved = shim.run(SMALL, [4, 6], capture=capture, out=d)
         out[capture] = (d, saved)
     return shim, out
 
@@ -272,7 +295,7 @@ def test_sfl_shim_runs_the_vendored_loop_and_saves_params_and_d(shim_runs):
     assert saved == [4, 6]
     rec = json.loads((d / "config.json").read_text())
     assert rec["overrides"] == SMALL and rec["config"] == sfl.compose_config(SMALL)
-    assert rec["network"] == "stand-in" and rec["capture_learnable_set"] is True
+    assert rec["network"] == "vendored" and rec["capture_learnable_set"] is True
     log = [json.loads(x) for x in (d / "sfl-eval.jsonl").read_text().splitlines()]
     assert [x["update"] for x in log] == [2, 4, 6]
     for u, line in zip((4, 6), log[1:]):
@@ -297,15 +320,12 @@ def test_capturing_d_leaves_the_parameters_bit_identical(shim_runs):
 def test_sfl_shim_refuses_saves_it_cannot_make(shim_runs, tmp_path):
     shim, _ = shim_runs
     with pytest.raises(SystemExit, match="multiples"):
-        shim.run(SMALL, [2], out=tmp_path, network_module=maze.maze_plr())    # the first block
+        shim.run(SMALL, [2], out=tmp_path)                                    # the first block
     with pytest.raises(SystemExit, match="multiples"):
-        shim.run(SMALL, [5], out=tmp_path, network_module=maze.maze_plr())
+        shim.run(SMALL, [5], out=tmp_path)
     bad = [x for x in SMALL if not x.startswith("learning.NUM_CHECKPOINTS")]
     with pytest.raises(SystemExit, match="NUM_CHECKPOINTS"):
-        shim.run(bad, [4], out=tmp_path, network_module=maze.maze_plr())
-    if any(not (sfl.VENDOR / p).exists() for p in sfl.MISSING_IMPORTS):
-        with pytest.raises(sfl.MissingSFLSource):
-            shim.run(SMALL, [4], out=tmp_path)
+        shim.run(bad, [4], out=tmp_path)
 
 
 def test_where_mask_shim_reduces_over_the_mask(shim_runs):
@@ -314,6 +334,84 @@ def test_where_mask_shim_reduces_over_the_mask(shim_runs):
     x, m = jnp.arange(6.0), jnp.array([0, 1, 1, 0, 1, 0])
     assert float(x.mean(where=m)) == float(x.mean(where=m.astype(bool))) == pytest.approx(7 / 3)
     assert float(x.std(where=m)) == float(x.std(where=m.astype(bool)))
+
+
+# --------------------------------------------------------------------------- SFL's real network
+
+
+@maze.float32
+def _sfl_obs_params(n: int, seed: int = 0):
+    """n Maze observations (view 5) and SFL's real ActorCritic(7), initialised on them."""
+    mod = sfl.minigrid_plr()
+    env, env_params = maze.make_env(5)
+    key = jax.random.PRNGKey(seed)
+    levels = maze.generate_levels(n, key, n_walls=60)
+    obs, _ = jax.vmap(env.reset_to_level, (0, 0, None))(jax.random.split(key, n), levels,
+                                                         env_params)
+    x = (jax.tree.map(lambda a: a[None], obs), jnp.zeros((1, n), bool))
+    params = mod.ActorCritic(7).init(key, x, mod.ActorCritic.initialize_carry((n,)))
+    return levels, obs, params
+
+
+def test_sfls_real_network_builds_inits_and_forwards_on_a_maze_observation():
+    mod = sfl.minigrid_plr()
+    assert Path(mod.__file__) == sfl.VENDOR / sfl.MINIGRID_PLR          # the vendored file
+    assert mod.ActorCritic.__module__ == "sfl_minigrid_plr"
+    n = 3
+    _, obs, params = _sfl_obs_params(n)
+    shapes = jax.tree.map(lambda a: tuple(a.shape), params["params"])
+    assert {"actor0", "actor1", "critic0", "critic1", "scalar_embed"} <= set(shapes)
+    assert shapes["scalar_embed"]["kernel"] == (4, 5)
+    assert shapes["actor0"]["kernel"] == (256, 32)
+    assert shapes["actor1"]["kernel"] == (32, 7) and shapes["critic1"]["kernel"] == (32, 1)
+    net = mod.ActorCritic(7)
+    carry = mod.ActorCritic.initialize_carry((n,))
+    assert [tuple(c.shape) for c in carry] == [(n, 256), (n, 256)]
+    x = (jax.tree.map(lambda a: a[None], obs), jnp.zeros((1, n), bool))
+    hstate, pi, value = net.apply(params, x, carry)
+    assert [tuple(c.shape) for c in hstate] == [(n, 256), (n, 256)]
+    assert pi.logits.shape == (1, n, 7) and value.shape == (1, n)
+    assert np.all(np.isfinite(np.asarray(pi.logits))) and np.all(np.isfinite(np.asarray(value)))
+    np.testing.assert_allclose(np.asarray(pi.probs).sum(-1), 1.0, atol=1e-6)
+
+
+def test_sfl_network_adapter_returns_valid_actions_and_the_networks_values():
+    n = 64
+    levels, obs, params = _sfl_obs_params(n, seed=1)
+    pol = sfl.sfl_network_policy(params)
+    key = jax.random.PRNGKey(5)
+    last_done = jnp.zeros(n, bool)
+    with jax.enable_x64(False):
+        carry, action, value = pol.act(params, key, pol.init(n), obs, last_done)
+        again = pol.act(params, key, pol.init(n), obs, last_done)
+        mod = sfl.minigrid_plr()
+        x = (jax.tree.map(lambda a: a[None], obs), last_done[None])
+        _, pi, v_net = mod.ActorCritic(7).apply(params, x, pol.init(n))
+    action, value = np.asarray(action), np.asarray(value)
+    assert action.shape == (n,) and np.issubdtype(action.dtype, np.integer)
+    assert action.min() >= 0 and action.max() < 7 and len(set(action.tolist())) > 1
+    assert value.shape == (n,) and np.all(np.isfinite(value))
+    np.testing.assert_array_equal(value, np.asarray(v_net)[0])
+    np.testing.assert_array_equal(action, np.asarray(again[1]))        # same key, same actions
+    assert [tuple(c.shape) for c in carry] == [(n, 256), (n, 256)]
+    # a whole audit rollout on the adapter: every level completes an episode
+    ro = maze.collect(pol, jax.tree.map(lambda a: a[:3], levels), 1, jax.random.PRNGKey(2))
+    assert ro.done.shape[1] == 3 and (ro.done.sum(0) >= 1).all()
+    assert np.all(np.isfinite(ro.value)) and np.all(np.isfinite(ro.last_value))
+
+
+def test_sfl_adapter_runs_on_the_params_the_shim_checkpointed(shim_runs):
+    _, out = shim_runs
+    ck = sfl.load_sfl_checkpoint(out[True][0], 6)
+    _, obs, fresh = _sfl_obs_params(2)
+    assert jax.tree.structure(ck.params) == jax.tree.structure(
+        jax.tree.map(np.asarray, fresh))
+    pol = sfl.sfl_network_policy(ck.params)
+    with jax.enable_x64(False):
+        _, action, value = pol.act(ck.params, jax.random.PRNGKey(0), pol.init(2), obs,
+                                   jnp.zeros(2, bool))
+    assert np.asarray(action).shape == (2,) and 0 <= int(np.min(action)) <= int(np.max(action)) < 7
+    assert np.all(np.isfinite(np.asarray(value)))
 
 
 # --------------------------------------------------------------------------- run lists
@@ -463,9 +561,6 @@ def test_train_stage_keeps_the_selected_checkpoints_and_records_them(mods, tmp_p
     assert m.main([*argv, "--name", "t-fail"]) == 1
     rec = json.loads((tmp_path / "runs" / "t-fail" / "e5-run.json").read_text())
     assert rec["exit"] == 3 and rec["problems"] and "pruned" not in rec
-    if any(not (sfl.VENDOR / p).exists() for p in sfl.MISSING_IMPORTS):
-        with pytest.raises(sfl.MissingSFLSource):
-            m.main(["train", "--arm", "sfl", "--view", "5", "--seed", "1", "--name", "t-sfl"])
 
 
 def test_manifest_config_checks(mods, tmp_path, monkeypatch):
@@ -910,6 +1005,54 @@ def test_faithful_everywhere_with_a_shift_is_row_a_not_b_or_b_prime():
         assert x["trend_significant"] and sign * x["trend"] > 0
         assert (x["hi"] < 0) if sign < 0 else (x["lo"] > 0)
         assert row["rows"] == ["A"] and row["reading"] == [e5.reading("A", "dr", "pvl")]
+
+
+def _plr_with_g(pvl_sds):
+    """PLR planted so that row G holds (the stored MaxMC is noise, its fresh native twin
+    tracks regret) and PVL, which is not the stored score, is faithful in every phase, with
+    noise ``pvl_sds`` (early, mid, late)."""
+    def plan(arm, view, k, reg, rng):
+        sd = pvl_sds[0] if k < 6 else pvl_sds[1] if k < 11 else pvl_sds[2]
+        return {"maxmc_native": _faithful(reg, rng), "pvl": reg + sd * rng.normal(size=reg.shape)}
+    return plan
+
+
+def test_g_blocks_a_but_a_score_faithful_throughout_is_not_b_b_prime_or_mixed():
+    """Decided 27 Oct 2026 (maze-e5.md Section 5.2 and Section 11, item 11). When row G blocks A
+    for a score faithful in every reached phase, B and B' are not reported even with a
+    significant shift (up or down): the score is still faithful in every phase, so B's or B''s
+    reading would overstate it. It gets its own label, not "mixed"."""
+    rng = np.random.default_rng(37)
+    for sds, sign in (((0.1, 0.05, 0.01), +1), ((0.01, 0.05, 0.1), -1)):
+        runs = [_run(rng, "plr", v, s, _plr_with_g(sds)) for s in range(1, 4) for v in (13, 5)]
+        res = e5.analyse(runs, e5.bootstrap(runs, n_boot=2000, workers=3))
+        assert any(r["test"] == "S2" and r["arm"] == "plr" and r["significant"]
+                   and abs(r["estimate"]) >= e5.ROW_EFFECT for r in res["secondary"])
+        labels = res["arms"]["plr"]["labels"]
+        assert {labels[("pvl", t, ph)]["label"] for t in e5.TARGETS for ph in e5.PHASES} == {
+            "faithful"}
+        row = next(r for r in res["rows"] if (r["arm"], r["score"]) == ("plr", "pvl"))
+        x = row["shift"]["abs"]
+        assert sign * x["estimate"] >= e5.ROW_SHIFT and x["trend_significant"]
+        assert sign * x["trend"] > 0 and ((x["hi"] < 0) if sign < 0 else (x["lo"] > 0))
+        assert row["rows"] == [e5.A_WITHHELD]          # no A, no B or B', no G, not mixed
+        assert row["reading"] == ["Faithful in every reached phase; A withheld by row G"]
+
+
+def test_a_non_stored_faithful_score_in_an_arm_with_g_is_labelled_not_mixed():
+    """The label for a score faithful in every reached phase whose A is withheld only by the
+    arm's row G; G itself is still reported for the arm's stored score (maxmc), and a score
+    that is not faithful keeps its own rows (or mixed)."""
+    rng = np.random.default_rng(41)
+    runs = [_run(rng, "plr", v, s, _plr_with_g((0.01, 0.01, 0.01))) for s in range(1, 4)
+            for v in (13, 5)]
+    res = e5.analyse(runs, e5.bootstrap(runs, n_boot=2000, workers=3))
+    rows = {r["score"]: r["rows"] for r in res["rows"] if r["arm"] == "plr"}
+    assert rows["pvl"] == [e5.A_WITHHELD] and "mixed" not in rows["pvl"]
+    assert "G" in rows["maxmc"] and "A" not in rows["maxmc"]          # stored: G as before
+    assert "mixed" not in rows["maxmc"] and e5.A_WITHHELD not in rows["maxmc"]
+    assert rows["learnability"] == ["C"]
+    assert all("A" not in r["rows"] for r in res["rows"])             # the literal rule stands
 
 
 def test_planted_families_sizes_and_holm(planted):
