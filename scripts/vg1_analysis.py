@@ -23,30 +23,33 @@ flags: ``vg`` = {coef beta*, lam 0.95, winsor 0.005} for vgl, no ``vg`` for base
 Writes outputs/vg1/manifest-<phase>.json, write-once.
 
 **m0**: ``scripts/vgl.py residual`` on each run's final checkpoint at its fixed settings
-(``M0_SIZES``), into outputs/vg1/m0/<run>.json, with VG-1's code unchanged against the
-manifest's commit before and after each run (tracked changes only: other studies' untracked
-files, which vgl.py's own clean flag counts, do not). A sidecar <run>.check.json binds the
-record's sha256, HEAD and that check.
+(``M0_SIZES``), into outputs/vg1/m0/<run>.json, with VG-1's code the manifest's commit's, byte
+for byte, before and after each run (``code_byte_problems``; tracked files only: other
+studies' untracked files, which vgl.py's own clean flag counts, do not). A sidecar
+<run>.check.json binds the record's sha256, HEAD and that check; ``check_m0`` requires it,
+since vgl.py's own flag, like git status, trusts the index.
 
 **pilot** (Section 4.1): reads the pilot manifest, outputs/vg1/c1/pilot.json (M1, from
 scripts/vg1_c1.py), outputs/vg1/m0/<run>.json (M0, from ``m0``) and each run's last
 metrics.csv row (EV), each checked against the manifest's sha256 and against the pilot
-commit's code. A beta is eligible if both its runs
-finished with finite M1, M0 and EV, EV >= 0.90 and M0 < 13.99. beta* is the eligible beta with
-the highest median M1 over its two seeds, a tie to the smaller beta; with none eligible,
-beta* is null and the main run does not start. The cost check, in GPU-hours with idle GPUs
-included: the pilot's box GPU-hours (``--box-gpu-hours``: box lifetime x its GPUs, setup and
-pull-back included; at least the queue's) plus the main run's projection, 20 x 6.5 min + 20 x
-beta*'s mean pilot GPU minutes per run + 15 min x the main box's GPUs (``--main-gpus``,
-default 4); above 14 it goes to the user before the tag, and the stop rule pauses VG-1 above
-16.8. A run's GPU minutes are its share of its GPU (``gpu_minutes``): the integral over its
-time of 1 / (the runs on that GPU then). Writes outputs/vg1/pilot.json, write-once.
+commit's code. A beta is eligible if both its runs finished with finite metrics (M1, M0, EV,
+every value of the last metrics.csv row and the final checkpoint's parameters), EV >= 0.90 and
+M0 < 13.99. beta* is the eligible beta with the highest median M1 over its two seeds, a tie to
+the smaller beta; with none eligible, beta* is null and the main run does not start. The cost
+check, in GPU-hours with idle GPUs included: the pilot's box GPU-hours (``--box-gpu-hours``:
+box lifetime x its GPUs, setup and pull-back included; at least the queue's) plus the main
+run's projection, 20 x 6.5 min + 20 x beta*'s mean pilot GPU minutes per run + 15 min x the
+main box's GPUs (``--main-gpus``, default 4); above 14, or not computable, it goes to the user
+before the tag, and the stop rule pauses VG-1 above 16.8. A run's GPU minutes are its share of
+its GPU (``gpu_minutes``): the integral over its time of 1 / (the runs on that GPU then), from
+the manifest's UTC times. Writes outputs/vg1/pilot.json, write-once.
 
 **analyse** (Sections 5 and 6), once, after the tag: the tag gate (``tag_gate``: vg1-prereg-v1
 on origin as an annotated tag, the local tag the same object, HEAD descended from it, VG-1's
-code ``CODE_PATHS`` the tagged code, untracked files included); refuses if analysis.json or its
-lock exists or was ever committed; re-checks the manifest (``round_manifest.py check`` and every
-sha256), then takes the lock (outputs/vg1/analysis.lock, never removed) before any number. Per
+code ``CODE_PATHS`` the tagged code byte for byte, untracked files included); refuses if
+analysis.json or its lock exists or was ever committed; re-checks the manifest
+(``round_manifest.py check`` and every sha256), then takes the lock (outputs/vg1/analysis.lock,
+never removed) before any number. Per
 network (``network_values``): R2_c and Spearman rho (vg1_c1.py), M0 and S4's steer and pedal
 residuals (vgl.py), EV, completion C (circuits with completion > 0.5 of 12). The failed-network
 rule: a network with a non-finite parameter, a non-finite last metrics row, a numerical K3
@@ -70,6 +73,7 @@ from __future__ import annotations
 
 import argparse
 import ast
+import calendar
 import csv
 import hashlib
 import importlib.util
@@ -137,6 +141,13 @@ def git_run(*args: str) -> subprocess.CompletedProcess:
 def git(*args: str) -> str:
     out = git_run(*args)
     return out.stdout.strip() if out.returncode == 0 else ""
+
+
+def blob_sha256(rev: str, rel: str) -> str | None:
+    """The sha256 of ``rel``'s bytes in commit ``rev`` (None when it has no such file)."""
+    out = subprocess.run(["git", "cat-file", "blob", f"{rev}:{rel}"], cwd=ROOT,
+                         capture_output=True, check=False)
+    return hashlib.sha256(out.stdout).hexdigest() if out.returncode == 0 else None
 
 
 def sha256_file(path: Path | str) -> str:
@@ -252,10 +263,40 @@ def read_json(path: str, inputs: dict | None = None) -> dict:
 # ------------------------------------------------------------------------- the tag gate
 
 
+def code_byte_problems(commit: str, paths: tuple[str, ...] = CODE_PATHS) -> list[str]:
+    """Tracked files under ``paths`` that are not ``commit``'s on disk, byte for byte: each
+    file's blob id hashed from its bytes (``git hash-object --no-filters``) against the commit's
+    tree, a file of the commit missing on disk, and a file the index lists that the commit lacks.
+    git diff and git status trust the index for a file marked assume-unchanged or skip-worktree,
+    so an edited file there passes them; this does not."""
+    ls = git_run("ls-tree", "-r", commit, "--", *paths)
+    if ls.returncode != 0:
+        return [f"cannot list {commit[:12]}'s tree ({ls.stderr.strip()})"]
+    want = {}
+    for line in ls.stdout.splitlines():
+        meta, _, name = line.partition("\t")
+        if name:
+            want[name] = meta.split()[-1]
+    index = git_run("ls-files", "--", *paths)
+    out = [f"{p} is tracked here but not in {commit[:12]}"
+           for p in sorted(set(index.stdout.splitlines()) - set(want)) if p]
+    present = [p for p in sorted(want) if (ROOT / p).is_file()]
+    out += [f"{p} is missing on disk" for p in sorted(want) if p not in present]
+    if present:
+        h = git_run("hash-object", "--no-filters", "--", *present)
+        got = h.stdout.split()
+        if h.returncode != 0 or len(got) != len(present):
+            return out + [f"git hash-object failed ({h.stderr.strip()})"]
+        out += [f"{p} on disk is not {commit[:12]}'s" for p, g in zip(present, got, strict=True)
+                if g != want[p]]
+    return out
+
+
 def tag_gate(tag: str = TAG, paths: tuple[str, ...] = CODE_PATHS) -> dict:
     """PermissionError unless the annotated tag exists on origin, the local tag is the same tag
     object, HEAD descends from its commit, and VG-1's code in the working tree (``paths``,
-    untracked files included) is the tagged code (scripts/lockbox.py's ``tag_gate``)."""
+    untracked files included) is the tagged code, byte for byte (scripts/lockbox.py's
+    ``tag_gate``, with ``code_byte_problems`` for a file the index flags hide from git diff)."""
     ls = git_run("ls-remote", "origin", f"refs/tags/{tag}", f"refs/tags/{tag}^{{}}")
     if ls.returncode != 0:
         raise PermissionError(f"cannot list origin's tags ({ls.stderr.strip()})")
@@ -285,6 +326,9 @@ def tag_gate(tag: str = TAG, paths: tuple[str, ...] = CODE_PATHS) -> dict:
     untracked = git_run("ls-files", "--others", "--exclude-standard", "--", *paths)
     if untracked.returncode != 0 or untracked.stdout.strip():
         raise PermissionError(f"untracked files under VG-1's code: {untracked.stdout!r}")
+    unequal = code_byte_problems(peeled, paths)
+    if unequal:
+        raise PermissionError(f"VG-1's code on disk is not {tag}'s: {'; '.join(unequal[:6])}")
     return {"tag": tag, "tag_object": obj, "commit": peeled, "head": git("rev-parse", "HEAD")}
 
 
@@ -428,6 +472,11 @@ def config_problems(run: dict, cfg: dict, phase: str, beta: str | None) -> list[
             out.append(f"{name}: a base run with --vg-coef {args.get('vg_coef')}")
     if phase == "main" and args.get("skip_eval_rdev") is not False:
         out.append(f"{name}: a main run must evaluate R-dev (skip_eval_rdev False)")
+    # round_manifest.py check compares --vg-lambda and --vg-winsor only where a cmd sets them
+    # (their defaults are computed in train_dr.py), and no VG-1 cmd does
+    for key, flag in (("vg_lambda", "lam"), ("vg_winsor", "winsor")):
+        if args.get(key) != VG_FLAGS[flag]:
+            out.append(f"{name}: config {key} {args.get(key)}, want {VG_FLAGS[flag]}")
     got = cfg.get("vg")
     if want is None and got is not None:
         out.append(f"{name}: a base run's config has vg {got}")
@@ -529,7 +578,9 @@ def cmd_manifest(a) -> None:
 
 
 def _t(s: str) -> float:
-    return time.mktime(time.strptime(s, "%Y-%m-%dT%H:%M:%SZ"))
+    """A manifest time (UTC, round_manifest.py's format) in seconds; timegm, not mktime, which
+    would read it as local time and shift a span across a daylight-saving change by an hour."""
+    return float(calendar.timegm(time.strptime(s, "%Y-%m-%dT%H:%M:%SZ")))
 
 
 def gpu_minutes(entries: list[dict]) -> dict[str, float]:
@@ -584,9 +635,9 @@ def m0_sidecar(name: str) -> str:
 
 def cmd_m0(a) -> None:
     """M0 and S4's inputs: ``scripts/vgl.py residual`` on each run's final checkpoint at its
-    fixed settings, into outputs/vg1/m0/<run>.json, with VG-1's code unchanged against the
-    manifest's commit before and after; a sidecar <run>.check.json binds the record's sha256,
-    HEAD and that check (``check_m0`` accepts it in place of vgl.py's own clean flag)."""
+    fixed settings, into outputs/vg1/m0/<run>.json, with VG-1's code the manifest's commit's,
+    byte for byte, before and after; a sidecar <run>.check.json binds the record's sha256, HEAD
+    and that check (``check_m0`` requires it: vgl.py's own clean flag trusts the index)."""
     if a.phase == "main":
         tag_gate()
     inputs: dict[str, str] = {}
@@ -600,13 +651,15 @@ def cmd_m0(a) -> None:
         if (ROOT / out).exists() or (ROOT / side).exists():
             raise CheckFailed(f"{out} or its sidecar exists: write-once")
         head = git("rev-parse", "HEAD")
-        if vg1_code_changed() or not code_at(head, m["commit"]):
-            raise CheckFailed(f"VG-1's code is not {m['commit'][:12]}'s: {vg1_code_changed()}")
+        bad = vg1_code_changed() + code_byte_problems(m["commit"])
+        if bad or not code_at(head, m["commit"]):
+            raise CheckFailed(f"VG-1's code is not {m['commit'][:12]}'s: {bad[:6]}")
         (ROOT / out).parent.mkdir(parents=True, exist_ok=True)
         cmd = [sys.executable, "scripts/vgl.py", "--threads", str(a.threads), "--nice", "10",
                "--out", out, "residual", f"runs/{name}", "--checkpoint", ent["final"]["path"]]
         subprocess.run(cmd, cwd=ROOT, check=True, stdout=subprocess.DEVNULL)
-        if vg1_code_changed() or git("rev-parse", "HEAD") != head:
+        if (vg1_code_changed() or code_byte_problems(m["commit"])
+                or git("rev-parse", "HEAD") != head):
             raise CheckFailed(f"VG-1's code or HEAD changed while {name}'s M0 ran")
         write_new(ROOT / side, {"record": "vg1-m0-check", "run": name,
                                 "m0_sha256": sha256_file(ROOT / out), "head": head,
@@ -617,8 +670,9 @@ def cmd_m0(a) -> None:
 def check_m0(rec: dict, ent: dict, commit: str, side: dict | None = None,
              rec_sha256: str | None = None) -> list[str]:
     """An M0 record (vgl.py residual) against the run's final checkpoint, the fixed settings
-    and the reference commit's code: vgl.py's own clean flag, or ``cmd_m0``'s sidecar binding
-    the record's sha256."""
+    and the reference commit's code: ``cmd_m0``'s sidecar binding the record's sha256 and HEAD
+    to its byte-level check. vgl.py's own clean flag is not enough (git status trusts the
+    index), nor needed (it counts other studies' untracked files)."""
     out = []
     final = ent.get("final") or {}
     if rec.get("run") != ent["name"] or rec.get("checkpoint") != Path(final.get("path", "")).name:
@@ -630,10 +684,11 @@ def check_m0(rec: dict, ent: dict, commit: str, side: dict | None = None,
         out.append(f"{ent['name']}: M0 at {sizes} {rec.get('vg')}, not {M0_SIZES} {M0_VG}")
     env = rec.get("environment") or {}
     vouched = (side is not None and side.get("vg1_code_clean") is True
-               and side.get("m0_sha256") == rec_sha256 and side.get("head") == env.get("head"))
-    clean = env.get("src_or_scripts_dirty") is False or vouched
-    if not clean or not code_at(env.get("head"), commit):
-        out.append(f"{ent['name']}: its M0 was not computed at {commit[:12]}'s code, clean")
+               and side.get("m0_sha256") == rec_sha256 and side.get("head") == env.get("head")
+               and side.get("commit") == commit)
+    if not vouched or not code_at(env.get("head"), commit):
+        out.append(f"{ent['name']}: its M0 was not computed at {commit[:12]}'s code, clean "
+                   "(vg1_analysis.py m0's sidecar)")
     return out
 
 
@@ -647,11 +702,15 @@ def read_m0(name: str, inputs: dict) -> tuple[dict, dict | None, str]:
 
 def check_c1(c1: dict, manifest: dict, commit: str) -> list[str]:
     """vg1_c1.py's record against the manifest (its sha256 and every checkpoint) and the
-    reference commit's code."""
+    reference commit's code: HEAD's VG-1 code, no tracked change to it, and the script's own
+    bytes (its recorded sha256 against the commit's blob, which no index flag hides)."""
     out = []
     pv = c1.get("provenance") or {}
     if c1.get("manifest_sha256") != manifest["_sha256"]:
         out.append("the C1 record was not computed from this manifest")
+    if pv.get("script_sha256") is None or pv.get("script_sha256") != blob_sha256(
+            commit, "scripts/vg1_c1.py"):
+        out.append(f"the C1 record's scripts/vg1_c1.py is not {commit[:12]}'s (sha256)")
     if c1.get("partial"):
         out.append("the C1 record is partial")
     if not (c1.get("gate") or {}).get("pass"):
@@ -954,8 +1013,10 @@ def analysis_tests(vals: list[dict]) -> dict:
 
 
 def pilot_rule(per: dict[str, dict]) -> dict:
-    """Section 4.1's rule on {run: {beta (str), seed, finished, m1, m0, ev}}: eligibility per
-    beta, the median M1 of each, beta* (null if none is eligible)."""
+    """Section 4.1's rule on {run: {beta (str), seed, finished, m1, m0, ev, metrics_finite,
+    params_finite}}: eligibility per beta (finished with finite metrics: M1, M0 and EV, every
+    value of the last metrics.csv row and the final checkpoint's parameters; EV >= 0.90; M0 <
+    13.99), the median M1 of each, beta* (null if none is eligible)."""
     elig, med, why = {}, {}, {}
     for b in BETAS:
         rs = [r for r in per.values() if r["beta"] == b]
@@ -968,6 +1029,10 @@ def pilot_rule(per: dict[str, dict]) -> dict:
                 reasons.append(f"{r['name']} did not finish")
             elif not all(math.isfinite(v) for v in vals):
                 reasons.append(f"{r['name']} has a non-finite metric")
+            elif r.get("metrics_finite") is not True:
+                reasons.append(f"{r['name']} has a non-finite value in its last metrics.csv row")
+            elif r.get("params_finite") is not True:
+                reasons.append(f"{r['name']} has a non-finite parameter in its final checkpoint")
             else:
                 if vals[2] < EV_MIN:
                     reasons.append(f"{r['name']} EV {vals[2]:.4f} < {EV_MIN}")
@@ -990,14 +1055,16 @@ def cost_check(beta_star: str | None, per: dict[str, dict], box_gpu_hours: float
     """Section 4.1's cost check, in GPU-hours with idle GPUs included."""
     if beta_star is None:
         return {"applies": False, "reason": "no beta is eligible: the main run does not start"}
-    t = [r["gpu_minutes"] for r in per.values() if r["beta"] == beta_star]
-    t_star = float(np.mean(t))
+    t = [num(r.get("gpu_minutes")) for r in per.values() if r["beta"] == beta_star]
+    t_star = float(np.mean(t)) if t else math.nan
     main = (MAIN_RUNS_PER_ARM * BASE_GPU_MIN + MAIN_RUNS_PER_ARM * t_star
             + SETUP_MIN * main_gpus) / 60.0
     total = box_gpu_hours + main
+    # a projection that cannot be computed (a run without times) goes to the user too
     return {"applies": True, "pilot_gpu_hours": box_gpu_hours, "beta_star_gpu_minutes": t_star,
             "main_projected_gpu_hours": main, "main_gpus": main_gpus, "total": total,
-            "limit": COST_LIMIT_H, "to_the_user": bool(total > COST_LIMIT_H),
+            "limit": COST_LIMIT_H,
+            "to_the_user": bool(not math.isfinite(total) or total > COST_LIMIT_H),
             "stop_rule": STOP_RULE_H, "formula": "20 x 6.5 min + 20 x beta*'s mean GPU minutes "
                                                  "+ 15 min x the main box's GPUs"}
 
@@ -1032,7 +1099,10 @@ def cmd_pilot(a) -> None:
             bad += check_m0(m0, ent, commit, side, msha)
             r["m0"] = m0.get("normalised_residual_median")
             r["s4"] = m0.get("action_projected_residual")
-            r["ev"] = last_metrics(name).get("explained_var")
+            last = last_metrics(name)
+            r["ev"] = last.get("explained_var")
+            r["metrics_finite"] = bool(last) and all(math.isfinite(v) for v in last.values())
+            r["nonfinite_metrics"] = sorted(k for k, v in last.items() if not math.isfinite(v))
         per[name] = r
     if bad:
         raise CheckFailed("the pilot's inputs do not check:\n  " + "\n  ".join(bad))
@@ -1041,7 +1111,9 @@ def cmd_pilot(a) -> None:
     rec = {"record": "vg1-pilot", "label": "exploratory (the pilot; never confirmatory)",
            "pilot_commit": commit, "runs": per, **rule, "cost_check": cost,
            "queue_gpu_hours": qh, "rule": {"ev_min": EV_MIN, "m0_max_exclusive": M0_MAX,
-                                           "betas": list(BETAS), "tie": "the smaller beta"},
+                                           "betas": list(BETAS), "tie": "the smaller beta",
+                                           "finite": "M1, M0, EV, the last metrics.csv row "
+                                                     "and the final checkpoint's parameters"},
            "provenance": provenance(t0, inputs)}
     write_new(path, rec)
     print(f"beta* = {rule['beta_star_text']}; eligible {rule['eligible']}; cost "

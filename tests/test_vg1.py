@@ -18,6 +18,7 @@ import os
 import shutil
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 import numpy as np
@@ -169,11 +170,18 @@ def test_main_runs_order_names_flags_and_dealing(VR, RM, tmp_path, monkeypatch):
             assert sorted(arms) == ["base", "base", "vgl", "vgl"]
 
     check(runs, 4, 4)                               # one 4-GPU box
-    for k in (2, 4, 5):                             # K single-GPU boxes, whole seeds
+    for k in (2, 4, 5, 10):                         # K single-GPU boxes, whole seeds
         shards = [RM.in_shard(runs, i, k) for i in range(k)]
-        assert sum(map(len, shards)) == 40
+        assert sorted(r["name"] for s in shards for r in s) == sorted(order)
         for jobs in shards:
             check(jobs, 1, 4)
+    for k in (1, 3):            # another K: both runs of a seed still share the box's GPU
+        for i in range(k):
+            sched = RM.schedule(RM.in_shard(runs, i, k), 1, 4)
+            seeds = {}
+            for _lane, _gpu, _p, run in sched:
+                seeds.setdefault(run["seed"], set()).add(run["arm"])
+            assert all(v == {"base", "vgl"} for v in seeds.values())
 
 
 @needs_git
@@ -500,8 +508,8 @@ def pilot(VA, **over):
             name = f"vg1p-b{b}-s{s}"
             per[name] = {"name": name, "beta": b, "seed": s, "finished": True,
                          "m1": {"0.1": -0.5, "0.3": -0.2, "1.0": -0.4}[b] + (s - 15) * 0.02,
-                         "m0": 9.0, "ev": 0.93, "gpu_minutes": {"0.1": 20.0, "0.3": 22.0,
-                                                                 "1.0": 24.0}[b]}
+                         "m0": 9.0, "ev": 0.93, "metrics_finite": True, "params_finite": True,
+                         "gpu_minutes": {"0.1": 20.0, "0.3": 22.0, "1.0": 24.0}[b]}
     for k, v in over.items():
         per[k].update(v)
     return per
@@ -525,6 +533,9 @@ def test_pilot_rule_ties_go_to_the_smaller_beta(VA):
     ({"m1": math.nan}, "non-finite metric"),
     ({"m0": None}, "non-finite metric"),
     ({"finished": False}, "did not finish"),
+    ({"metrics_finite": False}, "in its last metrics.csv row"),     # EV finite, value_loss NaN
+    ({"params_finite": False}, "non-finite parameter"),
+    ({"params_finite": None}, "non-finite parameter"),              # not recorded: not finite
 ])
 def test_pilot_rule_eligibility_branches(VA, over, why):
     r = VA.pilot_rule(pilot(VA, **{"vg1p-b0.3-s16": over}))
@@ -549,6 +560,15 @@ def test_cost_check_in_gpu_hours(VA):
     per = pilot(VA, **{f"vg1p-b0.3-s{s}": {"gpu_minutes": 33.0} for s in (15, 16)})
     c = VA.cost_check("0.3", per, 2.5, 4)
     assert c["total"] > 14 and c["to_the_user"] is True and c["stop_rule"] == 16.8
+    # the r of the draft's Section 8 table: a single-GPU pilot box, the main run on the x4 box
+    for r, total in ((2.0, 9.05), (3.6, 13.557), (4.1, 14.965)):      # about 9, 13.6, 15
+        per = pilot(VA, **{f"vg1p-b0.3-s{s}": {"gpu_minutes": 6.5 * r} for s in (15, 16)})
+        box = 6 * 6.5 * r / 60 + 0.25
+        assert VA.cost_check("0.3", per, box, 4)["total"] == pytest.approx(total, abs=5e-4)
+    # a run without times: the projection is not computable and goes to the user
+    per = pilot(VA, **{"vg1p-b0.3-s15": {"gpu_minutes": math.nan}})
+    c = VA.cost_check("0.3", per, 2.5, 4)
+    assert not math.isfinite(c["total"]) and c["to_the_user"] is True
 
 
 @needs_git
@@ -577,6 +597,23 @@ def test_gpu_minutes_share_each_gpu(VA):
     assert VA.queue_gpu_hours(ents) == pytest.approx(1.0)
 
 
+@pytest.mark.skipif(not hasattr(time, "tzset"), reason="needs time.tzset")
+def test_gpu_minutes_read_the_manifests_times_as_utc(VA, monkeypatch):
+    """round_manifest.py writes UTC. Read as local time (mktime), a span across New York's
+    fall-back (1 Nov 2026, 02:00 local) gained an hour: 00:30 to 02:30 read as 3 h, not 2."""
+    monkeypatch.setenv("TZ", "America/New_York")
+    time.tzset()
+    try:
+        span = [{"name": "a", "box": {"box": "m", "gpu": 0, "start": "2026-11-01T00:30:00Z",
+                                      "end": "2026-11-01T02:30:00Z", "gpu_count": 1}}]
+        assert VA.gpu_minutes(span) == {"a": pytest.approx(120.0)}
+        assert VA.queue_gpu_hours(span) == pytest.approx(2.0)
+        assert VA._t("2026-11-01T00:00:00Z") == 1793491200.0
+    finally:
+        monkeypatch.undo()
+        time.tzset()
+
+
 # ------------------------------------------------------------------------- the manifest
 
 
@@ -589,7 +626,8 @@ def plant_pilot_round(VA, VR, root: Path) -> tuple[list, Path]:
         for ts in (10_000_000, 199_884_800):
             (d / "ckpt" / f"{ts:012d}.pkl").write_bytes(os.urandom(64))
         (d / "config.json").write_text(json.dumps({
-            "args": {"seed": r["seed"], "skip_eval_rdev": True, "vg_coef": r["beta"]},
+            "args": {"seed": r["seed"], "skip_eval_rdev": True, "vg_coef": r["beta"],
+                     "vg_lambda": 0.95, "vg_winsor": 0.005},
             "vg": {"coef": r["beta"], "lam": 0.95, "winsor": 0.005}}))
         (d / "metrics.csv").write_text("explained_var\n0.93\n")
         (root / "runs" / f"{r['name']}.log").write_text("--skip-eval-rdev: no R-dev evaluation\n")
@@ -636,13 +674,17 @@ def test_manifest_records_every_file_and_the_box(VA, VR, root, monkeypatch):
     (lambda r: (r / "runs" / "vg1p-b1.0-s16" / "ckpt" / "000199884800.pkl").write_bytes(b"x"),
      "is not the box's file"),
     (lambda r: (r / "runs" / "vg1p-b0.1-s16" / "config.json").write_text(json.dumps(
-        {"args": {"seed": 16, "skip_eval_rdev": False}, "vg": {"coef": 0.1, "lam": 0.95,
-                                                               "winsor": 0.005}})),
+        {"args": {"seed": 16, "skip_eval_rdev": False, "vg_lambda": 0.95, "vg_winsor": 0.005},
+         "vg": {"coef": 0.1, "lam": 0.95, "winsor": 0.005}})),
      "--skip-eval-rdev is not in its config"),
     (lambda r: (r / "runs" / "vg1p-b0.1-s16" / "config.json").write_text(json.dumps(
-        {"args": {"seed": 16, "skip_eval_rdev": True}, "vg": {"coef": 0.3, "lam": 0.95,
-                                                              "winsor": 0.005}})),
-     "config vg"),
+        {"args": {"seed": 16, "skip_eval_rdev": True, "vg_lambda": 0.95, "vg_winsor": 0.005},
+         "vg": {"coef": 0.3, "lam": 0.95, "winsor": 0.005}})),
+     r"config vg \{"),
+    (lambda r: (r / "runs" / "vg1p-b0.1-s16" / "config.json").write_text(json.dumps(
+        {"args": {"seed": 16, "skip_eval_rdev": True, "vg_lambda": 0.9, "vg_winsor": 0.005},
+         "vg": {"coef": 0.1, "lam": 0.95, "winsor": 0.005}})),
+     "config vg_lambda 0.9"),
     (lambda r: (r / "runs" / "vg1p-b0.1-s16" / "ckpt" / "000199884800.pkl").unlink(),
      "no final checkpoint"),
 ])
@@ -675,17 +717,30 @@ def test_manifest_needs_a_classification_for_a_failed_run(VA, VR, root, monkeypa
 
 def test_main_configs_carry_the_arms_flags(VA):
     run = {"name": "vg1-vgl-s30", "seed": 30, "arm": "vgl"}
-    good = {"args": {"seed": 30, "skip_eval_rdev": False, "vg_coef": 0.3},
+    vg_args = {"vg_lambda": 0.95, "vg_winsor": 0.005}
+    good = {"args": {"seed": 30, "skip_eval_rdev": False, "vg_coef": 0.3, **vg_args},
             "vg": {"coef": 0.3, "lam": 0.95, "winsor": 0.005}}
     assert VA.config_problems(run, good, "main", "0.3") == []
     assert VA.config_problems(run, {**good, "vg": {**good["vg"], "coef": 1.0}}, "main", "0.3")
     assert VA.config_problems(run, {**good, "vg": {**good["vg"], "lam": 0.9}}, "main", "0.3")
     base = {"name": "vg1-base-s30", "seed": 30, "arm": "base"}
-    ok = {"args": {"seed": 30, "skip_eval_rdev": False, "vg_coef": 0.0}}
+    ok = {"args": {"seed": 30, "skip_eval_rdev": False, "vg_coef": 0.0, **vg_args}}
     assert VA.config_problems(base, ok, "main", "0.3") == []
     assert VA.config_problems(base, {**ok, "vg": good["vg"]}, "main", "0.3")
     assert VA.config_problems(base, {"args": {**ok["args"], "skip_eval_rdev": True}}, "main",
                               "0.3")
+    # round_manifest.py check compares --vg-lambda and --vg-winsor only where a cmd sets them
+    # (computed defaults), and no VG-1 cmd does: the manifest checks the recorded arguments
+    for key, v in (("vg_lambda", 0.9), ("vg_winsor", 0.01)):
+        for r, c in ((run, good), (base, ok)):
+            got = VA.config_problems(r, {**c, "args": {**c["args"], key: v}}, "main", "0.3")
+            assert any(key in p for p in got), (r["name"], key)
+    pilot_run = {"name": "vg1p-b0.1-s15", "seed": 15, "arm": "pilot", "beta": 0.1}
+    pc = {"args": {"seed": 15, "skip_eval_rdev": True, "vg_coef": 0.1, **vg_args},
+          "vg": {"coef": 0.1, "lam": 0.95, "winsor": 0.005}}
+    assert VA.config_problems(pilot_run, pc, "pilot", None) == []
+    assert VA.config_problems(pilot_run, {**pc, "args": {**pc["args"], "vg_lambda": 0.5}},
+                              "pilot", None)
 
 
 def test_round_check_tolerates_only_classified_runs(VA, monkeypatch):
@@ -713,30 +768,36 @@ def test_m0_and_c1_records_are_checked_against_the_manifest(VA, monkeypatch):
     m0 = {"run": "vg1p-b0.3-s15", "checkpoint": "000199884800.pkl", "checkpoint_sha256": "s",
           "sizes": {**VA.M0_SIZES, "refresh": 16}, "vg": dict(VA.M0_VG),
           "environment": {"head": "good", "src_or_scripts_dirty": False}}
-    assert VA.check_m0(m0, e, "c") == []
-    assert VA.check_m0({**m0, "checkpoint_sha256": "t"}, e, "c")
-    assert VA.check_m0({**m0, "sizes": {**VA.M0_SIZES, "seed": 1}}, e, "c")
-    assert VA.check_m0({**m0, "environment": {"head": "good", "src_or_scripts_dirty": True}},
-                       e, "c")
+    side = {"vg1_code_clean": True, "m0_sha256": "h", "head": "good", "commit": "c"}
+    assert VA.check_m0(m0, e, "c", side, "h") == []
+    assert VA.check_m0({**m0, "checkpoint_sha256": "t"}, e, "c", side, "h")
+    assert VA.check_m0({**m0, "sizes": {**VA.M0_SIZES, "seed": 1}}, e, "c", side, "h")
     assert VA.check_m0({**m0, "environment": {"head": "bad", "src_or_scripts_dirty": False}},
-                       e, "c")
-    # other studies' untracked files mark vgl.py's record dirty: m0's sidecar vouches instead
+                       e, "c", {**side, "head": "bad"}, "h")
+    # vgl.py's own clean flag trusts the index (assume-unchanged, skip-worktree): only m0's
+    # byte-level sidecar vouches, and other studies' untracked files (dirty here) do not count
+    assert VA.check_m0(m0, e, "c")
     dirty = {**m0, "environment": {"head": "good", "src_or_scripts_dirty": True}}
-    side = {"vg1_code_clean": True, "m0_sha256": "h", "head": "good"}
     assert VA.check_m0(dirty, e, "c", side, "h") == []
     assert VA.check_m0(dirty, e, "c", side, "other")              # not this record's sidecar
     assert VA.check_m0(dirty, e, "c", {**side, "head": "bad"}, "h")
     assert VA.check_m0(dirty, e, "c", {**side, "vg1_code_clean": False}, "h")
+    assert VA.check_m0(dirty, e, "c", {**side, "commit": "d"}, "h")      # checked elsewhere
     man = {"_sha256": "m", "runs": [e]}
+    monkeypatch.setattr(VA, "blob_sha256", lambda rev, rel: {"c": "v"}.get(rev))
     c1 = {"manifest_sha256": "m", "partial": False, "gate": {"pass": True},
-          "provenance": {"head": "good", "changed": [" M docs/x.md"]},
+          "provenance": {"head": "good", "changed": [" M docs/x.md"], "script_sha256": "v"},
           "networks": {"vg1p-b0.3-s15": {"checkpoint": {"sha256": "s"}}}}
     assert VA.check_c1(c1, man, "c") == []
     assert VA.check_c1({**c1, "partial": True}, man, "c")
     assert VA.check_c1({**c1, "gate": {"pass": False}}, man, "c")
-    assert VA.check_c1({**c1, "provenance": {"head": "good", "changed": [" M scripts/vgl.py"]}},
-                       man, "c")
+    assert VA.check_c1({**c1, "provenance": {**c1["provenance"],
+                                             "changed": [" M scripts/vgl.py"]}}, man, "c")
     assert VA.check_c1({**c1, "networks": {}}, man, "c")
+    # vg1_c1.py's own bytes: an edit the index hides still changes its recorded sha256
+    assert any("vg1_c1.py is not" in p for p in VA.check_c1(
+        {**c1, "provenance": {**c1["provenance"], "script_sha256": "w"}}, man, "c"))
+    assert VA.check_c1(c1, man, "d")
 
 
 # ------------------------------------------------------------------------- the tag gate
@@ -777,6 +838,8 @@ class FakeGit:
             return cp(0 if self.diff_clean else 1)
         if cmd == "ls-files":
             return cp(0, self.untracked if "--others" in args else "")
+        if cmd in ("ls-tree", "hash-object"):           # no files: code_byte_problems passes
+            return cp(0, "")
         if cmd == "log":
             return cp(0, self.log)
         if cmd == "status":
@@ -799,6 +862,75 @@ def test_tag_gate_refuses(VA, monkeypatch, change):
     monkeypatch.setattr(VA, "git_run", FakeGit(**change))
     with pytest.raises(PermissionError):
         VA.tag_gate()
+
+
+class ScratchRepo:
+    """A bare ``origin`` and a clone of it, with real git and no user config, holding a stand-in
+    for VG-1's code (``CODE``); ``VA.ROOT`` points at the clone."""
+
+    CODE = ("scripts/vg1_analysis.py", "src/apexzero/agents/ppo.py")
+
+    def __init__(self, tmp_path: Path, monkeypatch, VA):
+        cfg = tmp_path / "gitconfig"
+        cfg.write_text("")
+        for k, v in {"GIT_CONFIG_GLOBAL": str(cfg), "GIT_CONFIG_NOSYSTEM": "1",
+                     "GIT_AUTHOR_NAME": "t", "GIT_AUTHOR_EMAIL": "t@example.invalid",
+                     "GIT_COMMITTER_NAME": "t", "GIT_COMMITTER_EMAIL": "t@example.invalid"}.items():
+            monkeypatch.setenv(k, v)
+        self.origin, self.clone = tmp_path / "origin.git", tmp_path / "clone"
+        subprocess.run(["git", "init", "-q", "--bare", str(self.origin)], check=True)
+        subprocess.run(["git", "clone", "-q", str(self.origin), str(self.clone)], check=True,
+                       capture_output=True)
+        for rel in self.CODE:
+            (self.clone / rel).parent.mkdir(parents=True, exist_ok=True)
+            (self.clone / rel).write_text(f"# {rel}\nALPHA = 0.05\n")
+        self.git("add", "-A")
+        self.git("commit", "-qm", "first")
+        self.git("tag", "-a", "-m", "VG-1", "vg1-prereg-v1")
+        self.git("push", "-q", "origin", "HEAD:refs/heads/main", "refs/tags/vg1-prereg-v1")
+        monkeypatch.setattr(VA, "ROOT", self.clone)
+
+    def git(self, *args) -> str:
+        return subprocess.run(["git", *args], cwd=self.clone, check=True, capture_output=True,
+                              text=True).stdout.strip()
+
+
+@needs_git
+def test_tag_gate_passes_on_a_real_tag(VA, tmp_path, monkeypatch):
+    repo = ScratchRepo(tmp_path, monkeypatch, VA)
+    got = VA.tag_gate(paths=("scripts", "src/apexzero"))
+    assert got["commit"] == repo.git("rev-parse", "HEAD") and got["tag_object"] != got["commit"]
+    assert VA.code_byte_problems(got["commit"], ("scripts", "src/apexzero")) == []
+
+
+@needs_git
+@pytest.mark.parametrize("flag", ["--assume-unchanged", "--skip-worktree"])
+def test_tag_gate_refuses_an_edit_git_diff_does_not_show(VA, tmp_path, monkeypatch, flag):
+    """git diff and git status skip a file marked assume-unchanged or skip-worktree; the gate
+    and m0's check compare the bytes on disk with the tag's."""
+    repo = ScratchRepo(tmp_path, monkeypatch, VA)
+    rel = "src/apexzero/agents/ppo.py"
+    repo.git("update-index", flag, rel)
+    (repo.clone / rel).write_text(f"# {rel}\nALPHA = 0.10\n")
+    assert repo.git("diff", "--name-only", "vg1-prereg-v1") == ""
+    assert repo.git("status", "--porcelain", "--untracked-files=no") == ""
+    with pytest.raises(PermissionError, match="ppo.py on disk is not"):
+        VA.tag_gate(paths=("scripts", "src/apexzero"))
+    assert VA.code_byte_problems(repo.git("rev-parse", "HEAD"), ("src/apexzero",)) == [
+        f"{rel} on disk is not {repo.git('rev-parse', 'HEAD')[:12]}'s"]
+
+
+@needs_git
+def test_code_byte_problems_names_a_missing_and_an_added_file(VA, tmp_path, monkeypatch):
+    repo = ScratchRepo(tmp_path, monkeypatch, VA)
+    tag = repo.git("rev-parse", "HEAD")
+    repo.git("update-index", "--skip-worktree", "scripts/vg1_analysis.py")
+    (repo.clone / "scripts" / "vg1_analysis.py").unlink()
+    (repo.clone / "src" / "apexzero" / "new.py").write_text("x = 1\n")
+    repo.git("add", "src/apexzero/new.py")
+    got = VA.code_byte_problems(tag, ("scripts", "src/apexzero"))
+    assert got == [f"src/apexzero/new.py is tracked here but not in {tag[:12]}",
+                   "scripts/vg1_analysis.py is missing on disk"]
 
 
 def test_analyse_runs_once(VA, root, monkeypatch):
