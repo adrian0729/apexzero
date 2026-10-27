@@ -1801,3 +1801,161 @@ targets only:
      `cs13-n.json` and `rows.npz` (item 5's rows, masks and predictions).
 
    Copies of the JSON summaries go under `docs/findings/costate-followups/`.
+
+### Amendment 10 (2026-10-27)
+
+**What changed.** CS-6's, CS-12's, CS-14's and CS-15's operational details, where Section 4's
+text leaves a choice; their pools (CS-6 runs in one process, since its measured cost is
+minutes); descriptive companions; two new wiring checks (CS-15 against CS-8 (c)'s record, CS-6
+against the confirmatory C1). No question or expected direction changes. Two things are fixed
+that the plan does not name: the stratum CS-12's and CS-15's C2 probes are fitted on (item 1,
+as CS-8 (c) and CS-9), and the order of CS-14's steps (item 4: the window rule and its stop rule
+come before K2b for q_c and before any network, since K2b can only remove rows). **Why.** To fix
+these choices before any CS-6, CS-12, CS-14 or CS-15 number exists. **Computed or seen before
+it.** No CS-6, CS-12, CS-14 or CS-15 number, and no trained network's output. Read: the frozen
+code, the layouts of the bound files, and these facts:
+- The record pins 16 snapshots per decision network (`snapshots.<label>`), from 10M timesteps to
+  the final one; the last snapshot's pin (path, sha256, timesteps) is the network's own pin in
+  all 9.
+- The cost of one snapshot, measured on a random-init stand-in (a random-init critic with 5
+  heads under G1's 10M snapshot's obs_rms): about 6 s on T (the pullback 3.2 s, the flags 2.2 s,
+  C1 0.4 s). The 144 snapshots take about 15 min in one process.
+- CS-8 (c)'s C2 on the stratum of item 1 took about 230 s per network in a 4-worker pool.
+- The 25 networks outside the decision set have activations with z, the actor's h1 to h3, m
+  and 5 random controls (`random0_h3` to `random4_h3`, with their m), S1 to S3 included.
+- CS-14's window rule, read from T's table (targets and strata only). Of T's 1,581 interior
+  approach rows, 113 have the row at t + 60 still in the approach phase (necessary for a whole
+  window t … t + 64 in it), and 36 have the row at t + 65 in it (sufficient). All 72 interior
+  exit rows have t + 64 ≤ W, and a plan state past s_c1 stays in the exit phase. So at most 185
+  rows can pass the window rule.
+
+1. **Shared.**
+   - **Reading the expected directions** (as amendment 1 item 5): a condition stated without a
+     count holds in at least 6 of the 9; "all" and "no" mean every network or snapshot the
+     condition names; point estimates unless a CI is named. Every part is counted and reported.
+   - **CIs.** 95% percentile intervals on the frozen counts (`probes.cluster_counts(48)`, stream
+     costate_boot); a statistic against the pool carries the two-level CI on the frozen
+     `probes.pool_draws(20)`, with the geometry-only CI and the rank of 21 beside it.
+   - **C2's stratum (CS-12, CS-15).** T's interior rows of the approach and exit phases (1,653,
+     through `guard_rows`), key weights renormalised on it, each component scored on its decision
+     rows (s and ξ; n and vx have none), as CS-8 (c)'s f̂_D reference and N's C2: under R5 an
+     exploratory probe is fitted on approach and exit rows only. λ_res is the frozen f̂_D
+     (`checked_lam_res`, amendment 7 item 1), by fold.
+   - **Another item's output** (CS-8's summary, read by CS-12 and CS-15) is read only through
+     its stamp: the label exploratory, the item CS-8, the stamp binding the file's bytes, not
+     partial. Its sha256 is recorded among the inputs.
+   - **Pools.** 4 workers × 2 threads, niced by 10 (R9).
+   - **Outputs.** `outputs/costate/exploratory/<item>/summary.json` and the arrays named below;
+     a copy of each summary under `docs/findings/costate-followups/`.
+
+2. **CS-6.**
+   - **Snapshots.** Each decision network's 16 pins, each loaded through `load_agent` (sha256 and
+     timesteps checked) and recorded among the inputs. The critic is `critic.trained_critic`,
+     after `unlock` (R4).
+   - **The pullback.** `critic.pullback` per T key on the bound world's `Inputs` and `ObsJac`, as
+     the critic stage computed it (`critic_of`); the main V's g (output 0) is used.
+   - **The frame.** The snapshot's flags under its own obs_rms (`inputs.flags`) and `c1_frame`:
+     its decision mask is s's observability under that obs_rms with K2b's frozen exclusions.
+     C1's rows pass through `guard_rows`.
+   - **The statistic.** `scripts/costate.py`'s `c1_bare` on the frozen counts: C1 without nulls,
+     the frozen calibration, every slope CI and the leave-one-geometry-out points. Per snapshot:
+     R²_c of s and ξ, the statistic (their mean; the plan's "R²_c") with its CI, and each
+     component's weighted Spearman with its CI.
+   - **Wiring (each stops the item),** at the last snapshot, whose pin is the network's:
+     - its g equals the stored `post/critic` g of the main V, all 8 components, to 10⁻¹⁰ of each
+       row's largest |g| (`PULLBACK_TOL`; the plan's step 5);
+     - its decision mask's sha256 equals `decisions.json`'s;
+     - its C1 reproduces `decisions.json`'s C1 (R²_c of s and ξ, the statistic, its CI, the
+       per-fold a and b of s and ξ) to 10⁻⁸ (plan Section 3 'Reuse').
+   - **The trends.** `analysis.c1_dev` per network over the 16 (timesteps, value) pairs, for five
+     series: the statistic, R²_c of s, R²_c of ξ, and the Spearman of s and of ξ. Its
+     per-variant verdict ('confirm' when ρ > 0 in at least 2 of 3 seeds) is reported as that
+     description.
+   - **No pool.** The 144 snapshots run in one process, niced (about 15 min).
+   - **Readings.** E6.1 holds when all 144 snapshots have the statistic's CI upper end below 0.2;
+     the count per network is reported. E6.2 holds when the trend of ξ's Spearman has ρ > 0 in
+     at least 2 of 3 seeds in each of the three variants. E6.3: the statistic's trend is
+     reported, with no expected direction.
+   - **Descriptives.** Per snapshot, s's decision rows (they move with the obs_rms) and the
+     calibration's clamped folds.
+   - **Outputs.** `summary.json`, and `g.npz` (per snapshot, the main V's g as float32, and its
+     decision mask).
+
+3. **CS-12.**
+   - **Networks.** The 22 generalists outside the decision set, in `analysis.GENERALISTS`' order,
+     and S1 to S3: 25. Each is loaded through its pin for its obs_rms and PPOConfig only. No
+     trained network is evaluated, so the item does not unlock. Its flags, `c1_frame` and
+     decision mask are rebuilt (`decisions.json` records no mask for them).
+   - **Activations.** `post/activations/<net>.npz`, read only if its stamp passes R3's rule
+     (`unbound_problems`); its sha256 is recorded. z is clip(z, ±10).
+   - **The pool.** The 20 pool actors (`probes.random_actor(cfg, s)`, s = 0–19, the network's
+     PPOConfig), their h3 on the network's z, computed here. Wiring in each unit: seeds 0–4
+     rebuild the stored `random<s>_h3` and `random<s>_m` on the unit's rows to 10⁻¹²
+     (`RANDOM_TOL`), or the item stops.
+   - **C2.** `analysis.c2_network` on item 1's stratum, as CS-8 (c)'s reference: base [z, m]; the
+     trained h3 against the 20 pool actors with the two-level draws; the frozen λ_res by fold;
+     the frozen power floor (s, ξ); the network's decision mask; the single-geometry rule's sets
+     ('rule').
+   - **C2-sw.** `analysis.c2_sw_network` on CS-8's 2,507 rows (T's pedal-switching rows of the
+     approach and exit phases, through `guard_rows`): σ^ped winsorised at its frozen bounds,
+     key weights renormalised on the rows, the trained h3 against the pool with the two-level
+     draws, the single-geometry rule's sets, ρ(m_pedal − 1, σ^ped) beside it.
+   - **Beside them (descriptive).** The 9 decision networks' records on the same rows, quoted
+     from CS-8's summary: (a)'s C2-sw on σ^ped and (c)'s f̂_D reference C2.
+   - **Pooled.** One unit per (network, statistic): 50 units.
+   - **Readings.** Ruled decisions (after the single-geometry rule), the unruled ones beside.
+     E12.1 holds when C2 is 'inconclusive' or 'refute' in at least 22 of the 25 and 'confirm' in
+     none; a 'not testable' network counts toward neither and is named. E12.2 holds when the
+     trained h3 ranks first of 21 on C2-sw in at least 15 of the 22 generalists and in at most 1
+     of the 3 specialists.
+
+4. **CS-14.**
+   - **The window rule first.** Per T key, `targets.key_targets` (the plan T's targets read), its
+     stimulus landmarks and its optimum's brake onset (`states.brake_onset`). A T row of the key
+     that is interior and in the approach or exit phase passes when t + 64 ≤ W and the phases
+     (`states.phases`) of the plan states x_t, …, x_{t+64} all equal the row's own. This reads
+     targets only (R5). Wiring: at every T row of the key, the plan's s_t, the phase and s_b
+     equal T's columns (s to 10⁻¹² relative), or the item stops.
+   - **The stop rule (step 8) on it.** K2b for q_c can only remove rows, so the stop rule is
+     applied to the window rule's count before K2b for q_c and before any network. With fewer
+     than 200 rows (at most 185 by the bounds above), the item writes its counts with 'not
+     scorable under #8' and stops: K2b for q_c is not run, no critic is evaluated, and E14.1 to
+     E14.3 are not read. If 200 or more passed (the bounds above exclude it), the item would
+     stop there too, and a further amendment would fix the rest before any network.
+   - **Pooled.** One unit per block of at most 32 of T's keys, in T's key order.
+   - **Descriptives.** Rows passing by phase; the keys holding them; the window's length
+     s_{t+64} − s_t (median and range); the rows that fail only on t + 64 > W.
+   - **Outputs.** `summary.json`.
+
+5. **CS-15** (the 9 decision networks).
+   - **Inputs.** The bound activations; each checkpoint through its pin for its PPOConfig only.
+     No trained network is evaluated, so the item does not unlock.
+   - **Step 1, FWL.** The primary C2's probes on item 1's stratum: the base [z, m] and, for the
+     trained h3 and each of the 20 pool actors' stored h3, the full [z, m, h], each by
+     `probes.ridge_cv`. The C2 record is assembled from them by `probes.gain` as
+     `analysis.c2_network` assembles it (a test checks that the two agree). Wiring: its
+     statistic, CI, two-level and geometry CIs and per-component gains equal CS-8 (c)'s f̂_D
+     reference record of the network to 10⁻¹⁰, or the item stops. The two-stage fit
+     `probes.fwl(base, h, λ_res, folds, w, full.alpha)` is made for each of the 21 full probes,
+     at that probe's own penalties. Reported:
+     - the trained h3's raw gain R²(full) − R²(base), per component and as the mean over s and
+       ξ, one-stage and FWL, with their paired difference and its geometry-bootstrap CI
+       (`probes.gain` without controls, on the same counts);
+     - the C2 statistic under FWL (each of the 21 full probes replaced by its FWL fit) beside the
+       one-stage one, with the paired difference's two-level CI.
+
+     E15.1 holds when, in at least 6 of 9, the FWL raw gain (the mean over s and ξ) is within
+     0.01 of the one-stage one; the statistic's difference is co-reported.
+   - **Step 2, h1 and h2.** `analysis.c2_network` with the trained actor's h1 (or h2) from the
+     bound activations in place of h3, against the 20 pool actors' h1 (or h2), computed here
+     (`probes.hidden(probes.random_actor(cfg, s), z)`); everything else as step 1. Wiring: the
+     same call's h3 for seed 0 rebuilds the stored `random0_h3` to 10⁻¹². E15.2 holds when h1's
+     statistic is at most h3's (step 1's), and so is h2's, each in at least 6 of 9.
+   - **Step 3, C2 on D.** `analysis.c2_network` with h3 on D's rows (T's t = 0 rows: 477, all
+     interior and approach-phase, through `guard_rows`) as the stratum, key weights renormalised
+     on D, everything else as step 1. Its own rules give 'not testable' (the inner CV, no
+     passing component with a scored row). E15.3 holds when the ruled decision is 'not
+     testable' or 'inconclusive', in at least 6 of 9.
+   - **Pooled.** Per network, 4 units (step 1; h1; h2; D): 36 units.
+   - **Outputs.** `summary.json`, and `preds.npz` (step 1's base, trained full and FWL
+     out-of-fold predictions per network).
