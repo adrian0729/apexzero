@@ -1632,3 +1632,300 @@ def test_cs8_expected(cx):
     assert e["count_geometry6"] == 5 and e["count_narrower"] == 0 and not e["holds"]
     e = cx.cs8_expected(sw, null, {}, {"reason": "no candidate"})
     assert e["E8c.1"]["holds"] is None
+
+
+# ------------------------------------------------------------------------- CS-9: N
+
+
+def test_cs9_is_registered_trained_pooled_with_stages(cx):
+    it = cx.BY_CMD["cs-9"]
+    assert it.trained and it.solves and it.pooled and "CS-9" in cx.COMPUTE
+    assert {"keys:n", "gates:k0", "gates:k2b", "critic:all", "own",
+            "activations:decision"} <= set(it.reads)
+    a = cx.build_parser().parse_args(["cs-9", "--stage", "k2b"])
+    assert a.stage == "k2b"
+    assert cx.build_parser().parse_args(["cs-9"]).stage == "all"
+    with pytest.raises(SystemExit):
+        cx.build_parser().parse_args(["cs-9", "--stage", "everything"])
+    assert cx._command(["x", "--stage", "build", "cs-9"]) == "cs-9"
+    assert cx.N_AGENTS == cx.CS1_ORDER + ("S1", "S2", "S3")
+
+
+def test_rel_gap(cx):
+    a = np.array([1.0, np.nan, 3.0])
+    assert cx.rel_gap(a, a.copy()) == 0.0
+    assert cx.rel_gap(a + [0.0, 0.0, 3e-12], a) == pytest.approx(1e-12)
+    assert cx.rel_gap(a, np.array([1.0, 2.0, 3.0])) == float("inf")
+    assert cx.rel_gap(np.array(["a", "b"]), np.array(["a", "b"])) == 0.0
+    assert cx.rel_gap(np.array(["a", "b"]), np.array(["a", "c"])) == float("inf")
+    assert cx.rel_gap(np.array([True, False]), np.array([True, False])) == 0.0
+    assert cx.rel_gap(np.zeros(2), np.zeros(3)) == float("inf")
+
+
+def _geo_tab(geos, per: int = 3):
+    rows = [(r, t) for r, t in geos for _ in range(per)]
+    n = len(rows)
+    return {"key_id": np.array([f"k{i}" for i in range(n)]),
+            "R": np.array([r for r, _ in rows], float),
+            "theta": np.array([t for _, t in rows], float)}
+
+
+GEOS = [(6.0, 90.0), (10.5, 180.0), (20.0, 45.0), (30.0, 90.0), (44.7, 180.0), (60.0, 60.0),
+        (80.0, 90.0), (100.0, 135.0), (150.0, 180.0), (200.0, 90.0), (250.0, 45.0),
+        (300.0, 180.0)]
+
+
+def test_k2b_picks_strata_and_stream(cx):
+    from apexzero.costate import states as ST
+
+    tab = _geo_tab(GEOS, per=4)
+    picks = cx.k2b_picks(tab, 10)
+    assert len(picks) == 10 and len({p["key_id"] for p in picks}) == 10
+    assert picks == cx.k2b_picks(tab, 10)
+    uniq = np.unique(np.stack([tab["R"], tab["theta"]], 1), axis=0)
+    strata = sorted(set((ST.r_tercile(uniq[:, 0], uniq[:, 1]) * 10
+                         + ST.theta_class(uniq[:, 1])).tolist()))
+    for p in picks:
+        assert p["stratum"] == strata[p["pick"] % len(strata)]
+        g = int(np.flatnonzero((uniq == [tab["R"][p["row"]], tab["theta"][p["row"]]])
+                               .all(1))[0])
+        assert (ST.r_tercile(uniq[:, 0], uniq[:, 1]) * 10 + ST.theta_class(uniq[:, 1]))[g] \
+            == p["stratum"]
+    # the draw is R10's stream for the pick, alone
+    p0 = picks[0]
+    geo = np.stack([tab["R"], tab["theta"]], 1)
+    _, inv = np.unique(geo, axis=0, return_inverse=True)
+    per_row = (ST.r_tercile(uniq[:, 0], uniq[:, 1]) * 10 + ST.theta_class(uniq[:, 1]))[inv]
+    cand = np.flatnonzero(per_row == p0["stratum"])
+    j = cand[np.random.default_rng([cx.N_SEED, 9, p0["pick"]]).integers(len(cand))]
+    assert p0["row"] == j
+    assert len(cx.k2b_picks(_geo_tab(GEOS[:2], per=2), 26)) == 4   # no more keys than there are
+
+
+def test_union_exclusions(cx):
+    T = {"approach": ["n", "vx"], "braking": ["s", "n", "xi", "vx"], "exit": ["n", "xi", "vx"]}
+    N = {"approach": ["vx", "s"], "braking": [], "corner": [], "exit": []}
+    u = cx.union_exclusions(T, N)
+    assert u["approach"] == ["s", "n", "vx"] and u["corner"] == [] and u["exit"] == T["exit"]
+    assert set(u) == {"approach", "braking", "corner", "exit"}
+
+
+def test_present_clusters(cx):
+    g = np.array([5, 5, 2, 9, 2, 7])
+    rows = np.array([True, True, True, False, True, False])
+    cl, G, present = cx.present_clusters(g, rows)
+    assert G == 2 and present.tolist() == [2, 5]
+    assert cl[rows].tolist() == [1, 1, 0, 0]
+
+
+def test_n_folds_carry_ts_geometry_folds(cx):
+    from apexzero.costate import probes as PB
+    from apexzero.costate import states as ST
+
+    T = _geo_tab(GEOS, per=3)
+    foT = PB.folds(T)
+    gT = ST.geometry_index(T)
+    pick = [1, 4, 4, 7, 11]
+    N = {"geometry_T": np.array(pick)}
+    fo, outer_g = cx.n_folds(T, N)
+    for i, gi in enumerate(pick):
+        r = int(np.flatnonzero(gT == gi)[0])
+        assert fo.outer[i] == foT.outer[r] == outer_g[gi]
+        assert np.array_equal(fo.inner[:, i], foT.inner[:, r])
+    assert fo.cluster.tolist() == pick
+
+
+def test_geometry_T_maps_and_refuses(cx):
+    tab = _geo_tab(GEOS[:3], per=2)
+    geos = [[r, t] for r, t in GEOS]
+    assert cx.geometry_T(tab, geos).tolist() == [0, 0, 1, 1, 2, 2]
+    tab["geometry_T"] = cx.geometry_T(tab, geos)
+    assert cx.n_tab_problems(tab, {"geometries": geos}) == []
+    tab["geometry_T"] = np.array([0, 0, 1, 1, 1, 2])
+    assert cx.n_tab_problems(tab, {"geometries": geos})
+    with pytest.raises(SystemExit, match="not among T's 48"):
+        cx.geometry_T({"R": np.array([7.0]), "theta": np.array([90.0])}, geos)
+
+
+def test_cross_fit_external_reproduces_cross_fit(cx):
+    from apexzero.costate import states as ST
+
+    rng = np.random.default_rng(3)
+    X = _d1(240, rng)
+    Y = rng.standard_normal((240, 3))
+    fold = rng.integers(0, 6, 240)
+    w = rng.uniform(0.5, 1.5, 240)
+    ref = ST.cross_fit(X, Y, fold, w, k=8).by_fold
+    got = cx.cross_fit_external(X, Y, fold, w, X, Y, fold, 8)
+    assert np.max(np.abs(got - ref)) <= 1e-12
+    # external rows: the fit of the folds other than their own (held out) or f and g
+    Xe, Ye, fe = X[:5] + 0.01, Y[:5] + 1.0, fold[:5]
+    e = cx.cross_fit_external(X, Y, fold, w, Xe, Ye, fe, 8)
+    f = int(fe[0])
+    tr = fold != f
+    want = Ye[0] - ST.knn_fit(X[tr], Y[tr], w[tr], 8).predict(Xe[:1])[0]
+    assert np.allclose(e[f, 0], want, rtol=0, atol=1e-14)
+    g = (f + 1) % 6
+    fit = (fold != g) & (fold != f)
+    want = Ye[0] - ST.knn_fit(X[fit], Y[fit], w[fit], 8).predict(Xe[:1])[0]
+    assert np.allclose(e[g, 0], want, rtol=0, atol=1e-14)
+
+
+def test_match_pairs(cx):
+    n_side = {"stim_id": np.array([1, 1, 2]), "ds_apex": np.array([-100.0, -50.0, -10.0]),
+              "vx": np.array([60.0, 50.0, 40.0]), "direction": np.array([1, 1, -1])}
+    t_side = {"stim_id": np.array([1, 1, 1, 2, 3]),
+              "ds_apex": np.array([-101.0, -98.0, -50.5, -10.0, -10.0]),
+              "vx": np.array([60.5, 60.2, 49.5, 40.2, 40.0]),
+              "direction": np.array([1, 1, 1, -1, -1])}
+    I, J = cx.match_pairs(n_side, t_side)
+    assert sorted(zip(I.tolist(), J.tolist())) == [(0, 0), (0, 1), (1, 2), (2, 3)]
+    t_side["vx"] = t_side["vx"] + 0.6        # |delta vx| < 1 m/s only
+    I, J = cx.match_pairs(n_side, t_side)
+    assert sorted(zip(I.tolist(), J.tolist())) == [(0, 1), (1, 2), (2, 3)]
+
+
+def test_pairs_record(cx):
+    rng = np.random.default_rng(5)
+    nN, nT = 40, 60
+    geo_n = rng.integers(0, 6, nN)
+    I = np.repeat(np.arange(nN), 2)
+    J = rng.integers(0, nT, 2 * nN)
+    res_n, res_t = rng.standard_normal((nN, 2)), rng.standard_normal((nT, 2))
+    full_n, full_t = res_n.copy(), res_t.copy()           # predicts delta lambda_res exactly
+    base_n, base_t = rng.standard_normal((nN, 2)), rng.standard_normal((nT, 2))
+    vn, vt = np.ones((nN, 4), bool), np.ones((nT, 4), bool)
+    vn[:5, 2] = False                                     # xi masked on 5 N rows
+    rec = cx.pairs_record({"base": base_n, "full": full_n}, {"base": base_t, "full": full_t},
+                          res_n, res_t, vn, vt, np.full(nN, 1 / nN), np.full(nT, 1 / nT),
+                          geo_n, I, J)
+    s, xi = rec["components"]["s"], rec["components"]["xi"]
+    assert rec["n_pairs"] == 2 * nN and s["n"] == 2 * nN and xi["n"] == 2 * nN - 10
+    assert s["full"]["rho"] == pytest.approx(1.0) and xi["full"]["rho"] == pytest.approx(1.0)
+    assert s["difference"]["rho"] == pytest.approx(1.0 - s["base"]["rho"])
+    assert s["difference"]["ci"][0] > 0.0 and s["geometries"] == len(np.unique(geo_n))
+    few = cx.pairs_record({"base": base_n, "full": full_n}, {"base": base_t, "full": full_t},
+                          res_n, res_t, vn, vt, np.ones(nN), np.ones(nT), geo_n, I[:2], J[:2])
+    assert few["components"]["s"]["reason"] == "fewer than 3 pairs"
+
+
+def test_union_fit_zero_weight_rows(cx):
+    rng = np.random.default_rng(11)
+    nT, nN, G = 180, 30, 12
+    fo = _synthetic_folds(nT, G, rng)
+    gN = rng.integers(0, G, nN)
+    outer_g = np.array([fo.outer[fo.cluster == g][0] for g in range(G)])
+    inner_g = np.stack([[fo.inner[f][fo.cluster == g][0] for g in range(G)] for f in range(6)])
+
+    def side(n, geo, outer, inner, w):
+        z = rng.standard_normal((n, 6))
+        h3 = np.tanh(z @ rng.standard_normal((6, 8)))
+        y = z[:, :2] + 0.3 * h3[:, :2] + 0.1 * rng.standard_normal((n, 2))
+        return {"z": z, "m": rng.standard_normal((n, 2)), "h3": h3,
+                "res_by_fold": np.broadcast_to(y, (6, n, 2)).copy(), "outer": outer,
+                "inner": inner, "geo": geo, "w": w}
+
+    ts = side(nT, fo.cluster, fo.outer, fo.inner, np.full(nT, 1 / nT))
+    ns = side(nN, gN, outer_g[gN], inner_g[:, gN], None)
+    fit = cx.union_fit(ts, ns)
+    assert all(v <= cx.PRED_TOL for v in fit["gap"].values())
+    assert np.isfinite(fit["pred_n"]["full"]).all() and fit["pred_n"]["base"].shape == (nN, 2)
+
+
+def test_split_blocks(cx):
+    blocks = [{"rows": np.arange(n)} for n in (30, 5, 5, 40, 10, 10)]
+    parts = cx.split_blocks(blocks, 4)
+    assert sum(len(p) for p in parts) == 6 and 1 <= len(parts) <= 4
+    flat = [b for p in parts for b in p]
+    assert all(a is b for a, b in zip(flat, blocks, strict=True))     # whole, in order
+    assert cx.split_blocks([], 4) == []
+
+
+def test_trim_c1_logo(cx):
+    rec = {"stat": 0.1, "logo": {"kind": "rule", "geometry": [1, 2, 3],
+                                 "decision": ["refute", "refute", "inconclusive"],
+                                 "most_influential": {"geometry": 3}, "stat": [0, 1, 2]}}
+    t = cx.trim_c1_logo(rec)
+    assert t["logo"] == {"kind": "rule", "n_sets": 3, "decisions": {"refute": 2,
+                                                                   "inconclusive": 1},
+                         "most_influential": {"geometry": 3}}
+    assert t["stat"] == 0.1 and cx.trim_c1_logo({"stat": 1}) == {"stat": 1}
+
+
+def _n_net(c1="refute", c2="inconclusive", sw="refute", own="refute"):
+    return {"C1": {"decision": c1}, "C2": {"decision": c2}, "C2-sw": {"decision": sw},
+            "C1-own": {"primary": {"decision": own}}}
+
+
+def test_cs9_expected(cx):
+    nets = {lb: _n_net() for lb in cx.CS1_ORDER}
+    nets["S1"] = _n_net(c1="confirm")                     # descriptive: not counted
+    k2b = {"E9.4": {"holds": True}}
+    e = cx.cs9_expected(nets, k2b)
+    assert all(e[k]["holds"] for k in ("E9.1", "E9.2", "E9.3", "E9.5"))
+    assert e["n_networks"] == 9 and e["E9.4"] == {"holds": True}
+    nets["G1"] = _n_net(c1="inconclusive", c2="not testable", sw="inconclusive")
+    nets["G2"] = _n_net(sw="inconclusive", own="inconclusive")
+    nets["G3"] = _n_net(sw="inconclusive", own="inconclusive")
+    nets["G3s1"] = _n_net(own="inconclusive")
+    e = cx.cs9_expected(nets, k2b)
+    assert not e["E9.1"]["holds"] and not e["E9.2"]["holds"]
+    assert e["E9.2"]["not_testable"] == ["G1"] and e["E9.3"]["count"] == 6
+    assert e["E9.3"]["holds"] and e["E9.5"]["count"] == 6 and e["E9.5"]["holds"]
+
+
+def test_cs13_expected(cx):
+    def comp(b, f, lo, hi):
+        return {"base": {"rho": b}, "full": {"rho": f}, "difference": {"ci": [lo, hi]}}
+
+    nets = {lb: {"components": {"s": comp(0.2, 0.25, -0.1, 0.1),
+                                "xi": comp(0.1, 0.12, -0.05, 0.08)}} for lb in cx.CS1_ORDER}
+    e = cx.cs13_expected(nets)
+    assert e["E13.1"]["holds"] and e["E13.2"]["holds"]
+    for lb in ("G1", "G2", "G3"):
+        nets[lb]["components"]["s"] = comp(0.5, 0.6, 0.05, 0.2)
+    e = cx.cs13_expected(nets)
+    assert e["E13.1"]["count"] == 6 and e["E13.1"]["holds"]
+    assert e["E13.2"]["count"] == 6 and not e["E13.2"]["holds"]
+    nets["G1s1"] = {"components": {"s": {"n": 2, "reason": "fewer than 3 pairs"}}}
+    assert not cx.cs13_expected(nets)["E13.1"]["per_network"]["G1s1"]
+
+
+def test_k2b_gap(cx):
+    want = {"reach": 100.0, "s2": 120.0,
+            "severities": {"fast": {"ok": True, "rows": [[0.1, 0.2]], "phase": ["approach"]},
+                           "slow": {"ok": False}}}
+    got = json.loads(json.dumps(want))
+    assert cx.k2b_gap(got, want) == 0.0
+    got["severities"]["fast"]["rows"] = [[0.1, 0.2 + 1e-7]]
+    assert cx.k2b_gap(got, want) == pytest.approx(1e-7)
+    got["severities"]["fast"]["phase"] = ["braking"]
+    assert cx.k2b_gap(got, want) == float("inf")
+    got = json.loads(json.dumps(want))
+    got["severities"]["slow"] = {"ok": True, "rows": [[0.0, 0.0]], "phase": ["approach"]}
+    assert cx.k2b_gap(got, want) == float("inf")
+
+
+def test_stage_file_checks_stamps(cx, tmp_path, monkeypatch):
+    monkeypatch.setattr(cx, "import_problems", lambda *a, **k: [])
+    run = cx.Run(cx.BY_CMD["cs-9"], _args(out=str(tmp_path)), REPO, {}, {}, {})
+    p = run.write_json("build", {"n": 3})
+    q = run.write_npz("n_world", {"a": np.arange(4)})
+    assert cx.stage_file(run, "build.json") == p
+    assert cx.stage_file(run, "n_world.npz") == q
+    assert run.inputs["<outside>/cs-9/build.json"] == cx.sha256_file(p)
+    with pytest.raises(SystemExit, match="missing"):
+        cx.stage_file(run, "k2b.json")
+    q.write_bytes(q.read_bytes() + b"x")                  # tampered: its stamp no longer binds it
+    with pytest.raises(SystemExit, match="does not bind"):
+        cx.stage_file(run, "n_world.npz")
+    other = cx.Run(cx.BY_CMD["cs-10"], _args(out=str(tmp_path)), REPO, {}, {}, {})
+    r = other.write_json("summary", {"n": 1})
+    run2 = cx.Run(cx.BY_CMD["cs-9"], _args(out=str(tmp_path)), REPO, {}, {}, {})
+    run2.out = r.parent
+    with pytest.raises(SystemExit, match="not an exploratory CS-9"):
+        cx.stage_file(run2, "summary.json")
+    canon = cx.Run(cx.BY_CMD["cs-9"], _args(out=str(tmp_path)), REPO, {}, {}, {})
+    canon.partial = []                                    # a canonical run reads no partial one
+    with pytest.raises(SystemExit, match="partial"):
+        cx.stage_file(canon, "build.json")
