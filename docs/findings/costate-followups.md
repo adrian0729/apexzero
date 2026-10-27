@@ -1402,3 +1402,326 @@ last column is CS-11 on D (above), on D's 453–476 rows.
 - **Scope.** Approach rows only: N has no exit, braking or corner state. K2b on N placed its
   second corner just beyond x_1's preview, much nearer than on T, and still excluded nothing.
 - None of this changes a decision of `costate-prereg-v1`.
+
+## CS-6, CS-12, CS-14 and CS-15: the runs (exploratory)
+
+- **Plan and code.** All four ran at `937b712` (code and tests), under the plan with amendment 10
+  (`5cf5d2d`: their operational details, committed alone before any of their numbers).
+- **CS-6.** `scripts/costate_exploratory.py cs-6`, in one process, niced, in 637 s: about 4.4 s
+  per snapshot, as amendment 10 measured on a random-init stand-in.
+- **CS-12.** `cs-12`: 50 units ((network, statistic)) on 4 workers × 2 XLA threads, niced, in
+  33 min (C2 about 195 s and C2-sw about 70 s of worker time per network). The plan estimated
+  45–60 min.
+- **CS-14.** `cs-14`: 15 units (blocks of at most 32 of T's keys), same pool, in 32 s.
+- **CS-15.** `cs-15`: 36 units ((network, part)), same pool, in 32 min (about 200–220 s of worker
+  time per unit). The plan estimated about 1 h.
+- **Development runs.** Before the canonical runs, partial runs were written outside
+  `outputs/costate` to check the wiring and the timings: CS-6 on G1's last and first snapshots,
+  CS-12 on S2, CS-14 on its first block of 32 keys, and CS-15 on G1. Only their structure,
+  wiring gaps and timings were read.
+- **Stamps.** Every output records an empty `changed_vs_head`, no partial flag, HEAD `937b712`,
+  the plan's sha256 with 10 amendments, and the sha256 of every input:
+  - CS-6, 164 files: the world and its summary, the 9 networks' critic and K3 files, and the 144
+    snapshots through the record's pins (the last of each is the network's own pin);
+  - CS-12, 53 files: the world and its summary, the 25 networks' activations (each read only
+    after its stamp passed R3's rule) and checkpoints, and CS-8's summary;
+  - CS-14, 3 files: the world, its summary and `gates/k2b.json`;
+  - CS-15, 21 files: the world and its summary, the 9 networks' activations and checkpoints, and
+    CS-8's summary.
+
+  They were re-verified before this note: each stamp's script sha256 is the script's blob at
+  `937b712` and its plan sha256 is the plan at `5cf5d2d`; the npz sha256s and the summaries'
+  content sha256s were recomputed and match; the script's `verify` reports 0 problems.
+- **Wiring checks (all passed).**
+  - **CS-6.** At each network's last snapshot, the pullback equals the stored g exactly (gap 0 on
+    all 8 components; tolerance 10⁻¹⁰ of each row's largest |g|); the decision mask is
+    `decisions.json`'s; and C1 (R²_c of s and ξ, the statistic, its CI, the per-fold a and b)
+    reproduces `decisions.json` to at most 3.6·10⁻¹⁵ (tolerance 10⁻⁸).
+  - **CS-12.** The frozen λ_res's interior residual shares equal the record's exactly. In every
+    unit, the 20 pool actors rebuilt on the network's z give the stored controls of seeds 0–4
+    (h3 and m) exactly.
+  - **CS-14.** At every T row, the re-polished plan's s_t equals T's column exactly, and so do its
+    phase, s_b and W.
+  - **CS-15.** The primary C2 assembled from CS-15's own probes equals CS-8 (c)'s f̂_D reference
+    record exactly in all 9 (gap 0 on the statistic, its CIs, the gains, R² and the pool rank).
+    In every unit the pool actor of seed 0 rebuilds its stored h3 exactly.
+- **Calibrated R².** CS-6 reports R²_c under the frozen calibration only: CS-1's rule for later
+  items did not fire.
+
+## CS-6. C1-dev over the 16 snapshots (exploratory)
+
+**Run** as above. Outputs: `outputs/costate/exploratory/cs-6/summary.json` (committed copy:
+[`costate-followups/cs-6-summary.json`](costate-followups/cs-6-summary.json)) and `g.npz` (per
+snapshot, the main V's g and the decision mask; local). **Rows.** C1's rows: λ_s 1,643 and λ_ξ
+1,581 at every snapshot. s's observability, read under each snapshot's own obs_rms, leaves the
+same 1,643 s rows at all 144 snapshots. No braking or corner row is scored (decision #8, plan R5).
+
+**C1's statistic over training** (the mean of R²_c over s and ξ, C1 without nulls; 95% CI):
+
+| Network | 10M | Best snapshot | Last (200M) | Snapshots with CI above 0 | ρ with log timesteps |
+|---|---|---|---|---|---|
+| G1 | 0.110 [0.035, 0.137] | 10M | 0.010 [−0.060, 0.025] | 10M, 12M | −0.55 |
+| G1s1 | 0.051 [−0.032, 0.074] | 0.076 at 12M | −0.726 [−1.354, −0.389] | none | −0.96 |
+| G1s2 | 0.013 [−0.055, 0.025] | 0.078 at 15M | −1.403 [−2.818, −0.593] | none | −0.96 |
+| G2 | 0.149 [0.076, 0.175] | 10M | −0.049 [−0.179, 0.012] | 10M, 12M | −0.71 |
+| G2s1 | 0.091 [0.005, 0.118] | 10M | −2.477 [−4.802, −1.081] | 10M | −0.98 |
+| G2s2 | 0.049 [−0.029, 0.075] | 0.087 at 12M | −0.168 [−0.475, −0.036] | 12M | −0.77 |
+| G3 | 0.086 [0.004, 0.115] | 10M | −1.359 [−2.932, −0.364] | 10M | −0.95 |
+| G3s1 | 0.093 [−0.002, 0.123] | 0.114 at 12M | −2.575 [−5.035, −1.054] | 12M, 15M | −0.95 |
+| G3s2 | 0.036 [−0.040, 0.053] | 0.091 at 15M | −1.386 [−2.815, −0.480] | 12M, 15M | −0.94 |
+
+(12M and 15M are the 12.2M and 14.9M snapshots; the replicates' last snapshot is at 199.9M.)
+
+- Every one of the 144 snapshots is in the refute band. The largest CI upper end is 0.175 (G2 at
+  10M).
+- The statistic falls with training in all 9 (ρ −0.55 to −0.98). ξ drives the fall:
+  - ξ's R²_c is 0.04–0.31 at 10M. It turns negative between 22M and 49M timesteps and ends at
+    −5.0 to 0.006 (its ρ is −0.62 to −0.98 in all 9);
+  - s's R²_c stays between −0.49 and 0.03 at every snapshot, with no common direction (ρ −0.73
+    to 0.42).
+- The early lift is small: no snapshot passes 0.15. 7 of 9 networks have an early snapshot (10M
+  to 15M) whose CI lies above 0; no snapshot after 15M has one.
+- The calibration's slope is clamped at 0 in some fold of s at 60 of the 144 snapshots, and of ξ
+  at 3.
+
+**Rank agreement over training** (the weighted Spearman of g against λ on C1's rows):
+
+| Network | ξ: 10M | ξ: last | ξ: ρ with log timesteps | s: 10M | s: last | s: ρ |
+|---|---|---|---|---|---|---|
+| G1 | 0.378 | 0.050 | −0.72 | 0.182 | 0.197 | −0.49 |
+| G1s1 | 0.267 | 0.336 | 0.36 | 0.182 | 0.100 | −0.70 |
+| G1s2 | 0.080 | 0.342 | 0.06 | 0.122 | 0.155 | 0.33 |
+| G2 | 0.416 | −0.040 | −0.74 | 0.165 | 0.138 | 0.02 |
+| G2s1 | 0.375 | 0.346 | −0.24 | 0.235 | 0.192 | −0.38 |
+| G2s2 | 0.214 | 0.024 | −0.28 | 0.239 | 0.006 | −0.89 |
+| G3 | 0.303 | 0.388 | 0.39 | 0.174 | 0.321 | 0.87 |
+| G3s1 | 0.323 | 0.398 | 0.11 | 0.021 | 0.223 | 0.80 |
+| G3s2 | 0.166 | 0.363 | 0.07 | 0.085 | 0.158 | 0.43 |
+
+- ξ's Spearman is positive at most snapshots (its CI lies above 0 at 119 of 144). It is 0.08–0.42
+  at 10M and −0.04 to 0.40 at the last snapshot, and it does not rise with training as a rule:
+  its trend is positive in v3's three seeds, in two of v1's (G1s1, G1s2), and in none of v2's.
+- s's rank trend is positive in all three v3 seeds, and mixed in v1 and v2.
+
+**Expected directions against the results** (amendment 10 item 2's reading).
+
+| Expected | Result | Holds? |
+|---|---|---|
+| E6.1: no snapshot's CI upper end reaches 0.2 | All 144 below 0.2 (largest 0.175) | yes |
+| E6.2: ξ's Spearman trend ρ > 0 in at least 2 of 3 seeds in each variant | v1 2 of 3, v2 0 of 3, v3 3 of 3 | no (2 of 3 variants) |
+| E6.3: R²_c's own trend not predicted | ρ −0.55 to −0.98: it falls in all 9 | (reported) |
+
+**What CS-6 says (exploratory).**
+- The critics' calibrated agreement with λ is best early in training and falls as training goes
+  on. In every network the 10M–15M critics score highest, and by 200M ξ's calibration has
+  collapsed. This looks like CS-1's heavy ξ tail growing with training, not like a gradient
+  that approaches λ and then stalls. (CS-6 does not locate the tail at each snapshot.)
+- The ordering does not improve as a rule either: the gradient's rank agreement with λ_ξ is
+  about as good at 10M as at 200M, and its trend depends on the variant. So of the plan's two
+  readings, "better ordering, not shape" does not fit, and "set early" fits the ordering only:
+  the shape gets worse with training.
+- Even at its best (G2 at 10M, 0.149) no snapshot leaves the refute band.
+
+## CS-12. C2 and C2-sw beyond the 9 decision networks (exploratory)
+
+**Run** as above. Output: `outputs/costate/exploratory/cs-12/summary.json` (committed copy:
+[`costate-followups/cs-12-summary.json`](costate-followups/cs-12-summary.json)). **Networks.**
+The 22 generalists outside the decision set and S1–S3. **Rows.** C2 is fitted on T's interior
+approach and exit rows (1,653) and scored on s's 1,643 and ξ's 1,581 decision rows (every
+network keeps all of them); C2-sw on the 2,507 approach and exit pedal-switching rows, as CS-8.
+**Controls.** The 20 pool actors, computed on each network's own z. Decisions are the ruled ones
+(after the single-geometry rule); the unruled one is given where it differs.
+
+| Network | C2 [two-level CI] | C2 decision | C2 rank | C2-sw [two-level CI] | C2-sw decision | C2-sw rank |
+|---|---|---|---|---|---|---|
+| v1 s3 | 0.229 [−0.170, 1.652] | inconclusive | 3 | 0.054 [0.029, 0.124] | inconclusive (confirm before the rule) | 1 |
+| v1 s4 | −0.027 [−0.740, 0.126] | inconclusive | 16 | 0.042 [0.025, 0.084] | inconclusive | 1 |
+| v2 s3 | 0.006 [−0.352, 0.244] | inconclusive | 13 | 0.042 [0.015, 0.092] | inconclusive | 1 |
+| v2 s4 | 0.061 [−0.290, 0.371] | inconclusive | 9 | 0.024 [0.003, 0.074] | inconclusive | 2 |
+| v3 s3 | 0.022 [−0.290, 0.335] | inconclusive | 9 | −0.017 [−0.053, 0.005] | refute | 16 |
+| v3 s4 | 0.119 [−0.069, 1.088] | inconclusive | 2 | 0.046 [0.020, 0.100] | inconclusive | 1 |
+| LOO f1 s0 | −0.014 [−0.780, 0.195] | inconclusive | 11 | 0.029 [−0.000, 0.083] | inconclusive | 2 |
+| LOO f1 s1 | −0.005 [−0.877, 0.897] | inconclusive | 9 | 0.030 [0.013, 0.065] | inconclusive | 2 |
+| LOO f1 s2 | −0.077 [−0.442, 0.084] | inconclusive | 17 | −0.008 [−0.038, 0.018] | refute | 15 |
+| LOO f1 s3 | −0.038 [−0.564, 0.129] | inconclusive | 13 | 0.009 [−0.006, 0.040] | refute | 6 |
+| LOO f2 s0 | 0.041 [−0.132, 0.365] | inconclusive | 8 | 0.018 [−0.006, 0.054] | inconclusive | 3 |
+| LOO f2 s1 | −0.159 [−1.130, 0.070] | inconclusive | 21 | 0.026 [0.007, 0.057] | inconclusive | 1 |
+| LOO f2 s2 | −0.144 [−0.584, 0.024] | inconclusive (refute before the rule) | 21 | 0.018 [−0.009, 0.034] | refute | 2 |
+| LOO f2 s3 | 0.303 [−0.033, 1.860] | inconclusive | 2 | 0.038 [0.019, 0.076] | inconclusive | 1 |
+| real-width v1 s0 | 0.136 [0.0003, 0.650] | inconclusive (confirm before the rule) | 3 | 0.012 [−0.012, 0.036] | refute | 7 |
+| real-width v1 s1 | 0.086 [−0.017, 0.448] | inconclusive | 2 | 0.025 [−0.010, 0.060] | inconclusive | 2 |
+| real-width v1 s2 | −0.105 [−0.674, 0.202] | inconclusive | 21 | 0.033 [−0.007, 0.090] | inconclusive | 1 |
+| real-width v1 s3 | 0.014 [−0.187, 0.385] | inconclusive | 11 | 0.037 [0.021, 0.140] | inconclusive | 1 |
+| real-width v3 s0 | 0.080 [−0.093, 0.573] | inconclusive | 2 | 0.008 [−0.013, 0.027] | refute | 8 |
+| real-width v3 s1 | −0.016 [−0.378, 0.110] | inconclusive | 13 | 0.061 [0.027, 0.129] | inconclusive (confirm before the rule) | 1 |
+| real-width v3 s2 | 0.180 [−0.223, 1.668] | inconclusive | 2 | 0.027 [0.007, 0.061] | inconclusive | 1 |
+| real-width v3 s3 | −0.001 [−0.407, 0.222] | inconclusive | 10 | 0.031 [0.011, 0.064] | inconclusive | 2 |
+| S1 | −0.131 [−1.119, 0.038] | inconclusive (refute before the rule) | 20 | 0.029 [0.007, 0.079] | inconclusive | 1 |
+| S2 | 0.277 [−0.005, 1.705] | inconclusive | 4 | 0.046 [0.021, 0.101] | inconclusive | 1 |
+| S3 | −0.136 [−1.138, 0.470] | inconclusive | 20 | −0.218 [−0.838, 0.028] | refute | 21 |
+
+(v1 s3 is `runs/dr-pilot-200M-s3`, v2 and v3 the `tilt30` and `tilt50a2` replicates,
+real-width the `dr-realw-v1` and `dr-realw-v3` runs, LOO f1 and f2 the `dr-realw-loo-f1` and
+`-f2` runs. "Rank" is the trained network's rank of 21 among its pool's own gains.)
+
+**C2.**
+- All 25 are inconclusive after the rule. Before it, real-width v1 s0 would confirm (0.136, its
+  CI's lower end 0.0003) and LOO f2 s2 and S1 would refute; the rule moves each, on 24, 3 and 24
+  geometries respectively.
+- The two-level CIs are wide, as on the 9 (CS-8 (c)): their upper ends are 0.02–1.86. The s
+  component drives both the width and the large points (gains on λ_res,s up to 0.59), where the
+  base R² on λ_res,s is far below 0 (CS-7).
+- The trained h3 ranks first of 21 in none of the 25; it is second or third in 7.
+
+**C2-sw.**
+- The trained h3 ranks first of 21 in 10 of the 22 generalists and second in 6 more. Its
+  two-level CI lies above 0 in 12 of 22. Two networks (v1 s3, real-width v3 s1) would confirm
+  before the rule; geometry 17 (R 14.6 m, θ 45°) moves each to inconclusive.
+- By recipe: first in 4 of the 6 baseline replicates (v1, v2, v3 s3 and s4), 2 of 4 real-width
+  v1, 2 of 4 real-width v3, 2 of 4 LOO f2, and none of the 4 LOO f1.
+- The specialists split: S1 and S2 rank first (CIs above 0), S3 last (refute).
+- With the 9 decision networks on the same rows (CS-8 (a): first in 7 of 9), 17 of the 31
+  generalists rank first.
+
+**Expected directions against the results** (amendment 10 item 3's reading).
+
+| Expected | Result | Holds? |
+|---|---|---|
+| E12.1: C2 inconclusive or refute in at least 22 of 25, confirm in none | 25 of 25 inconclusive; no confirm (1 before the rule) | yes |
+| E12.2: C2-sw first of 21 in at least 15 of 22 generalists, at most 1 of 3 specialists | 10 of 22; 2 of 3 specialists | no |
+
+**What CS-12 says (exploratory).**
+- C2's pattern holds beyond the 9: no network shows costate information in h3 beyond z, m and
+  f̂_D's decoys, and none can be refuted either. The CIs are too wide on these rows.
+- C2-sw's rank-1 pattern is weaker beyond the 9: about half the other generalists, and two of
+  the three specialists, rank first. So the trained h3's extra C2-sw gain over random actors is
+  common but not general, and Hockenheim training does not remove it. On the 9, CS-8 (b) found
+  that this gain does not survive residualising σ^ped on position and speed, so it is
+  consistent with the decoys design 15.10 names. CS-12 did not test that variant here (primary
+  only, R6).
+- Geometry 17 (θ 45°) again decides where C2-sw's band word would confirm, as in CS-8's null.
+
+## CS-14. q_c, the action-projected critic signal (exploratory)
+
+**Run** as above. Output: `outputs/costate/exploratory/cs-14/summary.json` (committed copy:
+[`costate-followups/cs-14-summary.json`](costate-followups/cs-14-summary.json)). Targets only: no
+network was evaluated, and K2b for q_c was not run (amendment 10 item 4).
+
+**The window rule** (plan step 4). A T interior row passes when the plan states x_t … x_{t+64}
+all lie in its own phase.
+
+| Phase | Interior rows | Pass | Fail: window leaves the phase | Fail: t + 64 > W |
+|---|---|---|---|---|
+| Approach | 1,581 | 62 | 1,519 | 0 |
+| Exit | 72 | 72 | 0 | 0 |
+| Total | 1,653 | 134 | 1,519 | 0 |
+
+- The passing rows come from 110 of the 477 keys. A 64-step window spans 65–276 m of road (median
+  176 m; 124–276 m on the passing rows), so it reaches the brake onset from almost every approach
+  row.
+- The bounds read before amendment 10 (36 to 113 approach rows) bracket the 62.
+
+**The stop rule** (plan step 8). 134 rows is fewer than 200, so CS-14 is **not scorable under #8**
+and stops. K2b for q_c can only remove rows, so it could not change this, and was not run (about
+53 min of solves saved). E14.1–E14.3 are not read.
+
+**What CS-14 says (exploratory).** Under decision #8, the action-projected critic signal cannot be
+scored on T. With GAE's 64-step window, almost every approach state's advantage already reads the
+braking phase. q_c can only be scored with windows that reach braking and corner rows, which #8
+reserves for BC-1. Whether q_c belongs in BC-1's design is the lead's call.
+
+## CS-15. The FWL check, actor h1 and h2 probes, C2 on D (exploratory)
+
+**Run** as above. Outputs: `outputs/costate/exploratory/cs-15/summary.json` (committed copy:
+[`costate-followups/cs-15-summary.json`](costate-followups/cs-15-summary.json)) and `preds.npz`
+(step 1's base, full and FWL predictions; local). **Rows.** Steps 1 and 2: T's interior approach
+and exit rows (1,653), scored on s's 1,643 and ξ's 1,581 decision rows. Step 3: D's 477 rows,
+every one a decision row for both s and ξ. λ_res is the frozen f̂_D. The step 1 record is CS-8
+(c)'s f̂_D reference, reproduced exactly.
+
+**Step 1: FWL against the one-stage nested ridge.** "Raw gain" is the trained h3's own
+R²(full) − R²(base), the mean over s and ξ; "statistic" is C2's (trained minus the pool's
+median). Differences are FWL minus one-stage, with paired CIs (geometry-only for the raw gain,
+two-level for the statistic).
+
+| Network | Raw gain, one-stage | FWL | Difference [CI] | s | ξ | Statistic, one-stage | FWL | Difference [CI] |
+|---|---|---|---|---|---|---|---|---|
+| G1 | −0.030 | −0.070 | −0.040 [−0.344, −0.000] | −0.073 | −0.006 | −0.058 | −0.045 | 0.013 [−0.023, 0.115] |
+| G1s1 | −0.227 | −0.296 | −0.069 [−0.480, −0.012] | −0.097 | −0.040 | −0.192 | −0.224 | −0.032 [−0.247, −0.004] |
+| G1s2 | 0.017 | 0.033 | 0.016 [−0.033, 0.164] | 0.006 | 0.026 | 0.066 | 0.119 | 0.053 [0.006, 0.361] |
+| G2 | 0.164 | 0.158 | −0.005 [−0.043, 0.032] | −0.003 | −0.008 | 0.250 | 0.279 | 0.029 [−0.003, 0.274] |
+| G2s1 | −0.044 | −0.091 | −0.047 [−0.429, 0.006] | −0.100 | 0.006 | 0.028 | 0.020 | −0.008 [−0.144, 0.055] |
+| G2s2 | 0.137 | 0.141 | 0.005 [−0.019, 0.094] | 0.003 | 0.007 | 0.185 | 0.233 | 0.048 [0.006, 0.443] |
+| G3 | −0.162 | −0.181 | −0.019 [−0.174, 0.027] | −0.033 | −0.004 | −0.114 | −0.116 | −0.002 [−0.015, 0.181] |
+| G3s1 | −0.113 | −0.142 | −0.029 [−0.282, 0.012] | −0.048 | −0.009 | 0.043 | 0.045 | 0.002 [−0.082, 0.087] |
+| G3s2 | −0.203 | −0.279 | −0.076 [−0.592, −0.015] | −0.119 | −0.034 | −0.126 | −0.155 | −0.030 [−0.220, 0.000] |
+
+- The two fits agree within 0.01 on the raw gain in 2 of 9 (G2, G2s2). FWL's gain is lower in 7
+  of 9, by up to 0.076, and its CI lies below 0 in 3.
+- s carries the difference (−0.119 to 0.006); on ξ the two differ by −0.040 to 0.026.
+- The statistic moves by −0.032 to 0.053. The FWL statistic carries no single-geometry rule, so
+  its band word is compared with the one-stage word before the rule: they agree in 8 of 9. In G3
+  FWL's CI upper end is 0.052, so the one-stage refute becomes inconclusive.
+- A likely reason: both stages use the full model's base penalty α_B, and the two-stage fit
+  equals the joint ridge only as α_B → 0 (`probes`' docstring), while the base [z, m] has 224
+  columns penalised at whatever α_B the inner CV picks. CS-15 did not record the chosen α_B, so
+  this reading is not checked here.
+
+**Step 2: C2 with h1 or h2 in place of h3** (statistic [two-level CI], and the trained layer's
+rank of 21 among the pool's same layer):
+
+| Network | h3 (step 1) | h1 | h2 | D (step 3, h3) |
+|---|---|---|---|---|
+| G1 | −0.058 [−0.619, 0.028], 17 | 0.105 [−0.373, 1.215], 5 | −0.164 [−0.953, −0.061], 21 | −0.051 [−0.469, 0.001], 15 |
+| G1s1 | −0.192 [−0.690, 0.020], 19 | 0.014 [−0.162, 0.210], 9 | −0.035 [−0.266, 0.207], 15 | 0.114 [0.006, 0.939], 1 |
+| G1s2 | 0.066 [−0.364, 1.328], 4 | −0.018 [−0.353, 0.129], 12 | −0.037 [−0.438, 0.207], 14 | −1.034 [−11.936, −0.014], 20 |
+| G2 | 0.250 [−0.069, 1.773], 4 | 0.065 [0.012, 0.362], 3 | 0.076 [−0.149, 0.420], 3 | 0.053 [−0.033, 0.473], 2 |
+| G2s1 | 0.028 [−0.216, 0.236], 10 | 0.037 [−0.046, 0.259], 4 | −0.000 [−0.438, 0.220], 11 | 0.007 [−0.315, 0.107], 10 |
+| G2s2 | 0.185 [−0.111, 1.516], 2 | 0.066 [−0.041, 0.410], 2 | 0.056 [−0.027, 0.442], 4 | −0.016 [−0.193, 0.173], 12 |
+| G3 | −0.114 [−0.714, 0.015], 20 | 0.071 [−0.132, 0.358], 2 | −0.194 [−0.994, −0.048], 21 | −0.002 [−0.152, 0.261], 13 |
+| G3s1 | 0.043 [−0.164, 0.385], 9 | −0.055 [−0.506, 0.091], 15 | −0.009 [−0.537, 0.344], 13 | −0.019 [−0.268, 0.127], 10 |
+| G3s2 | −0.126 [−0.637, 0.136], 19 | 0.081 [0.001, 0.560], 2 | 0.148 [−0.212, 1.718], 1 | 0.035 [−0.522, 1.208], 4 |
+
+- **h1** is inconclusive in all 9 after the rule. Before it, G2's and G3s2's would confirm (CIs
+  just above 0); the rule withdraws both.
+- **h2** refutes in G1 and G3 (the trained h2 ranks last of 21 in both), and is inconclusive in
+  the other 7.
+- Every layer's CI is wide, as h3's is on this stratum (CS-8 (c)). h1 or h2 has a higher
+  statistic than h3 in 5 of 9 (h1) and 2 of 9 (h2), mostly where h3's own is negative.
+
+**Step 3: C2 on D.** D's 477 rows allow the inner CV in all 9, so none is "not testable". After
+the rule: 7 inconclusive, 2 refute (G1, G1s2). G1s1 would confirm before the rule (0.114
+[0.006, 0.939]) and is inconclusive after it.
+
+**Expected directions against the results** (amendment 10 item 5's reading).
+
+| Expected | Result | Holds? |
+|---|---|---|
+| E15.1: FWL and one-stage gains agree within 0.01 | 2 of 9 (raw gain); FWL lower in 7 of 9, by up to 0.076 | no |
+| E15.2: h1's and h2's gains no larger than h3's | h1 4 of 9, h2 7 of 9 | no (h1) |
+| E15.3: C2 on D not testable or inconclusive | 7 of 9 inconclusive; G1 and G1s2 refute | yes |
+
+**What CS-15 says (exploratory).**
+- **The FWL check does not reproduce the joint fit to 0.01.** The gap sits mostly in s, it
+  moves the C2 statistic by at most 0.053, and it changes one unruled band word (G3). It most
+  likely reflects the base's ridge penalty (not checked), so it speaks to the probe machinery,
+  not to costate information in h3.
+- **No actor layer shows costate information beyond z, m and the decoys.** h1, h2 and h3 are all
+  inconclusive or refute on these rows; the earlier layers are not systematically below h3,
+  because h3's own statistic is near or below 0 in most networks.
+- **D alone decides little.** With 477 rows its CIs are wide; two networks refute, one would
+  confirm before the single-geometry rule.
+
+## CS-6, CS-12, CS-14 and CS-15: where they leave the refute (exploratory)
+
+- **C1 over training (CS-6).** The critics' gradients never calibrate to λ at any of the 144
+  snapshots, and the calibrated agreement is best at 10M–15M timesteps and falls after: training
+  makes the gradient's shape worse on ξ, and does not improve its ranking as a rule.
+- **C2 and C2-sw beyond the 9 (CS-12).** C2 stays inconclusive everywhere. The C2-sw rank-1
+  pattern holds in about half the other generalists and two of three specialists, short of the
+  plan's expectation; on the 9 it did not survive residualisation (CS-8 (b)).
+- **q_c (CS-14).** Not scorable under decision #8: 134 rows pass the 64-step window rule, short
+  of 200. It needs braking and corner rows.
+- **Machinery (CS-15).** FWL differs from the joint ridge by up to 0.08 on the raw gain, mostly
+  on s; h1 and h2 show no costate information either; D alone is mostly inconclusive.
+- None of this changes a decision of `costate-prereg-v1`.
