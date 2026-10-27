@@ -410,9 +410,10 @@ From S1–S3 and option A. They are held weakly, and none of them decides anythi
    places and pushes the annotated training tag `p4-b2-train-v1` on that commit.
 2. **The box.** The lead checks the A6000's hourly price on Brev before creating it. One
    single-GPU `massedcompute_A6000_plus` box (Section 2) is rented and set up (`ssh <box> 'bash
-   -s' < scripts/gpu_setup.sh`, then `scripts/gpu_sync.sh <box>`), and checked out at
-   `p4-b2-train-v1`. The queue's schedule is shown with `DRY_RUN=1` first, then it runs the five
-   runs (Section 2, Queue). The runs are pulled back with `scripts/gpu_sync.sh <box> pull-round
+   -s' < scripts/gpu_setup.sh`, then `scripts/gpu_sync.sh <box>`), or taken over, set up, from
+   a round that has finished on it and been pulled back (VG-1's pilot, say; P4-B2's GPU time
+   starts then), and checked out at `p4-b2-train-v1`. The queue's schedule is shown with
+   `DRY_RUN=1` first, then it runs the five runs (Section 2, Queue). The runs are pulled back with `scripts/gpu_sync.sh <box> pull-round
    p4b2 scripts/p4b2_runs.py`. Before the box is deleted, the box's sha256 of each run's
    `agent.pkl` and checkpoints is written to a file on the Mac, from the repo root
    (`p4_b2.BOX_SHA256_CMD`):

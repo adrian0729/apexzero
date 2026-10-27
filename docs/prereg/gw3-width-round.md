@@ -232,7 +232,7 @@ GW-4 **adopts M, fitted on all 12 R-dev circuits, as `generator-v1`'s width mode
    ```
 
    On K single boxes, box i sets `SHARD=i/K` for the last two commands (`... && SHARD=i/K DRY_RUN=1 bash ...`) and `BREV_TYPE=massedcompute_A6000_plus`. The lead watches `runs/gw3-queue-<i>of<K>.log` and the stop rule (Section 7).
-5. When a box's queue has ended, write its sha256 list on the box, pull everything back, and delete the box:
+5. When a box's queue has ended, write its sha256 list on the box, pull everything back, and delete the box (or hand it, set up, to the next round, which checks out its own tag there; GW-3's GPU-hours end at the pull-back):
 
    ```
    ssh <box> 'cd ~/apexzero/runs && sha256sum gw3-v*/config.json gw3-v*/eval_rdev.json \
