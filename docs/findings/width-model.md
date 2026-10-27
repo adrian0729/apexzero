@@ -28,7 +28,7 @@ Results:
   - `spectrum:8-16` in v1 (2.3 cm) and v3 (3.7 cm);
   - `share_1m` in v3 (0.61).
   - Fold f2 passes every check, and no-copy passes everywhere.
-- **What follows, by the plan** (Section 4): neither model meets the bands. GW-4's criterion 4 cannot hold for either as the bands stand, so the lead takes this to the user before GW-3's pre-registration is tagged. Section 8 sets out the choice.
+- **What follows, by the plan** (Section 4): neither model meets the bands. GW-4's criterion 4 cannot hold for either as the bands stand, so the lead takes this to the user before GW-3's pre-registration is tagged. Section 8 sets out the choice. The user chose option 1 on 27 Oct 2026: (2a), with criterion 4 restated (Section 8).
 - **What both models do achieve.** They bring the corner-coupled statistics from the default model's near zero to R-dev's level, and they copy nothing:
 
   | Statistic (in-sample, all 12; v1 / v3) | R-dev | Default | Copied | (2a) | (2b) |
@@ -146,9 +146,15 @@ The largest structural array is 15 values for both models. The empirical share i
 - **What it changes,** against (2a): smaller dips and widenings in some bins (f1 r < 25 m: dip −0.12 against −0.26 m, widening +0.65 against +1.09 m), because its width model is fitted on raw profiles. More 8–16 m power, from the re-measured widths.
 - **Cost.** 15.9 s per 256-strip refresh on the Mac CPU, against 0.08 s for (2a), about 200 times slower. On the A6000 the QP's 6,000 sequential FISTA iterations per refresh would add an unmeasured share to each 200M run. That must be measured before any GW-3 arm uses (2b).
 
-## 8. For the user: the choice the plan leaves open
+## 8. For the user: the choice the plan left open (decided 27 Oct 2026)
 
-The plan's branch is "neither meets: the lead takes the report to the user before GW-3's pre-registration is tagged". The options, with my recommendation first:
+**Decided by the user on 27 Oct 2026: option 1.**
+- GW-3's stat-model arms use (2a).
+- GW-4's criterion 4 is restated: every v1 check in (2a)'s committed report (`report.json`, sha256 above) passes in both folds, and the v3 misses are limited to `share_1m` (both folds) and `spectrum:8-16` (fold f1).
+- This is a deviation from the plan's bands. It is logged, dated 27 Oct 2026 and with its reason, in the GW-3 draft's Section 10 (`docs/prereg/gw3-width-round.md`), before the tag.
+- The readings in Section 6 that bear on it stay post hoc. No result here changes: neither model meets the bands.
+
+The plan's branch is "neither meets: the lead takes the report to the user before GW-3's pre-registration is tagged". The options as set out on 26 Oct 2026, with my recommendation first:
 
 1. **GW-3 with (2a), with GW-4's criterion 4 restated before the tag** (recommended).
    - For example: "the bands hold in v1 in both folds, and every v3 check passes except `share_1m` (overshoot ≤ 0.25) and the 8–16 m band".
@@ -162,7 +168,7 @@ The plan's branch is "neither meets: the lead takes the report to the user befor
    - It would be tuned after seeing the held-out folds, which weakens the bands as a test.
    - It is arguably outside #11's budget (GW-2 has run).
 
-Whichever is chosen, the GW-3 draft (`docs/prereg/gw3-width-round.md`) fixes everything else. Only its stat-model arm (2a or 2b) and the wording of criterion 4 wait on this.
+Whichever is chosen, the GW-3 draft (`docs/prereg/gw3-width-round.md`) fixes everything else. Only its stat-model arm (2a or 2b) and the wording of criterion 4 waited on this; both are now fixed there.
 
 ## 9. Procedure log
 
@@ -178,6 +184,6 @@ Whichever is chosen, the GW-3 draft (`docs/prereg/gw3-width-round.md`) fixes eve
 
 ## 10. What this does not show
 
-- **Nothing about driving.** No agent saw these strips. Whether (2a) or (2b) training transfers to held-out circuits is GW-3's question.
+- **Nothing about driving.** No agent saw these strips. Whether (2a) training transfers to held-out circuits is GW-3's question. (2b) was not chosen for GW-3 (Section 8), so its transfer is not tested.
 - **Not whether the bands are the right target.** They measure resemblance to R-dev, not what makes an agent robust. The copied model, which trained the gains so far, fails them too.
 - **No R_TEST geometry was used.** The comparison is within R-dev, fold against fold.

@@ -134,6 +134,13 @@ included lockbox windows; both are replaced by R-dev and generated-level numbers
 files fed generator fitting, tuning or checkpoint choice. `scripts/solve_all_ocp.py` now solves
 R_DEV by default and refuses any lockbox circuit (`viz.export.lockbox_guard`).
 
+**Addendum, 27 Oct 2026.** While the third round of decisions was being recorded, one agent ran a
+recursive search for "gw3|GW-3" over `outputs/`, which traversed `outputs/sealed/`. It printed
+nothing from there: its output was piped through a filter that dropped every sealed path, it
+listed file names only, and it was stopped with empty output. No sealed file name or content
+reached any agent or the lead, and nothing was written there. Later tasks name the search paths
+explicitly and exclude `outputs/sealed/`.
+
 ## Decisions taken (reversible, recorded here)
 
 - **Driver registration gate.** The plan's gate (RMS <= 3 m, length within 1%) rejects 8 of 12 current layouts because the OpenF1 track model behaves like a racing line (inside offsets of 0.6-2.8 m), not a centreline. Adopted instead: excursion beyond the TUMFTM edges at the 99th percentile <= 8 m, with RMS and length reported as diagnostics. It passes all current layouts and no old layout in 2023, 2024 and 2025. Not yet applied in code.

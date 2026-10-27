@@ -1,11 +1,12 @@
 # P4, option B2: five fresh Hockenheim specialists (pre-registration, DRAFT)
 
-**Status.** DRAFT, 26 Oct 2026, for review. Nothing here is tagged. No specialist below has been
-trained, and nothing in this document has been computed on one. After review the lead commits the
-final text, the five runs are trained, their manifest, d_OOD buffers and start states are built and
-committed, and the tag `p4-b2-prereg-v1` is placed before any of them sees a protocol stimulus
-(Section 8). Only Hockenheim, an R-dev circuit, is used. R_TEST stays sealed and `outputs/sealed/`
-is not read.
+**Status.** DRAFT, 26 Oct 2026, for review. Nothing here is tagged. On 27 Oct 2026 the user
+accepted the draft's default for each of its five choices (Section 11) and approved its box time
+(Section 8). No specialist below has been trained, and nothing in this document has been computed
+on one. After review the lead commits the final text, the five runs are trained, their manifest,
+d_OOD buffers and start states are built and committed, and the tag `p4-b2-prereg-v1` is placed
+before any of them sees a protocol stimulus (Section 8). Only Hockenheim, an R-dev circuit, is
+used. R_TEST stays sealed and `outputs/sealed/` is not read.
 
 ## 1. Why
 
@@ -82,7 +83,8 @@ unseparated. This design turns that into a settled answer instead of an open que
   - S4–S8 are therefore a sample of their own. S1–S3 (Mac CPU, earlier or uncertain code) are
     compared with them descriptively only.
 - **One machine.** One rented NVIDIA RTX A6000 (the cheapest Massed Compute instance, under the
-  standing permission), set up with `scripts/gpu_setup.sh`.
+  standing permission; its box time was approved on 27 Oct 2026, Section 8), set up with
+  `scripts/gpu_setup.sh`.
   - `scripts/gpu_sync.sh` pushes R-dev data only, including Hockenheim's centreline and its
     s-OCP lap, which `eval.json` needs. No R_TEST circuit leaves the Mac.
 - **Queue.** `scripts/gpu_queue_p4b2.sh`, to be written on the pattern of
@@ -316,8 +318,9 @@ From S1–S3 and option A. They are held weakly, and none of them decides anythi
 ## 8. Procedure, budget and box time
 
 1. **This design is reviewed and committed.** `scripts/gpu_queue_p4b2.sh` is committed with it.
-2. **The box.** It is rented, set up at that commit, and runs the five runs. The runs are pulled
-   back, the final checkpoints' sha256 are checked against the box's, and the box is deleted.
+2. **The box.** The lead checks the A6000's hourly price on Brev before creating it. It is rented,
+   set up at that commit, and runs the five runs. The runs are pulled back, the final checkpoints'
+   sha256 are checked against the box's, and the box is deleted.
 3. **On the Mac, before the tag** (at most 4 processes, `nice -n 15`):
    - the manifest;
    - the five buffers and start states;
@@ -340,8 +343,14 @@ From S1–S3 and option A. They are held weakly, and none of them decides anythi
 | A retry, if one is needed | the rerun trains alone (about 8.6 min at DR's speed) | +10 min |
 
 - **Total: about 25–45 min, about 1 box-hour at most with one retry.**
-- The A6000's hourly price is not recorded in the repo. The plan's assumption of $0.5–1 per
-  box-hour puts it under $1.
+- **Approved, 27 Oct 2026.** The user approved this box time, about 1 h, as part of Phase 3's
+  23–29 A6000 box-hours (GW-3 about 14 h, VG-1 8–14 h, P4-B2 about 1 h), on the cheapest Massed
+  Compute A6000, one box at a time, deleted when done.
+- **Stop rule** (the lead's). If the round's projected box time exceeds its approved estimate by
+  more than 20%, that is, above about 1.2 box-hours (72 min), the lead pauses the round and asks
+  the user.
+- The A6000's hourly price is not recorded in the repo. The lead checks it on Brev before creating
+  the box. The plan's assumption of $0.5–1 per box-hour puts it under $1.
 - B2 is its own round, on its own commit. It may share a rental with another round only if it runs
   from a separate checkout of its own commit.
 - **Mac time** (estimated):
@@ -378,15 +387,21 @@ From S1–S3 and option A. They are held weakly, and none of them decides anythi
   not read.
 - **The box** receives R-dev data only.
 
-## 11. Choices for review
+## 11. Choices for review (decided 27 Oct 2026)
 
-1. **The CM reading.** It is included and decides only after a vacuous class 2. The alternative is
-   to report it descriptively only, in which case B2 most likely ends "undecided" by Section 4.1
-   alone.
-2. **The recipe threshold.** 3 of 5. The alternative is 4 of 5, closer to 2 of 3 as a proportion.
-3. **Registered F6 conditions** are left out of the CM comparators, because they have no frozen
-   per-corner certification.
-4. **The seeds** (4–8), the run names and 5 lanes. The alternative to 5 lanes is 4 lanes plus 1.
-5. **No new certified family.** A family that reaches far off the manifold at most corners would
-   need its own certification before the tag: s-OCP solves and generalist runs, about 1 h on the
-   Mac, plus a design. It is not in this draft, which uses option A's families as decided.
+On 27 Oct 2026 the user accepted the draft's default for all five. Each is fixed as below. Where
+the draft named an alternative, it is kept as history and was not taken.
+
+1. **The CM reading** (decided 27 Oct 2026). It is included and decides only after a vacuous
+   class 2 (Sections 4.2 and 4.3). Not taken: reporting it descriptively only, in which case B2
+   would most likely have ended "undecided" by Section 4.1 alone.
+2. **The recipe threshold** (decided 27 Oct 2026). 3 of 5 specialists to claim a reading
+   (Section 4.4). Not taken: 4 of 5, closer to 2 of 3 as a proportion.
+3. **Registered F6 conditions** (decided 27 Oct 2026) stay out of the CM comparators, because they
+   have no frozen per-corner certification (Section 4.2).
+4. **The seeds, run names and lanes** (decided 27 Oct 2026): seeds 4–8, the run names of
+   Section 2, and 5 lanes. Not taken: 4 lanes plus 1.
+5. **No new certified family** (decided 27 Oct 2026). B2 uses option A's families as decided
+   (Section 3). A family that reaches far off the manifold at most corners would have needed its
+   own certification before the tag: s-OCP solves and generalist runs, about 1 h on the Mac, plus a
+   design.

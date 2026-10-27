@@ -599,8 +599,27 @@ Say if any of these should be scoped.
   P4 settled), decoupled from the paper's `audit-v1`.
 - **#11, the 80% gate:** a bounded budget (GW-1, GW-2, one GW-3 round, at most one GW-5 lever
   round and one GW-6 pilot), then freeze `generator-v1` whatever the result.
-- Still to ask when the item starts: spend beyond the cheapest A6000 (#1), downloads and installs
-  (#2), and the item-level choices (#5-#10, #12, #13, #15-#19).
+- Still to ask when the item starts (updated 27 Oct 2026, after the third round; on 25 Oct this
+  listed #1, #2, #5-#10, #12, #13 and #15-#19):
+  - spend beyond the cheapest A6000 (#1: a big CPU box for PA-5, optionally a 64-vCPU box for
+    BC-1), and maze E5's full queue on its measured estimate;
+  - installs and downloads not yet approved (#2): anything the vendored SFL code needs, ffmpeg or
+    Puppeteer, new OpenF1 fetches;
+  - BC-1's choices after BC-a0 (#6);
+  - #13's last two parts: whether to refit the curvature grammar on the refined geometry, and
+    whether the paper's level sets adopt the new model;
+  - what `protocol-v1` declares (#15);
+  - #17's remaining parts: the `audit-v1` level root and PA-1's replicate design (at the label
+    pilot's pre-registration), G1's reliability metric and S2 reference, E0's cuts and observation
+    noise, the racing curriculum's SFL settings (N/M/T, min-fill), mode F and the chunk length,
+    and the items due before `protocol-v1`;
+  - the demo (#19);
+  - to confirm, because this section does not record them as your decisions: #8, #9 and #16,
+    which lane A's plan (`docs/findings/costate-followups-plan.md`, on its branch) has applied
+    since 25 Oct (#8's rule for braking and corner rows, #9's recommended route, and its own choices
+    for #16's items, of which Section 10 recommends only excluding the 6 K0 keys); and DV-B's
+    no-go, reached by its plan's committed rule (`docs/findings/drivers-power.md`), which leaves
+    #18 unneeded unless DV-B goes ahead.
 
 **Decisions taken (25 Oct 2026, second round, after Phase 1)**
 - **#10, the 80% gate:** E0 (5 x 1B) passes if its median seed completes at least 10 of 12 R-dev
@@ -613,3 +632,88 @@ Say if any of these should be scoped.
 - **#13, the width model:** build (2a) first and (2b) only if (2a) misses the width-report bands;
   GW-3 runs v1 and v3 at 5 seeds per cell (about 14 A6000 h); the training margin is tested only
   in GW-5; SimBa is out of scope.
+
+**Decisions taken (27 Oct 2026, third round, after Phase 2)**
+
+The detail is in the four drafts: `docs/prereg/gw3-width-round.md`, `vg1-value-gradient.md`,
+`p4-b2-specialists.md` and `maze-e5.md`.
+- **#13, GW-3's width model and GW-4's criterion 4:** M = (2a). Criterion 4 becomes: every v1
+  check in (2a)'s committed width report (`outputs/width-report/report.json`, sha256
+  `5871664be5a6ff6ac882e3a38e131660fe16676f37ddd0a99ffba7294a42f014`) passes in both folds, and the
+  v3 misses are limited to `share_1m` (both folds) and `spectrum:8-16` (fold f1), with every
+  no-copy check still required (the lead kept it from the drafted criterion). This deviates
+  from the bands in `docs/findings/width-model-plan.md`, so it is logged as a dated deviation
+  (27 Oct 2026), with its reason, before the GW-3 tag. The reasons in `docs/findings/width-model.md`
+  are post hoc readings and stay labelled post hoc (`gw3-width-round.md` Section 10).
+- **#13, seeds per cell:** GW-3 runs 10 seeds per cell, seeds 20-29: 6 arms x 2 variants x 10 seeds
+  = 120 runs, about 14 A6000 h (120 x 6.4-6.65 min per 200M run at 4 lanes is 12.8-13.3 h, plus
+  setup and pull-back). This supersedes the second round's 5 seeds per cell; #13's "about 14 A6000
+  h" now matches. The draft's power table is recomputed at 10 seeds by its own simulation method
+  (H4R baselines: v1 5.0 ± 1.58, v3 7.2 ± 1.10), after first checking that the method reproduces
+  the 5-seed figures (0.03, 0.25, 0.37, 0.70) within simulation error (`gw3-width-round.md`
+  Section 3).
+- **E0's curvature variant** (no Section 10 number; `gw3-width-round.md` Section 9, item 5): v1,
+  `train_dr.py`'s default, fixed now, before GW-3's tag and without GW-3 data.
+- **#12, copied widths as `generator-v1`'s fallback:** used if and only if (2a) fails GW-4's
+  adoption rule and GW-3 shows that copied widths transfer to held-out circuits, by S1-v1, a test
+  pre-specified in `gw3-width-round.md` (Section 5). If copied widths are used, every R-dev number
+  for E0, the 80% gate (#10) included, is labelled in-sample for widths wherever it is reported.
+  If (2a) fails and S1-v1 does not confirm, `generator-v1` uses the default widths. The lockbox
+  (R_TEST) is unaffected either way. The lead wrote the rule as deterministic, so nothing is left
+  to choose after GW-3's data.
+- **#5, VG-1's loss form and Ω:** the GDHP-style squared error with full-state diagonal Ω, equal
+  over the 12 standardised components of y = (x, prev_action, accel), as built in VG-0. Not the
+  action-projected Ω = BB^T (`vg1-value-gradient.md`).
+- **#2, the SFL download for maze E5 (PA-3a):** approved. From
+  `github.com/amacrutherford/sampling-for-learnability` at commit
+  `8b14e2ec07b38dc33a9df476b84faa2f3ca5fd3b`, the files and git blob SHA-1s listed in `maze-e5.md`
+  (46,359 B, or 60,890 B with `sfl/train/common/network.py`), Apache-2.0, vendored with its
+  LICENSE and each blob checked. Not downloaded yet; it happens when E5 is built. Any install
+  (Hydra, OmegaConf or anything else) needs a separate OK from you.
+- **Phase 3's A6000 budget (on the cheapest box; #1 stays open):** GW-3 (about 14 h), VG-1 (8-14 h)
+  and P4-B2 (about 1 h) are approved, about 23-29 box-hours in all, on the cheapest Massed Compute
+  A6000, one box at a time, deleted when done. The lead checks the hourly price on Brev before
+  creating the box.
+  - Stop rule (the lead's): if a round's projected box time exceeds its approved estimate by more
+    than 20%, the lead pauses that round and asks you.
+  - VG-1's cost check now returns to you if the pilot projects the pilot plus the main run above
+    14 h (it was 11 h).
+  - Maze E5: only a short timing run on the box is approved now. Its full queue comes back to you
+    with the measured estimate.
+- **The smaller choices: the drafts' defaults are accepted.**
+  - **#5, VG-1** (`vg1-value-gradient.md` Section 10): P is an exact one-sided Wilcoxon rank-sum on
+    C1's R^2_c, the single primary, with C1's Spearman ρ as secondary S2 (no Holm family); the
+    pilot's β grid {0.1, 0.3, 1.0} with its eligibility rule (finite metrics, EV ≥ 0.90,
+    M0 < 13.99); C1-own stays optional and descriptive. The lead's decision (engineering): the VG
+    settings stay in a separate `ValueGradient` object, not `PPOConfig` fields as Section 7.3 has
+    it, because new `PPOConfig` fields would break frozen `scripts/h4r.py`'s config comparison.
+  - **#7, P4-B2** (`p4-b2-specialists.md` Section 11), all five as drafted: the corner-matched
+    reading is included and decides only after a vacuous class 2; 3 of 5 specialists to claim a
+    reading; the registered F6 conditions stay out of the CM comparators; seeds 4-8, run names as
+    drafted, 5 lanes; no new certified family.
+  - **#17 and #2, maze E5** (`maze-e5.md` Section 11): its own tag, `maze-e5-prereg-v1`, not folded
+    into `protocol-v1`; no PLR-PVL arm; DR through `maze_plr.py` with replay off as drafted
+    (`maze_dr.py` is not downloaded).
+  - **#17, PA-1's labeller** (`src/apexzero/ocp/labels.py`): the retry policy and budgets as
+    drafted (900 s per start, 600 s per IPOPT call, max_iter 3,000; on failure one retry per start
+    with stages every 10 s, max_iter 6,000, 1,800 s); the 200-label pilot's agent start uses
+    `runs/dr-pilot-200M` at 200M. Still open, decided when the pilot is pre-registered: the
+    `audit-v1` level root (disjoint from PA-2's levels) and the replicate design (3 extra jittered
+    starts).
+
+The lead's notes (27 Oct 2026):
+- **Phase 2 is done.** GW-2 found that neither width model meets the width-report bands
+  (`docs/findings/width-model.md`). VG-0, LB-0 and PA-1's labeller are built; PA-1's 200-label
+  pilot waits for its pre-registration. The four drafts above are written and reviewed, and the
+  review's 16 findings are fixed. Off the critical path, lane A restarts from CS-9.
+- **The full R-dev lockbox dry run** is left to LB-1 step 1 in Phase 5 (Section 4). LB-0 built the
+  harness and its tests.
+- **LB-1 must declare how uncompleted circuits enter the gap** (Section 7.7; #15).
+- **Not in the approved A6000 budget:** GW-5 and GW-6 (#11's optional rounds), E0 (5 x 1B) and
+  PA-4, PA-6 and PA-7. Each comes back to you with its estimate before it runs.
+- **Still open from #14:** whether to go ahead with the lockbox if E0 misses the 80% gate, and
+  whether to split R_TEST 6 + 6. They are asked before `protocol-v1` is written.
+- **Lockbox incident (27 Oct 2026):** while recording these decisions, one agent's recursive
+  search for "gw3|GW-3" over `outputs/` traversed `outputs/sealed/`. It printed nothing: its
+  output was filtered to drop any sealed path and it was stopped with empty output. Logged in
+  `docs/STATUS.md`.

@@ -126,3 +126,8 @@ Descriptive only: the total-width and half-difference spectra, per-circuit value
 **Expected directions for (2b), before computing.**
 - E5: (2b)'s v3 tight-knot inside-range shares lie below (2a)'s, because the raw profiles carry smaller corner terms and most strips are not re-expressed. That would cure (2a)'s v3 overshoot, but it may undershoot H in v1.
 - E6: (2b) meets the bands. Held weakly, below even odds: it is the less direct fit.
+
+**Note, 27 Oct 2026.** The bands above are departed from for GW-4's criterion 4: the user chose
+(2a) with the criterion restated, logged as a dated deviation in
+[`docs/prereg/gw3-width-round.md`](../prereg/gw3-width-round.md), Section 10, before the GW-3 tag.
+This plan and its verdict are unchanged.

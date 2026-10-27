@@ -1,6 +1,6 @@
 # VG-1: a value-gradient term in the critic's loss (pre-registration, DRAFT)
 
-**Status.** DRAFT, 26 Oct 2026, for review. Nothing here is tagged and no VG-1 run exists.
+**Status.** DRAFT, 26 Oct 2026, for review; updated 27 Oct 2026 with the user's third-round decisions (below). Nothing here is tagged and no VG-1 run exists.
 - After review the lead commits the final text, the measurement and analysis scripts with their tests, and the queue script.
 - A pilot of 6 runs (Section 4.1) then chooses β by a rule fixed here, on manipulation metrics only. The lead records the chosen β in Section 4.2 and places the annotated tag `vg1-prereg-v1` on that commit. It is pushed **before any main-run network is trained** (Section 9).
 - The pilot computes M1, the primary statistic, on its 6 networks. So the text is frozen at the commit the pilot trains from: between the pilot and the tag only Section 4.2's β\* line and the pilot record may change, and the lead checks this at tagging (Section 9). Every item of Section 10 is settled before that commit.
@@ -12,7 +12,15 @@
 - 40 runs;
 - a positive result does not change E0's recipe, so VG-1 stays off the lockbox's critical path.
 
-This draft fixes everything else. Section 10 lists the items it could not settle; each is settled before the pilot commit (Section 9), never after a pilot number exists.
+**The user's decisions of 27 Oct 2026 (third round) fix the rest of the frame:**
+- the loss form: the GDHP-style squared error with full-state, diagonal Ω, equal over the 12 standardised components, as built in VG-0; not the action-projected Ω = BBᵀ (Section 2; Section 10, item 4);
+- P is the single primary, an exact one-sided Wilcoxon rank-sum on C1's R²_c, with C1's Spearman ρ as secondary S2 and no Holm family (Section 10, item 1);
+- the pilot's β grid and eligibility rule as drafted (Section 4.1; Section 10, item 2);
+- C1-own stays optional and descriptive (Section 5.3; Section 10, item 3);
+- the budget: VG-1 is approved at its 8–14 h A6000 estimate, and the pilot's cost check returns to the user if the pilot plus the main run project above 14 h (Sections 4.1 and 8);
+- E0 trains on v1 (Section 7). VG-1 still does not change E0's recipe.
+
+This draft fixes everything else. Section 10 lists the items it could not settle by itself. The user decided items 1–4 on 27 Oct 2026; the lead's items are settled before the pilot commit (Section 9), never after a pilot number exists.
 
 ## 1. Why
 
@@ -49,12 +57,13 @@ This draft fixes everything else. Section 10 lists the items it could not settle
 - **Scale:** scale_k² = Var(G'_k) + E[(dV/dy_k)²] over the rollout, with dV/dy from the rollout's critic. This is the targets' spread plus the critic's gradient size.
   - Without the second term, a random-init critic's first update scored about 26,000 in VG-0's smoke run. Almost all of it came from the accel channels, whose targets have an SD of about 1e-5 against the critic's 4·10⁻³ there.
   - With it, the first update scored about 21, and the later ones below 1.
-- **Ω** is diagonal and equal over the 12 components after standardisation (full-state Ω). #5 left the loss form and Ω to the user. This draft chooses full-state Ω from #5's manipulation-primary answer (Section 3.1) and puts it to the user before the pilot (Section 10, item 4).
+- **Ω** is diagonal and equal over the 12 components of y = (x, prev_action, accel) after standardisation (full-state Ω). #5 left the loss form and Ω to the user. The user decided them on 27 Oct 2026 (Section 10, item 4): this GDHP-style squared error with full-state Ω, as built in VG-0, and not the action-projected Ω = BBᵀ (Section 3.1).
 - The β-term's parameter gradient is a double backprop. The term reaches the critic only; the actor's loss is unchanged.
 - **Fixed settings:** λ = 0.95 (the GAE λ, so both targets look the same distance ahead) and winsor 0.005. β comes from the pilot (Section 4.1).
 
 **Default off, bit-identical.**
 - `ValueGradient` is passed to `make_train` separately. It is **not** a `PPOConfig` field: the frozen `scripts/h4r.py` builds its expected PPO block from `asdict(PPOConfig(...))` and compares it with the H4R and step 2 runs' `config.json`, so a new field would change that harness's verdicts.
+  - This departs from the follow-through plan (Section 7.3), which listed VG-0's settings as `PPOConfig` fields. Keeping them in the separate `ValueGradient` object, for this reason, is the lead's decision (engineering), recorded 27 Oct 2026 (Section 10, item 8).
 - Without `--vg-coef`, `train_dr.py` passes no term, and `make_rollout`, `make_learner` and `make_train` trace what they always did.
 - **Checked:**
   - A tiny racing-env run reproduces the values recorded at `3323a0e` (before the term existed). On the recording platform it reproduces the sha256 of every final parameter byte.
@@ -92,7 +101,7 @@ So s is almost absent from the one-step signal. ξ carries about a fifth of the 
 - A term that fits the full-state gradient moves g_s and g_ξ directly. But it spends much of the critic's capacity on directions the actor does not read in one step, so completion may not move even if the manipulation works.
 
 **How the design handles it:**
-1. **Full-state Ω** (Section 2). The primary is the manipulation (#5), so the term targets what C1 scores. This is the draft's choice, not yet the user's (Section 10, item 4).
+1. **Full-state Ω** (Section 2). The primary is the manipulation (#5), so the term targets what C1 scores. The user decided this form on 27 Oct 2026 (Section 10, item 4).
 2. **The actor's horizon is longer than one step.** GAE's advantage integrates the critic over about 20 steps (λ 0.95, γ 0.995, about 1 s). Over that span a steer input moves ξ and then n, and a pedal input moves s through vx. So s and ξ reach the actor through the multi-step chain, not the one-step one. Even so, the full-state term is not a test of the action-projected path. It tests the full gradient, of which that path is a part.
 3. **The action-projected residual is measured** (S4). On the same rollouts as M0 (Section 5.2), with the per-action normalised residual of B_tᵀ dV/dy(y_{t+1}) against B_tᵀ G'_{t+1}, it says whether the full-state term also improved the signal the actor reads.
 4. **Completion is secondary** (#5), and its reading is conditioned on S4 (Section 6). If the manipulation works and S4 falls but completion does not move, "fix the critic's gradient" is closed as a lever at this scale. If S4 does not fall, a completion null says nothing about the actor path.
@@ -121,22 +130,23 @@ Section 6 reads them together.
 
 **Common to every run:**
 - `scripts/train_dr.py --steps 200e6 --seed <s> --name <name> [--vg-coef <β>]`.
-- Every other argument is the default, as in H4R and GW-3's baselines: v1 (the base grammar), 2,048 envs, 64 steps, MLP 3 × 256 tanh, `ensemble_heads` 5, bank 4,096, refresh 256, γ 0.995.
+- Every other argument is the default, as in H4R's and GW-3's v1 baselines: v1 (the base grammar), 2,048 envs, 64 steps, MLP 3 × 256 tanh, `ensemble_heads` 5, bank 4,096, refresh 256, γ 0.995.
 - Each run writes 16 log-spaced checkpoints, the final one at 199,884,800 steps. It also writes `eval_rdev.json`: the default car, 10 timed laps per R-dev circuit from 0.9 × the reference start speed. Pilot runs skip it (Section 4.1).
 - `--vg-lambda` and `--vg-winsor` stay at their defaults (0.95, 0.005).
 
 **Seeds.**
-- No run on disk uses a seed of 15 or more, and GW-3 reserves 20–24 (20–29 if it runs 10 seeds).
+- No run on disk uses a seed of 15 or more, and GW-3 uses 20–29 (10 seeds per cell, decided 27 Oct 2026).
 - VG-1 uses 15 and 16 for the pilot and 30–49 for the main run. Seeds 17–19 stay unused.
 
-**One machine.** One rented NVIDIA RTX A6000, the cheapest Massed Compute instance, under the standing permission.
+**One machine.** One rented NVIDIA RTX A6000, the cheapest Massed Compute instance, under the standing permission and the user's Phase 3 approval of 27 Oct 2026 (Section 8).
+- One box at a time. The lead checks the hourly price on Brev before creating it.
 - It is set up with `scripts/gpu_setup.sh`.
 - `scripts/gpu_sync.sh` pushes R-dev data only. No R_TEST circuit leaves the Mac.
 - The box is deleted when done.
 
 ### 4.1 The pilot (before the tag)
 
-- **Runs.** β ∈ {0.1, 0.3, 1.0} × seeds {15, 16} = 6 runs, named `vg1p-b<β>-s<seed>` (for example `vg1p-b0.3-s15`).
+- **Runs.** β ∈ {0.1, 0.3, 1.0} × seeds {15, 16} = 6 runs, named `vg1p-b<β>-s<seed>` (for example `vg1p-b0.3-s15`). The grid and the eligibility rule below were decided by the user on 27 Oct 2026 as drafted (Section 10, item 2).
   - The grid brackets VG-0's 1-D result: β = 0.1 already lowered the gradient error there, and β = 1 lowered it most.
   - The racing value loss at 200M is about 0.01 (G1's `metrics.csv`). The term measured 0.67 after 6 updates in VG-0's overhead runs (Section 8). So β = 1 lets the term dominate the critic's loss.
 - **One commit.** All 6 train from the pilot commit (Section 9, step 2), which contains VG-0 and this text with Section 10 settled. The queue records `git rev-parse HEAD`, refuses a dirty tree, and refuses any commit other than the pilot commit.
@@ -158,12 +168,12 @@ Section 6 reads them together.
   3. have an M0 below 13.99, the median M0 of the five H4R v1 baselines (`h4r-v1-base-s10..14`: 10.54, 16.46, 14.30, 13.99 and 10.18), computed in VG-0 with Section 5.2's settings. The term must fit what it targets.
 - **The choice.** β\* is the eligible β with the highest median M1 over its two seeds. A tie goes to the smaller β.
 - **If no β is eligible,** the main run does not start. The pilot is reported, exploratory, and the lead brings the result to the user.
-- **Cost check.** The main run's projected box time is 20 × 6.5 min + 20 × (β\*'s mean pilot box time per run). If it exceeds 11 h, the follow-through plan's upper estimate for 40 runs (r above about 4.1), the lead brings the cost to the user before the tag.
+- **Cost check** (threshold set 27 Oct 2026). The projection is the pilot's measured box time, its setup and pull-back included, plus the main run's projected box time: 20 × 6.5 min + 20 × (β\*'s mean pilot box time per run) + about 15 min of setup and pull-back. If it exceeds 14 h, the upper end of the 8–14 h estimate the user approved on 27 Oct 2026 (Section 8; r above about 4.0), the lead brings the cost to the user before the tag. The 26 Oct draft's threshold was 11 h, on the main run alone.
 - **Label.** The pilot is exploratory. Its 6 networks never enter the confirmatory tests.
 
 ### 4.2 The main run (after the tag)
 
-- **Arms:** `base` (no VG flag; the default path, bit-identical to H4R's and GW-3's baselines) and `vgl` (`--vg-coef β*`).
+- **Arms:** `base` (no VG flag; the default path, bit-identical to H4R's and GW-3's v1 baselines) and `vgl` (`--vg-coef β*`).
 - **β\*:** to be recorded here after the pilot, before the tag. This line and the pilot record (`outputs/vg1/pilot.json`) are the only changes allowed between the pilot commit and the tag (Section 9).
 - **Runs:** 2 arms × 20 seeds (30–49) = 40, named `vg1-base-s<seed>` and `vg1-vgl-s<seed>`.
 - **One commit:** the tagged one. The queue records `git rev-parse HEAD` at launch and refuses a dirty tree.
@@ -216,7 +226,7 @@ Section 6 reads them together.
 - The counts of failed and missing networks are reported per arm.
 
 **P (primary): `vgl` above `base` on R²_c.**
-- **Test:** a one-sided exact Wilcoxon rank-sum (Mann–Whitney) test, `vgl` against `base`, 20 against 20.
+- **Test:** a one-sided exact Wilcoxon rank-sum (Mann–Whitney) test, `vgl` against `base`, 20 against 20. P is the single primary, with no Holm family; C1's Spearman ρ is secondary S2 (decided 27 Oct 2026; Section 10, item 1).
   - The p-value comes from the exact permutation distribution of the rank sum, with mid-ranks for ties.
   - The distribution is enumerated by the standard recursion over ranks. A tie counts toward p.
 - **Why ranks.** R²_c is heavy-tailed: the five v1 baselines score 0.010, −0.138, −0.726, −1.359 and −1.403, because a wrong-sign tail of large ξ gradients meets the clamped calibration (findings Section 7.1). A mean-difference test would be decided by its tail.
@@ -256,7 +266,7 @@ Every secondary test is an exact rank-sum test of the same construction, unless 
 - R²_c over the training snapshots of 4 networks per arm (seeds 30–33; C1-dev's form, `costate.analysis.c1_dev`);
 - the pilot's 6 networks beside the main run's, labelled pilot.
 
-**Optional:** C1-own's R²_c against λ^own (the frozen `own` stage), whose targets are closest to what the term fits. It costs about 100 s per network on the Mac (the costate `own` stage's 9 networks took 15 min). The lead decides before the tag (Section 10).
+**Optional:** C1-own's R²_c against λ^own (the frozen `own` stage), whose targets are closest to what the term fits. It costs about 100 s per network on the Mac (the costate `own` stage's 9 networks took 15 min). Decided 27 Oct 2026 (Section 10, item 3): it stays optional and descriptive. It enters none of P and S1–S6, and if it is run it is reported here, labelled descriptive.
 
 ### 5.4 Power (computed for this draft)
 
@@ -284,11 +294,12 @@ The rows are taken in order, and the first that matches is the reading. Each (P,
 | 5 | inconclusive or not testable | not confirm | The term neither fitted its targets better nor raised R²_c. P and S1 are reported but say nothing about the gradient's role. |
 
 - **S1 alone,** whatever P shows, is reported as the completion effect, with its CI and S5's cost.
-- **A positive result does not change E0** (#5). E0's recipe is fixed by GW-4 without VG. Any later use of the term is a new study.
+- **A positive result does not change E0** (#5). E0 trains on v1 (decided 27 Oct 2026, Section 7), its width model comes from GW-4's rule, and VG is not in its recipe. Any later use of the term is a new study.
 
 ## 7. E0 and the lockbox
 
 - VG-1 is off the critical path. GW-3, GW-4 and E0 do not wait for it, and nothing in it changes `generator-v1`, `sim-v1` or E0.
+- E0's curvature variant is v1, `train_dr.py`'s default, decided by the user on 27 Oct 2026, before GW-3's tag and without GW-3 data. VG-1's arms are also v1, but a positive VG-1 result still does not change E0's recipe (#5).
 - VG-1's networks are never evaluated on R_TEST. They are not lockbox subjects.
 - `train_dr.py`'s end-of-run evaluation reads R-dev only. `scripts/vgl.py` reads generated strips only.
 - With `--vg-coef` absent, the training path at the VG-1 commit is the default path bit for bit (Section 2). That keeps any later default-path round, such as GW-3's or E0's, unaffected by the term's code.
@@ -317,7 +328,12 @@ The rows are taken in order, and the first that matches is the reading. Each (P,
   | 3.6 (the Mac's at 512 envs) | 2.3 h | 10.0 h | about 13 h |
   | 4.1 | 2.7 h | 11.0 h | about 14 h |
 
-- The follow-through plan's estimate for 40 runs was 5–11 h, from a guessed ratio of 1.5–3. Section 4.1's cost check holds the main run to that plan's upper end.
+- The follow-through plan's estimate for 40 runs was 5–11 h, from a guessed ratio of 1.5–3. The 26 Oct draft's cost check held the main run alone to that plan's upper end, 11 h.
+
+**Approved (27 Oct 2026).** The user approved VG-1 at the table's 8–14 h estimate (pilot and main run, setup and pull-back included), as part of Phase 3's A6000 budget (GW-3 about 14 h, VG-1 8–14 h, P4-B2 about 1 h; about 23–29 box-hours in all).
+- The box is the cheapest Massed Compute A6000, one box at a time, deleted when done. The lead checks the hourly price on Brev before creating it.
+- **The cost check** (Section 4.1) now returns to the user if the pilot projects the pilot plus the main run above 14 h, setup and pull-back included (r above about 4.0). It was 11 h, for the main run alone.
+- **The lead's stop rule.** If a round's projected box time exceeds its approved estimate by more than 20%, the lead pauses that round and asks the user. VG-1's approved estimate is the 8–14 h above, for the pilot and the main run together, so the rule pauses VG-1 if its projected box time passes about 16.8 h (14 h plus 20%). The cost check comes first: at the pilot it already returns to the user above 14 h.
 
 **Mac.**
 - `scripts/vg1_c1.py` (the critic stage: one main-V VJP at T's 9,887 states per network) takes about 20 s per network (the costate `critic` stage: 34 networks in 11 min), about 15 min for 46 networks.
@@ -327,7 +343,7 @@ The rows are taken in order, and the first that matches is the reading. Each (P,
 
 ## 9. Procedure
 
-1. **Review this draft.** The user decides Section 10's items marked "the user", and the lead settles the rest. Every Section 10 item is closed in this text before step 2's commit; none is settled after a pilot number exists.
+1. **Review this draft.** The user decided Section 10's items 1–4 on 27 Oct 2026, and the lead settles the rest. Every Section 10 item is closed in this text before step 2's commit; none is settled after a pilot number exists.
 2. **Build and test,** on planted data only:
    - `scripts/vg1_c1.py`, with its wiring gate;
    - `scripts/vg1_analysis.py`: the exact rank-sum, the sign-flip test, the failed-network rule, the pilot rule and the manifest checks;
@@ -348,18 +364,19 @@ The rows are taken in order, and the first that matches is the reading. Each (P,
 
 **Deviations.** Any change after the tag is logged in the findings with its date and reason. Changes between the pilot commit and the tag follow step 4's rule. A change to an outcome, test, seed or rule after any main-run network has started makes the affected result exploratory.
 
-## 10. Open items before the tag
+## 10. Items settled before the tag
 
-All items are settled in the text before the pilot commit (Section 9).
+All items are settled in the text before the pilot commit (Section 9). The user decided items 1–4 on 27 Oct 2026; items 5–8 are the lead's.
 
-1. **"With a rank test" (the lead, then the user).** This draft reads decision #5's phrase as the between-arm test being a rank test (P is an exact rank-sum on R²_c), because R²_c's tail would decide a mean test. C1's own rank agreement (Spearman) is S2. If #5 meant Spearman's ρ as a co-primary, P becomes a family of two with Holm (m = 2).
-2. **β's grid and the pilot rule (the user).** The grid {0.1, 0.3, 1.0}, the EV floor of 0.90 and the M0 eligibility condition are fixed above. A wider grid costs 2 runs per value.
-3. **C1-own (the user).** Include it as a secondary, or keep it optional and descriptive (Section 5.3). Its targets are the closest to what the term fits.
-4. **The loss form and Ω (the user; #5).** #5 lists them as the user's decision, "given the per-component outcome against an action-projected error". The second-round answer settled manipulation-primary, 40 runs and no change to E0, not these.
-   - **Drafted:** the GDHP-style squared error in full-state, diagonal Ω, equal over the 12 standardised components (Section 2).
-   - **The alternative:** the action-projected error, Ω = BBᵀ (costate design Section 9).
-   - **What the user decides on** (Section 3.1's VG-0 measurement on H4R's five v1 baselines): s carries 0.0003 of the steer projection and 0.0027–0.0032 of the pedal's, ξ 0.181–0.192 and 0.055–0.065. So Ω = BBᵀ would leave g_s, half of C1's statistic, nearly untouched, and the manipulation-primary design could barely move by construction. Full-state Ω moves g_s and g_ξ directly, at the cost of capacity spent on directions the actor does not read in one step. S4 measures the action-projected residual either way.
-   - The draft recommends full-state Ω. Ω = BBᵀ would need a new opt-in VG-0 code option (not built) and a re-measure of Section 8's cost before the pilot.
+1. **"With a rank test": decided 27 Oct 2026.** P is an exact one-sided Wilcoxon rank-sum on C1's R²_c, the single primary (Section 5.1). C1's Spearman ρ is secondary S2 (Section 5.2). There is no Holm family.
+   - The draft had read decision #5's phrase this way because R²_c's tail would decide a mean test. The alternative was Spearman's ρ as a co-primary, with P a family of two under Holm (m = 2).
+2. **β's grid and the pilot rule: decided 27 Oct 2026, as drafted** (Section 4.1). The grid is {0.1, 0.3, 1.0}. A β is eligible if both its runs have finite metrics, EV ≥ 0.90 and M0 below 13.99. A wider grid would have cost 2 runs per value.
+3. **C1-own: decided 27 Oct 2026.** It stays optional and descriptive (Section 5.3), not a secondary. Its targets are the closest to what the term fits.
+4. **The loss form and Ω: decided 27 Oct 2026 (#5).** The GDHP-style squared error with full-state, diagonal Ω, equal over the 12 standardised components of y = (x, prev_action, accel), as built in VG-0 (Section 2). Not the action-projected error, Ω = BBᵀ (costate design Section 9).
+   - #5 had listed them as the user's decision, "given the per-component outcome against an action-projected error". The second-round answer settled manipulation-primary, 40 runs and no change to E0, not these.
+   - **What the draft put to the user** (Section 3.1's VG-0 measurement on H4R's five v1 baselines): s carries 0.0003 of the steer projection and 0.0027–0.0032 of the pedal's, ξ 0.181–0.192 and 0.055–0.065. So Ω = BBᵀ would leave g_s, half of C1's statistic, nearly untouched, and the manipulation-primary design could barely move by construction. Full-state Ω moves g_s and g_ξ directly, at the cost of capacity spent on directions the actor does not read in one step. S4 measures the action-projected residual either way.
+   - So no Ω = BBᵀ code option is built, and Section 8's cost measurement stands.
 5. **To build (the lead):** `scripts/vg1_c1.py` (with the pinned helpers, Section 5.1), `scripts/vg1_analysis.py`, `train_dr.py --skip-eval-rdev` (Section 4.1), `scripts/gpu_queue_vg1.sh` and the manifest writer.
-6. **Seed ranges (the lead).** Keep GW-3 and any other `train_dr.py` round off 15–19 and 30–49.
+6. **Seed ranges (the lead).** GW-3 uses 20–29 (10 seeds per cell, decided 27 Oct 2026). Keep GW-3 and any other `train_dr.py` round off 15–19 and 30–49.
 7. **The box order (the lead).** VG-1 queues behind GW-3 on the one A6000 (follow-through Section 4, Phase 3). The pilot can run in any gap.
+8. **Where the VG settings live: decided 27 Oct 2026 (the lead, engineering).** They stay in the separate `ValueGradient` object, not `PPOConfig` fields, because new `PPOConfig` fields would break the frozen `scripts/h4r.py`'s config comparison (Section 2).

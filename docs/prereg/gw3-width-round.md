@@ -1,11 +1,17 @@
 # GW-3: the combined width round (pre-registration, DRAFT)
 
-**Status.** DRAFT, 26 Oct 2026, for review. Nothing here is tagged and no GW-3 run exists.
+**Status.** DRAFT, 26 Oct 2026, for review; revised 27 Oct 2026 with the user's decisions (Section 9). Nothing here is tagged and no GW-3 run exists.
 - After review the lead commits the final text, the analysis script and its tests, and the queue script. The annotated tag `gw3-prereg-v1` is placed on that commit and pushed **before any GW-3 run starts** (Section 8).
 - Each run writes its outcome (`eval_rdev.json`) when its training ends, so the tag must precede training, not just the analysis.
 - Only the 12 R-dev circuits are evaluated. R_TEST stays sealed and `outputs/sealed/` is not read.
 
-**Items wait on the user** (Section 9). The main one: neither width model met GW-2's bands ([`width-model.md`](../findings/width-model.md)). This draft therefore fixes the stat-model arms as **M = (2a)**, the recommended option, and words GW-4's criterion 4 to match. The user may choose (2b), or no stat-model arm, before the tag. Everything else here holds for any choice.
+**The user's items are decided** (27 Oct 2026; Section 9). Neither width model met GW-2's bands ([`width-model.md`](../findings/width-model.md)). The user chose:
+- **M = (2a)**, with GW-4's criterion 4 restated (Section 5). That departs from the width-model plan's bands, and the deviation is logged in Section 10, before the tag.
+- **10 seeds per cell**, seeds 20–29: 120 runs, about 14 A6000 hours (Section 7).
+- **E0's curvature variant: v1** (Section 5).
+- **#12:** copied R-dev widths only as a conditional fallback, with in-sample labelling (Section 5).
+
+Items 4 and 6 of Section 9 remain for the lead.
 
 ## 1. Why
 
@@ -18,7 +24,7 @@
 
 ## 2. Runs (fixed now)
 
-**Cells.** 6 arms × 2 variants × 5 seeds = 60 runs.
+**Cells.** 6 arms × 2 variants × 10 seeds = 120 runs (decided 27 Oct 2026; Section 9, item 2).
 
 | Arm | Flags (besides the variant's) | Widths seen in training |
 |---|---|---|
@@ -30,31 +36,31 @@
 - **Folds:** the committed leave-out folds (`width-test-loo-plan.md`): fold f1 = `R_DEV[0::2]`, fold f2 = `R_DEV[1::2]`.
   - `<fold f1>` = `BrandsHatch,MoscowRaceway,Nuerburgring,Sepang,YasMarina,Catalunya`.
   - `<fold f2>` = `Hockenheim,Norisring,Oschersleben,Sochi,Melbourne,Zandvoort`.
-- **If M = (2b)** (user's choice), the `sl-*` and `sa` arms add `--reexpress`.
+- **M = (2a)** (decided 27 Oct 2026; Section 9, item 1). The `sl-*` and `sa` arms use `--stat-widths` without `--reexpress`. No arm uses (2b).
 - **Variants:**
   - v1: the base grammar, `train_dr.py`'s default;
   - v3: `--tilt-fraction 0.5 --tilt-alpha 2`.
-- **Seeds:** 20, 21, 22, 23 and 24 in every cell.
+- **Seeds:** 20 to 29 (ten seeds) in every cell.
   - No run on disk uses a seed of 15 or more. Seeds 0–4 and 10–14 are used.
-  - The lead must keep VG-1 off seeds 20–24. Its β = 0 arm runs the default path, so a shared seed would duplicate GW-3's baseline networks.
-- **Names:** `gw3-<variant>-<arm>-s<seed>`, for example `gw3-v1-base-s20` and `gw3-v3-sl-f2-s23`.
+  - The lead must keep VG-1 off seeds 20–29. Its β = 0 arm runs the default path, so a shared seed would duplicate GW-3's baseline networks. VG-1's draft uses seeds 15–16 (pilot) and 30–49 (main run).
+- **Names:** `gw3-<variant>-<arm>-s<seed>`, for example `gw3-v1-base-s20` and `gw3-v3-sl-f2-s29`.
 - **Command:** `scripts/train_dr.py --steps 200e6 --seed <s> --name <name> <variant flags> <arm flags>`. Every other argument is the default, as in H4R: 2,048 envs, 64 steps, MLP 3 × 256 tanh, `ensemble_heads` 5, bank 4,096, refresh 256, γ 0.995.
   - Each run writes 16 log-spaced checkpoints, the final one at 199,884,800 steps, and `eval_rdev.json`: the default car, 10 timed laps per R-dev circuit from 0.9 × the reference start speed.
 - **One commit:**
-  - all 60 runs train from the tagged commit;
+  - all 120 runs train from the tagged commit;
   - the queue records `git rev-parse HEAD` at launch and refuses a dirty tree;
   - with the width and VG options off, the training path is bit-identical to H4R's. Since H4R's `612ed7a` it has been touched by GW-2's opt-in commits (`bdfd442`, `1bd85ec`, and `3323a0e`'s batch size for (2b) only) and by VG-0's (`43d68fe`: `ppo.make_rollout`, `make_learner` and `make_train`, `adapters._bank_step`'s `info['final_state']`, `checkpoints.make_checkpoint_fn` and `train_dr.py`). Each option defaults off. The tests that hold the default path:
     - generator and bank: `tests/test_stat_widths.py` (`test_default_is_bit_identical`, `test_default_bank_is_bit_identical`, `test_train_dr_default_path_is_unchanged`) and `tests/test_real_widths.py::test_default_is_unchanged`;
     - PPO and env: `tests/test_value_gradient.py` (`test_default_racing_update_reproduces_the_pre_term_values`, `test_default_rollout_records_no_capture_and_defaults_are_off`, `test_train_dr_default_path_passes_no_term`) and `tests/test_ppo.py::test_make_train_reproduces_the_pre_split_update`.
     - The lead re-lists the commits at the tag. Any later option must also default off and come with such a test.
-- **One machine:** one rented NVIDIA RTX A6000, the cheapest Massed Compute instance, under the standing permission.
+- **One machine:** one rented NVIDIA RTX A6000, the cheapest Massed Compute instance, under the standing permission and the user's Phase 3 approval of 27 Oct 2026 (Section 7).
   - Set up with `scripts/gpu_setup.sh`.
   - `scripts/gpu_sync.sh` pushes R-dev data only (centrelines and `outputs/ocp/<R-dev>.pkl` for the gap). No R_TEST circuit leaves the Mac.
 - **Queue:** `scripts/gpu_queue_gw3.sh`, to be written on the pattern of `scripts/gpu_queue_h4r.sh`.
   - **4 lanes**, XLA memory fraction 0.22 each.
-  - **Job order:** seed-major. For seed index i = s − 20, the cell list below is rotated left by i, so each lane meets every cell:
+  - **Job order:** seed-major, 12 jobs per seed and 120 in all. For seed index i = s − 20 (0 to 9), the cell list below is rotated left by i, so each lane meets every cell (each cell 2 or 3 times per lane):
     `v1-base, v3-base, v1-cl-f1, v3-cl-f1, v1-sl-f1, v3-sl-f1, v1-cl-f2, v3-cl-f2, v1-sl-f2, v3-sl-f2, v1-sa, v3-sa`.
-  - Lane k runs jobs k, k + 4, k + 8, …, so every round of 4 concurrent runs mixes arms and variants.
+  - Lane k runs jobs k, k + 4, k + 8, …, 30 jobs per lane, so every round of 4 concurrent runs mixes arms and variants.
   - **Retry:** a run that fails is re-run once from scratch with the same arguments, as H4R's queue does (its log kept as `.log.1`). It is **missing** only if it fails twice.
 - **Manifest:** after pull-back, `outputs/gw3/manifest.json` is committed. It holds every run's config, timesteps, and the sha256 of its final checkpoint and `eval_rdev.json`; the queue log's sha256; the retry record; and the launch commit.
   - The analysis checks it before reading anything, and refuses a run whose config differs from its cell's flags.
@@ -70,20 +76,26 @@
   - **All-12 unit:** a_s = C(`sa`, seed s, all 12).
 - **Primary test P1: `sl` above `base` on held-out circuits.**
   - Statistic T = Σ over variants of [mean_s u_s(sl) − mean_s b_s].
-  - One-sided exact permutation test, labels exchanged within each variant: C(10, 5)² = 63,504 relabellings. Ties count toward p.
+  - One-sided exact permutation test, labels exchanged within each variant. Ties count toward p: p is the share of relabellings with T* ≥ T, the observed one included, and the opposite p the share with T* ≤ T.
+  - **Exact p by counting.** At 10 units per arm and variant there are C(20, 10)² = 184,756² ≈ 3.4 × 10¹⁰ joint relabellings, too many to list. They are counted instead, which gives exactly the p that listing them would:
+    - per variant, a dynamic programme over the integer units (0 to 12) counts the relabellings that give each sum of the `sl` arm's units;
+    - T is linear in the two variants' `sl` sums, so the number of relabellings with T* ≥ T (or ≤ T) is a sum, over every pair of sums, of the product of their counts;
+    - T is compared in integer arithmetic (scaled by the least common multiple of n_sl · n_base over the variants), so no comparison is approximate.
+    - `scripts/gw3_analysis.py`'s tests check the count against full enumeration on planted data with up to 5 units per arm, as `scripts/gw3_power.py` does.
   - **Confirm** if p ≤ 0.05. **Refute** if the opposite one-sided p ≤ 0.05. Otherwise **inconclusive**.
 - **Missing runs.**
-  - A missing run removes its unit (both halves of a pair are needed). Every relabelling of the remaining units is enumerated.
+  - A missing run removes its unit (both halves of a pair are needed). The p is counted over every relabelling of the remaining units, by the same method (arms of unequal size change only the integer weights).
   - A test is **not testable** with fewer than 3 units in either arm of either variant. Not testable counts as not confirmed.
-- **Secondary** (exact one-sided permutation tests of the same construction at 0.05, unadjusted, labelled secondary):
-  - **S1:** `cl` above `base` on held-out circuits (u(cl) against b), both variants (T as in P1). This replicates the leave-out test with same-code baselines.
-    - **S1-v1 and S1-v3**, also secondary exact tests at 0.05, unadjusted: the same comparison within one variant, T = mean_s u_s(cl) − mean_s b_s, one-sided, with C(10, 5) = 252 relabellings. S1-v1 is reported first: it is the transfer reading follow-through Section 9.1 asks for. The not-testable rule applies per variant.
-  - **S2:** `sa` above `base` on all 12 (a against b). It is in-sample for M's summaries.
+- **Secondary** (exact one-sided permutation tests of the same construction at 0.05, unadjusted, labelled secondary; each p counted as for P1):
+  - **S1:** `cl` above `base` on held-out circuits (u(cl) against b), both variants (T as in P1; C(20, 10)² relabellings). This replicates the leave-out test with same-code baselines.
+    - **S1-v1 and S1-v3**, also secondary exact tests at 0.05, unadjusted: the same comparison within one variant, T = mean_s u_s(cl) − mean_s b_s, one-sided, with C(20, 10) = 184,756 relabellings (few enough to list; counted by the same method). S1-v1 is reported first: it is the transfer reading follow-through Section 9.1 asks for. The not-testable rule applies per variant.
+    - **S1-v1 is also #12's transfer condition** (Section 5). S1 and S1-v3 are reported but do not decide #12.
+  - **S2:** `sa` above `base` on all 12 (a against b; C(20, 10)² relabellings). It is in-sample for M's summaries.
   - **S3:** `sl` against `cl` on held-out circuits, two-sided, descriptive. The mean difference per (variant, fold) cell, with a 95% percentile bootstrap over seeds (20,000 draws, seed 0). GW-4's criterion 2 reads this point estimate.
 - **Lap time (GW-4's criterion 3; IN-4's form).**
   - Each network's median gap is the median over its completed R-dev circuits of (median lap / s-OCP lap − 1), in points.
   - A network with no completed circuit has no median gap. It is left out of Δgap, and the number left out is reported per arm and variant. If every `sa` or every `base` network is left out, Δgap is undefined and criterion 3 does not hold.
-  - Δgap = mean over `sa` networks − mean over `base` networks, **both variants pooled** (10 against 10, less any left out).
+  - Δgap = mean over `sa` networks − mean over `base` networks, **both variants pooled** (20 against 20, less any left out).
   - Also reported, descriptively:
     - per variant;
     - on the circuits both networks complete (paired by seed);
@@ -94,16 +106,21 @@
   - the per-seed pairs (same-seed `sl` and `base`);
   - the number of networks per arm with C ≥ 10 of 12 at 200M, labelled **"not the gate"** (Section 6).
 - **The analysis script.** `scripts/gw3_analysis.py`, with tests on planted data, committed before the tag. It reads only the manifest's files, runs once (it refuses if its output exists or was ever committed) and writes `outputs/gw3/analysis.json` with a provenance block.
-- **Power** (computed for this draft, by simulation with H4R's baseline means and SDs: v1 5.0 ± 1.58, v3 7.2 ± 1.10; 1,500 draws):
+- **Power**, by simulation with H4R's baseline means and SDs (v1 5.0 ± 1.58, v3 7.2 ± 1.10):
+  - **Method.** Each unit is drawn independently as round(N(mean + gain, SD)), clipped to 0–12; the `sl` units take the row's gain. P1 is applied exactly as above.
+  - The 26 Oct draft computed the 5-seed column with 1,500 draws and committed no script. `scripts/gw3_power.py` re-implements the method.
+  - **It reproduces the 5-seed column within simulation error:** 0.027, 0.260, 0.345 and 0.711 at 1,500 draws (numpy seed 0 plus the row index), and 0.034, 0.272, 0.353 and 0.707 at 20,000 draws (`--draws-5 20000`). Each of the draft's figures is within 2 standard errors of the 20,000-draw value (one standard error of a 1,500-draw estimate is 0.005–0.012 here).
+  - **The 10-seed column:** 20,000 draws, numpy seed 20261027 plus the row index; standard error at most 0.004.
 
-  | True gain (v1, v3), circuits of 12 | P(P1 confirms) |
-  |---|---|
-  | 0, 0 | 0.03 |
-  | +1.3, +0.3 (about half of H4R's in-sample v1 gain transfers) | 0.25 |
-  | +1.3, +0.6 | 0.37 |
-  | +2.6, +0.6 (the whole in-sample gain transfers) | 0.70 |
+  | True gain (v1, v3), circuits of 12 | P(P1 confirms), 5 seeds per cell (26 Oct draft) | P(P1 confirms), 10 seeds per cell |
+  |---|---|---|
+  | 0, 0 | 0.03 | 0.04 |
+  | +1.3, +0.3 (about half of H4R's in-sample v1 gain transfers) | 0.25 | 0.50 |
+  | +1.3, +0.6 | 0.37 | 0.63 |
+  | +2.6, +0.6 (the whole in-sample gain transfers) | 0.70 | 0.96 |
 
-  At 5 seeds per cell (#13), an inconclusive P1 is the likeliest result unless most of the in-sample gain transfers. 10 seeds per cell (seeds 20–29) would roughly double the A6000 time (Section 7). That is the user's call before the tag.
+  At 10 seeds per cell (decided 27 Oct 2026), P1 confirms with about even odds if half of H4R's in-sample v1 gain transfers, and with probability about 0.96 if all of it does. If less than half transfers, an inconclusive P1 is still the likeliest result. The size stays below 0.05 because integer counts tie.
+  - S1-v1 (#12's condition, Section 5), from the same script at 10 seeds and 20,000 draws: P(confirms) 0.035 with no gain, 0.48 with a v1 gain of +1.3 and 0.96 with +2.6.
 
 ## 4. What counts as the result
 
@@ -120,11 +137,12 @@ S1 is reported whatever P1 shows. It answers the transfer question of follow-thr
 GW-4 **adopts M, fitted on all 12 R-dev circuits, as `generator-v1`'s width model** if all five criteria hold (follow-through Section 7.4):
 1. **P1 confirms** (Section 3).
 2. **Not far below the copied model.** D2 ≥ −0.5, where D2 is the mean over the 4 (variant, fold) cells of [mean_s C(`sl-f`, H_f) − mean_s C(`cl-f`, H_f)], in circuits of 6. This is a point estimate (S3).
-3. **Lap time.** Δgap < 1.0 point (Section 3; point estimate, both variants pooled; networks with no completed circuit left out, as Section 3 fixes). IN-4's copied-width reference for this statistic is +0.30 points pooled (+0.52 in v1, +0.09 in v3), with a 95% half-width of about 0.45 points at 10 against 10 (`interp-leftovers.md`, Section 6.3).
-4. **The width-report bands. PENDING THE USER** (Section 9). Neither model met them as fixed.
-   - Drafted for M = (2a): "(2a)'s committed width report (`outputs/width-report/report.json`, sha256 `5871664be5a6ff6ac882e3a38e131660fe16676f37ddd0a99ffba7294a42f014`) passes every v1 check in both folds and every no-copy check. Its v3 misses are limited to `share_1m` and `spectrum:8-16`."
+3. **Lap time.** Δgap < 1.0 point (Section 3; point estimate, both variants pooled, 20 against 20; networks with no completed circuit left out, as Section 3 fixes). IN-4's copied-width reference for this statistic is +0.30 points pooled (+0.52 in v1, +0.09 in v3), with a 95% half-width of about 0.45 points at 10 against 10 (`interp-leftovers.md`, Section 6.3).
+4. **The width report, restated** (decided by the user on 27 Oct 2026; a deviation from the width-model plan's bands, logged in Section 10 before the tag). Every v1 check in (2a)'s committed width report (`outputs/width-report/report.json`, sha256 `5871664be5a6ff6ac882e3a38e131660fe16676f37ddd0a99ffba7294a42f014`) passes in both folds, the v3 misses are limited to `share_1m` (both folds) and `spectrum:8-16` (fold f1), and every no-copy check (f1, f2 and all 12, in both variants) passes.
+   - The no-copy condition is kept from the drafted criterion 4: the restatement relaxes only the band checks (the lead, 27 Oct 2026).
+   - In the report's check names, those misses are `f1/v3/share_1m`, `f2/v3/share_1m` and `f1/v3/spectrum:8-16`.
    - The report is force-added to git (as `outputs/vg0/` is), with (2b)'s `report-2b.json` (sha256 `89ffd2a3a1c49de902e880c44f4e0dfec38ed790ebd2551435778e2c89f37755`). Both sha256s are also in `width-model.md`. GW-4 reads the report only after checking its sha256 against this line; a mismatch stops GW-4 for an amendment.
-   - The recorded report already meets this wording. Adopting it is a deviation from the width-model plan's verdict rule, and it must be logged before the tag.
+   - The committed report already meets this criterion: its failed list is exactly the three checks above, and every other of its 90 checks passes, the six no-copy checks among them (`width-model.md`, Sections 1 and 4).
 5. **The default stays bit-identical** at the `generator-v1` commit. These tests pass there:
    - `tests/test_stat_widths.py::test_default_is_bit_identical`;
    - `::test_default_bank_is_bit_identical` and `::test_train_dr_default_path_is_unchanged`;
@@ -134,13 +152,27 @@ GW-4 **adopts M, fitted on all 12 R-dev circuits, as `generator-v1`'s width mode
 
 **What adoption means:**
 - **If all five hold:** `generator-v1` sets `stat_widths` (M fitted on all 12) as E0's training width model. The default stays the frozen default.
-- **Otherwise:** `generator-v1` is tagged with the default widths. #11 allows no further width-model round. Copied R-dev widths are not a fallback unless the user decides #12 for copying.
-- **E0's curvature variant (v1 or v3)** is not GW-4's to choose, and it may not be chosen on GW-3's per-variant results. It is fixed before the tag, without GW-3 data (Section 9, item 5), and recorded here. The rule adopts a width model for either, read pooled over both.
+- **Otherwise: #12's rule** (decided by the user on 27 Oct 2026; Section 9, item 3). #11 allows no further width-model round.
+  - `generator-v1` uses copied R-dev width profiles (`--real-widths`) **if and only if both** of these hold:
+    - (2a) fails this adoption rule (any of the five criteria fails); and
+    - GW-3 shows that copied widths transfer to held-out circuits: **S1-v1 confirms** (Section 3). That is `cl-f1` and `cl-f2` above `base` on held-out units within v1, one-sided exact p ≤ 0.05. Not testable counts as not confirmed.
+  - **Otherwise** (either condition fails) `generator-v1` uses the default widths.
+  - The rule is deterministic: the user's answer was to copy only if GW-3 shows transfer, and it is written so that nothing is left to choose after GW-3's data (the lead, 27 Oct 2026).
+  - **Why S1-v1, not S1 pooled.** The copied widths would train E0, which is v1 (below). S1-v1 is this draft's pre-specified transfer reading (follow-through Section 9.1). A pooled S1 could confirm on v3's transfer alone. S1 and S1-v3 are reported but do not decide #12. S1-v1's power is in Section 3.
+  - **If copied widths are used,** every R-dev number for E0 is labelled **"in-sample for widths"** wherever it is reported (the findings, STATUS and the paper among them). E0 would then have trained on the R-dev circuits' own width profiles. The label covers every such number, among them:
+    - the 80% gate's result (#10; the median seed's count of completed R-dev circuits, Section 6) and each seed's count;
+    - per-circuit R-dev completion, lap times and gaps to the s-OCP lap;
+    - every comparison or figure that uses E0's R-dev results.
+  - **The lockbox (R_TEST) is unaffected either way.**
+- **E0's curvature variant is v1**, `train_dr.py`'s default (decided by the user on 27 Oct 2026, before the tag and without GW-3 data; Section 9, item 5).
+  - It is not GW-4's to choose, and it is not chosen on GW-3's per-variant results. Once tagged, a change is a deviation that makes E0's recipe exploratory.
+  - Criteria 1–3 stay pooled over both variants, as fixed before the variant was decided.
 - **GW-5 and GW-6** (#11's optional lever round and 1B pilot) may run after GW-3 on the chosen recipe. They do not change this rule.
 
 ## 6. The 80% gate (decision #10; recorded here, not read here)
 
-- **The gate:** E0 (5 seeds × 1B steps, on `generator-v1` and `sim-v1`) passes if its median seed completes at least 10 of the 12 R-dev circuits at its final checkpoint.
+- **The gate:** E0 (5 seeds × 1B steps in v1, on `generator-v1` and `sim-v1`) passes if its median seed completes at least 10 of the 12 R-dev circuits at its final checkpoint.
+- **If `generator-v1` uses copied widths** (#12, Section 5), the gate's result is labelled "in-sample for widths" wherever it is reported.
 - **No checkpoint is chosen on R-dev.** GW-1 showed that R-dev completion peaks at slow early checkpoints.
 - **GW-3 does not read it.** Its 200M runs are not E0. The per-arm count of networks with C ≥ 10 is descriptive and labelled "not the gate".
 
@@ -151,19 +183,18 @@ GW-4 **adopts M, fitted on all 12 R-dev circuits, as `generator-v1`'s width mode
   - The leave-out round: 8 runs in 51 min, 6.4 min per run (`runs/width-loo.log`).
   - The copied option did not slow training (H4R: 147–179k steps/s against 145–161k for baselines, retry excluded).
   - (2a)'s bank refresh costs what the default's does on the Mac: 0.08 s per 256 strips (`width-model.md`, Section 2).
-- **GW-3 with M = (2a):**
-  - 60 runs × 6.5–6.65 min = 6.5–6.7 h of training;
-  - plus about 10 min of setup and 5 min of pull-back;
-  - about **7 A6000 hours** in all, as one box session.
-  - The follow-through plan's "about 14 A6000 h" for v1 + v3 assumed 60–70 runs per variant. At #13's 5 seeds per cell the round is 60 runs in all. 10 seeds per cell would be about 14 h.
-- **With M = (2b):** unmeasured on the GPU. On the Mac CPU its bank refresh is about 200 times slower (15.9 s per 256 strips).
-  - Before its queue starts, one `gw3-v1-sa-s20`-shaped run of 2M steps measures the cost on the box.
-  - If it adds more than 50% per run, the lead brings it to the user before continuing.
+- **GW-3 with M = (2a) at 10 seeds per cell** (decided 27 Oct 2026):
+  - 120 runs × 6.4–6.65 min = 768–798 min, or 12.8–13.3 h of training;
+  - plus about 10 min of setup and 5 min of pull-back: 13.05–13.55 h;
+  - about **14 A6000 hours** in all, as one box session.
+  - This matches the follow-through plan's "about 14 A6000 h" (#13). The user's 10 seeds per cell supersede #13's 5.
+- **Approved** by the user on 27 Oct 2026: about 14 box-hours for this round, within Phase 3's A6000 budget (GW-3 about 14 h, VG-1 8–14 h, P4-B2 about 1 h; about 23–29 box-hours in all), on the cheapest Massed Compute A6000, one box at a time, deleted when done. The lead checks the hourly price on Brev before creating the box. The lead's stop rule: if the round's projected box time exceeds its approved estimate by more than 20% (about 16.8 h here), the lead pauses the round and asks the user.
+- **(2b) was not chosen** (Section 9, item 1), so its unmeasured GPU cost (on the Mac CPU its bank refresh is about 200 times slower than (2a)'s) does not arise.
 - **Analysis:** minutes on the Mac.
 
 ## 8. Procedure
 
-1. Review this draft. The user decides Section 9's items.
+1. Review this draft. The user's items in Section 9 were decided on 27 Oct 2026; the lead's (items 4 and 6) remain.
 2. Write and test `scripts/gw3_analysis.py` (planted data only) and `scripts/gpu_queue_gw3.sh`. Commit them with the final text.
 3. Tag `gw3-prereg-v1` (annotated) on that commit and push it. The tag object's sha is recorded in the findings.
 4. Rent the box, set it up at the tagged commit, and run the queue. Pull back, checking every final checkpoint's sha256 against the box's. Delete the box.
@@ -171,18 +202,30 @@ GW-4 **adopts M, fitted on all 12 R-dev circuits, as `generator-v1`'s width mode
 6. Run the analysis once. Write `docs/findings/gw3.md`.
 7. GW-4 applies Section 5's rule.
 
-**Deviations.** Any change after the tag is logged in the findings with its date and reason. A change to an outcome, test, seed or rule after any run has started makes the affected result exploratory.
+**Deviations.** Any change after the tag is logged in the findings with its date and reason. A change to an outcome, test, seed or rule after any run has started makes the affected result exploratory. Deviations from earlier plans that are decided before the tag are logged in Section 10.
 
-## 9. Open items before the tag
+## 9. Items before the tag (1, 2, 3 and 5 decided on 27 Oct 2026; 4 and 6 open)
 
-1. **M and criterion 4 (the user).**
-   - (2a), recommended, with criterion 4 as drafted.
-   - Or (2b): the `sl` and `sa` arms add `--reexpress`, criterion 4 is restated for (2b)'s report (`report-2b.json`: fold f2 passes fully; fold f1 misses `spectrum:8-16` in both variants and `share_1m` in v3), and its GPU cost is measured first.
-   - Or no stat-model arm. GW-3 is then `base`, `cl-f1` and `cl-f2` only: 30 runs, about 3.5 h. P1 becomes S1, and GW-4 falls to default widths unless #12 decides copying.
-2. **Seeds per cell (the user).** 5 (#13; about 7 h; power about 0.25–0.37 for a half-transferred gain) or 10 (about 14 h).
-3. **#12 (the user):** whether copied R-dev widths may be `generator-v1`'s fallback.
-4. **Seed ranges (the lead):** keep VG-1 and any other `train_dr.py` round off seeds 20–24 (20–29 if 10 seeds).
-5. **E0's curvature variant (the user, before the tag).** Decided on what exists now, never on GW-3's results; once tagged, a change is a deviation that makes E0's recipe exploratory.
-   - Recommended: **v1**, `train_dr.py`'s default. It is the variant where the copied-width effect replicates (H4R S1, +2.6 of 12; follow-through Section 7.4 requires v1 in GW-3 for that reason), and the curvature levers did not differ (v1/v2/v3 at 5.4/5.8/5.8; follow-through Section 8).
-   - The alternative is v3 (`--tilt-fraction 0.5 --tilt-alpha 2`), whose H4R baseline was higher (7.2 against 5.0 circuits of 12) and whose width effect was smaller.
-6. **To build (the lead):** `scripts/gw3_analysis.py` with tests, `scripts/gpu_queue_gw3.sh`, and the manifest writer.
+1. **M and criterion 4: decided by the user on 27 Oct 2026. M = (2a)**, with criterion 4 restated as Section 5 gives it. The deviation from the width-model plan's bands is logged in Section 10.
+   - The options were (2a) (recommended); (2b), with `--reexpress` on the `sl` and `sa` arms, criterion 4 restated for `report-2b.json` and its GPU cost measured first; or no stat-model arm (`base`, `cl-f1` and `cl-f2` only). (2b) and dropping the stat-model arm were not chosen.
+2. **Seeds per cell: decided by the user on 27 Oct 2026. 10 seeds, 20–29**: 120 runs, about 14 A6000 hours (Section 7). P1's power at 10 seeds is in Section 3. This supersedes #13's 5 seeds per cell.
+3. **#12: decided by the user on 27 Oct 2026.** `generator-v1` uses copied R-dev width profiles if and only if (2a) fails GW-4's adoption rule and S1-v1 confirms that copied widths transfer to held-out circuits (Section 5). If copied widths are used, every R-dev number for E0, the 80% gate (#10) included, is labelled "in-sample for widths" wherever it is reported. Otherwise, when (2a) fails the rule and S1-v1 does not confirm, `generator-v1` uses the default widths. The lockbox (R_TEST) is unaffected either way.
+4. **Seed ranges (the lead):** keep VG-1 and any other `train_dr.py` round off seeds 20–29. VG-1's draft uses 15–16 and 30–49.
+5. **E0's curvature variant: decided by the user on 27 Oct 2026. v1**, `train_dr.py`'s default. It was fixed before the tag, on what existed then, without GW-3 data. Once tagged, a change is a deviation that makes E0's recipe exploratory.
+   - The draft's reasons for recommending it (26 Oct 2026): v1 is the variant where the copied-width effect replicates (H4R S1, +2.6 of 12; follow-through Section 7.4 requires v1 in GW-3 for that reason), and the curvature levers did not differ (v1/v2/v3 at 5.4/5.8/5.8; follow-through Section 8).
+   - The alternative was v3 (`--tilt-fraction 0.5 --tilt-alpha 2`), whose H4R baseline was higher (7.2 against 5.0 circuits of 12) and whose width effect was smaller.
+6. **To build (the lead):** `scripts/gw3_analysis.py` with tests (among them the counting test of Section 3 against full enumeration), `scripts/gpu_queue_gw3.sh`, and the manifest writer.
+
+## 10. Deviations logged before the tag
+
+This list is append-only. Each entry is dated and is part of the text that `gw3-prereg-v1` tags.
+
+1. **27 Oct 2026: GW-4's criterion 4 departs from the width-model plan's bands.**
+   - **What the bands required.** The verdict rule of `width-model-plan.md` (Section 4, fixed in `bdfd442` before any report was computed): a model meets the bands only if every judged check passes in both folds and both variants, and the no-copy check passes for f1, f2 and all 12 in both variants. For (2a) that is 90 checks. Criterion 4 was to require that verdict (follow-through Section 7.4), and the plan's branch for "neither meets" left GW-4's criterion 4 unable to hold for either model.
+   - **What the bands gave.** (2a) misses 3 of its 90 checks, all in v3: `f1/v3/share_1m`, `f2/v3/share_1m` and `f1/v3/spectrum:8-16`. (2b) misses 3, all in fold f1 (`width-model.md`, Sections 1 and 4).
+   - **What changed.** The user chose (2a) on 27 Oct 2026 and restated criterion 4: every v1 check in (2a)'s committed report passes in both folds, and the v3 misses are limited to `share_1m` (both folds) and `spectrum:8-16` (fold f1). The report's sha256 check before GW-4 reads it is kept (Section 5).
+   - **Why.** By the plan, the choice went to the user before the tag (`width-model.md`, Section 8). The user took option 1 there, the recommended option. Its stated reasons: (2a) is the direct fit, costs nothing extra to generate and passes every v1 check. (E0's variant, decided the same day and separately, is v1; Section 5.)
+     - The readings of its two v3 misses are **post hoc**, made after the results were seen (`width-model.md`, Section 6). They are that the 8–16 m band holds centimetre-scale variation and its rule has no absolute floor, and that the v3 share overshoot is consistent with the tilted grammar's corner mix.
+     - They are reasons offered for the choice, not tests. They change no band and no verdict: both models still do not meet the bands.
+   - **What it means.** The restated criterion was written after (2a)'s report was seen, and the committed report meets it. Criterion 4 therefore no longer tests (2a) against the bands, and GW-4's decision in practice rests on criteria 1, 2, 3 and 5. The bands' own verdict for (2a) stays "does not meet" (`width-model.md`).
+   - **When.** Logged on 27 Oct 2026 in this draft, before the tag `gw3-prereg-v1` and before any GW-3 run.

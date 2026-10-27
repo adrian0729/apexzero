@@ -1,10 +1,12 @@
 # Maze E5 (PA-3): do level scores track exact regret on JaxUED's own agents? (pre-registration, DRAFT)
 
 **Status.** DRAFT, 26 Oct 2026, for review. Nothing here is tagged, and none of the 30 runs below
-exists. After review the lead commits the final text. The SFL source is vendored only after the
-user approves the download (Section 10). The runs are trained, their checkpoint manifest is
-committed, and the tag `maze-e5-prereg-v1` is placed before any audit of an E5 checkpoint
-(Section 8). E5 uses no racing circuit, so the lockbox is untouched.
+exists. After review the lead commits the final text. On 27 Oct 2026 the user decided three of
+Section 11's choices (E5's own tag, no PLR-PVL arm, DR through `maze_plr.py`), approved the SFL
+download, which is made when E5 is built (Section 10), and approved only a short timing run on the
+box (Section 9). The runs are trained once the user approves the full queue, their checkpoint
+manifest is committed, and the tag `maze-e5-prereg-v1` is placed before any audit of an E5
+checkpoint (Section 8). E5 uses no racing circuit, so the lockbox is untouched.
 
 ## 1. Why
 
@@ -32,7 +34,9 @@ committed, and the tag `maze-e5-prereg-v1` is placed before any audit of an E5 c
 |---|---|---|
 | DR | JaxUED `examples/maze_plr.py`, vendored unmodified (`third_party/jaxued_examples/`) | `--replay_prob 0 --exploratory_grad_updates`, as in the pilot |
 | PLR-MaxMC | the same file | none: `--score_function MaxMC` is its default (PLR⊥: replay 0.8, rank β 0.3, staleness 0.3, buffer 4,000) |
-| SFL | SFL's `sfl/train/minigrid_sfl.py`, vendored unmodified once approved (`third_party/sfl/`) | its own config defaults (`minigrid-sfl.yaml`, `learning/ippo-minigrid.yaml`, `env/minigrid.yaml`) |
+| SFL | SFL's `sfl/train/minigrid_sfl.py`, vendored unmodified when E5 is built (`third_party/sfl/`; download approved 27 Oct 2026, Section 10) | its own config defaults (`minigrid-sfl.yaml`, `learning/ippo-minigrid.yaml`, `env/minigrid.yaml`) |
+
+- **No PLR-PVL arm** (decided by the user, 27 Oct 2026; #17). The arms are these three.
 
 **Shared settings:**
 - **View sizes:** 5 (the default) and 13. For JaxUED: `--agent_view_size 5|13`. For SFL: its
@@ -69,6 +73,8 @@ u_k = 100·round(3·100^((k−1)/15)), k = 1…16:
 - **One commit, one box.** All 30 runs train from one commit on one rented NVIDIA RTX A6000 (the
   cheapest Massed Compute instance), set up with `scripts/gpu_setup.sh`. No racing data is needed
   on the box.
+  - The lead checks the A6000's hourly price on Brev before creating the box. One box at a time,
+    deleted when done (27 Oct 2026).
 - **The queue,** `scripts/gpu_queue_maze_e5.sh` (to be written), interleaves the cells so that each
   round mixes arms and views.
   - The lane count is fixed by the timing calibration (Section 9).
@@ -87,7 +93,7 @@ u_k = 100·round(3·100^((k−1)/15)), k = 1…16:
 | DEV-E5-3 | SFL run length | to be read | 30,000 PPO updates | the follow-through's equal-update rule |
 | DEV-E5-4 | View 13 | 5 | 13 | the observability manipulation (outcome row F) |
 | DEV-E5-5 | Episodes per score | JaxUED: whatever completes in 256 steps; SFL: up to 10 in 2,000 steps | 4 operational episodes (score spec DEV-5). The native scores are reported beside them | score noise that does not depend on the agent's speed, as in the pilot |
-| DEV-E5-6 | DR | JaxUED also ships `examples/maze_dr.py` | `maze_plr.py` with replay 0 and exploratory gradient updates (the pilot's) | DR and PLR then share one script and differ only in the sampler |
+| DEV-E5-6 | DR | JaxUED also ships `examples/maze_dr.py` | `maze_plr.py` with replay 0 and exploratory gradient updates (the pilot's) | DR and PLR then share one script and differ only in the sampler. Decided by the user on 27 Oct 2026; `maze_dr.py` is not downloaded |
 
 ## 3. The audit (fixed now)
 
@@ -290,16 +296,18 @@ Per arm and primary score, read on both targets:
 - **It changes no racing decision.** E0's recipe, `generator-v1`, the lockbox and the E4 trigger
   (racing only) are untouched.
 - **`audit-v1`** may cite E5 as prior information. It is not bound by it.
-- **Its tag is its own.** E5 has its own tag and does not wait for `protocol-v1`. That is a choice
-  for the user (#17; Section 11).
+- **Its tag is its own.** E5 has its own tag, `maze-e5-prereg-v1`, is not folded into
+  `protocol-v1` and does not wait for it. The user decided this on 27 Oct 2026 (#17; Section 11).
 
 ## 8. Procedure
 
 **Before the tag:**
-1. **The user approves** the SFL download (and any installs it turns out to need; Section 10).
-2. **Vendoring.**
-   - SFL's files are copied byte for byte into `third_party/sfl/` and checked against their blob
-     hashes.
+1. **Approvals.** The user approved the SFL download on 27 Oct 2026 (Section 10). Any install it
+   turns out to need (Hydra, OmegaConf or anything else) needs a separate OK from the user before
+   it is made.
+2. **Vendoring,** when E5 is built.
+   - SFL's files, `LICENSE` included, are downloaded at the pinned commit and copied byte for byte
+     into `third_party/sfl/`. Each is checked against its git blob SHA-1 in Section 10's table.
    - A README records the source, commit, licence, files, hashes and DEV-E5-2, as
      `third_party/jaxued_examples/README.md` does.
 3. **The build,** committed and given an adversarial review:
@@ -314,9 +322,11 @@ Per arm and primary score, read on both targets:
      patch equivalence.
 4. **A dry run** on the pilot's checkpoints: the pilot reproduction (Section 3), then `analyse`
    end to end on one seed. This is a machinery check only.
-5. **Timing calibration** on the box (Section 9). It fixes the lanes and the projection.
-6. **Training.** The 30 runs; the 16 selected checkpoints per run are pulled back with their
-   sha256 checked; the training logs and wandb offline files are kept.
+5. **Timing calibration** on the box (Section 9). It fixes the lanes and the projection. It is the
+   only box time approved so far (27 Oct 2026), and its measured projection goes to the user.
+6. **Training,** once the user has approved the full queue on the measured estimate (Section 9).
+   The 30 runs; the 16 selected checkpoints per run are pulled back with their sha256 checked; the
+   training logs and wandb offline files are kept.
    - Training computes no score-against-regret outcome. The logs hold JaxUED's own eval solve
      rates and the samplers' statistics only.
 7. **The manifest** (every checkpoint's path, update and sha256; every run's config and queue
@@ -381,7 +391,8 @@ other than the manifest and the recorded amendments is logged as a deviation.
 | **Total** | | **about 7–22 (about 12 at the geometric midpoint)** |
 
 - That is 2–4 times the plan's figure, and SFL dominates it. At the plan's assumed $0.5–1 per
-  box-hour it costs about $4–22.
+  box-hour it costs about $4–22. The lead checks the A6000's hourly price on Brev before creating
+  the box.
 
 **Timing calibration (fixed now; decided on time alone):**
 - Before the queue, each of the 6 arm × view cells trains seed 99 for 500 updates (SFL through 5
@@ -390,9 +401,18 @@ other than the manifest and the recorded amendments is logged as a deviation.
 - The calibration runs are discarded and never audited.
 - The lane count is the one with the shortest projected total.
 
-**Budget rule:**
-- If the projection is at most 12 box-hours, the queue starts under the standing permission.
-- If it is more, the lead asks the user before starting.
+**Budget rule** (decided by the user, 27 Oct 2026). It replaces this draft's gate, under which a
+projection of at most 12 box-hours would have started the queue under the standing permission and
+a larger one would have gone to the user.
+- **Approved now:** only the timing calibration, a short run on the cheapest Massed Compute A6000.
+  This draft gives it no separate estimate; the table above puts setup, calibration and
+  pull-backs together at about 1 box-hour.
+- **The full queue** (the 30 runs and the audit) returns to the user with the measured
+  projection, whatever it is. It starts only on the user's OK.
+- **Stop rule** (the lead's, 27 Oct 2026). If a round's projected box time exceeds its approved
+  estimate by more than 20%, the lead pauses that round and asks the user. For the full queue, the
+  approved estimate is the one the user approves on the measured projection. The timing run has no
+  separate estimate (above).
 - If the user caps the budget, cells are dropped in this fixed order:
   1. SFL at the 13×13 view;
   2. the 13×13 view in every arm (S3 and row F are then not tested);
@@ -401,8 +421,18 @@ other than the manifest and the recorded amendments is logged as a deviation.
 **Mac.** `analyse` only: bootstrap and tests over stored per-maze arrays, estimated under 1
 CPU-hour, niced, with at most 4 processes. BFS on 2,000 mazes takes seconds.
 
-## 10. The SFL source (to vendor; the download needs the user's OK)
+## 10. The SFL source (to vendor; download approved 27 Oct 2026)
 
+**Approval (27 Oct 2026).** The user approved the download of the files in the table below, at the
+commit below, under Apache-2.0: 46,359 bytes for the five core files, or 60,890 bytes with
+`sfl/train/common/network.py` and the package files.
+- Nothing is downloaded yet. The download is made when E5 is built (Section 8, step 2).
+- The files are vendored with `LICENSE`, and each is checked against its git blob SHA-1 in the
+  table.
+- The approval covers the download only. Any install (Hydra, OmegaConf or anything else) needs a
+  separate OK from the user.
+
+**The source:**
 - **Repository:** `amacrutherford/sampling-for-learnability` on GitHub (Rutherford et al. 2024,
   "No Regrets", arXiv 2408.15099).
 - **Commit:** `8b14e2ec07b38dc33a9df476b84faa2f3ca5fd3b` (21 Oct 2025, "Fix typo in Sampling For
@@ -432,23 +462,29 @@ CPU-hour, niced, with at most 4 processes. BFS on 2,000 mazes takes seconds.
 
 **Not yet known** (it needs the file's contents, which were not read): which packages
 `minigrid_sfl.py` imports. Its YAML configs suggest Hydra or OmegaConf, and neither is installed
-here. Any such install also needs the user's OK. The repo's environment has `jaxued` 0.0.1, whose
-maze env equals the pinned JaxUED commit's (blob `34291f1a…`, checked), and wandb, orbax, distrax
-and chex.
+here. Any such install needs a separate OK from the user, which the 27 Oct 2026 approval does not
+give. The repo's environment has `jaxued` 0.0.1, whose maze env equals the pinned JaxUED commit's
+(blob `34291f1a…`, checked), and wandb, orbax, distrax and chex.
 
-**Optional, not proposed:** JaxUED's `examples/maze_dr.py` (28,606 bytes, blob `d367205a…`, the
-same pinned commit `0f8f128`, Apache-2.0). It is needed only if review prefers it to DEV-E5-6.
+**Not downloaded:** JaxUED's `examples/maze_dr.py` (28,606 bytes, blob `d367205a…`, the same
+pinned commit `0f8f128`, Apache-2.0). It would have been needed only if review preferred it to
+DEV-E5-6, which the user kept on 27 Oct 2026.
 
-## 11. Choices for review
+## 11. Choices for review (items 1 and 4, and item 7's gate, decided 27 Oct 2026)
 
 1. **E5's own tag now** (this draft), or E5 inside `protocol-v1`. Also whether to add a PLR-PVL arm
-   (10 more runs). Both are #17, the user's.
+   (10 more runs). Both are #17, the user's. **Decided 27 Oct 2026:** E5 has its own tag,
+   `maze-e5-prereg-v1`, not folded into `protocol-v1`, and there is no PLR-PVL arm.
 2. **Equal updates (30,000) for SFL.** The alternative is equal env steps or SFL's own default
    length.
 3. **Arms pooled over the two views** in the primary family, with view as a secondary moderator.
    The alternative is per arm and view: 72 primary tests.
 4. **DR through `maze_plr.py`** (DEV-E5-6), or JaxUED's `maze_dr.py` (one more small download).
+   **Decided 27 Oct 2026:** DR runs through `maze_plr.py` with replay off, as drafted. `maze_dr.py`
+   is not downloaded.
 5. **Seeds 1–5.** The alternative is 0–4, which overlaps the pilot's seen seed 0.
 6. **The thresholds** (ρ 0.5 / 0.2, nRC 0.6 / 0.2). They are the plan's provisional values, with
    RC read against its ceiling, and fixed here for the maze.
-7. **The budget gate** of 12 box-hours, and the drop order.
+7. **The budget gate** of 12 box-hours, and the drop order. **The gate was replaced on 27 Oct
+   2026:** only the timing run is approved, and the user decides the full queue whatever its
+   estimate (Section 9). The drop order is still for review.
