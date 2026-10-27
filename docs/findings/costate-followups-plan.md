@@ -1959,3 +1959,166 @@ code, the layouts of the bound files, and these facts:
    - **Pooled.** Per network, 4 units (step 1; h1; h2; D): 36 units.
    - **Outputs.** `summary.json`, and `preds.npz` (step 1's base, trained full and FWL
      out-of-fold predictions per network).
+
+### Amendment 11 (2026-10-27)
+
+**What changed.** BC-a0's operational details, where Section 4's text leaves a choice: the
+stream, the grammar and how a continuation is placed on a key's road, the per-state picks, the
+statistics' weights, bootstrap and failure rule, the readings of Ea0.1 to Ea0.3 and of the
+route; its pool and wiring checks; descriptive companions. One part cannot be done as written
+(item 3: two of K2b's 26 keys have a single braking- or corner-phase interior state). One
+condition of R9 is read for this run (item 6). No question, row set or expected direction
+changes. **Why.** To fix these choices before any BC-a0 number exists. **Computed or seen before
+it.** No BC-a0 number: no key was re-solved on a continuation, and no Δλ, ΔΠ or Δσ was seen.
+Read: the frozen code, the layouts of the bound files, and these facts about the construction
+alone:
+- **K2b's 26 keys** (`gates/k2b.json`): all are in the bound world, with 15–31 T rows each; 20
+  are W = 400 keys and 6 are W = 800 keys; 14 turn left and 12 right. Each stored road has one
+  corner starting at s_c0 = 1,000 m, on 2,560 knots 2 m apart (5,118 m). Beyond s_c1 + 20 m its
+  curvature is at most 2.1·10⁻¹⁵ of its peak on every key, so a continuation placed there
+  replaces a straight. The stored plans end at 2,254–2,509 m (W = 400) and 4,054–4,178 m
+  (W = 800). The widths are 4.5–7.5 m per side.
+- **Their interior braking- and corner-phase T rows:** 1–8 per key. Two keys have exactly one
+  (a corner row), and two more have corner rows only.
+- **The v1 grammar** (item 2): 300 corners and 300 straights; p_alt_short 0.286, p_alt_long
+  0.491; straights 0–1,160 m (median 23 m).
+- **The 8 strips' draws** (item 2): their seeds, run-ups (506–887 m), g_j (0–492 m), u and first
+  directions (5 left, 3 right).
+- **The placements** (items 2 and 3): s_start − s_c1 is 318–571 m per key and 112–519 m per
+  state (state reach − s_c1: 91–497 m). g_j sets s_next in 23 of the 208 per-key units (all
+  j = 8). The first corner turns the key's own way in 51% of the per-key units and 56% of the
+  per-state ones. (w_in − 1)·|κ| exceeds the generator's cap of 0.6 on 8 units (largest 0.648).
+- **The base targets:** on K2b's first two keys, the re-polished stored targets equal the bound
+  world's at their T rows exactly (gap 0), in 0.1–1.2 s per key.
+
+1. **Shared.**
+   - **Targets only (R5).** No network output of any network is computed or read, and no
+     checkpoint is opened. The item does not unlock.
+   - **Inputs.** The bound world and its summary; `gates/k2b.json`; the A2 key set (the index's
+     list equals the record's `key_sets` 'a2', and the key files its `content` hash, or the item
+     stops); and the 12 R-dev centreline files, whose sha256 are recorded.
+   - **The keys.** K2b's 26 keys in `gates/k2b.json`'s order (i = 0…25). Their T rows, phases,
+     interior flags, s_c1, direction and W are the bound world's.
+   - **R10's stream.** BC-a0's item number is 100. The units are:
+     - j for continuation j;
+     - 100 + i for key i's state picks;
+     - 1000 for the per-key bootstrap and 1001 for the per-state one.
+   - **The re-solve.** `gates.k2b_solve` from the re-polished stored optimum
+     (`targets.key_targets`), with K2b's amplitude ramp and re-centring. λ comes from the jac route
+     (`targets.costate`), Π from `targets.prices`, and σ from the solution's switching functions.
+     There is no re-polish and no basin check, as in K2b; the state's own move is reported
+     instead (below). A re-solve that fails or raises is recorded as failed, with its error.
+   - **The base.** Δ = (continuation) − (stored) at the same plan step t, signed, as K2b compares
+     them. Before each re-solve, the re-polished stored optimum's targets at the unit's rows must
+     equal the bound world's to 10⁻¹² relative, or the item stops.
+   - **The targets compared.** λ (all 8 components), Π^in, Π^out, Π^slip, Π^μ, σ^steer and σ^ped.
+     Beside them, descriptively, the state's own move Δx (s, n, vx) at that step.
+   - **Wiring.** K2b's first key (`gates/k2b.json`), re-solved under both of K2b's severities by
+     CS-9's `k2b_rows`, must reproduce its record to 10⁻⁶ (SD units), or the item stops. SD_T must
+     equal `gates.lam_sd`'s.
+
+2. **The grammar and the continuations.**
+   - **The grammar.** Step 1's `interp.support.grammar` for the 'base' spec: `fit_grammar` with
+     its defaults on the 12 raw R-dev centrelines, each name through `lockbox_guard` first. This
+     is `scripts/train_dr.py`'s grammar for G1's run, which has no tilted share and no real
+     widths. The script never names the lockbox list (the scaffold's test).
+   - **Strip j** (j = 1…8). `generator.generate` from `jax.random.PRNGKey(seed_j)`, with
+     seed_j = `default_rng([20261025, 100, j]).integers(0, 2³¹ − 1)`, generated once in the
+     parent process (x64 on). From the same key, the script replicates three of `generate`'s
+     draws:
+     - the run-up, where the first corner token starts;
+     - gap[0] before `generate` overwrites it with the run-up. This is the plan's g_j;
+     - the uniform behind the first corner's direction.
+
+     Check: each strip's first nonzero knot is the first knot beyond its run-up, with that
+     direction, or the item stops.
+   - **The placement.** The strip's knot curvatures from the first corner token on, as generated
+     (signs included). They are shifted by a whole number of knots, so the token starts at
+     s_start, the first knot-aligned point at or after s_next (s_start < s_next + 2 m). They are
+     added to the key's knots as a sample perturbation (`perturb.perturbed_track`), as K2b's
+     second corner is, and the strip is cut at the road's end. Knots at or before s_start are
+     unchanged, and so are the widths (the plan).
+   - **The direction is the strip's own.** The plan does not fix it. Every gap s_start − s_c1 is
+     at least 112 m, where the grammar's alternation probability is p_alt_long = 0.491. So a
+     direction drawn independently of the key's corner matches the grammar to 0.01. Whether the
+     first corner turns the key's own way is recorded, descriptively.
+   - **The generator's inside-width cap is not applied,** since the key's widths are kept.
+     (w_in − 1)·|κ| above 0.6 is recorded per unit.
+   - **The same strips on every key and state.** Continuation j is one strip, placed on every
+     unit, so the units share their draws (common random numbers).
+
+3. **The placements.**
+   - **Per key** (26 × 8 = 208 re-solves). s_next = max(s2, s_c1 + g_j), with s2 from
+     `gates/k2b.json`. Check: every T row's preview reach s_t + d_max(vx_t) is at most s2 − 20 m,
+     or the item stops. Δ is read at all of the key's T rows.
+   - **Per state** (50 × 3 = 150 re-solves).
+     - **The picks.** On key i, among its interior braking- and corner-phase T rows: with both
+       phases, one of each, uniform within its phase (braking drawn first); with one phase, two of
+       it, uniform without replacement (or the one, if it has one). The draws use
+       `default_rng([20261025, 100, 100 + i])`.
+     - **Cannot be done as written.** The plan picks two states on 25 of the 26 keys. Two keys
+       have only one such state. So two states are picked on 24 keys and one on each of the other
+       2: still 50 states (22 braking, 28 corner), now on all 26 keys.
+     - **The continuations.** j = 1, 2, 3 (the first three strips), with
+       s_next = reach_t + 20 m and reach_t = s_t + d_max(vx_t). Δ is read at that state's row
+       only.
+
+4. **The statistics.**
+   - **Per row.** mean_j Δ² over the row's successful continuations. It splits exactly into
+     (mean_j Δ)², the bias part, plus the continuations' spread. Both parts are reported
+     (U_bias, U_spread), descriptively.
+   - **U_{k,p}** = Σ_rows w · mean_j(Δ_k²) / var_{T,p}(k):
+     - the rows are phase p's interior rows of the kept keys (per key), or the kept states of
+       phase p (per state);
+     - w gives each key equal weight on those rows, and its rows equal weight within it;
+     - var_{T,p} is the key-weighted variance over T's interior rows of phase p (weights
+       renormalised on them), within direction for the mirror-odd targets (λ_n, λ_ξ, λ_vy, λ_r,
+       λ_δ and σ^steer).
+   - **Its CI.** 2,000 bootstrap draws over K2b's 26 keys (multinomial counts on the item's
+     stream, units 1000 and 1001). The same counts serve every phase and target. A draw that
+     picks no key with a row in the phase is left out and counted. The interval is the 95%
+     percentile one.
+   - **K2b's statistic beside U.** |Δ_k| / SD_T, with SD_T the key-weighted SD over all of T's
+     rows (`gates.lam_sd`'s; within direction for the mirror-odd targets). It is pooled over the
+     rows and the successful continuations, and reported as the p90, with the median, the largest
+     value and the worst continuation's p90. It is computed on the interior rows and on all of
+     the key's T rows, per phase. `gates/k2b.json`'s frozen p90 is reported beside it.
+   - **Phases.** All four per key; braking and corner per state.
+   - **The failure rule.** A key with more than 4 of its 8 re-solves failed, or a state with more
+     than 1 of its 3, is dropped from the shares and listed. A kept unit's failed continuations
+     are left out of its mean.
+   - **Descriptive.** |Δx| at the scored rows (median and largest); each unit's seconds and
+     re-centring rounds; |ΔΠ|/SD_T (for CS-5) and |Δσ|/SD_T (for CS-14) as the same p90s and
+     shares, approach and exit rows included.
+
+5. **The readings** (point estimates).
+   - **Ea0.1:** per state, the corner-phase U of λ_s and of λ_vx are each above 0.1.
+   - **Ea0.2:** per state, the braking U is below the corner U for each of the 4 K_P components
+     (all 4).
+   - **Ea0.3:** the per-state U exceeds the per-key U for each K_P component, in braking and in
+     corner (all 8).
+   - Ea0.1 and Ea0.2 are also read on the per-key shares and reported.
+   - **The route** (a recommendation to the lead under #6, not a decision). For each K_P
+     component and phase (braking, corner), from the per-state U's CI upper end:
+     - at most 0.1: option (i), with that upper end as the stated bound;
+     - above 0.1: option (ii);
+     - no share: none.
+
+     The per-key U is beside it as the lower bound. These CIs come from 26 keys with 1–2 states
+     each and 3 continuations per state.
+
+6. **Pool and outputs.**
+   - **Units.** One per key and continuation (208), one per state and continuation (150), and
+     the wiring key: 359 units, the W = 800 keys' first.
+   - **Pool.** 4 workers × 2 XLA threads, BLAS at one thread, niced by 10.
+   - **R9's "alone".** BC-a0 does not run alongside K2b on N or K2b for q_c (both are done) or
+     any other solve of this lane. The lead's instruction for this lane allows another workflow
+     to run on the main checkout, so BC-a0 keeps to 4 workers, niced, rather than having the
+     machine to itself. Its numbers do not depend on the load; only its wall time does.
+   - **Cost.** The plan's estimate is about 7 CPU-h (1.5–2.5 h of wall time at 4 workers).
+   - **Outputs.** In `outputs/costate/exploratory/bc-a0/`:
+     - `summary.json`: the keys, states, strips, units, failures, SD_T and var_{T,p}, the shares
+       and p90s, the routes, the readings, the wiring and the timings;
+     - `rows.npz`: per-row Δ and Δx, the rows, keys and kept flags, and the strips' curvature.
+
+     A copy of the summary goes under `docs/findings/costate-followups/`.
