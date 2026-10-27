@@ -36,6 +36,11 @@ from apexzero.costate.probes import POOL_SEEDS as POOL
 from apexzero.interp import agents
 
 REPO = Path(__file__).resolve().parents[1]
+# The pre-tag behaviour these tests pin cannot be observed in this repository once
+# costate-prereg-v1 exists (tagged 24 Oct 2026): the real pre-tag stages then refuse.
+TAGGED = subprocess.run(["git", "-C", str(REPO), "rev-parse", "-q", "--verify",
+                         "refs/tags/costate-prereg-v1"], check=False,
+                        capture_output=True).returncode == 0
 SCRIPT = REPO / "scripts" / "costate.py"
 KEYS, STIM = data_dirs()
 HAVE_KEYS = (KEYS / "nominal").exists() and (STIM / "cells.json").exists()
@@ -196,14 +201,14 @@ def test_pre_tag_stages_refuse_after_the_tag_and_post_tag_ones_before(tmp_path, 
     dev = cs.refuse_after_tag("k1", "a rerun", root=root, out_root=tmp_path / "elsewhere")
     assert dev["reason"] == "a rerun"
     assert (root / cs.OUT_REL / "deviations.jsonl").exists()
-    # this repository has no costate tag: every post-tag stage refuses
+    # before the tag, every post-tag stage refuses (skipped once the tag exists)
     monkeypatch.setattr(cs, "import_problems", lambda *a, **k: [])
     cs._use_provenance(cs.Provenance(None, "analyse"))
     from apexzero.costate import critic as CR
     from apexzero.costate import probes as PB
     from apexzero.fields import network as NW
 
-    for stage in cs.POST_TAG:
+    for stage in [] if TAGGED else cs.POST_TAG:
         with pytest.raises(SystemExit, match="does not exist yet"):
             cs.main([stage, "--out", str(tmp_path / "o")])
         # no trained network was unlocked on the way (review finding: an unlock moved

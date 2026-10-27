@@ -41,6 +41,11 @@ from apexzero.costate import data_dirs
 from apexzero.costate import workers as WK
 
 REPO = Path(__file__).resolve().parents[1]
+# The pre-tag behaviour these tests pin cannot be observed in this repository once
+# costate-prereg-v1 exists (tagged 24 Oct 2026): the real pre-tag stages then refuse.
+TAGGED = subprocess.run(["git", "-C", str(REPO), "rev-parse", "-q", "--verify",
+                         "refs/tags/costate-prereg-v1"], check=False,
+                        capture_output=True).returncode == 0
 SCRIPT = REPO / "scripts" / "costate.py"
 KEYS, STIM = data_dirs()
 HAVE_KEYS = (KEYS / "nominal").exists() and (STIM / "cells.json").exists()
@@ -341,6 +346,7 @@ def _dump(path: Path, obj) -> str:
     return str(path)
 
 
+@pytest.mark.skipif(TAGGED, reason="pre-tag stage: refuses once costate-prereg-v1 exists")
 def test_decoy_k_with_three_workers_writes_the_serial_record(tmp_path):
     import dataclasses
 
@@ -450,6 +456,7 @@ def twelve_keys(tmp_path_factory):
 
 
 @pytest.mark.skipif(not HAVE_KEYS, reason="step 1's keys or stimuli are missing")
+@pytest.mark.skipif(TAGGED, reason="pre-tag stage: refuses once costate-prereg-v1 exists")
 def test_nulls_with_three_workers_write_the_serial_arrays(tmp_path, twelve_keys):
     import shutil
 
