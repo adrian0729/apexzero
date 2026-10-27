@@ -515,7 +515,7 @@ def test_gw4_adopts_when_criteria_1_to_4_hold(ga, rl):
     assert g["criteria_1_to_4_hold"] is True and g["s1_v1"] == "inconclusive"
     assert decisions(res) == ("adopt", "default", {"if_criterion_5_holds": None,
                                                    "if_criterion_5_fails": None})
-    assert g["criteria"]["5"]["holds"] is None and len(g["criteria"]["5"]["tests"]) == 9
+    assert g["criteria"]["5"]["holds"] is None and len(g["criteria"]["5"]["tests"]) == 10
     both = ga.analyse_runs(planted(rl, by_unit(sl=12, base=2, cl=12)), {}, report())
     assert decisions(both)[:2] == ("adopt", "copied")
     assert decisions(both)[2]["if_criterion_5_fails"] == "in-sample for widths"

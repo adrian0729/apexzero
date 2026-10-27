@@ -165,7 +165,8 @@ C5_TESTS = ("tests/test_stat_widths.py::test_default_is_bit_identical",
             _VG + "test_default_racing_update_reproduces_the_pre_term_values",
             _VG + "test_default_rollout_records_no_capture_and_defaults_are_off",
             _VG + "test_train_dr_default_path_passes_no_term",
-            "tests/test_ppo.py::test_make_train_reproduces_the_pre_split_update")
+            "tests/test_ppo.py::test_make_train_reproduces_the_pre_split_update",
+            _VG + "test_train_dr_skip_eval_rdev_writes_no_rdev_result_and_the_default_is_unchanged")
 DECISIONS = {
     "adopt": "generator-v1 sets stat_widths (M = (2a), fitted on all 12 R-dev circuits) as E0's "
              "training width model; the default stays the frozen default",

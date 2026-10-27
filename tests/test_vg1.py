@@ -169,7 +169,17 @@ def test_main_runs_order_names_flags_and_dealing(VR, RM, tmp_path, monkeypatch):
             arms = [next(iter(v)) for v in arm_of.values()]
             assert sorted(arms) == ["base", "base", "vgl", "vgl"]
 
-    check(runs, 4, 4)                               # one 4-GPU box
+    check(runs, 4, 4)                               # one 4-GPU box at 4 lanes per GPU
+    sched = RM.schedule(runs, 4, 5)                 # at 5 lanes: one run of each arm per lane
+    by_lane, gpu_of = {}, {}
+    for lane, gpu, _p, run in sched:
+        by_lane.setdefault(lane, []).append(run["arm"])
+        gpu_of.setdefault(run["seed"], set()).add(gpu)
+    assert len(by_lane) == 20 and all(sorted(v) == ["base", "vgl"] for v in by_lane.values())
+    assert all(len(v) == 1 for v in gpu_of.values())
+    for g in range(4):
+        arms = [run["arm"] for _l, gpu, _p, run in sched if gpu == g]
+        assert arms.count("base") == 5 and arms.count("vgl") == 5
     for k in (2, 4, 5, 10):                         # K single-GPU boxes, whole seeds
         shards = [RM.in_shard(runs, i, k) for i in range(k)]
         assert sorted(r["name"] for s in shards for r in s) == sorted(order)

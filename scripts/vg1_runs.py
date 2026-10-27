@@ -20,8 +20,10 @@ from the pilot record outputs/vg1/pilot.json, which must be tracked and unchange
 HEAD, and must name an eligible beta of the grid; with none eligible the main run does not
 start. The order goes by blocks of 4 seeds: the block's 4 base runs, then its 4 vgl runs
 (30-33 base, 30-33 vgl, 34-37 base, ...). gpu_round.sh deals job j to lane j mod L and lane
-l to GPU l mod G, so on one 4-GPU box at 4 lanes per GPU GPU g runs both arms of seeds
-30 + g, 34 + g, ... on 2 base lanes and 2 vgl lanes; SHARD=i/K on K single-GPU boxes
+l to GPU l mod G. On one 4-GPU box at 5 lanes per GPU (the plan, if the draft's memory check
+passes) lane l runs jobs l and l + 20, one base and one vgl run, so the lanes end together; at
+4 lanes per GPU GPU g runs both arms of seeds 30 + g, 34 + g, ... on 2 base lanes and 2 vgl
+lanes; SHARD=i/K on K single-GPU boxes
 (whole seeds) gives each box the same 2 + 2 lanes when K is 2, 4, 5 or 10, so that every box
 takes the same number of seeds from each block (another K keeps both runs of a seed on one
 GPU, but its lanes mix the arms). No arm has a GPU, lane set or box of its own, and the two

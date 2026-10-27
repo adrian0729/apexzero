@@ -98,19 +98,21 @@ Item 4 of Section 9 remains for the lead. Item 6, the build, is done (27 Oct 202
 - **Missing runs.**
   - A missing run removes its unit (both halves of a pair are needed). The p is counted over every relabelling of the remaining units, by the same method (arms of unequal size change only the integer weights).
   - A test is **not testable** with fewer than 3 units in either arm of either variant. Not testable counts as not confirmed.
-- **Secondary** (exact one-sided permutation tests of the same construction at 0.05, unadjusted, labelled secondary; each p counted as for P1):
+- **Secondary** (exact one-sided permutation tests of the same construction at 0.05, unadjusted, labelled secondary; each p counted as for P1, and each labelled as P1 is: confirm, refute, inconclusive or not testable):
   - **S1:** `cl` above `base` on held-out circuits (u(cl) against b), both variants (T as in P1; C(20, 10)² relabellings). This replicates the leave-out test with same-code baselines.
     - **S1-v1 and S1-v3**, also secondary exact tests at 0.05, unadjusted: the same comparison within one variant, T = mean_s u_s(cl) − mean_s b_s, one-sided, with C(20, 10) = 184,756 relabellings (few enough to list; counted by the same method). S1-v1 is reported first: it is the transfer reading follow-through Section 9.1 asks for. The not-testable rule applies per variant.
     - **S1-v1 is also #12's transfer condition** (Section 5). S1 and S1-v3 are reported but do not decide #12.
   - **S2:** `sa` above `base` on all 12 (a against b; C(20, 10)² relabellings). It is in-sample for M's summaries.
   - **S3:** `sl` against `cl` on held-out circuits, two-sided, descriptive. The mean difference per (variant, fold) cell, with a 95% percentile bootstrap over seeds (20,000 draws, seed 0). GW-4's criterion 2 reads this point estimate.
+    - The bootstrap draws seeds 20–29 with replacement, and both arms of a cell use the same drawn seeds; a seed whose run is missing is skipped in that arm's mean. Each cell uses its own numpy `default_rng(0)`.
+    - A cell with no network in an arm has no difference. D2 is then undefined and criterion 2 does not hold, as for Δgap below.
 - **Lap time (GW-4's criterion 3; IN-4's form).**
   - Each network's median gap is the median over its completed R-dev circuits of (median lap / s-OCP lap − 1), in points.
   - A network with no completed circuit has no median gap. It is left out of Δgap, and the number left out is reported per arm and variant. If every `sa` or every `base` network is left out, Δgap is undefined and criterion 3 does not hold.
   - Δgap = mean over `sa` networks − mean over `base` networks, **both variants pooled** (20 against 20, less any left out).
   - Also reported, descriptively:
     - per variant;
-    - on the circuits both networks complete (paired by seed);
+    - on the circuits both networks complete (paired by seed): for each same-seed (`sa`, `base`) pair, the difference of the two networks' median gaps on their common circuits, and the mean of the per-circuit differences (`interp-leftovers.md` Section 6.2's form). A pair with no common circuit is left out and counted;
     - the per-circuit table of `interp-leftovers.md` Section 6.1.
 - **Descriptive:**
   - per variant and per fold, the held-out and all-12 counts per arm;
@@ -160,7 +162,10 @@ GW-4 **adopts M, fitted on all 12 R-dev circuits, as `generator-v1`'s width mode
    - `::test_default_bank_is_bit_identical` and `::test_train_dr_default_path_is_unchanged`;
    - `tests/test_real_widths.py::test_default_is_unchanged`;
    - `tests/test_reexpress.py::test_default_and_2a_unchanged_and_2b_fit`, if (2b) is in the tree;
-   - and, for the PPO and env path that E0 also trains through, `tests/test_value_gradient.py`'s three default-path tests and `tests/test_ppo.py::test_make_train_reproduces_the_pre_split_update` (Section 2).
+   - and, for the PPO and env path that E0 also trains through, `tests/test_value_gradient.py`'s three default-path tests and `tests/test_ppo.py::test_make_train_reproduces_the_pre_split_update` (Section 2);
+   - and, for the end-of-run evaluation, `tests/test_value_gradient.py::test_train_dr_skip_eval_rdev_writes_no_rdev_result_and_the_default_is_unchanged` (`f5e300b`; added 27 Oct 2026, Section 10).
+   - Criterion 5 can be read only at the `generator-v1` commit. The analysis therefore records the rule's decision for both of its outcomes, and GW-4 picks the one that holds there.
+   - A width report whose sha256 is not the one in criterion 4 stops GW-4 with no decision recorded. Section 3's results do not read the report and are written either way.
 
 **What adoption means:**
 - **If all five hold:** `generator-v1` sets `stat_widths` (M fitted on all 12) as E0's training width model. The default stays the frozen default.
@@ -217,7 +222,7 @@ GW-4 **adopts M, fitted on all 12 R-dev circuits, as `generator-v1`'s width mode
 
 ## 8. Procedure
 
-1. Review this draft. The user's items in Section 9 were decided on 27 Oct 2026; the lead's item 4 remains.
+1. Review this draft. The user's items in Section 9 were decided on 27 Oct 2026, and the lead's item 4 was checked the same day.
 2. Write and test `scripts/gw3_runs.py` and `scripts/gw3_analysis.py` (planted data only; done 27 Oct 2026, Section 9 item 6). They run on the shared queue, `scripts/gpu_round.sh` and `scripts/round_manifest.py` (`46cdd81`). Commit them with the final text.
 3. Tag `gw3-prereg-v1` (annotated) on that commit and push it. The tag object's sha is recorded in the findings.
 4. Rent the box (or the K boxes, Section 2). On each, from the Mac:
@@ -256,13 +261,13 @@ GW-4 **adopts M, fitted on all 12 R-dev circuits, as `generator-v1`'s width mode
 
 **Deviations.** Any change after the tag is logged in the findings with its date and reason. A change to an outcome, test, seed or rule after any run has started makes the affected result exploratory. Deviations from earlier plans that are decided before the tag are logged in Section 10.
 
-## 9. Items before the tag (1, 2, 3 and 5 decided and 6 built on 27 Oct 2026; 4 open)
+## 9. Items before the tag (all closed on 27 Oct 2026)
 
 1. **M and criterion 4: decided by the user on 27 Oct 2026. M = (2a)**, with criterion 4 restated as Section 5 gives it. The deviation from the width-model plan's bands is logged in Section 10.
    - The options were (2a) (recommended); (2b), with `--reexpress` on the `sl` and `sa` arms, criterion 4 restated for `report-2b.json` and its GPU cost measured first; or no stat-model arm (`base`, `cl-f1` and `cl-f2` only). (2b) and dropping the stat-model arm were not chosen.
 2. **Seeds per cell: decided by the user on 27 Oct 2026. 10 seeds, 20–29**: 120 runs, about 14 A6000 hours (Section 7). P1's power at 10 seeds is in Section 3. This supersedes #13's 5 seeds per cell.
 3. **#12: decided by the user on 27 Oct 2026.** `generator-v1` uses copied R-dev width profiles if and only if (2a) fails GW-4's adoption rule and S1-v1 confirms that copied widths transfer to held-out circuits (Section 5). If copied widths are used, every R-dev number for E0, the 80% gate (#10) included, is labelled "in-sample for widths" wherever it is reported. Otherwise, when (2a) fails the rule and S1-v1 does not confirm, `generator-v1` uses the default widths. The lockbox (R_TEST) is unaffected either way.
-4. **Seed ranges (the lead):** keep VG-1 and any other `train_dr.py` round off seeds 20–29. VG-1's draft uses 15–16 and 30–49.
+4. **Seed ranges (the lead): checked 27 Oct 2026.** VG-1 and every other `train_dr.py` round stay off seeds 20–29. VG-1 uses 15–16 (pilot) and 30–49 (main run); the runs on disk use 0–4 and 10–14. All 288 run names of the Phase 3 run lists are distinct and none is in `runs/`.
 5. **E0's curvature variant: decided by the user on 27 Oct 2026. v1**, `train_dr.py`'s default. It was fixed before the tag, on what existed then, without GW-3 data. Once tagged, a change is a deviation that makes E0's recipe exploratory.
    - The draft's reasons for recommending it (26 Oct 2026): v1 is the variant where the copied-width effect replicates (H4R S1, +2.6 of 12; follow-through Section 7.4 requires v1 in GW-3 for that reason), and the curvature levers did not differ (v1/v2/v3 at 5.4/5.8/5.8; follow-through Section 8).
    - The alternative was v3 (`--tilt-fraction 0.5 --tilt-alpha 2`), whose H4R baseline was higher (7.2 against 5.0 circuits of 12) and whose width effect was smaller.
@@ -284,3 +289,9 @@ This list is append-only. Each entry is dated and is part of the text that `gw3-
      - They are reasons offered for the choice, not tests. They change no band and no verdict: both models still do not meet the bands.
    - **What it means.** The restated criterion was written after (2a)'s report was seen, and the committed report meets it. Criterion 4 therefore no longer tests (2a) against the bands, and GW-4's decision in practice rests on criteria 1, 2, 3 and 5. The bands' own verdict for (2a) stays "does not meet" (`width-model.md`).
    - **When.** Logged on 27 Oct 2026 in this draft, before the tag `gw3-prereg-v1` and before any GW-3 run.
+2. **27 Oct 2026: more than one box, and one more default-path test in criterion 5.**
+   - **What the plan said.** All arms in one queue on one commit and one machine: a single `massedcompute_A6000_plus` box with its own queue script, `scripts/gpu_queue_gw3.sh`.
+   - **What changed.** The user allowed more Massed Compute A6000 boxes on 27 Oct 2026 (follow-through Section 11, fourth round), within the approved GPU-hours. The round runs on one `massedcompute_A6000_plusx4` box, or on K single-GPU boxes by whole seeds (Section 2), through the shared queue `scripts/gpu_round.sh`. Every box trains from the tagged commit, and `round_manifest.py check` refuses boxes whose GPU models differ. Section 1's "one machine" became one GPU model and one commit.
+   - **Criterion 5.** VG-1's `--skip-eval-rdev` (`f5e300b`, off by default) touched `train_dr.py` after the criterion was drafted. Its default-path test joins the criterion's list (Section 5) and `gw3_analysis.C5_TESTS`, as Section 2 asks of any later option.
+   - **The analysis's readings.** Four details the draft left open were fixed in `scripts/gw3_analysis.py` and are now written into Sections 3 and 5: the secondary tests' labels, S3's paired bootstrap, the paired lap statistics, and criterion 5 recorded both ways.
+   - **When.** Before the tag `gw3-prereg-v1` and before any GW-3 run.
