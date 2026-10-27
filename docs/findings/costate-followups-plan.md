@@ -2145,3 +2145,24 @@ route can be read from them; none is reported.
    niced, the W = 800 keys' units first. The plan has no stop rule on BC-a0's cost.
 2. **The development run** is not an output of the item. Its numbers are not reported beside
    the canonical run's, which uses the same code at the same commit.
+
+### Amendment 13 (2026-10-27)
+
+**What changed.** A descriptive companion to each BC-a0 re-solve, and BC-a0's cost again. Each
+unit's record now carries `gates.k2b_solve`'s log in brief: its solves, their IPOPT iterations
+(total and largest), the statuses counted, the last status, the most re-centring rounds at one
+amplitude, and, for a failed re-solve, the amplitude it stopped at and the last one it passed.
+No question, computation, row set or expected direction changes. **Why.** The first canonical
+run (started at `f0c8d7c`) was stopped by hand after 51 minutes, before its pool finished and
+before it wrote anything. By then 6 of its first 11 units had failed, and their records would
+have carried only the number of solves, so the failures could not have been described.
+**Computed or seen before it.** From the stopped run's log, only each finished unit's key,
+continuation, success and seconds. The 11 units were all W = 800 units: 2152051c's 8 (3 failed)
+and dd6bc9e8's j = 1, 4 and 5 (all failed), at 325–1,582 s each. No Δ was computed in the parent
+or seen.
+
+1. **Cost.** A W = 800 unit takes about 300–1,600 s, against amendment 12's assumed 480 s. With
+   84 such units and 274 W = 400 units at about 240 s, the run needs about 40 CPU-h: about 10 h
+   of wall time at 4 workers. It goes ahead unchanged otherwise.
+2. **The canonical run** starts again from the beginning, at the commit that adds the log
+   summaries, and writes to `outputs/costate/exploratory/bc-a0/` as before.
