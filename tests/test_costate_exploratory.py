@@ -2205,3 +2205,289 @@ def test_item_output_checks_stamps(cx, tmp_path, monkeypatch):
     p.write_text(p.read_text().replace('"n": 3', '"n": 4'))
     with pytest.raises(SystemExit, match="does not bind"):
         cx.item_output(reader, "CS-8", "summary.json", base=tmp_path)
+
+
+# ------------------------------------------------------------------------- BC-a0
+
+
+def test_bc_a0_is_registered_targets_only_and_pooled(cx, monkeypatch, tmp_path, locked):
+    from apexzero.costate import targets as TG
+
+    it = cx.BY_CMD["bc-a0"]
+    assert "BC-a0" in cx.COMPUTE and it.solves and it.pooled and not it.trained
+    assert {"world", "gates:k2b", "keys:a2"} <= set(it.reads)
+    assert (cx.BC_STATE_NAMES, cx.BC_K_P, cx.BC_MIRROR_ODD) == (TG.STATE_NAMES, TG.K_P,
+                                                               TG.MIRROR_ODD)
+    assert len(cx.BC_COLS) == 14 and cx.BC_LAM == tuple(f"lam_{c}" for c in TG.STATE_NAMES)
+    monkeypatch.setattr(cx, "preflight", lambda root=None: [])
+    monkeypatch.setattr(cx, "load_context", lambda root=None: ({}, {}, {}))
+    monkeypatch.setattr(cx, "check_inputs", lambda run: [])
+    seen = []
+    monkeypatch.setitem(cx.COMPUTE, "BC-a0", lambda run: seen.append(locked()))
+    cx.run_item(it, _args(out=str(tmp_path)))
+    assert seen == [[False, False, False]], "BC-a0 computes no network: it never unlocks"
+
+
+def test_bc_odd(cx):
+    assert [c for c in cx.BC_COLS if cx.bc_odd(c)] == ["lam_n", "lam_xi", "lam_vy", "lam_r",
+                                                       "lam_delta", "sigma_steer"]
+
+
+def _bc_grammar():
+    import jax.numpy as jnp
+
+    from apexzero.tracks import generator as GN
+
+    def f(a):
+        return jnp.asarray(np.asarray(a, np.float32))
+
+    rng = np.random.default_rng(0)
+    n = 40
+    return GN.Grammar(corner_angle=f(rng.uniform(0.2, 2.5, n)),
+                      corner_rmin=f(rng.uniform(10.0, 200.0, n)),
+                      corner_len=f(rng.uniform(40.0, 300.0, n)),
+                      straight_len=f(rng.uniform(5.0, 400.0, n)), p_alt_short=f(0.3),
+                      p_alt_long=f(0.5), width=f([12.0]), jitter=f(0.15), r_floor=f(8.0),
+                      margin=f(0.6), ramp_min=f(10.0), gap_scale=f(1.0),
+                      corner_logits=f(np.zeros(n)), width_scale=f(1.0))
+
+
+def test_bc_strip_replicates_generates_draws(cx):
+    g = _bc_grammar()
+    strips = {j: cx.bc_strip(g, j) for j in range(1, 7)}
+    assert len({s["seed"] for s in strips.values()}) == 6
+    for j, s in strips.items():
+        assert s["seed"] == int(np.random.default_rng([cx.N_SEED, cx.BC_ITEM, j])
+                                .integers(0, 2**31 - 1))
+        assert cx.bc_strip_problems(s) == [], j
+        assert 500.0 <= s["first"] <= 900.0 and s["s0"] in (-1, 1) and s["gap0"] > 0
+        k = s["kappa"]
+        nz = np.flatnonzero(k != 0.0)
+        jumps = np.flatnonzero(np.diff(nz) > 1)
+        if s["gap1"] > 6.0 * s["ds"]:
+            zeros = int(nz[jumps[0] + 1] - nz[jumps[0]] - 1)   # the gap after corner 0
+            assert abs(zeros * s["ds"] - s["gap1"]) <= 2.0 * s["ds"], j
+    again = cx.bc_strip(g, 3)
+    assert np.array_equal(again["kappa"], strips[3]["kappa"]) and again["u"] == strips[3]["u"]
+    bad = dict(strips[1], s0=-strips[1]["s0"])
+    assert any("sign" in b for b in cx.bc_strip_problems(bad))
+    bad = dict(strips[1], first=strips[1]["first"] + 10.0)
+    assert any("knot" in b for b in cx.bc_strip_problems(bad))
+
+
+def _bc_strip_fixture(s0: int, u: float) -> dict:
+    k = np.zeros(4096)
+    k[301:320] = 0.05 * s0            # corner 0 just beyond first = 601.3 m (knot 300.65)
+    k[340:350] = -0.02 * s0           # corner 1 turns the other way
+    return {"j": 1, "kappa": k, "ds": 2.0, "first": 601.3, "u": u, "s0": s0}
+
+
+def test_bc_delta_places_and_keeps_widths(cx):
+    n, ds, w_left, w_right = 2560, 2.0, np.full(2560, 7.5), np.full(2560, 6.0)
+    for s0 in (1, -1):
+        for sigma in (1, -1):
+            d, rec = cx.bc_delta(_bc_strip_fixture(s0, 0.3), n, ds, 1400.0, 1050.0, sigma, 0.3,
+                                 0.49, w_left, w_right)
+            assert rec["shift"] == 400 and rec["s_start"] == pytest.approx(1401.3)
+            assert 1400.0 <= rec["s_start"] < 1400.0 + ds
+            assert rec["gap"] == pytest.approx(351.3) and rec["p_alt"] == 0.49
+            assert rec["first_direction"] == s0 and rec["same_as_key"] is (s0 == sigma)
+            k = np.asarray(d.kappa)
+            assert np.all(k[:701] == 0.0), "knots at or before s_start are unchanged"
+            assert k[701] == pytest.approx(0.05 * s0) and k[740] == pytest.approx(-0.02 * s0)
+            assert np.array_equal(k[701:], _bc_strip_fixture(s0, 0.3)["kappa"][301:301 + n - 701])
+            assert not np.any(d.w_left) and not np.any(d.w_right)
+            assert rec["kappa_max"] == pytest.approx(0.05)
+            ins = 6.5 if s0 > 0 else 5.0                        # the inside width minus 1 m
+            assert rec["cap_ratio_max"] == pytest.approx(max(ins * 0.05, (11.5 - ins) * 0.02))
+            assert rec["cap_exceeded"] is False
+    # the grammar's alternation probability by gap (descriptive)
+    assert cx.bc_p_alt(10.0, 0.3, 0.49) == 1.0
+    assert cx.bc_p_alt(30.0, 0.3, 0.49) == 0.3 and cx.bc_p_alt(80.0, 0.3, 0.49) == 0.49
+    _d, rec = cx.bc_delta(_bc_strip_fixture(1, 0.95), n, ds, 1060.0, 1050.0, 1, 0.3, 0.49)
+    assert rec["gap"] < 20.0 and rec["p_alt"] == 1.0 and "cap_ratio_max" not in rec
+    w_tight = np.full(n, 14.0)
+    _d, rec = cx.bc_delta(_bc_strip_fixture(1, 0.3), n, ds, 1400.0, 1050.0, 1, 0.3, 0.49,
+                          w_tight, w_tight)
+    assert rec["cap_ratio_max"] == pytest.approx(0.65) and rec["cap_exceeded"] is True
+    with pytest.raises(ValueError, match="spacing"):
+        cx.bc_delta(_bc_strip_fixture(1, 0.3), n, 1.0, 1400.0, 1050.0, 1, 0.3, 0.49)
+
+
+def test_bc_reach(cx):
+    s, vx = np.array([100.0, 200.0, 300.0]), np.array([10.0, 50.0, 90.0])
+    assert np.allclose(cx.bc_reach(s, vx), s + np.clip(6.0 * vx, 150.0, 500.0))
+    assert cx.bc_reach(5.0, -1.0)[0] == pytest.approx(155.0)
+
+
+def _bc_tab():
+    """Four keys: braking and corner interior rows; corner only; one corner row; none."""
+    ph = (["approach", "braking", "braking", "corner", "corner", "exit"]
+          + ["approach", "corner", "corner", "corner"] + ["braking", "corner", "exit"]
+          + ["braking", "corner"])
+    inner = [1, 1, 1, 1, 1, 1] + [1, 1, 1, 1] + [0, 1, 1] + [0, 0]
+    key = [0] * 6 + [1] * 4 + [2] * 3 + [3] * 2
+    n = len(ph)
+    rng = np.random.default_rng(3)
+    tab = {"key_id": np.array([f"k{k}" for k in key]), "phase": np.array(ph),
+           "interior": np.array(inner, bool), "t": np.array([5 * i for i in range(n)]),
+           "direction": np.array([1, 1, 1, 1, 1, 1, -1, -1, -1, -1, 1, 1, 1, -1, -1]),
+           "s": np.linspace(900.0, 1100.0, n), "vx": np.full(n, 40.0),
+           "s_c1": np.array([1030.0] * 6 + [1050.0] * 4 + [1020.0] * 3 + [1040.0] * 2),
+           "W": np.array([400] * 6 + [800] * 4 + [400] * 3 + [400] * 2),
+           "R": np.full(n, 20.0), "theta": np.full(n, 90.0)}
+    for c in ("s", "n", "xi", "vx", "vy", "r", "delta", "pedal"):
+        tab[f"lam_{c}"] = rng.standard_normal(n) + (3.0 * tab["direction"] if c == "n" else 0)
+    for c in ("Pi_in", "Pi_out", "Pi_slip", "Pi_mu", "sigma_steer", "sigma_pedal"):
+        tab[c] = rng.standard_normal(n)
+    rows = {f"k{i}": np.flatnonzero(np.array(key) == i) for i in range(4)}
+    return tab, rows
+
+
+def test_bc_state_picks(cx):
+    tab, rows = _bc_tab()
+    keys = [(i, f"k{i}", rows[f"k{i}"]) for i in range(4)]
+    picks = cx.bc_state_picks(tab, keys)
+    assert picks == cx.bc_state_picks(tab, keys)
+    by = {}
+    for p in picks:
+        by.setdefault(p["key"], []).append(p)
+        assert tab["interior"][p["row"]] and p["phase"] in ("braking", "corner")
+        assert p["t"] == tab["t"][p["row"]]
+    assert [p["phase"] for p in by[0]] == ["braking", "corner"]
+    rng = np.random.default_rng([cx.N_SEED, cx.BC_ITEM, cx.BC_PICK_UNIT + 0])
+    assert by[0][0]["row"] == [1, 2][rng.integers(2)] and by[0][1]["row"] == [3, 4][
+        rng.integers(2)]
+    assert [p["phase"] for p in by[1]] == ["corner", "corner"]
+    assert by[1][0]["row"] < by[1][1]["row"] and {by[1][0]["row"], by[1][1]["row"]} <= {7, 8, 9}
+    assert [p["row"] for p in by[2]] == [11] and 3 not in by
+    assert len(picks) == 5
+
+
+def test_bc_t_sd_and_var(cx):
+    from apexzero.costate import gates as GT
+    from apexzero.costate import states as ST
+    from apexzero.costate import targets as TG
+
+    tab, _ = _bc_tab()
+    sd = cx.bc_t_sd(tab)
+    assert np.array_equal(np.array([sd[c] for c in cx.BC_LAM]), GT.lam_sd(tab, TG.STATE_NAMES))
+    assert sd["lam_n"] < 2.0, "lam_n is odd: its SD is within direction (the +-3 is removed)"
+    var = cx.bc_t_var(tab)
+    m = tab["interior"] & (tab["phase"] == "corner")
+    w = ST.stratum_weights(tab, m)[m]
+    assert var["corner"]["lam_s"] == pytest.approx(ST.wvar(tab["lam_s"][m], w))
+    assert var["corner"]["sigma_steer"] == pytest.approx(
+        ST.wvar(tab["sigma_steer"][m], w, tab["direction"][m]))
+
+
+def test_bc_share_and_p90(cx):
+    key = np.array([0, 0, 1, 1, 1, 2])
+    rng = np.random.default_rng(4)
+    D = rng.standard_normal((4, 6))
+    D[2, 2:5] = np.nan                                    # key 1's third continuation failed
+    mask = np.array([1, 1, 1, 0, 1, 1], bool)
+    counts = cx.bc_counts(3, "key", n_boot=400)
+    assert counts.shape == (400, 3) and np.all(counts.sum(1) == 3)
+    rec = cx.bc_share(D, key, mask, 2.0, counts)
+    m2 = np.nanmean(D ** 2, axis=0)
+    b2 = np.nanmean(D, axis=0) ** 2
+    want = np.mean([m2[[0, 1]].mean(), m2[[2, 4]].mean(), m2[5]]) / 2.0
+    want_b = np.mean([b2[[0, 1]].mean(), b2[[2, 4]].mean(), b2[5]]) / 2.0
+    assert rec["U"] == pytest.approx(want) and rec["U_bias"] == pytest.approx(want_b)
+    assert rec["U_bias"] + rec["U_spread"] == pytest.approx(rec["U"]) and rec["U_spread"] >= 0
+    assert rec["rows"] == 5 and rec["keys"] == 3 and rec["n_draws"] == 400
+    assert rec["ci"][0] <= rec["U"] <= rec["ci"][1]
+    assert cx.bc_share(D, key, np.zeros(6, bool), 2.0, counts)["U"] is None
+    assert cx.bc_share(D, key, mask, None, counts)["U"] is None
+    assert cx.bc_share(D, key, mask, 0.0, counts)["U"] is None
+    p = cx.bc_p90(D, mask, 0.5)
+    v = np.abs(D[:, mask]) / 0.5
+    v = v[np.isfinite(v)]
+    assert p["n"] == len(v) == 18 and p["p90"] == pytest.approx(np.quantile(v, 0.9))
+    assert p["max"] == pytest.approx(v.max()) and p["worst_j_p90"] >= min(
+        np.quantile(np.abs(r[np.isfinite(r)]) / 0.5, 0.9) for r in D[:, mask])
+    assert cx.bc_p90(D, np.zeros(6, bool), 1.0)["p90"] is None
+
+
+def test_bc_stats_assemble_and_kept(cx):
+    tab, rows = _bc_tab()
+    sd = cx.bc_t_sd(tab)
+    var = cx.bc_t_var(tab)
+    J = 2
+    layout = {0: (0, 6), 1: (6, 4)}
+    recs = []
+    for k, (start, m) in layout.items():
+        for j in (1, 2):
+            ok = not (k == 1 and j == 2)
+            r = {"kind": "key", "key": k, "j": j, "ok": ok, "t": list(range(m))}
+            if ok:
+                r.update(d_lam=np.full((m, 8), 0.1 * j), d_Pi=np.full((m, 4), 0.2),
+                         d_sigma=np.zeros((m, 2)), d_x=np.full((m, 3), 0.5))
+            recs.append(r)
+    recs.append({"kind": "state", "key": 0, "j": 1, "ok": True, "t": [5]})   # other placement
+    D, DX, ok = cx.bc_assemble(recs, "key", layout, J)
+    assert D.shape == (J, 10, 14) and np.all(D[0, :, 0] == 0.1) and np.all(D[1, :6, 0] == 0.2)
+    assert np.all(np.isnan(D[1, 6:])) and ok[1].tolist() == [True, False]
+    all_rows = np.concatenate([rows["k0"], rows["k1"]])
+    key = np.array([0] * 6 + [1] * 4)
+    kept = np.array([True] * 6 + [False] * 4)
+    st = cx.bc_stats(D, DX, key, tab["phase"][all_rows], tab["interior"][all_rows], kept, sd,
+                     var, cx.bc_counts(2, "key", n_boot=50))
+    c = st["corner"]
+    assert c["rows_interior"] == 2 and c["rows_all"] == 2
+    sh = c["targets"]["lam_s"]["share"]
+    assert sh["keys"] == 1 and sh["U"] == pytest.approx(np.mean([0.01, 0.04]) / var["corner"][
+        "lam_s"])
+    assert c["targets"]["lam_s"]["p90_all"]["n"] == 4
+    assert c["dx"]["s"] == {"median": 0.5, "max": 0.5}
+    assert st["approach"]["rows_interior"] == 1
+
+
+def test_bc_units(cx):
+    tab, rows = _bc_tab()
+    strips = {j: {"gap0": 10.0 * j if j != 2 else 900.0} for j in range(1, 9)}
+    stored = [{"key_id": "k0", "s2": 1400.0}, {"key_id": "k1", "s2": 1500.0}]
+    a2 = {"k0": "ref0", "k1": "ref1"}
+    picks = cx.bc_state_picks(tab, [(0, "k0", rows["k0"]), (1, "k1", rows["k1"])])
+    units, names, facts = cx.bc_units(tab, stored, rows, a2, strips, picks)
+    assert len(units) == 2 * 8 + 3 * len(picks) == len(names)
+    assert [u["W"] for u in units] == sorted((u["W"] for u in units), reverse=True)
+    k0 = {u["j"]: u for u in units if u["kind"] == "key" and u["key_id"] == "k0"}
+    assert k0[1]["s_next"] == 1400.0 and k0[2]["s_next"] == pytest.approx(1030.0 + 900.0)
+    assert k0[1]["ref"] == "ref0" and np.array_equal(k0[1]["want"]["lam"][:, 0],
+                                                      tab["lam_s"][rows["k0"]])
+    for u in units:
+        if u["kind"] == "state":
+            r = int(u["rows"][0])
+            assert u["s_next"] == pytest.approx(cx.bc_reach(tab["s"][r], tab["vx"][r])[0] + 20)
+            assert u["j"] <= cx.BC_J_STATE
+    assert facts[1]["W"] == 800 and facts[0]["direction"] == 1 and facts[1]["direction"] == -1
+    with pytest.raises(SystemExit, match="preview reaches"):
+        cx.bc_units(tab, [{"key_id": "k0", "s2": 1100.0}], rows, a2, strips, [])
+
+
+def test_bc_route_and_expected(cx):
+    def ph(vals):
+        return {"targets": {f"lam_{c}": {"share": {"U": u, "ci": [u / 2, hi]}}
+                            for c, (u, hi) in vals.items()}}
+
+    st = {"braking": ph({"s": (0.02, 0.05), "n": (0.05, 0.2), "xi": (0.03, 0.08),
+                         "vx": (0.2, 0.4)}),
+          "corner": ph({"s": (0.3, 0.6), "n": (0.02, 0.09), "xi": (0.05, 0.1),
+                        "vx": (0.25, 0.5)})}
+    ky = {"braking": ph({"s": (0.01, 0.02), "n": (0.001, 0.01), "xi": (0.01, 0.02),
+                         "vx": (0.1, 0.2)}),
+          "corner": ph({"s": (0.1, 0.2), "n": (0.03, 0.05), "xi": (0.01, 0.02),
+                        "vx": (0.1, 0.2)})}
+    r = cx.bc_route(st, ky)
+    assert r["braking/s"]["option"] == "(i)" and r["braking/s"]["stated_bound"] == 0.05
+    assert r["braking/n"]["option"] == "(ii)" and r["braking/n"]["stated_bound"] is None
+    assert r["corner/xi"]["option"] == "(i)" and r["corner/s"]["option"] == "(ii)"
+    assert r["corner/s"]["U_key"] == 0.1
+    e = cx.bc_expected(st, ky)
+    assert e["state"]["Ea0.1"]["holds"] and not e["key"]["Ea0.1"]["holds"]
+    assert e["state"]["Ea0.2"]["count"] == 3 and not e["state"]["Ea0.2"]["holds"]
+    assert e["Ea0.3"]["count"] == 7 and e["Ea0.3"]["of"] == 8 and not e["Ea0.3"]["holds"]
+    empty = cx.bc_route({}, {})
+    assert all(v["option"] is None for v in empty.values()) and len(empty) == 8

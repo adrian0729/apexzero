@@ -114,6 +114,12 @@ process reniced by ``--nice`` (default 10) before any item runs.
   K2b for q_c and any network (``cs14``, pooled, targets only); and the FWL check of the
   primary C2's probes, C2 with the actor's h1 and h2, and C2 on D (``cs15``, pooled). CS-12
   and CS-15 read CS-8's summary through its stamp (``item_output``); neither unlocks.
+- BC-a0 (plan Section 4 with amendment 11; the section 'BC-a0: road beyond the preview'):
+  targets only, no network. K2b's 26 keys re-solved by ``gates.k2b_solve`` on 8 road
+  continuations drawn from the v1 training grammar beyond K2b's point s2, and 50 braking- and
+  corner-phase interior states on continuations 1-3 placed 20 m beyond their own preview
+  reach; the unseen-road shares U with key-bootstrap CIs, K2b's p90 beside them, and the
+  route each points to (``bc_a0``, pooled). It does not unlock.
 """
 
 from __future__ import annotations
@@ -7594,6 +7600,662 @@ def cs15(run: Run) -> None:
            "n_boot": PB.N_BOOT, "pool_seconds": pool_s, "partial": lim is not None,
            "seconds": time.time() - t0}
     run.write_npz("preds", arrays)
+    run.write_json("summary", plain(out))
+
+
+# ------------------------------------------------------------------------- BC-a0: road beyond the preview
+#
+# Plan Section 4 BC-a0 with amendment 11. Targets only: no network output of any network is
+# computed or read (plan R5 then leaves its rows unrestricted). K2b's 26 keys
+# (gates/k2b.json) are re-solved by K2b's amplitude continuation and re-centring
+# (``gates.k2b_solve``) on road continuations drawn from the v1 training grammar
+# (``tracks.generator.fit_grammar`` on the R-dev circuits, as scripts/train_dr.py builds it):
+# - per key, continuations 1-8 from s_next = max(s2, s_c1 + g_j), beyond every T state's
+#   preview (``bc_units``, placement 'key');
+# - per state, continuations 1-3 from 20 m beyond the state's own preview reach, on 50
+#   braking- and corner-phase interior states (``bc_state_picks``, placement 'state').
+# The unseen-road share U of each component and phase (``bc_share``), K2b's p90 beside it, and
+# the route each share points to (``bc_route``: option (i) or (ii), a recommendation under
+# decision #6).
+
+BC_ITEM = 100                            # R10's item number for BC-a0 (amendment 11 item 1)
+BC_J = 8                                 # continuations per key, j = 1..8
+BC_J_STATE = 3                           # continuations per state, j = 1..3
+BC_PICK_UNIT = 100                       # R10's unit of key i's state picks: 100 + i
+BC_BOOT_UNIT = {"key": 1000, "state": 1001}   # R10's units of the key bootstraps
+BC_ROUTE_BOUND = 0.1                     # U's CI upper end at most this: option (i)
+BC_ROUTE_PHASES = ("braking", "corner")
+BC_STATE_PHASES = ("braking", "corner")
+BC_STATE_NAMES = ("s", "n", "xi", "vx", "vy", "r", "delta", "pedal")   # targets.STATE_NAMES
+BC_K_P = ("s", "n", "xi", "vx")          # targets.K_P
+BC_MIRROR_ODD = ("n", "xi", "vy", "r", "delta", "steer")   # targets.MIRROR_ODD
+BC_LAM = tuple(f"lam_{c}" for c in BC_STATE_NAMES)
+BC_PI = ("Pi_in", "Pi_out", "Pi_slip", "Pi_mu")
+BC_SIGMA = ("sigma_steer", "sigma_pedal")
+BC_COLS = BC_LAM + BC_PI + BC_SIGMA      # the 14 targets compared
+BC_DX = ("s", "n", "vx")                 # the state's own move, descriptive
+BC_DX_IDX = (0, 1, 3)
+BC_TARGET_TOL = 1e-12                    # the re-polished targets against the bound world (rel.)
+BC_DROP = {"key": 4, "state": 1}         # more failed re-solves than this: dropped (half)
+BC_CAP_MARGIN = 0.6                      # the generator's inside-width cap (w_in - 1)|kappa|
+
+
+def bc_odd(col: str) -> bool:
+    """A compared target is mirror-odd (its variance is taken within direction): lam_c for c in
+    targets.MIRROR_ODD, and sigma_steer (steer is odd)."""
+    if col.startswith("lam_"):
+        return col[4:] in BC_MIRROR_ODD
+    return col == "sigma_steer"
+
+
+def bc_grammar(run: Run | None = None, root: Path = ROOT) -> tuple:
+    """(the v1 training grammar, {path: sha256} of its circuits): step 1's
+    ``interp.support.grammar`` for the 'base' spec (G1's v1 grammar: ``fit_grammar`` with its
+    defaults on the 12 raw R-dev centrelines, each name through ``lockbox_guard`` first, as
+    scripts/train_dr.py builds it for a run without --real-widths; amendment 11 item 2). The
+    circuits' files' sha256 are recorded."""
+    from apexzero.interp import support as SU
+
+    g, g_alt = SU.grammar(SU.GRAMMARS["base"])
+    if g_alt is not None:
+        raise SystemExit("BC-a0: the base grammar has a tilted share")
+    files = {}
+    for tr in SU.dev_centrelines():
+        rel = f"data/tracks/tumftm/{tr.name}.csv"
+        files[rel] = sha256_file(refuse_sealed(Path(root) / rel))
+    if run is not None:
+        for rel, h in files.items():
+            run.note_input(rel, h)
+    return g, files
+
+
+def bc_strip(g, j: int, item: int = BC_ITEM) -> dict:
+    """Continuation j's generated strip (amendment 11 item 2): ``generator.generate`` from a
+    JAX key seeded by default_rng([N_SEED, item, j]), with the draws ``generate`` makes from the
+    same key that the placement reads, replicated: the run-up 'first' (where its first corner
+    token starts), gap[0] before ``generate`` overwrites it with the run-up (the grammar's gap
+    draw g_j), gap[1], and the uniform u behind the first corner's direction s0."""
+    import jax
+    import jax.numpy as jnp
+    import numpy as np
+
+    from apexzero.tracks import generator as GN
+
+    seed = int(np.random.default_rng([N_SEED, int(item), int(j)]).integers(0, 2**31 - 1))
+    key = jax.random.PRNGKey(seed)
+    kappa, _wl, _wr = GN.generate(key, g)
+    keys = jax.random.split(key, 10)
+    m = GN.MAX_SEGMENTS
+    si = jax.random.randint(keys[4], (m,), 0, g.straight_len.shape[0])
+    gap = g.gap_scale * g.straight_len[si] * jnp.exp(g.jitter * jax.random.normal(keys[5], (m,)))
+    first = jax.random.uniform(keys[6], (), minval=500.0, maxval=900.0)
+    u = float(jax.random.uniform(keys[8], ()))
+    return {"j": int(j), "seed": seed, "kappa": np.asarray(kappa, float), "ds": float(GN.DS),
+            "first": float(first), "gap0": float(gap[0]), "gap1": float(gap[1]), "u": u,
+            "s0": -1 if u < 0.5 else 1}
+
+
+def bc_strip_problems(strip: dict) -> list[str]:
+    """The replicated draws against the strip ``generate`` returned: its first nonzero knot is
+    the first one beyond 'first', of sign s0."""
+    import numpy as np
+
+    k = np.asarray(strip["kappa"], float)
+    nz = np.flatnonzero(k != 0.0)
+    if not len(nz):
+        return [f"strip {strip['j']}: no corner"]
+    want = int(np.floor(strip["first"] / strip["ds"])) + 1
+    bad = []
+    if int(nz[0]) != want:
+        bad.append(f"strip {strip['j']}: first corner at knot {int(nz[0])}, not {want}")
+    if int(np.sign(k[nz[0]])) != int(strip["s0"]):
+        bad.append(f"strip {strip['j']}: first corner's sign is not s0")
+    return bad
+
+
+def bc_p_alt(gap: float, p_short: float, p_long: float) -> float:
+    """The grammar's alternation probability after a gap (``generator.generate``): 1 below
+    20 m, p_alt_short below 60 m, p_alt_long beyond."""
+    return 1.0 if gap < 20.0 else (float(p_short) if gap < 60.0 else float(p_long))
+
+
+def bc_delta(strip: dict, n: int, ds: float, s_next: float, s_c1: float, sigma: int,
+             p_short: float, p_long: float, w_left=None, w_right=None) -> tuple:
+    """(the sample perturbation, its record) of one continuation (amendment 11 item 2): the
+    strip's knot curvatures as generated (signs included) from its first corner token on,
+    shifted by a whole number J of knots so that the token starts at s_start = first + J ds,
+    the first such point at or after s_next; widths unchanged. Knots at or before s_start are
+    unchanged (the strip is 0 there). Recorded beside it: whether its first corner turns the
+    key's own way (direction sigma), and the grammar's alternation probability for the gap
+    s_start - s_c1 (``bc_p_alt``; p_alt_long beyond 60 m), descriptively."""
+    import numpy as np
+
+    from apexzero.fields import perturb as PT
+
+    if abs(float(ds) - float(strip["ds"])) > 1e-12:
+        raise ValueError(f"the strip's knot spacing {strip['ds']} is not the key's {ds}")
+    J = int(np.ceil((float(s_next) - float(strip["first"])) / float(ds)))
+    s_start = float(strip["first"]) + J * float(ds)
+    gap = s_start - float(s_c1)
+    src = np.asarray(strip["kappa"], float)
+    i = np.arange(int(n)) - J
+    ok = (i >= 0) & (i < len(src))
+    k = np.zeros(int(n))
+    k[ok] = src[i[ok]]
+    rec = {"j": int(strip["j"]), "s_next": float(s_next), "s_start": s_start, "shift": J,
+           "gap": gap, "p_alt": bc_p_alt(gap, p_short, p_long),
+           "first_direction": int(strip["s0"]), "same_as_key": int(strip["s0"]) == int(sigma),
+           "kappa_max": float(np.max(np.abs(k), initial=0.0))}
+    if w_left is not None and w_right is not None:
+        w_in = np.where(k > 0, np.asarray(w_left, float), np.asarray(w_right, float))
+        ratio = np.where(k != 0, (w_in - 1.0) * np.abs(k), 0.0)
+        rec["cap_ratio_max"] = float(np.max(ratio, initial=0.0))
+        rec["cap_exceeded"] = bool(rec["cap_ratio_max"] > BC_CAP_MARGIN)
+    return PT.Samples(k, np.zeros(int(n)), np.zeros(int(n))), rec
+
+
+def bc_reach(s, vx):
+    """[n] s + d_max(vx), the furthest preview point (``racing.preview_offsets``' last), as
+    ``gates.k2b_key`` reads it."""
+    import numpy as np
+
+    from apexzero.env import racing
+
+    s, vx = np.atleast_1d(np.asarray(s, float)), np.atleast_1d(np.asarray(vx, float))
+    return s + np.asarray(racing.preview_offsets(np.maximum(vx, 0.0)[:, None]))[:, -1]
+
+
+def bc_targets(cs, pr, t) -> dict:
+    """The 14 compared targets and the state at plan steps t of one solution: lam [n, 8], Pi
+    [n, 4] (in, out, slip, mu), sigma [n, 2] (steer, pedal) and x [n, 3] (s, n, vx), as
+    ``states.key_rows`` reads them."""
+    import numpy as np
+
+    t = np.asarray(t, int)
+    return {"lam": np.asarray(cs.lam, float)[t],
+            "Pi": np.stack([np.asarray(pr.inside, float)[t], np.asarray(pr.outside, float)[t],
+                            np.asarray(pr.slip, float)[t], np.asarray(pr.mu, float)[t]], 1),
+            "sigma": np.asarray(cs.switch, float)[t],
+            "x": np.asarray(cs.x, float)[t][:, list(BC_DX_IDX)]}
+
+
+def bc_world_targets(tab, rows) -> dict:
+    """The same targets from the bound world's columns at ``rows``."""
+    import numpy as np
+
+    rows = np.asarray(rows, int)
+
+    def cols(names):
+        return np.stack([np.asarray(tab[c], float)[rows] for c in names], 1)
+
+    return {"lam": cols(BC_LAM), "Pi": cols(BC_PI), "sigma": cols(BC_SIGMA)}
+
+
+def bc_unit(state, unit) -> dict:
+    """One BC-a0 re-solve in a worker: one key's continuation j read at its T rows ('key'),
+    or one state's continuation j read at its row ('state'); or K2b's own first key ('wiring',
+    ``cs9_k2b_unit``). The re-polished stored optimum's targets must equal the bound world's
+    at the rows (``BC_TARGET_TOL``), or the unit stops the pool. A re-solve that fails, or
+    raises, is recorded as failed."""
+    import numpy as np
+
+    from apexzero.costate import gates as GT
+    from apexzero.costate import targets as TG
+
+    if unit["kind"] == "wiring":
+        return cs9_k2b_unit(state, unit)
+    t0 = time.time()
+    kt = TG.key_targets(unit["ref"], bank=_bank())
+    t = np.asarray(unit["t"], int)
+    base = bc_targets(kt.jac, kt.prices, t)
+    gap = max(rel_gap(base[k], unit["want"][k]) for k in ("lam", "Pi", "sigma"))
+    if not gap <= BC_TARGET_TOL:
+        raise RuntimeError(f"BC-a0 {unit['key_id']}: the re-polished targets differ from the "
+                           f"bound world's ({gap:.3g})")
+    tr = kt.problem.track
+    strip = state["strips"][int(unit["j"])]
+    delta, rec = bc_delta(strip, len(np.asarray(tr.kappa)), float(tr.ds), unit["s_next"],
+                          unit["s_c1"], unit["sigma"], *state["p_alt"], tr.w_left, tr.w_right)
+    rec.update({"kind": unit["kind"], "key": int(unit["key"]), "key_id": unit["key_id"],
+                "t": t.tolist(), "target_gap": gap})
+    try:
+        new, log = GT.k2b_solve(kt.problem, delta)
+        err = None
+    except Exception as e:  # noqa: BLE001 (a failed re-solve is counted, plan BC-a0 step 4)
+        new, log, err = None, {"log": []}, f"{type(e).__name__}: {e}"
+    rec["n_solves"] = len(log.get("log", []))
+    if new is None:
+        rec.update({"ok": False, "error": err})
+    else:
+        cs2 = TG.costate(new, "jac")
+        got = bc_targets(cs2, TG.prices(new, cs2), t)
+        rec.update({"ok": True, "d_lam": got["lam"] - base["lam"], "d_Pi": got["Pi"] - base["Pi"],
+                    "d_sigma": got["sigma"] - base["sigma"], "d_x": got["x"] - base["x"]})
+    rec["seconds"] = time.time() - t0
+    print(f"BC-a0 {unit['kind']} {unit['key_id'][:8]} t={t.tolist()[:1]} j={unit['j']}: "
+          f"{'ok' if rec['ok'] else 'failed'} in {rec['seconds']:.0f} s", flush=True)
+    return rec
+
+
+def a2_refs_checked(run: Run) -> dict:
+    """{key id: A2 ref}: the index's list against the record's 'a2' key set, its files against
+    the record's content hash (recorded as an input)."""
+    from apexzero.costate import keys_root
+    from apexzero.costate import states as ST
+    from apexzero.fields import prereg as FP
+
+    refs = ST.a2_refs()
+    want = [tuple(t) for t in run.rec["key_sets"]["a2"]]
+    if sorted((r.kind, r.key_id) for r in refs) != want:
+        raise SystemExit("BC-a0: the index's A2 keys are not the record's key set")
+    h = FP.content_hash(want, keys_root())
+    if h != run.rec["content"]["a2"]:
+        raise SystemExit("BC-a0: the A2 key files differ from the tagged ones")
+    run.note_input("keys/a2", h)
+    return {r.key_id: r for r in refs}
+
+
+def bc_state_picks(tab, keys: list[tuple[int, str, object]], item: int = BC_ITEM) -> list[dict]:
+    """The per-state placement's states (amendment 11 item 3). On K2b's key i (``keys``: (i,
+    key id, its T rows)), the interior braking- and corner-phase rows: with both phases, one of
+    each; with one phase, two of it (one if it has one); drawn with
+    default_rng([N_SEED, item, BC_PICK_UNIT + i]) (braking first)."""
+    import numpy as np
+
+    ph = np.asarray(tab["phase"]).astype(str)
+    inner = np.asarray(tab["interior"], bool)
+    out = []
+    for i, kid, rows in keys:
+        rows = np.asarray(rows, int)
+        cand = {p: rows[inner[rows] & (ph[rows] == p)] for p in BC_STATE_PHASES}
+        have = [p for p in BC_STATE_PHASES if len(cand[p])]
+        rng = np.random.default_rng([N_SEED, int(item), BC_PICK_UNIT + int(i)])
+        if len(have) == 2:
+            pick = [int(cand[p][rng.integers(len(cand[p]))]) for p in BC_STATE_PHASES]
+        elif len(have) == 1:
+            c = cand[have[0]]
+            pick = [int(r) for r in c[np.sort(rng.choice(len(c), min(2, len(c)),
+                                                         replace=False))]]
+        else:
+            pick = []
+        out += [{"key": int(i), "key_id": str(kid), "row": r, "t": int(tab["t"][r]),
+                 "phase": str(ph[r])} for r in pick]
+    return out
+
+
+def bc_t_sd(tab, cols=BC_COLS) -> dict:
+    """{col: SD_T}: K2b's scale (``gates.lam_sd``): the key-weighted SD over all of T's rows,
+    within direction for a mirror-odd target."""
+    import numpy as np
+
+    from apexzero.costate import states as ST
+
+    w = ST.weights(tab)
+    d = np.asarray(tab["direction"])
+    return {c: float(np.sqrt(ST.wvar(np.asarray(tab[c], float), w, d if bc_odd(c) else None)))
+            for c in cols}
+
+
+def bc_t_var(tab, cols=BC_COLS) -> dict:
+    """{phase: {col: var_{T,p}}}: the key-weighted variance over T's interior rows of the
+    phase (weights renormalised on them), within direction for a mirror-odd target."""
+    import numpy as np
+
+    from apexzero.costate import states as ST
+
+    ph = np.asarray(tab["phase"]).astype(str)
+    inner = np.asarray(tab["interior"], bool)
+    d = np.asarray(tab["direction"])
+    out = {}
+    for p in ST.PHASES:
+        rows = inner & (ph == p)
+        w = ST.stratum_weights(tab, rows)[rows]
+        out[p] = {c: float(ST.wvar(np.asarray(tab[c], float)[rows], w,
+                                   d[rows] if bc_odd(c) else None)) if rows.any() else None
+                  for c in cols}
+    return out
+
+
+def bc_key_means(v, key, mask, n_keys: int):
+    """[n_keys] each key's mean of v over its rows in mask (nan for a key without one)."""
+    import numpy as np
+
+    v, key, mask = np.asarray(v, float), np.asarray(key, int), np.asarray(mask, bool)
+    s = np.bincount(key[mask], weights=v[mask], minlength=n_keys)
+    c = np.bincount(key[mask], minlength=n_keys)
+    with np.errstate(invalid="ignore", divide="ignore"):
+        return np.where(c > 0, s / np.maximum(c, 1), np.nan)
+
+
+def bc_share(D, key, mask, var: float | None, counts) -> dict:
+    """The unseen-road share of one target on the rows in ``mask`` (amendment 11 item 4).
+    D [J, n]: Delta of each continuation at each row (nan where it failed). Per row m2 =
+    mean_j Delta^2 over its successful continuations, split as (mean_j Delta)^2 (bias) plus the
+    continuations' spread (var). Each key weighs equally, its rows equally: U = the mean over
+    keys of their mean m2, over var_{T,p}. CI: the keys resampled with ``counts`` [B, K]
+    (a draw with no key that has a row is left out and counted)."""
+    import numpy as np
+
+    from apexzero.costate import probes as PB
+
+    D = np.asarray(D, float)
+    fin = np.isfinite(D)
+    mask = np.asarray(mask, bool) & fin.any(0)
+    n_keys = np.asarray(counts).shape[1]
+    n_ok = np.maximum(fin.sum(0), 1)
+    mean_d = np.where(fin, D, 0.0).sum(0) / n_ok
+    m2 = (np.where(fin, D, 0.0) ** 2).sum(0) / n_ok
+    b2 = mean_d ** 2
+    out = {"rows": int(mask.sum()), "keys": 0, "var_T": var, "U": None, "U_bias": None,
+           "U_spread": None, "ci": [None, None], "n_draws": 0}
+    if not mask.any() or var is None or not var > 0:
+        return out
+    mk = bc_key_means(m2, key, mask, n_keys)
+    bk = bc_key_means(b2, key, mask, n_keys)
+    have = np.isfinite(mk)
+    c = np.asarray(counts, float)[:, have]
+    tot = c.sum(1)
+    ok = tot > 0
+    draws = (c[ok] @ mk[have]) / tot[ok] / var
+    lo, hi = PB.ci(draws) if len(draws) else (np.nan, np.nan)
+    U = float(np.mean(mk[have]) / var)
+    Ub = float(np.mean(bk[have]) / var)
+    out.update({"keys": int(have.sum()), "U": U, "U_bias": Ub, "U_spread": U - Ub,
+                "ci": [float(lo), float(hi)], "n_draws": int(ok.sum())})
+    return out
+
+
+def bc_p90(D, mask, sd: float) -> dict:
+    """K2b's statistic beside U: |Delta| / SD_T pooled over the rows in ``mask`` and the
+    successful continuations: its p90, median and largest, and the worst continuation's p90."""
+    import numpy as np
+
+    D = np.abs(np.asarray(D, float)[:, np.asarray(mask, bool)]) / float(sd)
+    v = D[np.isfinite(D)]
+    if not len(v):
+        return {"n": 0, "p90": None, "median": None, "max": None, "worst_j_p90": None}
+    per_j = [float(np.quantile(r[np.isfinite(r)], 0.9)) for r in D if np.isfinite(r).any()]
+    return {"n": len(v), "p90": float(np.quantile(v, 0.9)), "median": float(np.median(v)),
+            "max": float(v.max()), "worst_j_p90": max(per_j)}
+
+
+def bc_counts(n_keys: int, placement: str, n_boot: int | None = None, item: int = BC_ITEM):
+    """[B, K] the key bootstrap's multiplicities (R10's stream, unit ``BC_BOOT_UNIT``)."""
+    import numpy as np
+
+    from apexzero.costate import probes as PB
+
+    rng = np.random.default_rng([N_SEED, int(item), BC_BOOT_UNIT[placement]])
+    B = PB.N_BOOT if n_boot is None else int(n_boot)
+    return rng.multinomial(int(n_keys), np.full(int(n_keys), 1.0 / n_keys), size=B)
+
+
+def bc_stats(D, DX, key, phase, interior, kept, sd: dict, var: dict, counts,
+             phases=None) -> dict:
+    """Per phase and target: U (on the interior rows of kept units) and K2b's p90 (on those
+    rows, and on every row of the kept units), and the state's own move |Delta x| at the
+    interior rows (median, largest). D [J, n, 14] in ``BC_COLS``' order; DX [J, n, 3]."""
+    import numpy as np
+
+    from apexzero.costate import states as ST
+
+    phase = np.asarray(phase).astype(str)
+    interior = np.asarray(interior, bool)
+    kept = np.asarray(kept, bool)
+    out = {}
+    for p in (ST.PHASES if phases is None else phases):
+        inner = kept & interior & (phase == p)
+        every = kept & (phase == p)
+        rec = {"rows_interior": int(inner.sum()), "rows_all": int(every.sum()), "targets": {}}
+        for ci, c in enumerate(BC_COLS):
+            rec["targets"][c] = {
+                "share": bc_share(D[:, :, ci], key, inner, (var.get(p) or {}).get(c), counts),
+                "p90_interior": bc_p90(D[:, :, ci], inner, sd[c]),
+                "p90_all": bc_p90(D[:, :, ci], every, sd[c])}
+        dx = np.abs(np.asarray(DX, float)[:, inner])
+        rec["dx"] = {name: ({"median": float(np.nanmedian(dx[..., i])),
+                             "max": float(np.nanmax(dx[..., i]))}
+                            if np.isfinite(dx[..., i]).any() else None)
+                     for i, name in enumerate(BC_DX)}
+        out[p] = rec
+    return out
+
+
+def bc_route(per_state: dict, per_key: dict, bound: float = BC_ROUTE_BOUND) -> dict:
+    """The route each K_P component and phase points to (plan BC-a0 'What the outcomes mean';
+    a recommendation under decision #6): read from the per-state share's CI upper end, at most
+    ``bound``: option (i), with that upper end as the stated bound; above it: option (ii); no
+    share: none. The per-key share is beside it as the lower bound."""
+    out = {}
+    for p in BC_ROUTE_PHASES:
+        for c in BC_K_P:
+            col = f"lam_{c}"
+            st = per_state.get(p, {}).get("targets", {}).get(col, {}).get("share", {})
+            ky = per_key.get(p, {}).get("targets", {}).get(col, {}).get("share", {})
+            hi = (st.get("ci") or [None, None])[1]
+            if hi is None or st.get("U") is None:
+                opt = None
+            else:
+                opt = "(i)" if hi <= bound else "(ii)"
+            out[f"{p}/{c}"] = {"option": opt, "U_state": st.get("U"), "ci_state": st.get("ci"),
+                               "stated_bound": hi if opt == "(i)" else None,
+                               "U_key": ky.get("U"), "ci_key": ky.get("ci")}
+    return out
+
+
+def bc_expected(per_state: dict, per_key: dict) -> dict:
+    """Ea0.1-Ea0.3 (amendment 11 item 5), point estimates, read on the per-state shares (the
+    estimand) and reported on the per-key shares too."""
+    def U(s, p, c):
+        return ((s.get(p) or {}).get("targets", {}).get(f"lam_{c}", {}).get("share") or {}).get("U")
+
+    def gt(a, b):
+        return a is not None and b is not None and a > b
+
+    out = {}
+    for name, s in (("state", per_state), ("key", per_key)):
+        e1 = {c: U(s, "corner", c) for c in ("s", "vx")}
+        e2 = {c: {"braking": U(s, "braking", c), "corner": U(s, "corner", c)} for c in BC_K_P}
+        out[name] = {
+            "Ea0.1": {"corner_U": e1, "holds": all(v is not None and v > BC_ROUTE_BOUND
+                                                    for v in e1.values())},
+            "Ea0.2": {"U": e2, "count": sum(gt(v["corner"], v["braking"]) for v in e2.values()),
+                      "of": len(BC_K_P),
+                      "holds": all(gt(v["corner"], v["braking"]) for v in e2.values())}}
+    cmp = {f"{p}/{c}": {"state": U(per_state, p, c), "key": U(per_key, p, c)}
+           for p in BC_ROUTE_PHASES for c in BC_K_P}
+    n = sum(gt(v["state"], v["key"]) for v in cmp.values())
+    out["Ea0.3"] = {"U": cmp, "count": n, "of": len(cmp), "holds": n == len(cmp)}
+    out["reading"] = "amendment 11 item 5"
+    return out
+
+
+def bc_units(tab, stored_keys: list[dict], rows_of: dict, a2: dict, strips: dict,
+             picks: list[dict]) -> tuple[list[dict], list[str], list[dict]]:
+    """(units, names, per-key facts) of both placements (amendment 11 items 1 and 3). Per key:
+    its T rows, s_c1, direction and W from the bound world; s_next = max(s2, s_c1 + g_j); the
+    key's T rows must all lie 20 m or more before s2's preview point (K2b's construction)."""
+    import numpy as np
+
+    from apexzero.costate import gates as GT
+
+    units, names, facts = [], [], []
+    for i, krec in enumerate(stored_keys):
+        kid = str(krec["key_id"])
+        rows = np.asarray(rows_of[kid], int)
+        r0 = int(rows[0])
+        s_c1, sigma = float(tab["s_c1"][r0]), int(tab["direction"][r0])
+        W, s2 = int(tab["W"][r0]), float(krec["s2"])
+        reach = float(np.max(bc_reach(np.asarray(tab["s"], float)[rows],
+                                      np.asarray(tab["vx"], float)[rows])))
+        if reach > s2 - GT.K2B_MARGIN + 1e-6:
+            raise SystemExit(f"BC-a0 {kid}: a T row's preview reaches {reach:.1f} m, beyond "
+                             f"s2 - {GT.K2B_MARGIN:g} m")
+        want = bc_world_targets(tab, rows)
+        facts.append({"key": i, "key_id": kid, "W": W, "s2": s2, "s_c1": s_c1,
+                      "direction": sigma, "rows": len(rows), "reach_T": reach,
+                      "R": float(tab["R"][r0]), "theta": float(tab["theta"][r0])})
+        base = {"key": i, "key_id": kid, "ref": a2[kid], "s_c1": s_c1, "sigma": sigma, "W": W}
+        for j in range(1, BC_J + 1):
+            units.append({**base, "kind": "key", "j": j, "rows": rows,
+                          "t": np.asarray(tab["t"], int)[rows],
+                          "s_next": max(s2, s_c1 + strips[j]["gap0"]), "want": want})
+            names.append(f"key/{kid}/j{j}")
+    for pk in picks:
+        kid, r = pk["key_id"], int(pk["row"])
+        f = facts[pk["key"]]
+        reach = float(bc_reach(tab["s"][r], tab["vx"][r])[0])
+        base = {"key": pk["key"], "key_id": kid, "ref": a2[kid], "s_c1": f["s_c1"],
+                "sigma": f["direction"], "W": f["W"]}
+        for j in range(1, BC_J_STATE + 1):
+            units.append({**base, "kind": "state", "j": j, "rows": np.array([r]),
+                          "t": np.array([pk["t"]]), "s_next": reach + 20.0,
+                          "want": bc_world_targets(tab, [r]), "reach": reach})
+            names.append(f"state/{kid}/t{pk['t']}/j{j}")
+    order = sorted(range(len(units)), key=lambda u: -units[u]["W"])     # longest first
+    return [units[u] for u in order], [names[u] for u in order], facts
+
+
+def bc_assemble(recs: list[dict], kind: str, n_rows_of: dict, J: int) -> tuple:
+    """(D [J, n, 14], DX [J, n, 3], ok [unit, J]) of one placement from its unit records, with
+    each unit's rows laid out in ``n_rows_of``'s order ({unit id: (start, n)})."""
+    import numpy as np
+
+    n = sum(v[1] for v in n_rows_of.values())
+    D = np.full((J, n, len(BC_COLS)), np.nan)
+    DX = np.full((J, n, len(BC_DX)), np.nan)
+    ok = {u: np.zeros(J, bool) for u in n_rows_of}
+    for r in recs:
+        if r["kind"] != kind:
+            continue
+        uid = r["key"] if kind == "key" else (r["key"], r["t"][0])
+        start, m = n_rows_of[uid]
+        j = int(r["j"]) - 1
+        if r["ok"]:
+            D[j, start:start + m] = np.concatenate([r["d_lam"], r["d_Pi"], r["d_sigma"]], 1)
+            DX[j, start:start + m] = r["d_x"]
+            ok[uid][j] = True
+    return D, DX, ok
+
+
+@computes("BC-a0")
+def bc_a0(run: Run) -> None:
+    """BC-a0 (plan Section 4, amendment 11): the bound world, K2b's keys and the A2 key set
+    checked; the grammar and the 8 strips (their draws checked); the per-state picks; the
+    wiring key (K2b's first key, both severities, against gates/k2b.json); one pooled unit per
+    key and continuation and per state and continuation; the shares, K2b's p90, the routes and
+    the expected directions; outputs rows.npz and summary.json."""
+    import jax
+    import numpy as np
+
+    from apexzero.costate import gates as GT
+    from apexzero.costate import probes as PB
+    from apexzero.costate import targets as TG
+
+    t0 = time.time()
+    CS._x64()
+    if (BC_STATE_NAMES, BC_K_P, BC_MIRROR_ODD) != (TG.STATE_NAMES, TG.K_P, TG.MIRROR_ODD):
+        raise SystemExit("BC-a0: its component lists are not targets.py's")
+    world = load_world(run)
+    tab = world.tab
+    stored = json.loads(run.read("gates/k2b.json").read_text())
+    a2 = a2_refs_checked(run)
+    rows_of = {str(k.key_id): np.asarray(k.rows, int) for k in world.keys}
+    lim = getattr(run.args, "limit", None)
+    keys = stored["keys"] if lim is None else stored["keys"][:int(lim)]
+    missing = [k["key_id"] for k in keys if k["key_id"] not in rows_of]
+    if missing:
+        raise SystemExit(f"BC-a0: K2b keys without T rows: {missing}")
+    sd = bc_t_sd(tab)
+    lam_sd = np.asarray(GT.lam_sd(tab, BC_STATE_NAMES), float)
+    if not np.array_equal(np.array([sd[c] for c in BC_LAM]), lam_sd):
+        raise SystemExit("BC-a0: SD_T is not gates.lam_sd's")
+    var = bc_t_var(tab)
+    g, files = bc_grammar(run, run.root)
+    strips = {j: bc_strip(g, j) for j in range(1, BC_J + 1)}
+    bad = [b for s in strips.values() for b in bc_strip_problems(s)]
+    if bad:
+        raise SystemExit(f"BC-a0: {'; '.join(bad)}")
+    p_alt = (float(g.p_alt_short), float(g.p_alt_long))
+    picks = bc_state_picks(tab, [(i, k["key_id"], rows_of[k["key_id"]])
+                                 for i, k in enumerate(keys)])
+    units, names, facts = bc_units(tab, keys, rows_of, a2, strips, picks)
+    w0 = stored["keys"][0]
+    units = [{"kind": "wiring", "ref": a2[w0["key_id"]], "t": None}] + units
+    names = [f"wiring/{w0['key_id']}"] + names
+    print(f"BC-a0: {len(keys)} keys, {len(picks)} states, {len(units)} units "
+          f"({time.time() - t0:.0f} s)", flush=True)
+    t1 = time.time()
+    got = run.pool(bc_unit, units, state={"sd": GT.lam_sd(tab), "strips": strips,
+                                          "p_alt": p_alt}, names=names)
+    pool_s = time.time() - t1
+    gap = k2b_gap(got[0], w0)
+    if not gap <= K2B_TOL:
+        raise SystemExit(f"BC-a0: gates.k2b_solve does not reproduce gates/k2b.json's first key "
+                         f"({gap:.3g})")
+    recs = got[1:]
+    # the per-key placement: every T row of each key, in K2b's key order
+    key_rows, start = {}, 0
+    for f in facts:
+        key_rows[f["key"]] = (start, f["rows"])
+        start += f["rows"]
+    all_rows = np.concatenate([rows_of[f["key_id"]] for f in facts])
+    Dk, DXk, okk = bc_assemble(recs, "key", key_rows, BC_J)
+    st_rows = {(pk["key"], pk["t"]): (i, 1) for i, pk in enumerate(picks)}
+    Ds, DXs, oks = bc_assemble(recs, "state", st_rows, BC_J_STATE)
+    fail_k = {f["key_id"]: int(BC_J - okk[f["key"]].sum()) for f in facts}
+    fail_s = {f"{pk['key_id']}/t{pk['t']}": int(BC_J_STATE - oks[(pk["key"], pk["t"])].sum())
+              for pk in picks}
+    kept_key = np.concatenate([np.full(f["rows"], fail_k[f["key_id"]] <= BC_DROP["key"])
+                               for f in facts])
+    kept_state = np.array([fail_s[f"{pk['key_id']}/t{pk['t']}"] <= BC_DROP["state"]
+                           for pk in picks], bool)
+    key_k = np.concatenate([np.full(f["rows"], f["key"]) for f in facts])
+    key_s = np.array([pk["key"] for pk in picks], int)
+    ph = np.asarray(tab["phase"]).astype(str)
+    inner = np.asarray(tab["interior"], bool)
+    st_idx = np.array([pk["row"] for pk in picks], int)
+    per_key = bc_stats(Dk, DXk, key_k, ph[all_rows], inner[all_rows], kept_key, sd, var,
+                       bc_counts(len(facts), "key"))
+    per_state = bc_stats(Ds, DXs, key_s, ph[st_idx], inner[st_idx], kept_state, sd, var,
+                         bc_counts(len(facts), "state"), phases=BC_STATE_PHASES)
+    frozen_p90 = (stored.get("rule") or {}).get("p90")
+    unit_recs = [{k: v for k, v in r.items() if not k.startswith("d_")} for r in recs]
+    out = {
+        "item": "BC-a0", "targets_only": True,
+        "keys": facts, "states": picks,
+        "strips": [{k: v for k, v in s.items() if k != "kappa"} for s in strips.values()],
+        "grammar": {"circuits": sorted(files), "p_alt_short": p_alt[0], "p_alt_long": p_alt[1],
+                    "corners": int(g.corner_angle.shape[0]),
+                    "straights": int(g.straight_len.shape[0]),
+                    "x64": bool(jax.config.jax_enable_x64)},
+        "units": unit_recs,
+        "failed": {"key": fail_k, "state": fail_s,
+                   "dropped_keys": [k for k, v in fail_k.items() if v > BC_DROP["key"]],
+                   "dropped_states": [k for k, v in fail_s.items() if v > BC_DROP["state"]],
+                   "errors": sorted({str(r.get("error")) for r in recs
+                                     if not r["ok"] and r.get("error")})},
+        "sd_T": sd, "var_T_interior": var,
+        "per_key": per_key, "per_state": per_state,
+        "route": bc_route(per_state, per_key),
+        "expected": bc_expected(per_state, per_key),
+        "k2b_frozen_p90": frozen_p90,
+        "wiring": {"k2b_key": w0["key_id"], "k2b_gap": gap, "k2b_tol": K2B_TOL,
+                   "k2b_seconds": got[0]["seconds"],
+                   "target_gap_max": max(float(r["target_gap"]) for r in recs),
+                   "target_tol": BC_TARGET_TOL, "sd_equals_lam_sd": True},
+        "definitions": "plan Section 4 BC-a0 and amendment 11",
+        "n_boot": PB.N_BOOT, "partial": lim is not None,
+        "unit_seconds": {"median": float(np.median([r["seconds"] for r in recs])),
+                         "max": float(np.max([r["seconds"] for r in recs])),
+                         "sum": float(np.sum([r["seconds"] for r in recs]))},
+        "pool_seconds": pool_s, "seconds": time.time() - t0}
+    arrays = {"key/D": Dk, "key/DX": DXk, "key/rows": all_rows, "key/key": key_k,
+              "key/kept": kept_key, "state/D": Ds, "state/DX": DXs, "state/rows": st_idx,
+              "state/key": key_s, "state/kept": kept_state,
+              "strips/kappa": np.stack([strips[j]["kappa"] for j in range(1, BC_J + 1)]),
+              "cols": np.array(BC_COLS), "dx_cols": np.array(BC_DX)}
+    run.write_npz("rows", arrays)
     run.write_json("summary", plain(out))
 
 
