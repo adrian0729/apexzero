@@ -694,8 +694,14 @@ def analyse(runs: Sequence[Run], boot: dict, pt: dict | None = None) -> dict:
             f_t = [r["target"] for r in sec if r["test"] == "S3" and r["arm"] == arm
                    and r["score"] == s and r["significant"] and abs(r["estimate"]) >= ROW_EFFECT]
             g_here = bool(g_targets) and STORED.get(arm, (None,))[0] == s
-            a_row = (bool(labs) and all(x == "faithful" for x in labs) and not g_targets
-                     and not b and not bp and not c_row)
+            # Faithful in every reached phase is A, even with a significant shift: B's reading
+            # ("only while the agent is incompetent") overstates a score still faithful late,
+            # and B's mirror one that was faithful early (decided 27 Oct 2026). The shift stays
+            # in row["shift"]. G still blocks A.
+            faithful_all = bool(labs) and all(x == "faithful" for x in labs)
+            if faithful_all:
+                b, bp = [], []
+            a_row = faithful_all and not g_targets and not c_row
             for name, holds, targets in (("A", a_row, list(TARGETS)), ("B", bool(b), b),
                                          ("B'", bool(bp), bp), ("C", c_row, list(TARGETS)),
                                          ("F", bool(f_t), f_t), ("G", g_here, g_targets)):

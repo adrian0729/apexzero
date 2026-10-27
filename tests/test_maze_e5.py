@@ -2,8 +2,9 @@
 train stage, the config and round checks, the tag gate, the audit's additions, and the
 statistics on planted data.
 
-SFL's own network file (sfl/train/minigrid_plr.py) is not vendored, so the shim's end-to-end
-test runs the vendored minigrid_sfl.py with JaxUED's maze_plr.py network as a stand-in
+SFL's own network file (sfl/train/minigrid_plr.py) is vendored but imports a second SFL file
+(sfl/util/jaxued/jaxued_utils.py) that is not, so the shim's end-to-end test still runs the
+vendored minigrid_sfl.py with JaxUED's maze_plr.py network as a stand-in
 (``network_module``), at a toy size. The planted analyses use 120 mazes and fewer bootstrap
 draws than the pre-registered 4,000, enough for every planted effect to clear Holm.
 """
@@ -67,15 +68,32 @@ def test_readme_records_source_commit_and_every_blob():
         assert path in text and blob in text
     for path, (blob, _) in sfl.NOT_VENDORED.items():
         assert path in text and blob in text
+    for path in sfl.MISSING_IMPORTS:
+        assert path in text
 
 
-def test_sfls_network_file_is_required_until_it_is_vendored():
-    if (sfl.VENDOR / sfl.MINIGRID_PLR).exists():
-        pytest.skip("minigrid_plr.py is vendored")
-    with pytest.raises(sfl.MissingSFLSource, match="needs the user's OK"):
+def test_minigrid_plr_is_vendored_at_the_approved_blob():
+    """The 27 Oct 2026 download: 38,737 bytes, git blob 9537a794..., the same commit."""
+    f = sfl.VENDOR / sfl.MINIGRID_PLR
+    assert f.stat().st_size == sfl.MINIGRID_PLR_BYTES == 38737
+    got = subprocess.run(["git", "hash-object", "--no-filters", str(f)], capture_output=True,
+                         text=True, check=True).stdout.strip()
+    assert got == sfl.VENDORED[sfl.MINIGRID_PLR] == "9537a794b7df09c76bf816215b366b03eb10b682"
+    assert sfl.check_vendored()[f"third_party/sfl/{sfl.MINIGRID_PLR}"] == got
+
+
+def test_sfls_network_needs_the_import_it_has_not_got():
+    """minigrid_plr.py imports sfl.util.jaxued.jaxued_utils, which is neither vendored nor
+    installed (not approved): the SFL network stops with a message naming it."""
+    missing = [p for p in sfl.MISSING_IMPORTS if not (sfl.VENDOR / p).exists()]
+    if not missing:
+        pytest.skip("minigrid_plr.py's imports are all vendored")
+    with pytest.raises(sfl.MissingSFLSource, match="jaxued_utils.py"):
         sfl.check_minigrid_plr()
-    with pytest.raises(sfl.MissingSFLSource):
+    with pytest.raises(sfl.MissingSFLSource, match="needs the user's OK"):
         sfl.check_vendored(network=True)
+    with pytest.raises(sfl.MissingSFLSource):
+        sfl.minigrid_plr()
 
 
 # --------------------------------------------------------------------------- the config
@@ -285,7 +303,7 @@ def test_sfl_shim_refuses_saves_it_cannot_make(shim_runs, tmp_path):
     bad = [x for x in SMALL if not x.startswith("learning.NUM_CHECKPOINTS")]
     with pytest.raises(SystemExit, match="NUM_CHECKPOINTS"):
         shim.run(bad, [4], out=tmp_path, network_module=maze.maze_plr())
-    if not (sfl.VENDOR / sfl.MINIGRID_PLR).exists():
+    if any(not (sfl.VENDOR / p).exists() for p in sfl.MISSING_IMPORTS):
         with pytest.raises(sfl.MissingSFLSource):
             shim.run(SMALL, [4], out=tmp_path)
 
@@ -445,7 +463,7 @@ def test_train_stage_keeps_the_selected_checkpoints_and_records_them(mods, tmp_p
     assert m.main([*argv, "--name", "t-fail"]) == 1
     rec = json.loads((tmp_path / "runs" / "t-fail" / "e5-run.json").read_text())
     assert rec["exit"] == 3 and rec["problems"] and "pruned" not in rec
-    if not (sfl.VENDOR / sfl.MINIGRID_PLR).exists():
+    if any(not (sfl.VENDOR / p).exists() for p in sfl.MISSING_IMPORTS):
         with pytest.raises(sfl.MissingSFLSource):
             m.main(["train", "--arm", "sfl", "--view", "5", "--seed", "1", "--name", "t-sfl"])
 
@@ -865,6 +883,33 @@ def test_planted_effects_give_the_rows(planted):
         "faithful"}
     assert labels[("pvl", "abs", "late")]["holm_delta"] is True
     assert labels[("pvl", "abs", "mid")]["holm_delta"] is False
+
+
+def test_faithful_everywhere_with_a_shift_is_row_a_not_b_or_b_prime():
+    """Decided 27 Oct 2026 (maze-e5.md Section 11, item 11): a score faithful in every reached
+    phase is A even when it also shifts significantly, in either direction. The shift is still
+    reported. A score that is not faithful late stays B."""
+    rng = np.random.default_rng(31)
+
+    def noise_by_phase(sds):
+        def plan(arm, view, k, reg, rng):
+            sd = sds[0] if k < 6 else sds[1] if k < 11 else sds[2]
+            return {"pvl": reg + sd * rng.normal(size=reg.shape)}
+        return plan
+
+    for sds, sign in (((0.1, 0.05, 0.01), +1), ((0.01, 0.05, 0.1), -1)):
+        runs = [_run(rng, "dr", v, s, noise_by_phase(sds)) for s in range(1, 4)
+                for v in (13, 5)]
+        res = e5.analyse(runs, e5.bootstrap(runs, n_boot=2000, workers=3))
+        row = next(r for r in res["rows"] if (r["arm"], r["score"]) == ("dr", "pvl"))
+        labels = res["arms"]["dr"]["labels"]
+        assert {labels[("pvl", t, ph)]["label"] for t in e5.TARGETS for ph in e5.PHASES} == {
+            "faithful"}
+        x = row["shift"]["abs"]
+        assert sign * x["estimate"] >= e5.ROW_SHIFT                  # a shift of the B/B' size
+        assert x["trend_significant"] and sign * x["trend"] > 0
+        assert (x["hi"] < 0) if sign < 0 else (x["lo"] > 0)
+        assert row["rows"] == ["A"] and row["reading"] == [e5.reading("A", "dr", "pvl")]
 
 
 def test_planted_families_sizes_and_holm(planted):

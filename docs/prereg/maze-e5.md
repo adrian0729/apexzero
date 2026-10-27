@@ -5,9 +5,11 @@ tagged, and none of the 30 runs below exists. After review the lead commits the 
 27 Oct 2026 the user decided three of Section 11's choices (E5's own tag, no PLR-PVL arm, DR
 through `maze_plr.py`), approved the SFL download (Section 10), and approved only a short timing
 run on the box (Section 9). The same day E5 was built (Section 8, step 3) and SFL's approved files
-were vendored. One more file is needed before any SFL run can start: SFL's network,
-`sfl/train/minigrid_plr.py`, which `minigrid_sfl.py` imports and the approval did not list. Its
-download needs the user's OK (Section 10). The runs are trained once the user approves the full
+were vendored, and the user approved SFL's network file, `sfl/train/minigrid_plr.py`, which was
+then vendored (Section 11, item 8). That file imports one more SFL file that nothing approved,
+`sfl/util/jaxued/jaxued_utils.py`; until the user approves it, no SFL run can start
+(Section 10). The user also decided that a score faithful in every reached phase is row A even
+when it shifts (Section 11, item 11). The runs are trained once the user approves the full
 queue, their checkpoint manifest is committed, and the tag `maze-e5-prereg-v1` is placed before
 any audit of an E5 checkpoint (Section 8). E5 uses no racing circuit, so the lockbox is untouched.
 The build had its adversarial review the same day; its fixes are in Sections 2, 3, 5.2, 8, 9,
@@ -308,7 +310,10 @@ Per arm and primary score, read on both targets:
   bootstrapped as Section 4 fixes. If only one phase is reached, B and B′ are not testable.
 - Rows can co-occur, except A with B, B′ or C. A and C cannot both hold. When A's rule and B's
   or B′'s hold together (faithful in every reached phase, with a significant shift), the build
-  reports B or B′ and not A (fixed 27 Oct 2026; the draft was silent; Section 11, item 11).
+  reports A and not B or B′ (the user decided 27 Oct 2026; Section 11, item 11). The shift is
+  still tabulated. B and B′ are therefore reported only for a score that is not faithful in some
+  reached phase. If a row G blocks A for a score faithful in every phase, B and B′ are still not
+  reported.
 - Rows D and E of the plan need track types and curricula on a shared pool, and do not apply.
 
 ### 5.3 Secondary family (pre-registered; Holm at α = 0.05 over 28 tests)
@@ -373,10 +378,11 @@ Per arm and primary score, read on both targets:
 
 **Before the tag:**
 1. **Approvals.** The user approved the SFL download on 27 Oct 2026 (Section 10). The vendored
-   code needs no install: Hydra and OmegaConf are avoided (DEV-E5-7). It does need one more
-   download, SFL's `sfl/train/minigrid_plr.py` (38,737 bytes, blob `9537a794…`, same commit and
-   licence), which holds SFL's network; that needs the user's OK. Once it is vendored and read,
-   anything it imports that is not installed or stood in is listed here for another OK.
+   code needs no install: Hydra and OmegaConf are avoided (DEV-E5-7). The user approved SFL's
+   `sfl/train/minigrid_plr.py` (38,737 bytes, blob `9537a794…`, same commit and licence), which
+   holds SFL's network, on 27 Oct 2026; it is vendored. Read, it imports one SFL file that is
+   neither vendored nor installed, `sfl/util/jaxued/jaxued_utils.py` (`l1_value_loss`); that needs
+   another OK (Section 10).
 2. **Vendoring.** Done on 27 Oct 2026 (Section 10).
    - SFL's approved files that `minigrid_sfl.py` needs, `LICENSE` included, were downloaded at the
      pinned commit into a new directory outside the repo, each checked against its git blob SHA-1
@@ -408,7 +414,7 @@ Per arm and primary score, read on both targets:
      SFL's), the run lists, the config checks, the train stage, the tag gate (with both index
      flags), run-once outputs, the audit job of a missing run, the run-list options the boxes
      recorded, the audit's equality with the pilot's and the projection rule (38 tests after the
-     review).
+     review, 40 after the decisions of 27 Oct 2026).
 4. **A dry run** on the pilot's checkpoints: the pilot reproduction (Section 3), then `analyse`
    end to end on one seed. This is a machinery check only. Not yet run (the test shows the E5
    audit with its additions off equals the pilot's `audit_checkpoint` on a small case).
@@ -523,7 +529,8 @@ on the box the main queue will use (G GPUs; G = 4 on the x4 box):
   view 5, seed 99, two with D captured and one without. If the two captured runs are
   bit-identical (the GPU is deterministic here), the run without must be too (DEV-E5-2); if they
   differ, the check is inconclusive and reported as such.
-- `--arms dr,plr` leaves SFL out of the first two while `minigrid_plr.py` is not vendored; SFL's
+- `--arms dr,plr` leaves SFL out of the first two while `minigrid_plr.py` cannot be imported (its
+  import `sfl/util/jaxued/jaxued_utils.py` is not vendored, Section 10); SFL's
   projection is then missing and the full queue cannot be projected.
 - The calibration runs are discarded and never audited.
 - **The projection rule** (`scripts/maze_e5.py timing`, `apexzero.maze.e5.project_queue`):
@@ -622,18 +629,18 @@ and copied byte for byte into `third_party/sfl/` with a README. `network.py` and
 | `chex`, `jax` (with `jax.experimental`), `flax`, `optax`, `numpy`, `wandb`, `matplotlib`, `PIL`, `jaxued` (`Maze`, `MazeRenderer`, `AutoReplayWrapper`, `Level`, `make_level_generator`) | installed. The script calls `jax.tree_map` (restored by `apexzero.compat`), passes integer `where=` masks that today's JAX refuses, and calls `FigureCanvasAgg.tostring_rgb`, which matplotlib 3.10 removed (both stood in, DEV-E5-7) |
 | `hydra` (`@hydra.main` on `main`), `omegaconf` (`OmegaConf.to_container`) | not installed; not needed: the shim composes the config and calls `main` itself (DEV-E5-7). No install is requested |
 | `sfl.train.train_utils.save_params` | not vendored (`sfl/train/train_utils/__init__.py`, 44 bytes, blob `b5437dc2…`, and `common.py`, 6,308 bytes, blob `be4f1f26…`); not needed: the shim's writer replaces it (DEV-E5-2) |
-| `sfl.train.minigrid_plr.ActorCritic, evaluate_rnn` | **needed and not vendored**: `sfl/train/minigrid_plr.py`, 38,737 bytes, blob `9537a794b7df09c76bf816215b366b03eb10b682`, the same commit and licence. It is SFL's network and its eval rollout; it differs from JaxUED's `maze_plr.py` (41,764 bytes, another blob), so JaxUED's network cannot stand in for it in the real runs. Its download needs the user's OK. Its own imports are unknown until it is read; any it needs beyond the stand-ins above would come back for another OK |
+| `sfl.train.minigrid_plr.ActorCritic, evaluate_rnn` | **vendored on 27 Oct 2026** (the user's approval, Section 11 item 8): `sfl/train/minigrid_plr.py`, 38,737 bytes, blob `9537a794b7df09c76bf816215b366b03eb10b682` (size and blob checked after the download, before the copy), the same commit and licence. It is SFL's network and its eval rollout; it differs from JaxUED's `maze_plr.py` (41,764 bytes, another blob), so JaxUED's network cannot stand in for it in the real runs. Its imports (read 27 Oct 2026): `json`, `time`, `os`, `enum`, `typing`, `numpy`, `jax`, `flax`, `optax`, `distrax`, `orbax.checkpoint`, `wandb`, `chex` and `jaxued` (all installed), `hydra` and `omegaconf` (stood in as above), `sfl.train.train_utils.save_params` (stood in as above), and **`sfl.util.jaxued.jaxued_utils.l1_value_loss`: not vendored, not installed and not approved**. Its download needs the user's OK; until then `minigrid_plr.py` cannot be imported, `sfl.check_minigrid_plr` raises `MissingSFLSource` naming it, and the SFL network adapter (`sfl_network_policy`) is not yet tested against SFL's real network |
 
 The repo's environment has `jaxued` 0.0.1, whose maze env equals the pinned JaxUED commit's
 (blob `34291f1a…`, checked), and wandb, orbax, distrax and chex. The shim's end-to-end test runs
 the vendored script with JaxUED's network in place of `minigrid_plr`'s (a stand-in for the test
-only).
+only), until `jaxued_utils.py` is approved and vendored.
 
 **Not downloaded:** JaxUED's `examples/maze_dr.py` (28,606 bytes, blob `d367205a…`, the same
 pinned commit `0f8f128`, Apache-2.0). It would have been needed only if review preferred it to
 DEV-E5-6, which the user kept on 27 Oct 2026.
 
-## 11. Choices for review (items 1 and 4, and item 7's gate, decided 27 Oct 2026)
+## 11. Choices for review (items 1, 4, 8 and 11, and item 7's gate, decided 27 Oct 2026)
 
 1. **E5's own tag now** (this draft), or E5 inside `protocol-v1`. Also whether to add a PLR-PVL arm
    (10 more runs). Both are #17, the user's. **Decided 27 Oct 2026:** E5 has its own tag,
@@ -651,16 +658,23 @@ DEV-E5-6, which the user kept on 27 Oct 2026.
 7. **The budget gate** of 12 box-hours, and the drop order. **The gate was replaced on 27 Oct
    2026:** only the timing run is approved, and the user decides the full queue whatever its
    estimate (Section 9). The drop order is still for review.
-8. **SFL's network file** (new, 27 Oct 2026; the user's, #2): download
-   `sfl/train/minigrid_plr.py` (38,737 bytes, blob `9537a794…`, same commit, Apache-2.0) so the SFL
-   arm can run. Without it, E5 runs DR and PLR-MaxMC only (20 runs), and S2's SFL tests, SFL's
-   rows and the arm comparisons drop out.
+8. **SFL's network file** (new, 27 Oct 2026; the user's, #2). **Decided 27 Oct 2026:** the user
+   approved the download of `sfl/train/minigrid_plr.py` (38,737 bytes, blob `9537a794…`, same
+   commit, Apache-2.0). It was downloaded into a new directory outside the repo, its size and git
+   blob checked (both matched), and copied unmodified into `third_party/sfl/` with its blob in
+   `apexzero.maze.sfl.VENDORED` and the README. Read, it imports `sfl.util.jaxued.jaxued_utils`
+   (`l1_value_loss`), which is not vendored, not installed and not covered by the approval, so
+   SFL's network still cannot be imported and the SFL runs and the network adapter's test against
+   the real network wait for another OK (Section 10). Without it E5 runs DR and PLR-MaxMC only
+   (20 runs), and S2's SFL tests, SFL's rows and the arm comparisons drop out.
 9. **D as the set the last block trained on** (score age 100 at every checkpoint), captured during
    training; the alternative is the set the checkpoint's own parameters would select next (age 0),
    which would have to be recomputed.
 10. **The calibration's loads** (4 and 8 lanes per GPU) and its GPU-side capture check (Section 9).
-11. **A with B or B′** (new, 27 Oct 2026, from the review). When an arm's score is faithful in
-    every reached phase and also shifts significantly (B or B′), the build reports the shift (B or
-    B′). The alternative is A: B's reading ("only while the agent is incompetent") overstates a
-    score that is still faithful late, and B′'s one that was faithful early. The planted data
-    exercise neither case.
+11. **A with B or B′** (new, 27 Oct 2026, from the review). **Decided 27 Oct 2026:** when an arm's
+    score is faithful in every reached phase and also shifts significantly, the label is A
+    (faithful), not B or B′. The reason: B's reading ("only while the agent is incompetent")
+    overstates a score that is still faithful late, and B′'s one that was faithful early. The
+    shift is still reported in the row's shift table. A planted test now covers both directions
+    (a shift up and a shift down, faithful throughout: row A only). Not taken: reporting B or B′
+    and not A, the draft's first rule.

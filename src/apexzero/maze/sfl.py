@@ -7,11 +7,13 @@ share:
 
 - **The vendored files and their git blob SHA-1s** (``check_vendored``), checked before every
   E5 stage, as the draft's Section 2 requires. ``minigrid_sfl.py`` imports two modules of the
-  SFL repository that are not vendored (``NOT_VENDORED``): ``sfl.train.minigrid_plr``, for the
-  network (``ActorCritic``) and ``evaluate_rnn``, and ``sfl.train.train_utils``, for
-  ``save_params``. The shim replaces ``save_params`` with E5's checkpoint writer, so
-  ``train_utils`` is never needed. ``minigrid_plr.py`` is: without it there is no SFL network,
-  and its download needs the user's OK (``minigrid_plr`` raises until it is vendored).
+  SFL repository: ``sfl.train.minigrid_plr``, for the network (``ActorCritic``) and
+  ``evaluate_rnn`` (vendored on 27 Oct 2026, the user's approval), and ``sfl.train.train_utils``,
+  for ``save_params`` (not vendored, ``NOT_VENDORED``: the shim replaces ``save_params`` with
+  E5's checkpoint writer, so ``train_utils`` is never needed). ``minigrid_plr.py`` itself imports
+  ``sfl.util.jaxued.jaxued_utils`` (``l1_value_loss``), a file that is neither vendored nor
+  approved (``MISSING_IMPORTS``): until it is, SFL's network cannot be imported and
+  ``check_minigrid_plr`` raises ``MissingSFLSource`` naming it.
 - **The config** (``compose_config``): Hydra's composition of ``minigrid-sfl.yaml`` (defaults
   ``env: minigrid``, ``learning: ippo-minigrid``, then ``_self_``), with OmegaConf's YAML rules
   (``3e8`` is a float, as OmegaConf reads it; plain PyYAML would read a string), and
@@ -54,18 +56,23 @@ VENDORED = {
     "sfl/__init__.py": "b3c06d488393abb3b3829e5590d42409c995b4cf",
     "sfl/train/__init__.py": "e69de29bb2d1d6434b8b29ae775ad8c2e48c5391",
     "sfl/train/minigrid_sfl.py": "6436f5f659fa5fd0992c3ce479054eacb0353fdd",
+    "sfl/train/minigrid_plr.py": "9537a794b7df09c76bf816215b366b03eb10b682",   # 27 Oct 2026
     "sfl/train/config/minigrid-sfl.yaml": "41a016967485abcc8001b24ec91ddca783e54e6e",
     "sfl/train/config/learning/ippo-minigrid.yaml": "633e1793c235cce1f3b046075d7f14a1d68ac67d",
     "sfl/train/config/env/minigrid.yaml": "8df39e2c6881321897748e2450b51d43f3ad5b5c",
 }
 # Imported by minigrid_sfl.py but not vendored (not in the 27 Oct 2026 approval): path ->
-# (git blob SHA-1, bytes), from the same tree listing. Only minigrid_plr.py is needed.
+# (git blob SHA-1, bytes), from the same tree listing. Neither is needed (``save_params`` is
+# replaced by the shim).
 NOT_VENDORED = {
-    "sfl/train/minigrid_plr.py": ("9537a794b7df09c76bf816215b366b03eb10b682", 38737),
     "sfl/train/train_utils/__init__.py": ("b5437dc2e9f5ed3a6700b5414702fe5ba7902394", 44),
     "sfl/train/train_utils/common.py": ("be4f1f26619dc302aae1a23882ed287c93ebc01c", 6308),
 }
 MINIGRID_PLR = "sfl/train/minigrid_plr.py"
+MINIGRID_PLR_BYTES = 38737
+# Imported by minigrid_plr.py (``from sfl.util.jaxued.jaxued_utils import l1_value_loss``), in
+# neither the vendored files nor the .venv, and not in the user's approval: path -> what needs it.
+MISSING_IMPORTS = {"sfl/util/jaxued/jaxued_utils.py": "l1_value_loss, imported by minigrid_plr.py"}
 # JaxUED's maze example (third_party/jaxued_examples/README.md), checked with SFL's files.
 JAXUED = {"third_party/jaxued_examples/maze_plr.py": "a7b6164dc9d9772613d9cc2dab0ef7e9603dc7d0"}
 
@@ -103,7 +110,8 @@ def check_files(expected: dict[str, str], base: Path) -> dict[str, str]:
 
 def check_vendored(network: bool = False) -> dict[str, str]:
     """JaxUED's maze_plr.py and SFL's vendored files, each against its pinned blob; with
-    ``network``, also SFL's minigrid_plr.py (``MissingSFLSource`` if it is not vendored)."""
+    ``network``, also that minigrid_plr.py's own imports from SFL's repository are vendored
+    (``MissingSFLSource`` if not)."""
     out = dict(check_files(JAXUED, ROOT))
     out.update({f"third_party/sfl/{k}": v for k, v in check_files(VENDORED, VENDOR).items()})
     if network:
@@ -112,14 +120,20 @@ def check_vendored(network: bool = False) -> dict[str, str]:
 
 
 def check_minigrid_plr() -> str:
-    blob, size = NOT_VENDORED[MINIGRID_PLR]
+    """minigrid_plr.py is vendored and is the pinned blob, and so is what it imports from
+    SFL's repository (``MissingSFLSource`` naming the file if not)."""
+    blob = VENDORED[MINIGRID_PLR]
     if not (VENDOR / MINIGRID_PLR).is_file():
         raise MissingSFLSource(
             f"third_party/sfl/{MINIGRID_PLR} is not vendored: minigrid_sfl.py imports SFL's "
-            f"network (ActorCritic) and evaluate_rnn from it. Its download ({size:,} bytes, blob "
-            f"{blob[:12]}, {SFL_REPO} at {SFL_COMMIT[:12]}) needs the user's OK (maze-e5.md "
-            "Section 10)")
+            f"network (ActorCritic) and evaluate_rnn from it ({MINIGRID_PLR_BYTES:,} bytes, blob "
+            f"{blob[:12]}, {SFL_REPO} at {SFL_COMMIT[:12]})")
     check_files({MINIGRID_PLR: blob}, VENDOR)
+    absent = [f"{p} ({why})" for p, why in MISSING_IMPORTS.items() if not (VENDOR / p).is_file()]
+    if absent:
+        raise MissingSFLSource(
+            f"third_party/sfl/{MINIGRID_PLR} imports {', '.join(absent)}, which is not vendored "
+            f"and not installed; its download needs the user's OK (maze-e5.md Section 11, item 8)")
     return blob
 
 
@@ -466,7 +480,7 @@ def load_vendored(path: Path, name: str, stubs: dict):
 @lru_cache(maxsize=1)
 def minigrid_plr():
     """SFL's sfl/train/minigrid_plr.py as a module (hash-checked; raises MissingSFLSource
-    while it is not vendored). Its own imports are not known yet: the file was not read."""
+    while a file it imports from SFL's repository is not vendored, ``MISSING_IMPORTS``)."""
     check_minigrid_plr()
     return load_vendored(VENDOR / MINIGRID_PLR, "sfl_minigrid_plr", stub_modules())
 
