@@ -1,12 +1,15 @@
 # Maze E5 (PA-3): do level scores track exact regret on JaxUED's own agents? (pre-registration, DRAFT)
 
-**Status.** DRAFT, 26 Oct 2026, for review. Nothing here is tagged, and none of the 30 runs below
-exists. After review the lead commits the final text. On 27 Oct 2026 the user decided three of
-Section 11's choices (E5's own tag, no PLR-PVL arm, DR through `maze_plr.py`), approved the SFL
-download, which is made when E5 is built (Section 10), and approved only a short timing run on the
-box (Section 9). The runs are trained once the user approves the full queue, their checkpoint
-manifest is committed, and the tag `maze-e5-prereg-v1` is placed before any audit of an E5
-checkpoint (Section 8). E5 uses no racing circuit, so the lockbox is untouched.
+**Status.** DRAFT, 26 Oct 2026, for review; updated 27 Oct 2026 for the build. Nothing here is
+tagged, and none of the 30 runs below exists. After review the lead commits the final text. On
+27 Oct 2026 the user decided three of Section 11's choices (E5's own tag, no PLR-PVL arm, DR
+through `maze_plr.py`), approved the SFL download (Section 10), and approved only a short timing
+run on the box (Section 9). The same day E5 was built (Section 8, step 3) and SFL's approved files
+were vendored. One more file is needed before any SFL run can start: SFL's network,
+`sfl/train/minigrid_plr.py`, which `minigrid_sfl.py` imports and the approval did not list. Its
+download needs the user's OK (Section 10). The runs are trained once the user approves the full
+queue, their checkpoint manifest is committed, and the tag `maze-e5-prereg-v1` is placed before
+any audit of an E5 checkpoint (Section 8). E5 uses no racing circuit, so the lockbox is untouched.
 
 ## 1. Why
 
@@ -34,28 +37,38 @@ checkpoint (Section 8). E5 uses no racing circuit, so the lockbox is untouched.
 |---|---|---|
 | DR | JaxUED `examples/maze_plr.py`, vendored unmodified (`third_party/jaxued_examples/`) | `--replay_prob 0 --exploratory_grad_updates`, as in the pilot |
 | PLR-MaxMC | the same file | none: `--score_function MaxMC` is its default (PLR⊥: replay 0.8, rank β 0.3, staleness 0.3, buffer 4,000) |
-| SFL | SFL's `sfl/train/minigrid_sfl.py`, vendored unmodified when E5 is built (`third_party/sfl/`; download approved 27 Oct 2026, Section 10) | its own config defaults (`minigrid-sfl.yaml`, `learning/ippo-minigrid.yaml`, `env/minigrid.yaml`) |
+| SFL | SFL's `sfl/train/minigrid_sfl.py`, vendored unmodified on 27 Oct 2026 (`third_party/sfl/`, Section 10) | its own config defaults (`minigrid-sfl.yaml`, `learning/ippo-minigrid.yaml`, `env/minigrid.yaml`), except DEV-E5-2 to DEV-E5-4 |
 
 - **No PLR-PVL arm** (decided by the user, 27 Oct 2026; #17). The arms are these three.
 
 **Shared settings:**
-- **View sizes:** 5 (the default) and 13. For JaxUED: `--agent_view_size 5|13`. For SFL: its
-  own configuration key for the same quantity.
+- **View sizes:** 5 (the default) and 13. For JaxUED: `--agent_view_size 5|13`. For SFL: the
+  override `env.AGENT_VIEW_SIZE=5|13`.
 - **Seeds:** 1–5 in every arm × view cell, so 30 runs. The pilot used seed 0 and was seen.
-- **Length:** 30,000 PPO updates for every arm. That is JaxUED's default `--num_updates`. For SFL,
-  its run length is set to 30,000 updates if its default differs (DEV-E5-3).
-- **Calling the code:**
+- **Length:** 30,000 PPO updates for every arm. That is JaxUED's default `--num_updates`. SFL's
+  default is 4,577 updates (`TOTAL_TIMESTEPS` 3e8 // 256 // 256), so its runs set
+  `learning.TOTAL_TIMESTEPS=1966080000` (30,000 × 256 × 256; DEV-E5-3). Its learning rate then
+  anneals over the 30,000 updates, by its own schedule.
+- **Calling the code:** every run is `scripts/maze_e5.py train --arm A --view V --seed S --name N`
+  (the run list's command), which runs the arm's trainer in `runs/<name>/` with exactly the flags
+  below (`maze_e5.trainer_cmd`) and records the run (`runs/<name>/e5-run.json`):
   - JaxUED runs go through `scripts/run_jaxued_maze.py`, with its compatibility shim and wandb
-    offline;
-  - SFL runs go through a new shim of the same kind, `scripts/run_sfl_maze.py`.
+    offline: `--run_name N --seed S --agent_view_size V --num_updates 30000 --eval_freq 100
+    --checkpoint_save_interval 1 --max_number_of_checkpoints 300`, plus `--replay_prob 0
+    --exploratory_grad_updates` for DR;
+  - SFL runs go through a shim of the same kind, `scripts/run_sfl_maze.py`: the overrides
+    `SEED=S env.AGENT_VIEW_SIZE=V learning.TOTAL_TIMESTEPS=1966080000
+    learning.NUM_CHECKPOINTS=300` and `--save-updates` with the 16 checkpoints (DEV-E5-2).
 - **Hyperparameters:** each arm at its own defaults, so the arms differ in more than the sampler.
   - JaxUED: 32 envs × 256 steps per update, γ 0.995, λ 0.98, lr 1e-4.
-  - SFL's MiniGrid code, as the repo's notes record it (`docs/paper/sources-sfl.md` Section 2.3;
-    to be confirmed against the vendored files):
-    - 256 envs × 256 steps per update, γ 0.99, λ 0.95;
-    - every 100 updates, 25,000 fresh mazes are scored by learnability from 2,000-step rollouts,
-      and the top 1,000 form the buffer;
-    - half of each batch is drawn from that buffer.
+  - SFL's MiniGrid code, read from the vendored config on 27 Oct 2026 (it matches
+    `docs/paper/sources-sfl.md` Section 2.3):
+    - 256 envs × 256 steps per update, γ 0.99, λ 0.95, lr 2.5e-4 annealed, 4 epochs × 4
+      minibatches, clip 0.04, no entropy bonus;
+    - every 100 updates, 25,000 fresh mazes (5 batches of 5,000) are scored by learnability from
+      2,000-step rollouts, and the top 1,000 form the buffer;
+    - half of each batch (128 of 256 levels) is drawn from that buffer, the rest is fresh;
+    - its generator places 60 walls (`N_WALLS`); JaxUED's places 25.
 
   Comparisons between arms are therefore descriptive (Section 5.4).
 
@@ -65,22 +78,40 @@ u_k = 100·round(3·100^((k−1)/15)), k = 1…16:
 > 300, 400, 600, 800, 1000, 1400, 1900, 2600, 3500, 4800, 6500, 8800, 11900, 16200, 22100, 30000
 
 - **JaxUED runs** save at every eval block: `--eval_freq 100 --checkpoint_save_interval 1
-  --max_number_of_checkpoints 300`. Orbax step e then holds update 100(e + 1). Only the 16
-  selected steps are copied back; the rest are deleted with the box (DEV-E5-1).
-- **SFL runs** save at the same 16 update counts (DEV-E5-2).
+  --max_number_of_checkpoints 300`. Orbax step e then holds update 100(e + 1). When the run
+  exits, `maze_e5.py train` deletes every step but the 16 selected ones, so only those are pulled
+  back (DEV-E5-1), and records each kept step's sha256 over its files.
+- **SFL runs** save the parameters and the learnable set D at the same 16 update counts
+  (DEV-E5-2), in `runs/<name>/sfl-checkpoints/u<update>/`.
+  - D is the set in force at the checkpoint: the 1,000 levels the last 100-update block trained
+    on, with the learnability computed at the start of that block (score age 100 updates). It is
+    captured, not recomputed, and its scores must equal the `learnability_set_scores` the script
+    logs for that block, or the run stops.
 
-**Machine and queue.**
-- **One commit, one box.** All 30 runs train from one commit on one rented NVIDIA RTX A6000 (the
-  cheapest Massed Compute instance), set up with `scripts/gpu_setup.sh`. No racing data is needed
-  on the box.
-  - The lead checks the A6000's hourly price on Brev before creating the box. One box at a time,
-    deleted when done (27 Oct 2026).
-- **The queue,** `scripts/gpu_queue_maze_e5.sh` (to be written), interleaves the cells so that each
-  round mixes arms and views.
-  - The lane count is fixed by the timing calibration (Section 9).
-  - A failed run is re-run once with the same arguments. A run that fails twice is missing
+**Machine and queue** (updated 27 Oct 2026 for the fourth round; `docs/plan/follow-through.md`
+Section 11).
+- **One commit, the round's boxes.** All 30 runs train from one commit, tagged `maze-e5-train-v1`
+  by the lead before the launch (the training tag; `maze-e5-prereg-v1` comes after training), on
+  NVIDIA RTX A6000s set up with `scripts/gpu_setup.sh`. No racing data is needed on the boxes.
+  - The plan: one `massedcompute_A6000_plusx4` box (4 GPUs, $2.74/h), each run on one GPU. If the
+    x4 type is not available, single-GPU `massedcompute_A6000_plus` boxes ($0.68/h), each taking
+    whole seeds (`SHARD=i/K`). All boxes of the round are the same GPU model, and each round's
+    manifest records the box type, GPU count and shard.
+  - The lead checks the hourly price on Brev before creating a box, and deletes each box when its
+    work is done.
+- **The queue** is the shared one, `scripts/gpu_round.sh maze-e5 scripts/maze_e5_runs.py --phase
+  main` (it replaces the `gpu_queue_maze_e5.sh` this draft planned). The run list
+  (`scripts/maze_e5_runs.py`) fixes the order: the 10 SFL runs first, then PLR-MaxMC, then DR,
+  within an arm seed by seed and view 13 before 5. The expected longest runs start first, so with
+  16 or fewer lanes no lane holds two SFL runs.
+  - Job j goes to lane j mod L (L = GPUs × `LANES_PER_GPU`), each lane in order; the lanes per GPU
+    are fixed by the timing calibration (Section 9).
+  - A failed run is re-run once from scratch (`gpu_round.sh`). A run that fails twice is missing
     (Section 8).
-- **Integrity.** The vendored files are checked against their git blob hashes before every stage:
+  - Each round's runs are pulled back with `scripts/gpu_sync.sh <box> pull-round` and checked with
+    `scripts/round_manifest.py check` (one manifest per box).
+- **Integrity.** The vendored files are checked against their git blob hashes before every stage
+  (`apexzero.maze.sfl.check_vendored`):
   - `maze_plr.py`, blob `a7b6164d…`, which equals JaxUED's at the pinned commit (checked);
   - SFL's files (Section 10).
 
@@ -89,11 +120,12 @@ u_k = 100·round(3·100^((k−1)/15)), k = 1…16:
 | ID | Item | Default | E5 | Reason |
 |---|---|---|---|---|
 | DEV-E5-1 | JaxUED checkpoint cadence | eval every 250 updates, save every second eval, keep 60 | eval every 100, save every eval, keep 300; 16 selected | log-spaced checkpoints without editing the file. `maze_plr.py` splits its key at every eval block, so the runs are statistically equivalent to default runs, not bit copies (the pilot's precedent) |
-| DEV-E5-2 | SFL checkpoints | to be read from the vendored file | if it cannot save the parameters and its learnable set D at the 16 updates unmodified, a minimal logged patch adds those saves only. A test shows the parameters after a short run are bit-identical with and without it | the checkpoints and the in-buffer audit |
-| DEV-E5-3 | SFL run length | to be read | 30,000 PPO updates | the follow-through's equal-update rule |
+| DEV-E5-2 | SFL checkpoints | the parameters only, one file overwritten every `NUM_UPDATES / EVAL_FREQ / NUM_CHECKPOINTS` blocks (`NUM_CHECKPOINTS` 4); D is never saved or returned from the jitted step | no patch (read 27 Oct 2026). `learning.NUM_CHECKPOINTS=300` makes the script call `save_params` after every block; `run_sfl_maze.py` replaces `save_params` with E5's writer, which keeps the 16 updates. D is captured by a view of `jax` that adds an `io_callback` to `get_learnability_set`'s outputs. A test shows the parameters after a short run are bit-identical with and without the capture (CPU, with a stand-in network); the timing run repeats the check on the GPU (Section 9) | the checkpoints and the in-buffer audit |
+| DEV-E5-3 | SFL run length | 3e8 env steps, 4,577 updates (read 27 Oct 2026) | 30,000 PPO updates (`learning.TOTAL_TIMESTEPS=1966080000`) | the follow-through's equal-update rule |
 | DEV-E5-4 | View 13 | 5 | 13 | the observability manipulation (outcome row F) |
 | DEV-E5-5 | Episodes per score | JaxUED: whatever completes in 256 steps; SFL: up to 10 in 2,000 steps | 4 operational episodes (score spec DEV-5). The native scores are reported beside them | score noise that does not depend on the agent's speed, as in the pilot |
 | DEV-E5-6 | DR | JaxUED also ships `examples/maze_dr.py` | `maze_plr.py` with replay 0 and exploratory gradient updates (the pilot's) | DR and PLR then share one script and differ only in the sampler. Decided by the user on 27 Oct 2026; `maze_dr.py` is not downloaded |
+| DEV-E5-7 | SFL's environment (engineering, found 27 Oct 2026) | Hydra, OmegaConf, `sfl.train.train_utils`, the JAX and matplotlib of 2024 | `run_sfl_maze.py` stands in without editing the files: it composes the config itself (Hydra's rules for these files, OmegaConf's YAML floats; neither is installed), replaces `save_params` (DEV-E5-2), casts SFL's 0/1 integer `where=` masks to booleans (today's JAX refuses them; older JAX used their truth value), restores `FigureCanvasAgg.tostring_rgb` for the buffer figure and closes each figure once logged, and makes `wandb.Artifact` a no-op. wandb stays in SFL's own mode (`disabled`); the shim logs each block's eval to `sfl-eval.jsonl` | nothing the script computes changes (tested) |
 
 ## 3. The audit (fixed now)
 
@@ -103,12 +135,19 @@ This is the pilot's protocol (`apexzero.maze.audit`) at E5's size.
 - 2,000 from JaxUED's default generator, `make_level_generator(13, 13, 25)`, drawn with level
   seed 2027. The pilot used 2026, with 500 mazes.
 - The same 2,000 serve every run and checkpoint.
-- If SFL's default training generator differs from JaxUED's (to be read from its
-  `env/minigrid.yaml`), SFL's runs are also audited on 2,000 mazes from their own generator, as a
-  secondary set.
+- SFL's default generator differs from JaxUED's (`env/minigrid.yaml`: 60 walls, read 27 Oct
+  2026), so SFL's runs are also audited on 2,000 mazes from `make_level_generator(13, 13, 60)`,
+  level seed 2027, as a secondary set (descriptive, Section 5.4).
 
-**The optimum.** J\* by BFS with the run's own γ and time limit (250 steps). J\* > 0 exactly when
-the goal is reachable within the limit.
+**The optimum.** J\* by BFS with the run's own γ (0.995 for JaxUED's runs, 0.99 for SFL's) and
+time limit (250 steps, the Maze default in both). J\* > 0 exactly when the goal is reachable
+within the limit, so the J\* > 0 mazes are the same for every run.
+
+**Settings.** Each run's scores use its own γ, λ and PPO rollout length (256 steps in both
+codes), read from its recorded config (`apexzero.maze.e5_audit.settings`). The audit key of run i
+(its index in the run list) at update u is `fold_in(fold_in(PRNGKey(20271), i), u)`; the native
+streams use `fold_in(key, 1)` (JaxUED's) and `fold_in(key, 2)` (SFL's), the in-buffer streams
+`fold_in(key, 3)` and SFL's own-generator set `fold_in(key, 4)`.
 
 **Streams.**
 - One AutoReplay stream per maze, with the stochastic policy. The LSTM resets on done. It runs
@@ -148,9 +187,12 @@ mazes with J\* > 0. Early is p < 0.5, mid is 0.5 ≤ p < 0.9, late is p ≥ 0.9 
 - **PLR.** The valid entries of the sampler state stored in the checkpoint. If there are more than
   1,000, a fixed-key uniform 1,000 are used. Each comes with its stored score and its staleness
   (the update counter minus its timestamp).
-- **SFL.** The learnable set D in force at the checkpoint: K levels with the learnability of the
-  last refresh, and the score age in updates since that refresh.
+- **SFL.** The learnable set D in force at the checkpoint: K = 1,000 levels with the learnability
+  of the last refresh, and the score age in updates since that refresh (100: every checkpoint
+  ends a block).
 - **Current regret** on those levels comes from BFS and the same 36-episode streams.
+- The PLR subsample uses a fixed key per run and checkpoint (`AUDIT_SEED`, the run's index, the
+  update).
 
 **Built-in checks** (each stops the item for an amendment):
 - PVL and MaxMC equal JaxUED's functions to 1e-6. The pilot got 2.8e-7.
@@ -166,7 +208,9 @@ mazes with J\* > 0. Early is p < 0.5, mid is 0.5 ≤ p < 0.9, late is p ≥ 0.9 
 
 **Per checkpoint.** For run r (arm, view, seed), checkpoint k, score j and target t:
 - **ρ:** the Spearman correlation between score and target over the mazes, with average ranks for
-  ties. z = atanh(ρ), with ρ clipped to ±0.999.
+  ties. z = atanh(ρ), with ρ clipped to ±0.999. A score that is constant over the mazes (or over
+  a bootstrap resample of them) carries no ranking information, and its ρ is 0 (fixed 27 Oct
+  2026; the draft was silent). A level JaxUED scores −∞ (no completed episode) ranks last.
 - **RC@10%:** the expected share of total regret in the score's top 10% (200 mazes), with ties at
   the cut-off sharing the remaining slots (`apexzero.maze.fidelity`).
 - **nRC = (RC − 0.1)/(RC\* − 0.1):** the share of the achievable excess capture, where RC\* is
@@ -177,9 +221,12 @@ mazes with J\* > 0. Early is p < 0.5, mid is 0.5 ≤ p < 0.9, late is p ≥ 0.9 
 **Per arm and phase** (the unit of every decision):
 - Each run's mean z over its checkpoints in the phase. Then the mean over the arm's runs that
   have one: Z. Then ρ̄ = tanh(Z).
-- Runs weigh equally, and so do the two view sizes (5 runs each).
+- Runs weigh equally, and so do the two view sizes (5 runs each). When the views hold different
+  numbers of such runs (a missing run, or a phase some runs do not reach), Z is the mean of the
+  two views' means, runs equal within a view (fixed 27 Oct 2026).
 - A phase is **reached** by an arm when at least 3 of its runs have a checkpoint in it.
-- nRC is averaged in the same way, without the transform.
+- nRC is averaged in the same way, without the transform, over the checkpoints where it is
+  defined.
 
 **Δ against the best baseline.** ρ̄(score) − ρ̄(best baseline). In each bootstrap draw, the best
 baseline is the largest of agent-only, J\* and BFS steps (the pilot's rule).
@@ -189,9 +236,16 @@ baseline is the largest of agent-only, J\* and BFS steps (the pilot's rule).
   and checkpoint; the normalised target uses the J\* > 0 mazes within the draw), and the runs
   (with replacement within each arm × view cell).
 - Phase membership is fixed from the full sample.
+- The in-buffer levels differ per run and checkpoint, so each in-buffer set is resampled on its
+  own in every draw (with replacement, its own fixed stream).
+- In a draw, every ρ is the Spearman ρ of the resampled sample: average ranks under the draw's
+  multiplicities, which equal the ranks of the expanded sample (`apexzero.maze.e5.RankEngine`,
+  tested against it). A draw in which a statistic is undefined (no resampled run has a
+  checkpoint in the phase) is left out of that statistic, and B counts the draws that remain.
 - CIs are 95% percentile intervals.
 - A two-sided p is min(1, 2(1 + n_opposite)/(B + 1)), where n_opposite counts the draws on the
-  other side of 0 from the point estimate.
+  other side of 0 from the point estimate, draws at exactly 0 included; p is 1 when the point
+  estimate is 0.
 - A one-sided p against a bound b is (1 + n_beyond)/(B + 1), where n_beyond counts the draws at
   or beyond b on the null's side. For "difference > 0" the null side is ≤ 0, so n_beyond counts
   the draws ≤ 0.
@@ -220,6 +274,9 @@ For each arm (3), primary score (3) and target (2):
 
 The late-phase labels of the primary scores use PF-late's Holm decision for their Δ condition.
 Every other label uses the unadjusted CI.
+
+In both families a test that cannot be run (no reached phase for an arm, a missing arm, an S3 cell
+with fewer than 3 runs) keeps its place with p = 1, so Holm always runs over 36 and 28 tests.
 
 ### 5.2 Outcome rows (the maze's entry in the plan's outcome table, Section 2.5)
 
@@ -302,35 +359,56 @@ Per arm and primary score, read on both targets:
 ## 8. Procedure
 
 **Before the tag:**
-1. **Approvals.** The user approved the SFL download on 27 Oct 2026 (Section 10). Any install it
-   turns out to need (Hydra, OmegaConf or anything else) needs a separate OK from the user before
-   it is made.
-2. **Vendoring,** when E5 is built.
-   - SFL's files, `LICENSE` included, are downloaded at the pinned commit and copied byte for byte
-     into `third_party/sfl/`. Each is checked against its git blob SHA-1 in Section 10's table.
-   - A README records the source, commit, licence, files, hashes and DEV-E5-2, as
-     `third_party/jaxued_examples/README.md` does.
-3. **The build,** committed and given an adversarial review:
-   - `scripts/run_sfl_maze.py`;
-   - the DEV-E5-2 patch, only if needed;
-   - an SFL checkpoint loader and policy adapter in `apexzero.maze`;
-   - E5 options in the audit, off by default;
-   - `scripts/maze_e5.py`, with the stages `manifest`, `audit` and `analyse` and the tag gate;
-   - `scripts/gpu_queue_maze_e5.sh`;
-   - `tests/test_maze_e5.py`. It covers planted scores with a known ρ, the bootstrap, Holm, the
-     phase assignment, the slopes, nRC, the labels and rows, the SFL loader's round trip, and the
-     patch equivalence.
+1. **Approvals.** The user approved the SFL download on 27 Oct 2026 (Section 10). The vendored
+   code needs no install: Hydra and OmegaConf are avoided (DEV-E5-7). It does need one more
+   download, SFL's `sfl/train/minigrid_plr.py` (38,737 bytes, blob `9537a794…`, same commit and
+   licence), which holds SFL's network; that needs the user's OK. Once it is vendored and read,
+   anything it imports that is not installed or stood in is listed here for another OK.
+2. **Vendoring.** Done on 27 Oct 2026 (Section 10).
+   - SFL's approved files that `minigrid_sfl.py` needs, `LICENSE` included, were downloaded at the
+     pinned commit into a new directory outside the repo, each checked against its git blob SHA-1
+     in Section 10's table (all matched), and copied byte for byte into `third_party/sfl/`.
+   - `third_party/sfl/README.md` records the source, commit, licence, files, hashes, the files
+     not vendored, and DEV-E5-2, as `third_party/jaxued_examples/README.md` does.
+3. **The build.** Done on 27 Oct 2026; it still needs its adversarial review.
+   - `scripts/run_sfl_maze.py`, the SFL shim (DEV-E5-2, DEV-E5-7);
+   - no DEV-E5-2 patch: the vendored files are unmodified;
+   - `apexzero.maze.sfl`: the vendored blobs, the config, the checkpoint writer and loader, the
+     port of SFL's outcome counting and top-K, and the policy adapter (which needs
+     `minigrid_plr.py`);
+   - `apexzero.maze.e5_audit`: the E5 audit. It calls the pilot's `apexzero.maze.audit` unchanged,
+     so `scripts/maze_audit.py`'s default path is untouched (no option was added to it);
+   - `apexzero.maze.e5`: Sections 4 and 5 (the two-way bootstrap, the p formulas, Holm, the
+     labels, the rows) and Section 9's projection rule;
+   - `scripts/maze_e5.py`, with the stages `train`, `timing`, `manifest`, `audit` and `analyse`,
+     and the tag gate (`scripts/lockbox.py`'s rule for `maze-e5-prereg-v1`);
+   - `scripts/maze_e5_runs.py`, the run lists for `scripts/gpu_round.sh` (it replaces the
+     `gpu_queue_maze_e5.sh` planned here): `main`, `timing`, `timing-audit`, `capture-check` and
+     `audit`, each its own round;
+   - `tests/test_maze_e5.py`. It covers planted scores with a known ρ, the bootstrap (against
+     Spearman on the expanded sample, and with 1 or more processes), Holm, the phase assignment,
+     the slopes, nRC, the labels and rows (each planted row comes out), S1, the SFL loader's round
+     trip, the capture's bit-identity, the shim end to end (with JaxUED's network standing in for
+     SFL's), the run lists, the config checks, the train stage, the tag gate, run-once outputs,
+     the audit's equality with the pilot's and the projection rule.
 4. **A dry run** on the pilot's checkpoints: the pilot reproduction (Section 3), then `analyse`
-   end to end on one seed. This is a machinery check only.
+   end to end on one seed. This is a machinery check only. Not yet run (the test shows the E5
+   audit with its additions off equals the pilot's `audit_checkpoint` on a small case).
 5. **Timing calibration** on the box (Section 9). It fixes the lanes and the projection. It is the
    only box time approved so far (27 Oct 2026), and its measured projection goes to the user.
 6. **Training,** once the user has approved the full queue on the measured estimate (Section 9).
-   The 30 runs; the 16 selected checkpoints per run are pulled back with their sha256 checked; the
-   training logs and wandb offline files are kept.
+   The lead tags the training commit `maze-e5-train-v1` and launches round `maze-e5`. The 30 runs;
+   the 16 selected checkpoints per run are pulled back (`gpu_sync.sh pull-round`) with their
+   sha256 checked; the training logs and wandb offline files are kept.
    - Training computes no score-against-regret outcome. The logs hold JaxUED's own eval solve
      rates and the samplers' statistics only.
-7. **The manifest** (every checkpoint's path, update and sha256; every run's config and queue
-   events) is committed.
+7. **The manifest,** `scripts/maze_e5.py manifest --train-tag maze-e5-train-v1`: round
+   `maze-e5`'s `round_manifest.py check` (a run that failed twice is accepted as missing), then
+   each run's recorded trainer command against Section 2's, its recorded config against that
+   command (maze_plr.py's parser rebuilt from the vendored source; SFL's config recomposed), and
+   every checkpoint's files against their sha256. It writes `outputs/maze-e5/manifest.json`
+   (every checkpoint's path, update and sha256; every run's config and queue events), which is
+   committed (with `git add -f`: `outputs/` is ignored).
 8. **The tag** `maze-e5-prereg-v1`, placed by the lead.
 
 **Between training and the tag.** The 30 runs train from one commit (the training commit, which
@@ -343,10 +421,15 @@ other than the manifest and the recorded amendments is logged as a deviation.
 
 **After the tag:**
 
-9. **The audit,** at the tagged commit. It runs on the same box, kept up while steps 7 and 8 take
-   their few minutes, or on a second rental.
-10. **`analyse`** on the Mac, once. It refuses to run if its output exists. Then the decisions are
-    committed.
+9. **The audit,** at the tagged commit: round `maze-e5a` (`gpu_round.sh maze-e5a
+   scripts/maze_e5_runs.py --phase audit`), one job per trained run, each checking the committed
+   manifest against the tag and every checkpoint's sha256 before loading it. It runs on the same
+   boxes, kept up while steps 7 and 8 take their few minutes, or on a second rental (the
+   checkpoints then go back to it from the Mac; `gpu_sync.sh` does not push them yet).
+10. **`analyse`** on the Mac, once (`scripts/maze_e5.py analyse`): the tag gate, round `maze-e5a`'s
+    `round_manifest.py check` at the tag, every audit file against its recorded sha256, then a lock
+    that is never removed. It refuses to run if the lock or its output exists. It writes
+    `outputs/maze-e5/analyse/analysis.json` and `decisions.md`. Then the decisions are committed.
 11. **The findings.**
 
 **Missing and failed runs.**
@@ -364,7 +447,8 @@ other than the manifest and the recorded amendments is logged as a deviation.
 | Two-track plan, Section 8 | E5 3–6 GPU-h (on a 4090; unmeasured). The follow-through carries it to the A6000 as "3–6 (unmeasured)" |
 | Pilot timing (`runs/maze-audit/pilot-v2/timing.json`) | Mac CPU, single-thread XLA, nice 10, on a shared, overloaded machine. DR: 642 s wall and 1,015 CPU-s for 200 updates. PLR-MaxMC: 387 s and 726 CPU-s. Audit: 4.0 CPU-min for 8 checkpoints × 500 mazes × 8 episodes plus the native rollouts. Checkpoints are 4.8 MB each |
 | A6000, racing PPO (`h4r.md` Section 4.2) | 386k steps/s alone and 145k–179k at 4 lanes, with 2,048 envs and an MLP. This does not transfer to a 32-env LSTM maze agent |
-| SFL's MiniGrid code (`sources-sfl.md`) | 256 levels × 256 steps per update; 25,000 levels × 2,000 steps scored every 100 updates |
+| SFL's MiniGrid code (`sources-sfl.md`; the vendored config, 27 Oct 2026) | 256 levels × 256 steps per update; 25,000 levels × 2,000 steps scored every 100 updates |
+| The shim on the Mac (27 Oct 2026, `tests/test_maze_e5.py`) | SFL's loop at a toy size (4 envs, 16 steps, 32 levels scored) with JaxUED's network standing in: about 10–25 s per run of 6 updates, almost all compilation. It says nothing about the A6000 |
 
 **What follows from it:**
 - **Steps.** A JaxUED run is 30,000 × 32 × 256 = 246M env steps. An SFL run at its defaults for
@@ -380,9 +464,12 @@ other than the manifest and the recorded amendments is logged as a deviation.
     instead.
 - **No maze GPU timing exists in the repo.**
 
-**Estimate** (the assumptions are labelled; the calibration replaces them):
+**Estimate** (26 Oct 2026, for one A6000; the assumptions are labelled; the calibration
+replaces them). Each run uses one GPU, so a box-hour of this table is a GPU-hour; on the x4 box
+the same work spread over 4 GPUs costs about as many GPU-hours, plus the GPUs left idle while the
+last runs finish (counted by the stop rule).
 
-| Part | Assumption | Box-h |
+| Part | Assumption | GPU-h |
 |---|---|---|
 | 20 JaxUED runs | an update takes 0.1–0.3 s on the A6000 (10–30 times faster than the pilot's 3.2 s wall on the Mac), so 0.8–2.5 h per run; 8 lanes with little slowdown, so 3 rounds | 2.5–7.5 |
 | 10 SFL runs | an update costs 1.5–2 times JaxUED's; a refresh is 10,000 sequential steps at a batch of 5,000 mazes, at 0.3–1 ms each, so 3–10 s; 1.5–5.8 h per run; 5 lanes, so 2 rounds | 3–11.6 |
@@ -390,47 +477,91 @@ other than the manifest and the recorded amendments is logged as a deviation.
 | Setup, calibration, pull-backs | H4R's setup took 7 min; 30 × 16 × 4.8 MB is about 2.3 GB to pull back | about 1 |
 | **Total** | | **about 7–22 (about 12 at the geometric midpoint)** |
 
-- That is 2–4 times the plan's figure, and SFL dominates it. At the plan's assumed $0.5–1 per
-  box-hour it costs about $4–22. The lead checks the A6000's hourly price on Brev before creating
-  the box.
+- That is 2–4 times the plan's figure, and SFL dominates it. At $0.68 per GPU-hour (Brev, 27 Oct
+  2026, the same per GPU on the x1, x2 and x4 types) it costs about $5–15. The lead checks the
+  hourly price on Brev before creating a box.
 
-**Timing calibration (fixed now; decided on time alone):**
-- Before the queue, each of the 6 arm × view cells trains seed 99 for 500 updates (SFL through 5
-  refreshes) at candidate lane counts.
-- One audit of a calibration checkpoint is timed in a timing-only mode that writes no scores.
+**Timing calibration (fixed now; decided on time alone; specified 27 Oct 2026 for the boxes).**
+Each step is a round of `scripts/gpu_round.sh` with its own run list (`scripts/maze_e5_runs.py`),
+on the box the main queue will use (G GPUs; G = 4 on the x4 box):
+- **Training, at 4 and at 8 lanes per GPU** (rounds `maze-e5t4` and `maze-e5t8`, `--phase timing
+  --lanes-per-gpu L --gpus G`, run with `LANES_PER_GPU=L`): G × L runs of seed 99, 500 updates each
+  (SFL through 5 refreshes), the six arm × view cells in the main list's order, repeated, so each
+  GPU carries L runs as the main queue would. Below six runs, whole waves are added until every
+  cell runs (8 runs on one GPU at 4 lanes). 4 lanes is what the recorded rates assume; 8 lanes
+  puts the whole queue in one wave on the x4 box. A load at which a run fails (out of memory, say)
+  is out.
+- **The audit** (round `maze-e5at`, `--phase timing-audit`): one timing-only audit (it writes no
+  scores) of update 400 of the first calibration run of each cell, with everything the real audit
+  does: 2,000 fresh mazes, 36 episodes, both native streams, the in-buffer audit, and SFL's
+  own-generator set.
+- **The capture check** (round `maze-e5c`, `--phase capture-check`): three 200-update SFL runs at
+  view 5, seed 99, two with D captured and one without. If the two captured runs are
+  bit-identical (the GPU is deterministic here), the run without must be too (DEV-E5-2); if they
+  differ, the check is inconclusive and reported as such.
+- `--arms dr,plr` leaves SFL out of the first two while `minigrid_plr.py` is not vendored; SFL's
+  projection is then missing and the full queue cannot be projected.
 - The calibration runs are discarded and never audited.
-- The lane count is the one with the shortest projected total.
+- **The projection rule** (`scripts/maze_e5.py timing`, `apexzero.maze.e5.project_queue`):
+  - Per calibration run, from the end of each 100-update block (the commit time of JaxUED's orbax
+    step, SFL's logged block): the per-update time is the median block after the first, over 100;
+    the start-up is the first block's end minus one such block. Per cell and load, the median over
+    its runs.
+  - A main run then takes start-up + 30,000 × per-update.
+  - The training wall time is the longest lane when job j of the main list goes to lane j mod L,
+    each lane in order (`gpu_round.sh`'s schedule); its GPU-hours are that wall time times the
+    box's GPUs, idle GPUs included. For single-GPU boxes, each box takes one seed's 6 runs and
+    the GPU-hours are summed over the boxes.
+  - The audit adds, per run, 16 checkpoints × its cell's measured audit time, counted as if the
+    audits ran one at a time per GPU (an upper bound).
+  - Setup and pull-back add 0.25 wall hours per box (H4R's setup took 7 min), times its GPUs.
+  - The total is the sum. The lane count is the one with the shortest projected total; the user
+    decides the full queue on that total, and the stop rule's threshold is 1.2 times the total the
+    user approves.
 
 **Budget rule** (decided by the user, 27 Oct 2026). It replaces this draft's gate, under which a
 projection of at most 12 box-hours would have started the queue under the standing permission and
 a larger one would have gone to the user.
-- **Approved now:** only the timing calibration, a short run on the cheapest Massed Compute A6000.
-  This draft gives it no separate estimate; the table above puts setup, calibration and
-  pull-backs together at about 1 box-hour.
+- **Approved now:** only the timing calibration, a short run on the cheapest Massed Compute A6000
+  type (on the fourth round's boxes: the x4 box, or a single-GPU box). This draft gives it no
+  separate estimate; the table above puts setup, calibration and pull-backs together at about 1
+  GPU-hour on one GPU. As specified above, on the x4 box it is about 30–60 min of wall time, so
+  about 2–4 GPU-hours (unmeasured); on one single-GPU box (G = 1) it is 8 runs at each load, about
+  1 GPU-hour.
 - **The full queue** (the 30 runs and the audit) returns to the user with the measured
   projection, whatever it is. It starts only on the user's OK.
-- **Stop rule** (the lead's, 27 Oct 2026). If a round's projected box time exceeds its approved
-  estimate by more than 20%, the lead pauses that round and asks the user. For the full queue, the
-  approved estimate is the one the user approves on the measured projection. The timing run has no
-  separate estimate (above).
-- If the user caps the budget, cells are dropped in this fixed order:
+- **Stop rule** (the lead's, 27 Oct 2026). If a round's projected time exceeds its approved
+  estimate by more than 20%, in GPU-hours with idle GPUs included (fourth round), the lead pauses
+  that round and asks the user. For the full queue, the approved estimate is the one the user
+  approves on the measured projection. The timing run has no separate estimate (above).
+  `round_manifest.py check` prints each box's queue wall time × GPUs.
+- If the user caps the budget, cells are dropped in this fixed order (`maze_e5_runs.py --drop k`,
+  k = 1–4, used by every later stage):
   1. SFL at the 13×13 view;
   2. the 13×13 view in every arm (S3 and row F are then not tested);
   3. seed 5, then seed 4, of every remaining cell, so that at least 3 seeds remain.
 
-**Mac.** `analyse` only: bootstrap and tests over stored per-maze arrays, estimated under 1
-CPU-hour, niced, with at most 4 processes. BFS on 2,000 mazes takes seconds.
+**Mac.** `analyse` only: bootstrap and tests over stored per-maze arrays, niced, with at most 4
+processes. Measured on 27 Oct 2026 on planted arrays of E5's size (2,000 mazes, 16 checkpoints, 12
+scores, 1,000 in-buffer levels): 35 ms per draw per run, so about 1.2 CPU-hours for 30 runs ×
+4,000 draws, about 20 min of wall time with 4 processes (the 26 Oct estimate was under 1
+CPU-hour). BFS on 2,000 mazes takes seconds.
 
-## 10. The SFL source (to vendor; download approved 27 Oct 2026)
+## 10. The SFL source (vendored 27 Oct 2026)
 
 **Approval (27 Oct 2026).** The user approved the download of the files in the table below, at the
 commit below, under Apache-2.0: 46,359 bytes for the five core files, or 60,890 bytes with
 `sfl/train/common/network.py` and the package files.
-- Nothing is downloaded yet. The download is made when E5 is built (Section 8, step 2).
-- The files are vendored with `LICENSE`, and each is checked against its git blob SHA-1 in the
-  table.
 - The approval covers the download only. Any install (Hydra, OmegaConf or anything else) needs a
   separate OK from the user.
+
+**Done (27 Oct 2026).** The five core files and the two package files `minigrid_sfl.py` imports
+(`sfl/__init__.py`, `sfl/train/__init__.py`) were downloaded from raw.githubusercontent.com at the
+commit into a new directory outside the repo, with the commit's tree listing from the GitHub API
+(for `sfl/__init__.py`'s full blob, `b3c06d488393abb3b3829e5590d42409c995b4cf`). Every file's
+`git hash-object` matched the table. They were read as text only, never run from that directory,
+and copied byte for byte into `third_party/sfl/` with a README. `network.py` and
+`sfl/train/common/__init__.py` were not downloaded: `minigrid_sfl.py` does not import them.
 
 **The source:**
 - **Repository:** `amacrutherford/sampling-for-learnability` on GitHub (Rutherford et al. 2024,
@@ -442,29 +573,35 @@ commit below, under Apache-2.0: 46,359 bytes for the five core files, or 60,890 
 - **Licence:** Apache-2.0 (GitHub's licence metadata; `LICENSE` is 11,357 bytes). That is the same
   licence as JaxUED.
 
-**Files to vendor** (sizes and git blob SHA-1 from the GitHub tree API; nothing downloaded):
+**Files** (sizes and git blob SHA-1 from the GitHub tree API, each matched by the download):
 
-| Path | Bytes | Blob |
-|---|---|---|
-| `sfl/train/minigrid_sfl.py` | 33,866 | `6436f5f659fa5fd0992c3ce479054eacb0353fdd` |
-| `sfl/train/config/minigrid-sfl.yaml` | 466 | `41a016967485abcc8001b24ec91ddca783e54e6e` |
-| `sfl/train/config/learning/ippo-minigrid.yaml` | 423 | `633e1793c235cce1f3b046075d7f14a1d68ac67d` |
-| `sfl/train/config/env/minigrid.yaml` | 247 | `8df39e2c6881321897748e2450b51d43f3ad5b5c` |
-| `LICENSE` | 11,357 | `261eeb9e9f8b2b4b0d119366dda99c6fd7d35c64` |
-| If imported: `sfl/train/common/network.py` | 14,510 | `b3a951dd184455f51627acc5881add9830849578` |
-| If imported: `sfl/__init__.py`, `sfl/train/__init__.py`, `sfl/train/common/__init__.py` | 21, 0, 0 | `b3c06d48…`, `e69de29b…`, `e69de29b…` |
+| Path | Bytes | Blob | Vendored |
+|---|---|---|---|
+| `sfl/train/minigrid_sfl.py` | 33,866 | `6436f5f659fa5fd0992c3ce479054eacb0353fdd` | yes |
+| `sfl/train/config/minigrid-sfl.yaml` | 466 | `41a016967485abcc8001b24ec91ddca783e54e6e` | yes |
+| `sfl/train/config/learning/ippo-minigrid.yaml` | 423 | `633e1793c235cce1f3b046075d7f14a1d68ac67d` | yes |
+| `sfl/train/config/env/minigrid.yaml` | 247 | `8df39e2c6881321897748e2450b51d43f3ad5b5c` | yes |
+| `LICENSE` | 11,357 | `261eeb9e9f8b2b4b0d119366dda99c6fd7d35c64` | yes |
+| `sfl/__init__.py`, `sfl/train/__init__.py` | 21, 0 | `b3c06d488393abb3b3829e5590d42409c995b4cf`, `e69de29bb2d1d6434b8b29ae775ad8c2e48c5391` | yes (imported as packages) |
+| If imported: `sfl/train/common/network.py`, `sfl/train/common/__init__.py` | 14,510, 0 | `b3a951dd…`, `e69de29b…` | no (not imported) |
 
-- **Size:** 46,359 bytes for the five core files, and 60,890 bytes with `network.py` and the
-  package files.
 - The whole repository (757 entries, about 124 MB of files, mostly data) is not needed.
 - `minigrid_sfl.py` was last changed in the repository's first commit (`626971979b0f`, 2 Sep
   2024). `sources-sfl.md` dates the config fix to `09946071de` (6 Mar 2025).
 
-**Not yet known** (it needs the file's contents, which were not read): which packages
-`minigrid_sfl.py` imports. Its YAML configs suggest Hydra or OmegaConf, and neither is installed
-here. Any such install needs a separate OK from the user, which the 27 Oct 2026 approval does not
-give. The repo's environment has `jaxued` 0.0.1, whose maze env equals the pinned JaxUED commit's
-(blob `34291f1a…`, checked), and wandb, orbax, distrax and chex.
+**What `minigrid_sfl.py` imports** (read 27 Oct 2026), and how each is met:
+
+| Import | Here |
+|---|---|
+| `chex`, `jax` (with `jax.experimental`), `flax`, `optax`, `numpy`, `wandb`, `matplotlib`, `PIL`, `jaxued` (`Maze`, `MazeRenderer`, `AutoReplayWrapper`, `Level`, `make_level_generator`) | installed. The script calls `jax.tree_map` (restored by `apexzero.compat`), passes integer `where=` masks that today's JAX refuses, and calls `FigureCanvasAgg.tostring_rgb`, which matplotlib 3.10 removed (both stood in, DEV-E5-7) |
+| `hydra` (`@hydra.main` on `main`), `omegaconf` (`OmegaConf.to_container`) | not installed; not needed: the shim composes the config and calls `main` itself (DEV-E5-7). No install is requested |
+| `sfl.train.train_utils.save_params` | not vendored (`sfl/train/train_utils/__init__.py`, 44 bytes, blob `b5437dc2…`, and `common.py`, 6,308 bytes, blob `be4f1f26…`); not needed: the shim's writer replaces it (DEV-E5-2) |
+| `sfl.train.minigrid_plr.ActorCritic, evaluate_rnn` | **needed and not vendored**: `sfl/train/minigrid_plr.py`, 38,737 bytes, blob `9537a794b7df09c76bf816215b366b03eb10b682`, the same commit and licence. It is SFL's network and its eval rollout; it differs from JaxUED's `maze_plr.py` (41,764 bytes, another blob), so JaxUED's network cannot stand in for it in the real runs. Its download needs the user's OK. Its own imports are unknown until it is read; any it needs beyond the stand-ins above would come back for another OK |
+
+The repo's environment has `jaxued` 0.0.1, whose maze env equals the pinned JaxUED commit's
+(blob `34291f1a…`, checked), and wandb, orbax, distrax and chex. The shim's end-to-end test runs
+the vendored script with JaxUED's network in place of `minigrid_plr`'s (a stand-in for the test
+only).
 
 **Not downloaded:** JaxUED's `examples/maze_dr.py` (28,606 bytes, blob `d367205a…`, the same
 pinned commit `0f8f128`, Apache-2.0). It would have been needed only if review preferred it to
@@ -488,3 +625,11 @@ DEV-E5-6, which the user kept on 27 Oct 2026.
 7. **The budget gate** of 12 box-hours, and the drop order. **The gate was replaced on 27 Oct
    2026:** only the timing run is approved, and the user decides the full queue whatever its
    estimate (Section 9). The drop order is still for review.
+8. **SFL's network file** (new, 27 Oct 2026; the user's, #2): download
+   `sfl/train/minigrid_plr.py` (38,737 bytes, blob `9537a794…`, same commit, Apache-2.0) so the SFL
+   arm can run. Without it, E5 runs DR and PLR-MaxMC only (20 runs), and S2's SFL tests, SFL's
+   rows and the arm comparisons drop out.
+9. **D as the set the last block trained on** (score age 100 at every checkpoint), captured during
+   training; the alternative is the set the checkpoint's own parameters would select next (age 0),
+   which would have to be recomputed.
+10. **The calibration's loads** (4 and 8 lanes per GPU) and its GPU-side capture check (Section 9).
