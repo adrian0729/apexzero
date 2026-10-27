@@ -2508,3 +2508,52 @@ def test_bc_log_summary(cx):
     assert "amp_failed" not in ok and ok["rounds_max"] == 1
     none = cx.bc_log_summary([], ok=False)
     assert none["amp_failed"] is None and none["amp_passed"] == 0.0 and none["last_status"] is None
+
+
+def test_bc_pool_cached_resumes_only_the_same_code_and_unit(cx, monkeypatch, tmp_path):
+    """Amendment 14 item 1: a finished unit's record is cached as it finishes; a restart reads
+    it only for the same code hash, script and unit, and re-solves every other unit."""
+    import types
+
+    (tmp_path / "scripts").mkdir()
+    (tmp_path / cx.SCRIPT_REL).write_text("v1\n")
+    calls = []
+
+    def fake(state, unit):
+        assert "cache" not in unit
+        calls.append(unit["j"])
+        if unit["j"] == 3 and state.get("boom"):
+            raise RuntimeError("stopped")
+        return {"j": unit["j"], "ok": True, "seconds": 1.0}
+
+    monkeypatch.setattr(cx, "bc_fake", fake, raising=False)
+    fake.__name__ = "bc_fake"
+
+    def pool(fn, units, state=None, names=None):
+        return [fn(state, u) for u in units]
+
+    run = types.SimpleNamespace(root=tmp_path, code_hash="c1", pool=pool)
+    units = [{"kind": "key", "key_id": "k", "j": j, "t": [0, 1], "s_next": 1500.0}
+             for j in (1, 2, 3)]
+    names = [f"key/k/j{j}" for j in (1, 2, 3)]
+    cache = tmp_path / "out" / cx.BC_CACHE
+    with pytest.raises(RuntimeError):
+        cx.bc_pool_cached(run, fake, units, names, {"boom": True}, cache)
+    assert calls == [1, 2, 3] and len(list(cache.glob("*.pkl"))) == 2   # 1 and 2 kept
+    calls.clear()
+    got, resumed = cx.bc_pool_cached(run, fake, units, names, {}, cache)
+    assert resumed == 2 and calls == [3] and [r["j"] for r in got] == [1, 2, 3]
+    calls.clear()
+    got, resumed = cx.bc_pool_cached(run, fake, units, names, {}, cache)
+    assert resumed == 3 and calls == []
+    # another code hash, another script or another unit definition: re-solved
+    run.code_hash = "c2"
+    assert cx.bc_pool_cached(run, fake, units, names, {}, cache)[1] == 0
+    (tmp_path / cx.SCRIPT_REL).write_text("v2\n")
+    assert cx.bc_pool_cached(run, fake, units, names, {}, cache)[1] == 0
+    moved = [{**u, "s_next": 1502.0} for u in units]
+    assert cx.bc_pool_cached(run, fake, moved, names, {}, cache)[1] == 0
+    assert not list(cache.glob(".*.tmp"))
+    a = cx.bc_cache_name("c", "s", "key/k/j1", units[0])
+    assert a != cx.bc_cache_name("c", "s", "key/k/j1", {**units[0], "t": [0, 2]})
+    assert a == cx.bc_cache_name("c", "s", "key/k/j1", {**units[0], "t": (0, 1), "want": 1})

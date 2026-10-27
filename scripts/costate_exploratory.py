@@ -959,7 +959,8 @@ def status(root: Path = ROOT) -> list[dict]:
         outs = []
         if d.exists():
             for p in sorted(d.rglob("*")):
-                if p.is_file() and not p.name.endswith(FP.STAMP_SUFFIX):
+                if p.is_file() and not p.name.endswith(FP.STAMP_SUFFIX) \
+                        and BC_CACHE not in p.relative_to(d).parts:
                     st = FP.read_stamp(p) or {}
                     outs.append({"file": p.relative_to(base).as_posix(),
                                  "label": st.get("label"), "head": st.get("head"),
@@ -7638,6 +7639,7 @@ BC_DX_IDX = (0, 1, 3)
 BC_TARGET_TOL = 1e-12                    # the re-polished targets against the bound world (rel.)
 BC_DROP = {"key": 4, "state": 1}         # more failed re-solves than this: dropped (half)
 BC_CAP_MARGIN = 0.6                      # the generator's inside-width cap (w_in - 1)|kappa|
+BC_CACHE = "unit-cache"                  # finished units' records, for a resume (amendment 14)
 
 
 def bc_odd(col: str) -> bool:
@@ -7858,6 +7860,63 @@ def bc_unit(state, unit) -> dict:
     print(f"BC-a0 {unit['kind']} {unit['key_id'][:8]} t={t.tolist()[:1]} j={unit['j']}: "
           f"{'ok' if rec['ok'] else 'failed'} in {rec['seconds']:.0f} s", flush=True)
     return rec
+
+
+def bc_cache_name(code_hash: str | None, script_sha: str, name: str, unit: dict) -> str:
+    """A unit's cache file name (amendment 14 item 1): the sha256 of the code hash, the
+    script's sha256, the unit's name and its definition (kind, key, continuation, plan steps,
+    s_next)."""
+    import numpy as np
+
+    t = unit.get("t")
+    d = {"kind": unit["kind"], "key_id": unit.get("key_id"), "j": unit.get("j"),
+         "t": None if t is None else np.asarray(t, int).tolist(),
+         "s_next": None if unit.get("s_next") is None else float(unit["s_next"])}
+    blob = json.dumps({"code": code_hash, "script": script_sha, "name": name, "unit": d},
+                      sort_keys=True)
+    return hashlib.sha256(blob.encode()).hexdigest()
+
+
+def bc_unit_cached(state, unit) -> dict:
+    """``state['fn']`` (``bc_unit``) on the unit, its record then written to the unit's cache
+    file (``unit['cache']``) by an atomic rename (amendment 14 item 1)."""
+    import pickle
+
+    path = Path(unit["cache"])
+    rec = globals()[state["fn"]](state, {k: v for k, v in unit.items() if k != "cache"})
+    tmp = path.with_name(f".{path.name}.{os.getpid()}.tmp")
+    with open(tmp, "wb") as fh:
+        pickle.dump(rec, fh, protocol=5)
+    os.replace(tmp, path)
+    return rec
+
+
+def bc_pool_cached(run: Run, fn: Callable, units: Sequence[dict], names: Sequence[str],
+                   state: dict, cache_dir: Path) -> tuple[list, int]:
+    """(each unit's record in order, how many were read from the cache): the units with a
+    cache file named for this code and unit are read; the others go to the pool, each record
+    cached as it finishes (amendment 14 item 1)."""
+    import pickle
+
+    cache_dir = refuse_sealed(Path(cache_dir))
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    script = sha256_file(run.root / SCRIPT_REL)
+    paths = [cache_dir / f"{bc_cache_name(run.code_hash, script, n, u)}.pkl"
+             for n, u in zip(names, units, strict=True)]
+    got: list = [None] * len(units)
+    todo = []
+    for i, path in enumerate(paths):
+        if path.exists():
+            with open(path, "rb") as fh:
+                got[i] = pickle.load(fh)
+        else:
+            todo.append(i)
+    if todo:
+        res = run.pool(bc_unit_cached, [{**units[i], "cache": str(paths[i])} for i in todo],
+                       state={**state, "fn": fn.__name__}, names=[names[i] for i in todo])
+        for i, r in zip(todo, res, strict=True):
+            got[i] = r
+    return got, len(units) - len(todo)
 
 
 def a2_refs_checked(run: Run) -> dict:
@@ -8209,8 +8268,10 @@ def bc_a0(run: Run) -> None:
     print(f"BC-a0: {len(keys)} keys, {len(picks)} states, {len(units)} units "
           f"({time.time() - t0:.0f} s)", flush=True)
     t1 = time.time()
-    got = run.pool(bc_unit, units, state={"sd": GT.lam_sd(tab), "strips": strips,
-                                          "p_alt": p_alt}, names=names)
+    got, resumed = bc_pool_cached(run, bc_unit, units, names,
+                                  {"sd": GT.lam_sd(tab), "strips": strips, "p_alt": p_alt},
+                                  run.out / BC_CACHE)
+    print(f"BC-a0: {resumed} of {len(units)} units read from the cache", flush=True)
     pool_s = time.time() - t1
     gap = k2b_gap(got[0], w0)
     if not gap <= K2B_TOL:
@@ -8272,7 +8333,8 @@ def bc_a0(run: Run) -> None:
         "unit_seconds": {"median": float(np.median([r["seconds"] for r in recs])),
                          "max": float(np.max([r["seconds"] for r in recs])),
                          "sum": float(np.sum([r["seconds"] for r in recs]))},
-        "pool_seconds": pool_s, "seconds": time.time() - t0}
+        "pool_seconds": pool_s, "resumed_from_cache": resumed,
+        "seconds": time.time() - t0}
     arrays = {"key/D": Dk, "key/DX": DXk, "key/rows": all_rows, "key/key": key_k,
               "key/kept": kept_key, "state/D": Ds, "state/DX": DXs, "state/rows": st_idx,
               "state/key": key_s, "state/kept": kept_state,
