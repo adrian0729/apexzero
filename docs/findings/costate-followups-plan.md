@@ -2122,3 +2122,26 @@ alone:
      - `rows.npz`: per-row Δ and Δx, the rows, keys and kept flags, and the strips' curvature.
 
      A copy of the summary goes under `docs/findings/costate-followups/`.
+
+### Amendment 12 (2026-10-27)
+
+**What changed.** BC-a0's cost, measured on a development run; nothing else. No question,
+computation, row set or expected direction changes. **Why.** The amendment rule puts a change of
+cost here, and the measured cost is about four times the estimate. **Computed or seen before
+it.** A development run of `bc-a0 --limit 1`, written outside `outputs/costate` at
+`296bcb3`: K2b's first key (b124eec8, W = 400) with its 8 continuations, its 2 per-state picks
+(t = 20 and 40) with 3 continuations each, and the wiring key. Its structure, wiring gaps,
+timings and failure counts were read, and so were its numbers: that key's shares, p90s and
+state moves, and the routes they would give. A single key's shares have degenerate CIs, so no
+route can be read from them; none is reported.
+- **Wiring.** The K2b reproduction gap is 0 (tolerance 10⁻⁶). The base targets' gap is 0
+  (tolerance 10⁻¹²). SD_T equals `gates.lam_sd`'s.
+- **Re-solves.** 14 of 14 succeeded, with 8–18 solves each (amplitude steps with re-centring
+  rounds). A unit takes 4–476 s (median 220 s) on one core; the wiring key takes 106 s.
+
+1. **Cost.** At about 240 s per W = 400 unit, and assuming about twice that per W = 800 unit
+   (84 of the 358), the 358 units need about 30 CPU-h. That is about 7.5 h of wall time at 4
+   workers, against the plan's 7 CPU-h (about 2 h). The run goes ahead unchanged: 4 workers,
+   niced, the W = 800 keys' units first. The plan has no stop rule on BC-a0's cost.
+2. **The development run** is not an output of the item. Its numbers are not reported beside
+   the canonical run's, which uses the same code at the same commit.
