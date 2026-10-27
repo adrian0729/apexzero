@@ -220,10 +220,11 @@ indices 135–139, distinct from S1–S3's 132–134 (a built-in check).
 
 **Code.**
 - `scripts/p4_b2.py` and `tests/test_p4_b2.py`, both new, written, reviewed and committed before
-  the tag. Written, tested and committed in `40ebdf6`, with the run list `scripts/p4b2_runs.py`;
-  the adversarial review is still to come (Section 8, step 3).
+  the tag. Written, tested and committed in `40ebdf6`, with the run list `scripts/p4b2_runs.py`.
+  The adversarial review (Section 8, step 3) was done on 27 Oct 2026 and its fixes committed in
+  `b3ef979` (Section 12).
   - Pre-tag stages: `manifest`, `buffers`, `starts`, `build`, `reproduce`, `cm-dryrun` and
-    `record`. They are refused once the tag exists.
+    `record`. They are refused once the tag exists, their S1–S3 check variants too.
   - Post-tag stages: `rollouts` and `classify`, behind the tag gate (Section 7).
   - Outputs go to `outputs/p4b2/`: `pre/` for the manifest, buffers and starts, `check/` for
     the S1–S3 checks and the dry run, `build/` for the S4–S8 design, `rollouts/`, and
@@ -391,36 +392,43 @@ From S1–S3 and option A. They are held weakly, and none of them decides anythi
 
 | Check | Rule | Status (27 Oct 2026) |
 |---|---|---|
-| Manifest | For each run: `config.json`, `agent.pkl` sha256 and timesteps, the 16 checkpoints' sha256, `eval.json`, the training log, the queue log, the commit and the box. Committed | Built (`manifest` stage, with `round_manifest.py check` at `p4-b2-train-v1`); waits for the runs |
+| Manifest | For each run: `config.json`, `agent.pkl` sha256 and timesteps, the 16 checkpoints' sha256, `eval.json`, the training log, the queue log, the commit and the box. Committed | Built (`manifest` stage, with `round_manifest.py check` at `p4-b2-train-v1`, and `agent.pkl` and the checkpoints against the box's sha256 list of Section 8, step 2). It also records the load, all five at once on one GPU, or the deviation from it. Waits for the runs |
 | Buffers and starts | The five buffers and the five real-lap state sets, with sha256, in the committed record | Built (`buffers`, `starts`); waits for the runs. On S1–S3 both reproduce step 1's bit for bit (Section 12) |
 | Strips | The registered strips equal step 1's bit for bit. The certified strips match the frozen lists' per-corner sha256 | Passed: 449 of 449 and 90 of 90 |
 | Pipeline on S1–S3 | (a) With the registered F6 set it reproduces `decisions_all.json`'s P4 rows (sha256 `14c67486…`): class, label, failing condition, `vacuous`, `n_f6_at_or_above` and C exactly, d_OOD to 1e-6. (b) With the registered four plus the 10 planned conditions it reproduces `outputs/p4/classes.json` exactly. (c) With K-str 16e-3 added it reproduces `outputs/p4/extension/classes.json` exactly. (d) States and termination steps equal option A's stored runs bit for bit | Passed, all four (Section 12) |
 | CM on S1–S3 | Computed once as a dry run. It is reported as exploratory and post hoc for those networks. It does not change Section 4.2: any change after it is a dated amendment that states what was seen | Computed (Section 12). Nothing in Section 4.2 changed after it |
-| Tests | Planted tables for every CM cell type and class (fragile, keyed, mixed, unmatched, not testable); the reading map and the recipe rule; the tag gate; the lockbox refusal; distinct buffer streams | `tests/test_p4_b2.py`: 57 tests, all passing |
+| Tests | Planted tables for every CM cell type and class (fragile, keyed, mixed, unmatched, not testable); the reading map and the recipe rule; the tag gate; the lockbox refusal; distinct buffer streams | `tests/test_p4_b2.py`: 76 tests, all passing (57 at `40ebdf6`, 19 added by the review) |
 | Freeze | No rollout of S4–S8 on any protocol stimulus (tiers A–G) before the tag. Allowed before it: loading and one forward pass, `eval.json`, the deterministic real lap (protocol exception 1, R1) and the buffer laps (exception 2) | Enforced: only `rollouts` drives a stimulus, behind the tag gate |
-| Tag gate (after the tag) | The post-tag stages refuse to run unless `p4-b2-prereg-v1` exists on origin and points at the recorded commit. `classify` runs once and refuses if its output exists | Built: as `scripts/lockbox.py`'s gate, with the record's commit as "the recorded commit" (Section 8, step 4) |
+| Tag gate (after the tag) | The post-tag stages refuse to run unless `p4-b2-prereg-v1` exists on origin and points at the recorded commit. `classify` runs once and refuses if its output exists | Built: as `scripts/lockbox.py`'s gate, with the record's commit as "the recorded commit" (Section 8, step 4). The bound files and the frozen tree are compared byte for byte, so a file marked assume-unchanged or skip-worktree cannot hide an edit. `classify` also refuses rollouts of another design or buffer |
 
 ## 8. Procedure, budget and box time
 
 1. **This design is reviewed and committed,** with `scripts/p4b2_runs.py`, `scripts/p4_b2.py`
-   and `tests/test_p4_b2.py` (code committed in `40ebdf6`). The lead places and pushes the
-   annotated training tag `p4-b2-train-v1` on that commit.
+   and `tests/test_p4_b2.py` (code committed in `40ebdf6`, review fixes in `b3ef979`). The lead
+   places and pushes the annotated training tag `p4-b2-train-v1` on that commit.
 2. **The box.** The lead checks the A6000's hourly price on Brev before creating it. One
    single-GPU `massedcompute_A6000_plus` box (Section 2) is rented and set up (`ssh <box> 'bash
    -s' < scripts/gpu_setup.sh`, then `scripts/gpu_sync.sh <box>`), and checked out at
    `p4-b2-train-v1`. The queue's schedule is shown with `DRY_RUN=1` first, then it runs the five
    runs (Section 2, Queue). The runs are pulled back with `scripts/gpu_sync.sh <box> pull-round
-   p4b2 scripts/p4b2_runs.py`, and the box is deleted.
+   p4b2 scripts/p4b2_runs.py`. Before the box is deleted, the box's sha256 of each run's
+   `agent.pkl` and checkpoints is written to a file on the Mac, from the repo root
+   (`p4_b2.BOX_SHA256_CMD`):
+   `ssh <box> 'cd ~/apexzero && sha256sum runs/hockenheim-specialist-mlp-200M-s[4-8]/agent.pkl
+   runs/hockenheim-specialist-mlp-200M-s[4-8]/ckpt/*.pkl' > runs/p4b2-box-sha256-0of1.txt`.
+   Then the box is deleted.
 3. **On the Mac, before the tag** (at most 4 processes, `nice -n 15`; each line is `uv run
    --no-sync python scripts/p4_b2.py <stage>`):
-   - `manifest`: `round_manifest.py check --tag p4-b2-train-v1` (the final checkpoints' and
-     configs' sha256 against the box's), then the manifest. Committed with `git add -f
+   - `manifest`: `round_manifest.py check --tag p4-b2-train-v1` (the configs' sha256 against
+     the box's manifest), each `agent.pkl`'s and checkpoint's sha256 against the box's list
+     (step 2; the stage stops without it), then the manifest. Committed with `git add -f
      outputs/p4b2/pre/manifest.json`;
    - `buffers` and `starts`: the five buffers and start states, committed the same way;
    - `build`: the strip build and its checks, and the S4–S8 cells;
    - `build --owners check`, `starts --check`, `buffers --check`, `reproduce`, `cm-dryrun`: the
      S1–S3 checks and the CM dry run (done, Section 12);
-   - `scripts/p4_b2.py` and its tests, written, given an adversarial review and committed;
+   - `scripts/p4_b2.py` and its tests, written, given an adversarial review and committed
+     (done: `40ebdf6`, review fixes `b3ef979`);
    - `record`: the record `scripts/p4b2_prereg.json` (every input hash), committed alone.
 4. **The tag** `p4-b2-prereg-v1`, annotated, placed on the record's commit and pushed by the lead.
    The gate reads "points at the recorded commit" as that: the tag's commit is the one that last
@@ -452,13 +460,14 @@ From S1–S3 and option A. They are held weakly, and none of them decides anythi
   from a separate checkout of its own commit, and not while the other round's queue runs (the
   fallback of Section 2).
 - **Mac time.** Estimated in the draft; measured on 27 Oct 2026 for the stages that ran on S1–S3
-  (3 workers at nice 15, with another workflow on the Mac):
-  - buffers: 46 s for S1–S3's three (draft: under a minute for five);
-  - real laps and starts: 10 s for three;
-  - the strip build and cells: 10 s;
-  - the S1–S3 reproduction: about 5 min of wall time (each network's 1,188 tier D runs in about
-    3 min and its 420 tier G and A runs in about 1 min, the three in parallel; the draft said
-    about 20 min);
+  (3 workers at nice 15, with another workflow on the Mac), on the first run and on the run whose
+  outputs are committed (their provenance gives the second):
+  - buffers: 46 s and 26 s for S1–S3's three (draft: under a minute for five);
+  - real laps and starts: 10 s and 4 s for three;
+  - the strip build and cells: 10 s and 3 s;
+  - the S1–S3 reproduction: about 5 min and 2.5 min of wall time (each network's 1,188 tier D
+    runs in about 3 min and 1.7 min, and its 420 tier G and A runs in about 1 min and 0.6 min,
+    the three in parallel; the draft said about 20 min);
   - the post-tag rollouts: about 10 min expected, five networks on at most 4 workers;
   - `classify`: seconds.
 
@@ -563,5 +572,35 @@ and into the record when it is built:
 - **Size.** Each buffer is about 36 MB (40,000 observations of 222 float32 channels, with their
   actions), so committing all five as Section 1 says adds about 182 MB to the repository. Each
   real lap is about 0.4 MB.
-- **Still to do before the tag:** the adversarial review of `scripts/p4_b2.py` and its tests;
-  the training round; `manifest`, `buffers`, `starts`, `build` and `record`; the tag.
+- **Still to do before the tag:** the training round (with the box's sha256 list of Section 8,
+  step 2); `manifest`, `buffers`, `starts`, `build` and `record`; the tag.
+
+**The adversarial review (27 Oct 2026).** An independent review of `40ebdf6` and `05f4e22`. Its
+fixes are in `b3ef979`; nothing in Sections 4 and 5 changed, and no S4–S8 run exists.
+- **Rules.** Section 4 was read against the code: the ordered classes on the 15 conditions, the
+  vacuity, the CM cell types, ties and class boundaries, the reading table, the 3-of-5 recipe with
+  its pooling, missing runs and key wording, and Section 5's wording. The CM dry run was
+  recomputed from the raw check rollouts by separate code (done(i, q) from the 4 phases, d(i, q)
+  from the phase-0 runs, C and D over the braking corners): S2 class 2 vacuous, 4, 2, 4, 4,
+  CM-6; S3 class 2 vacuous, 2, 0, 1, 2, CM-1; S1 class 6; the same cells and types as
+  `check/cm_dryrun.json`.
+- **Fixed.** The tag gate used `git diff`, which trusts the index for a file marked
+  assume-unchanged or skip-worktree: an edited bound file passed it. The gate now compares every
+  bound file's bytes with the tag's blob, and so do the frozen tree pin and the record stage. The
+  draft's check of the final checkpoints against the box's sha256 had no code (the box manifest
+  records only the configs' sha256): the box's list is now written before the box is deleted
+  (Section 8, step 2) and the manifest stage compares every `agent.pkl` and checkpoint with it.
+  The manifest also records the load, so a schedule other than all five at once on one GPU is a
+  recorded deviation (with the lanes left at `gpu_round.sh`'s default of 4 on one GPU, S8 would
+  train after S4). `buffers --check` and `starts --check` now refuse after the tag, and
+  `classify` refuses rollouts of another design or buffer.
+- **The box.** `DRY_RUN=1` at `GPUS=1 LANES_PER_GPU=5` puts S4–S8 in lanes 0–4 on GPU 0, each at
+  position 0. At `GPUS=4 LANES_PER_GPU=4` S4 and S8 share GPU 0. With `SHARD=i/5` each box gets
+  one seed, in order. S4's command, run on the Mac with `--steps 262144` in a scratch directory
+  (deleted after), trained, wrote `config.json`, a checkpoint, `agent.pkl` and `eval.json`, and
+  its config passed `round_manifest.py`'s comparison. On a planted p4b2 round in train.py's
+  config format (made by code that reproduces that run's `config.json` byte for byte),
+  `round_manifest.py check` passed, and it failed on each of 16 planted faults (seed, steps,
+  tracks, envs, learning rate, network, no PPO block, a config not the box's, a run in no
+  manifest, a failed run, a missing run directory, HEAD, a dirty tree, the GPU model, a changed
+  run list, a run in two manifests).
