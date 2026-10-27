@@ -2166,3 +2166,28 @@ or seen.
    of wall time at 4 workers. It goes ahead unchanged otherwise.
 2. **The canonical run** starts again from the beginning, at the commit that adds the log
    summaries, and writes to `outputs/costate/exploratory/bc-a0/` as before.
+
+### Amendment 14 (2026-10-27)
+
+**What changed.** BC-a0's pool keeps each finished unit's record, so a stopped run can resume;
+and its cost again. No question, computation, row set or expected direction changes. **Why.**
+The second canonical run (started at `f478ebd`) stopped about 6 h in, when the session that ran
+it ended. Its pool had not finished and it wrote nothing, so those 6 h of re-solves are lost.
+**Computed or seen before it.** From the stopped run's log, only each finished unit's kind, key,
+continuation, success and seconds; no Δ was computed in the parent or seen. 142 of the 359 units
+had finished: all 84 W = 800 units and 58 W = 400 units (K2b's keys 0–5 and 9–10, in its
+order). Of the W = 800 units, 32 of the 48 per-key re-solves and 22 of the 36 per-state ones had
+failed; under step 4's rule (more than 4 of 8 failed) that would drop 5 of the 6 W = 800 keys
+from the per-key shares. Of the 58 W = 400 units, 1 had failed. The rule, the keys and the
+statistics are kept as written; they are not changed after this was seen.
+
+1. **The unit cache.** Each unit's record (as `bc_unit` returns it) is written, as it finishes,
+   to `outputs/costate/exploratory/bc-a0/unit-cache/`, one file per unit, named by the sha256 of
+   the code hash (the stamps' `code_hash`), the script's sha256, the unit's name and its
+   definition (kind, key, continuation, plan steps, s_next). A restart reads a unit's record
+   from there only when that name matches, so only a record made by the same code for the same
+   unit is reused. Every other unit is re-solved. The base-target check runs in each re-solved
+   unit as before. The summary counts the records read from the cache. The cache is not an
+   output and is not committed.
+2. **Cost.** As amendment 13: about 40 CPU-h, about 10 h of wall time at 4 workers, from the
+   beginning, at the commit that adds the cache. The run is started detached from the session.
