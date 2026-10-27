@@ -717,3 +717,16 @@ The lead's notes (27 Oct 2026):
   search for "gw3|GW-3" over `outputs/` traversed `outputs/sealed/`. It printed nothing: its
   output was filtered to drop any sealed path and it was stopped with empty output. Logged in
   `docs/STATUS.md`.
+
+**Decision taken (27 Oct 2026, fourth round): more boxes.**
+- You allowed more than one box at a time ("you can use even more boxes if you want"). The
+  approved GPU time is unchanged: about 23-29 A6000 GPU-hours for GW-3, VG-1 and P4-B2, with the
+  20% stop rule counted in GPU-hours, idle GPUs included.
+- Brev's prices, checked 27 Oct 2026: `massedcompute_A6000_plus` $0.68/h (1 GPU, 12 vCPU),
+  `massedcompute_A6000_plusx2` $1.37/h and `massedcompute_A6000_plusx4` $2.74/h (2 or 4 GPUs,
+  the same A6000 and the same price per GPU). About $16-20 for the approved rounds.
+- The lead's plan: one `massedcompute_A6000_plusx4` box (the account has allowed one instance at a
+  time), each run on one GPU at 4 lanes per GPU; or several single-GPU boxes of the same type, each
+  taking whole seeds, if the x4 type is unavailable. The queue scripts work on any number of GPUs
+  and boxes, and each round's manifest records the box type, GPU count and shard.
+
