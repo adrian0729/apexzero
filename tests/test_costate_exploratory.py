@@ -2491,3 +2491,20 @@ def test_bc_route_and_expected(cx):
     assert e["Ea0.3"]["count"] == 7 and e["Ea0.3"]["of"] == 8 and not e["Ea0.3"]["holds"]
     empty = cx.bc_route({}, {})
     assert all(v["option"] is None for v in empty.values()) and len(empty) == 8
+
+
+def test_bc_log_summary(cx):
+    log = [{"amp": 0.125, "round": 0, "status": "Solve_Succeeded", "iterations": 12},
+           {"amp": 0.25, "round": 0, "status": "Solve_Succeeded", "iterations": 30},
+           {"amp": 0.375, "round": 0, "status": "Maximum_Iterations_Exceeded", "iterations": 1000},
+           {"amp": 0.375, "round": 1, "status": "Restoration_Failed", "iterations": 400}]
+    s = cx.bc_log_summary(log, ok=False)
+    assert s["solves"] == 4 and s["iterations"] == 1442 and s["iterations_max"] == 1000
+    assert s["statuses"] == {"Maximum_Iterations_Exceeded": 1, "Restoration_Failed": 1,
+                             "Solve_Succeeded": 2}
+    assert s["last_status"] == "Restoration_Failed" and s["rounds_max"] == 2
+    assert s["amp_failed"] == 0.375 and s["amp_passed"] == 0.25
+    ok = cx.bc_log_summary(log[:2], ok=True)
+    assert "amp_failed" not in ok and ok["rounds_max"] == 1
+    none = cx.bc_log_summary([], ok=False)
+    assert none["amp_failed"] is None and none["amp_passed"] == 0.0 and none["last_status"] is None

@@ -7791,6 +7791,28 @@ def bc_world_targets(tab, rows) -> dict:
     return {"lam": cols(BC_LAM), "Pi": cols(BC_PI), "sigma": cols(BC_SIGMA)}
 
 
+def bc_log_summary(log: Sequence[dict], ok: bool) -> dict:
+    """``gates.k2b_solve``'s log in brief (amendment 13): its solves, their IPOPT iterations
+    (total, largest), the statuses counted, the last status, the most re-centring rounds at one
+    amplitude, and for a failed re-solve the amplitude it stopped at and the last one it
+    passed (0 if none)."""
+    from collections import Counter
+
+    log = list(log)
+    amps = [float(e["amp"]) for e in log]
+    rounds = Counter(amps)
+    out = {"solves": len(log), "iterations": int(sum(int(e["iterations"]) for e in log)),
+           "iterations_max": max((int(e["iterations"]) for e in log), default=0),
+           "statuses": dict(sorted(Counter(str(e["status"]) for e in log).items())),
+           "last_status": str(log[-1]["status"]) if log else None,
+           "rounds_max": max(rounds.values(), default=0)}
+    if not ok:
+        stop = amps[-1] if amps else None
+        out["amp_failed"] = stop
+        out["amp_passed"] = max((a for a in amps if stop is not None and a < stop), default=0.0)
+    return out
+
+
 def bc_unit(state, unit) -> dict:
     """One BC-a0 re-solve in a worker: one key's continuation j read at its T rows ('key'),
     or one state's continuation j read at its row ('state'); or K2b's own first key ('wiring',
@@ -7824,6 +7846,7 @@ def bc_unit(state, unit) -> dict:
     except Exception as e:  # noqa: BLE001 (a failed re-solve is counted, plan BC-a0 step 4)
         new, log, err = None, {"log": []}, f"{type(e).__name__}: {e}"
     rec["n_solves"] = len(log.get("log", []))
+    rec["log"] = bc_log_summary(log.get("log", []), new is not None)
     if new is None:
         rec.update({"ok": False, "error": err})
     else:
