@@ -22,7 +22,8 @@ files against their pinned git blobs (``apexzero.maze.sfl.check_vendored``).
   files). It imports no JAX, so the queue's lanes hold only the trainers' GPU memory.
 - ``timing`` (on the Mac, after the calibration rounds are pulled back): the projection rule
   of Section 9 (``apexzero.maze.e5.project_queue``). It writes runs/maze-e5-timing.json and
-  prints the projected GPU-hours per lane count and box layout; the user decides on them.
+  prints the projected GPU-hours per lane count and box layout, and the lane count with the
+  shortest total for each layout; the user decides on them.
 - ``manifest`` (on the Mac, after pull-round, before the tag): round_manifest.py's check of
   round ``maze-e5`` at the training tag (a run that failed twice is accepted as missing,
   Section 8), then E5's own: each run's e5-run.json and trainer command are what its cell
@@ -30,9 +31,11 @@ files against their pinned git blobs (``apexzero.maze.sfl.check_vendored``).
   vendored source; SFL's config is recomposed), and each checkpoint's files match their
   sha256. Writes outputs/maze-e5/manifest.json (never overwritten), to be committed.
 - ``audit`` (on a box, behind the tag gate, one job per run: round ``maze-e5a``): the
-  committed manifest at the tag, every checkpoint's sha256 checked before it is loaded; the
-  fresh audit on 2,000 mazes (and, for SFL, on 2,000 of its own generator's), the in-buffer
-  audit for PLR-MaxMC and SFL. One npz per checkpoint in runs/<name>/, never overwritten.
+  committed manifest at the tag, the run's config file and every checkpoint checked against
+  their sha256 before anything is loaded; the fresh audit on 2,000 mazes (and, for SFL, on
+  2,000 of its own generator's), the in-buffer audit for PLR-MaxMC and SFL. One npz per
+  checkpoint in runs/<name>/, never overwritten. The job of a run the manifest lists as
+  missing (failed twice) records that and succeeds, so the round's check can pass.
   ``--timing-only`` audits one calibration checkpoint and writes only its timing.
 - ``analyse`` (on the Mac, behind the tag gate, once): round_manifest.py's check of round
   ``maze-e5a`` at the tag, every audit file against its recorded sha256, then a lock that is
@@ -41,9 +44,11 @@ files against their pinned git blobs (``apexzero.maze.sfl.check_vendored``).
 
 **The tag gate** (``tag_gate``, scripts/lockbox.py's rule for ``maze-e5-prereg-v1``):
 PermissionError unless the annotated tag exists on origin, the local tag is the same tag
-object, HEAD descends from its commit, and E5's code (``CODE_PATHS``, untracked files
-included) is the tagged code. The manifest the audit reads must be tracked and byte-identical
-to the tag commit's copy.
+object, HEAD descends from its commit, and E5's code (``CODE_PATHS``: step 3's files, the
+vendored code, the shared code the audit runs and the draft; untracked files included) is the
+tagged code byte for byte (git diff trusts the index for a file marked assume-unchanged or
+skip-worktree, so the files' bytes are hashed too). The manifest the audit reads must be
+tracked and byte-identical to the tag commit's copy.
 """
 
 import argparse
@@ -74,7 +79,8 @@ TRAIN_TAG = "maze-e5-train-v1"
 CODE_PATHS = ("scripts/maze_e5.py", "scripts/maze_e5_runs.py", "scripts/run_sfl_maze.py",
               "scripts/run_jaxued_maze.py", "scripts/round_manifest.py", "scripts/_bootstrap.py",
               "src/apexzero/maze", "src/apexzero/audit/estimators.py", "src/apexzero/compat.py",
-              "third_party/jaxued_examples", "third_party/sfl")
+              "third_party/jaxued_examples", "third_party/sfl", "tests/test_maze_e5.py",
+              "docs/prereg/maze-e5.md")
 EVAL_FREQ = 100                      # updates per block (JaxUED --eval_freq; SFL's EVAL_FREQ)
 JAXUED_FLAGS = {"dr": ["--replay_prob", "0", "--exploratory_grad_updates"], "plr": []}
 TIME = "%Y-%m-%dT%H:%M:%SZ"
@@ -149,8 +155,9 @@ def git_run(*args: str) -> subprocess.CompletedProcess:
 
 def tag_gate(tag: str = TAG, paths=CODE_PATHS) -> dict:
     """scripts/lockbox.py's ``tag_gate`` for E5's tag and code: PermissionError unless the
-    annotated tag exists on origin, the local tag is the same tag object, HEAD descends from
-    its commit, and ``paths`` (untracked files included) are the tagged code."""
+    annotated tag exists on origin (``refs/tags/<tag>`` and its peeled ``^{}`` ref, both named
+    in full), the local tag is the same tag object, HEAD descends from its commit, and
+    ``paths`` (untracked files included) are the tagged code byte for byte."""
     ls = git_run("ls-remote", "origin", f"refs/tags/{tag}", f"refs/tags/{tag}^{{}}")
     if ls.returncode != 0:
         raise PermissionError(f"cannot list origin's tags ({ls.stderr.strip()})")
@@ -180,8 +187,44 @@ def tag_gate(tag: str = TAG, paths=CODE_PATHS) -> dict:
     untracked = git_run("ls-files", "--others", "--exclude-standard", "--", *paths)
     if untracked.returncode != 0 or untracked.stdout.strip():
         raise PermissionError(f"untracked files under E5's code: {untracked.stdout!r}")
+    # git diff trusts the index for a file marked assume-unchanged or skip-worktree: the bytes.
+    tagged = tree_blobs(peeled, paths)
+    bad = ["cannot list the tag's files"] if not tagged else byte_mismatches(tagged)
+    if bad:
+        raise PermissionError(f"E5's code is not {tag}'s byte for byte: {bad[:5]}")
     return {"tag": tag, "tag_object": obj, "commit": peeled,
             "head": git_run("rev-parse", "HEAD").stdout.strip()}
+
+
+def tree_blobs(rev: str, paths) -> dict[str, str] | None:
+    """{path: blob id} of every file of commit ``rev`` under ``paths``; None when git cannot
+    list it."""
+    proc = git_run("ls-tree", "-r", "-z", rev, "--", *paths)
+    if proc.returncode != 0:
+        return None
+    out = {}
+    for entry in proc.stdout.split("\0"):
+        if entry:
+            meta, path = entry.split("\t", 1)
+            if meta.split()[1] == "blob":
+                out[path] = meta.split()[2]
+    return out
+
+
+def byte_mismatches(want: dict[str, str]) -> list[str]:
+    """The paths whose bytes in the working tree are not the blob ``want`` names, or that are
+    missing (``git hash-object --no-filters``, which reads the file itself, never the index)."""
+    present = [p for p in want if (ROOT / p).is_file()]
+    have = {}
+    if present:
+        proc = subprocess.run(["git", "hash-object", "--no-filters", "--stdin-paths"], cwd=ROOT,
+                              input="".join(p + "\n" for p in present), capture_output=True,
+                              text=True, check=False)
+        ids = proc.stdout.split()
+        if proc.returncode != 0 or len(ids) != len(present):
+            return [f"git hash-object failed ({proc.stderr.strip()})"]
+        have = dict(zip(present, ids, strict=True))
+    return [p for p, b in want.items() if have.get(p) != b]
 
 
 def tagged_file(path: Path, commit: str) -> bytes:
@@ -383,10 +426,31 @@ def config_problems(run: dict, record: dict) -> tuple[list[str], str | None]:
 
 
 def runs_list(phase: str, *args: str) -> list[dict]:
-    out = subprocess.run([sys.executable, str(ROOT / "scripts" / "maze_e5_runs.py"),
-                          "--phase", phase, *args], cwd=ROOT, capture_output=True, text=True,
-                         check=True)
+    return runs_list_args(["--phase", phase, *args])
+
+
+def runs_list_args(args: list[str]) -> list[dict]:
+    out = subprocess.run([sys.executable, str(ROOT / "scripts" / "maze_e5_runs.py"), *args],
+                         cwd=ROOT, capture_output=True, text=True, check=True)
     return [json.loads(x) for x in out.stdout.splitlines() if x.strip()]
+
+
+def queue_runs_args(round_: str, want: list[str]) -> list[str]:
+    """The run-list options to check ``round_`` with. round_manifest.py check compares them
+    with the ones the boxes recorded, word for word, so a queue started with ``--phase main``
+    would fail a check run with ``--phase main --drop 0``. When every shard manifest records
+    the same options and they give exactly the run list ``want`` gives, those are used;
+    otherwise ``want`` (and the check reports the difference)."""
+    recorded = {tuple(m.get("runs_args") or ()) for m in shard_manifests(round_)}
+    if len(recorded) == 1:
+        got = list(next(iter(recorded)))
+        if got != want:
+            try:
+                if runs_list_args(got) == runs_list_args(want):
+                    return got
+            except subprocess.CalledProcessError:
+                pass
+    return want
 
 
 def round_check(round_: str, tag: str, runs_args: list[str], allow_failed: bool) -> list[str]:
@@ -423,7 +487,7 @@ def shard_manifests(round_: str) -> list[dict]:
 
 def stage_manifest(a) -> None:
     sfl.check_vendored()
-    args = ["--phase", "main", "--drop", str(a.drop)]
+    args = queue_runs_args("maze-e5", ["--phase", "main", "--drop", str(a.drop)])
     failed = round_check("maze-e5", a.train_tag, args, allow_failed=True)
     queue = {r["name"]: r for m in shard_manifests("maze-e5") for r in m["runs"]}
     boxes = [{k: m.get(k) for k in ("shard", "head", "box_type", "gpu_model", "gpu_count",
@@ -482,6 +546,19 @@ def load_any(arm: str, ckpt: dict, run_dir: Path, seed: int, name: str):
     if ck.num_updates != ckpt["update"]:
         raise SystemExit(f"{name}: step {ckpt['step']} holds {ck.num_updates} updates")
     return ck, maze.network_policy(ck.params), ck.config
+
+
+def entry_files_match(entry: dict) -> None:
+    """SystemExit unless the run's config file (which fixes the audit's γ, λ, rollout length,
+    view and walls) and every checkpoint are the manifest's, by sha256."""
+    if not entry.get("config") or not entry.get("config_sha256"):
+        raise SystemExit("the manifest records no config file for this run")
+    cfg = ROOT / entry["config"]
+    if not cfg.is_file() or sha256_bytes(cfg.read_bytes()) != entry["config_sha256"]:
+        raise SystemExit(f"{entry['config']} does not match the manifest's sha256")
+    for ckpt in entry["checkpoints"]:
+        if tree_sha256(ROOT / ckpt["path"]) != ckpt["sha256"]:
+            raise SystemExit(f"{ckpt['path']} does not match the manifest's sha256")
 
 
 def audit_one(arm: str, ck, policy, config, run_index: int, update: int, levels: dict,
@@ -544,13 +621,21 @@ def stage_audit(a) -> None:
     manifest = json.loads(tagged_file(MANIFEST, gate["commit"]))
     names = list(manifest["runs"])
     entry = manifest["runs"].get(a.run)
-    if entry is None or entry["status"] != "trained":
-        raise SystemExit(f"{a.run} is not a trained run in the manifest")
+    if entry is None or entry["status"] not in ("trained", "missing"):
+        raise SystemExit(f"{a.run} is not a run in the manifest")
+    if entry["status"] == "missing":
+        # A run that failed twice (Section 8) has nothing to audit. Its job records that and
+        # succeeds, so round maze-e5a's check (which analyse requires) can pass.
+        write_new(out_dir / "audit-run.json", (json.dumps(
+            {"run": a.run, "arm": entry["arm"], "view": entry["view"], "seed": entry["seed"],
+             "status": "missing", "tag": gate, "files": {}, "written": now()}, indent=1)
+            + "\n").encode())
+        print(f"{a.run} is missing in the manifest (failed twice): nothing audited", flush=True)
+        return
     run_dir = RUNS / a.run
+    entry_files_match(entry)
     out_dir.mkdir(parents=True, exist_ok=True)
     first = entry["checkpoints"][0]
-    if tree_sha256(ROOT / first["path"]) != first["sha256"]:
-        raise SystemExit(f"{first['path']} does not match the manifest's sha256")
     _, _, cfg0 = load_any(entry["arm"], first, run_dir, entry["seed"], a.run)
     levels, oracles = audit_levels([entry["arm"]], [cfg0])
     files = {}
@@ -605,8 +690,11 @@ def audit_timing(a, out_dir: Path) -> None:
 
 def stage_timing(a) -> None:
     """Section 9's projection rule from the calibration rounds."""
+    import statistics
+
     from apexzero.maze import e5
 
+    sfl.check_vendored()
     rates, failed = {}, {}
     for round_ in a.rounds:
         lanes = int(round_.removeprefix("maze-e5t"))
@@ -617,9 +705,13 @@ def stage_timing(a) -> None:
         if ms[0]["lanes_per_gpu"] != lanes:
             raise SystemExit(f"{round_} ran {ms[0]['lanes_per_gpu']} lanes per GPU, not {lanes}")
         status = {r["name"]: r["status"] for m in ms for r in m["runs"]}
+        # The run list the box ran (its recorded options, --arms included), else --arms here.
+        recorded = {tuple(m.get("runs_args") or ()) for m in ms}
+        args = (list(next(iter(recorded))) if len(recorded) == 1 and () not in recorded else
+                ["--phase", "timing", "--lanes-per-gpu", str(lanes), "--gpus", str(gpus),
+                 "--arms", a.arms])
         per_cell: dict = {}
-        for run in runs_list("timing", "--lanes-per-gpu", str(lanes), "--gpus", str(gpus),
-                             "--arms", a.arms):
+        for run in runs_list_args(args):
             cell = f"{run['arm']}-v{run['view']}"
             path = RUNS / run["name"] / "e5-run.json"
             if status.get(run["name"]) not in ("done", "retried") or not path.is_file():
@@ -628,7 +720,7 @@ def stage_timing(a) -> None:
             rec = json.loads(path.read_text())
             per_cell.setdefault(cell, []).append(
                 e5.block_rates(rec["start_unix"], rec["block_ends_unix"], EVAL_FREQ))
-        rates[lanes] = {c: {k: float(sorted(x[k] for x in v)[len(v) // 2]) for k in
+        rates[lanes] = {c: {k: float(statistics.median(x[k] for x in v)) for k in
                             ("per_update_s", "startup_s")} | {"runs": len(v)}
                         for c, v in per_cell.items()}
     audit_s = {}
@@ -656,9 +748,14 @@ def stage_timing(a) -> None:
             "longest_box_wall_h": max(s.get("train_wall_h", float("nan")) for s in singles)}}
     ok = {k: v for k, v in proj.items() if "x4" in v and "error" not in v["x4"]}
     choice = min(ok, key=lambda k: ok[k]["x4"]["total_gpu_h"]) if ok else None
+    single = {k: v["single_gpu_boxes"]["total_gpu_h"] for k, v in ok.items()
+              if math.isfinite(v["single_gpu_boxes"]["total_gpu_h"])}
     result = {"rates": rates, "audit_s": audit_s, "capture_check": capture, "projection": proj,
-              "lanes_per_gpu": choice, "overhead_h_per_box": a.overhead_h,
-              "rule": "maze-e5.md Section 9: the lane count with the shortest projected total"}
+              "lanes_per_gpu": choice,
+              "lanes_per_gpu_single_gpu_boxes": min(single, key=single.get) if single else None,
+              "overhead_h_per_box": a.overhead_h,
+              "rule": "maze-e5.md Section 9: the lane count with the shortest projected total "
+                      "(per box layout)"}
     path = RUNS / "maze-e5-timing.json"
     path.write_text(json.dumps(result, indent=1) + "\n")
     for lanes, v in proj.items():
@@ -671,7 +768,8 @@ def stage_timing(a) -> None:
               f"{x['overhead_gpu_h']:.1f}: total {x['total_gpu_h']:.1f} GPU-h (stop rule "
               f"{x['stop_rule_gpu_h']:.1f}); {v['single_gpu_boxes']['boxes']} single-GPU boxes: "
               f"{v['single_gpu_boxes']['total_gpu_h']:.1f} GPU-h")
-    print(f"chosen: {choice} lanes per GPU; wrote {rel(path)}"
+    print(f"chosen: {choice} lanes per GPU on the x4 box, "
+          f"{result['lanes_per_gpu_single_gpu_boxes']} on single-GPU boxes; wrote {rel(path)}"
           + (f"; capture check {capture['verdict']}" if capture else ""))
 
 
@@ -706,6 +804,8 @@ def load_audits(manifest: dict, audit_names: dict) -> list:
             continue
         d = RUNS / audit_names[name]
         rec = json.loads((d / "audit-run.json").read_text())
+        if rec.get("run", name) != name or rec.get("status", "trained") != "trained":
+            raise SystemExit(f"{rel(d)}/audit-run.json is not the audit of {name}")
         cks = []
         for ckpt in entry["checkpoints"]:
             path = d / f"u{ckpt['update']:05d}-fresh.npz"
@@ -787,7 +887,8 @@ def stage_analyse(a) -> None:
         raise SystemExit(f"{rel(out)} holds a lock or an output: analyse runs once")
     manifest = json.loads(tagged_file(MANIFEST, gate["commit"]))
     drop = ["--drop", str(manifest["drop"])]
-    round_check("maze-e5a", TAG, ["--phase", "audit", *drop], allow_failed=False)
+    round_check("maze-e5a", TAG, queue_runs_args("maze-e5a", ["--phase", "audit", *drop]),
+                allow_failed=False)
     audit_names = {r["source"]: r["name"] for r in runs_list("audit", *drop)}
     runs = load_audits(manifest, audit_names)
     out.mkdir(parents=True, exist_ok=True)
@@ -798,11 +899,11 @@ def stage_analyse(a) -> None:
 
     t0 = time.time()
     pt = e5.point(runs)
-    boot = e5.bootstrap(runs, a.n_boot, e5.BOOT_SEED, min(a.workers, MAX_WORKERS))
+    boot = e5.bootstrap(runs, e5.B, e5.BOOT_SEED, min(a.workers, MAX_WORKERS))
     res = e5.analyse(runs, boot, pt)
     res["describe"] = e5.describe(runs, pt)
     res["provenance"] = {"tag": gate, "manifest_sha256": sha256_bytes(MANIFEST.read_bytes()),
-                         "n_boot": a.n_boot, "boot_seed": e5.BOOT_SEED, "runs": len(runs),
+                         "n_boot": e5.B, "boot_seed": e5.BOOT_SEED, "runs": len(runs),
                          "missing": manifest["missing"], "seconds": round(time.time() - t0, 1)}
     write_json_new(targets[0], res)
     write_new(targets[1], decisions_md(res).encode())
@@ -827,7 +928,8 @@ def main(argv=None):
     p.add_argument("--rounds", nargs="+", required=True, help="e.g. maze-e5t4 maze-e5t8")
     p.add_argument("--audit-round", default=None)
     p.add_argument("--capture-round", default=None)
-    p.add_argument("--arms", default="sfl,plr,dr")
+    p.add_argument("--arms", default="sfl,plr,dr",
+                   help="the calibration's arms, if its manifests do not record them")
     p.add_argument("--overhead-h", type=float, default=0.25,
                    help="setup and pull-back per box, wall hours")
     p = sub.add_parser("manifest", help="check the pulled-back runs, write the manifest (Mac)")
@@ -840,8 +942,7 @@ def main(argv=None):
     p.add_argument("--update", type=int, default=400, help="--timing-only: its checkpoint")
     p.add_argument("--name", required=True)
     p = sub.add_parser("analyse", help="Sections 4-5, once (Mac, behind the tag)")
-    p.add_argument("--workers", type=int, default=4)
-    p.add_argument("--n-boot", type=int, default=4000)
+    p.add_argument("--workers", type=int, default=4, help="processes (at most 4; B is fixed)")
     a = ap.parse_args(argv)
     if a.stage == "train":
         return stage_train(a)

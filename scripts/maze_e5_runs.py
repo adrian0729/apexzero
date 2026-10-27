@@ -10,8 +10,9 @@ round_manifest.py's stray-directory check of one never flags another's runs:
 
 - ``main`` (round ``maze-e5``): 5 seeds (1-5) x {DR, PLR-MaxMC, SFL} x views {13, 5}, 30,000
   updates each, named ``maze-e5-<arm>-v<view>-s<seed>``. The order is fixed: the SFL runs
-  first, then PLR-MaxMC, then DR (the expected longest first, so that with 16 or fewer lanes
-  no lane holds two SFL runs), within an arm seed by seed, view 13 before 5. ``--drop k``
+  first, then PLR-MaxMC, then DR (the expected longest first, so that with 10 or more lanes,
+  or one seed per box, no lane holds two SFL runs), within an arm seed by seed, view 13
+  before 5. ``--drop k``
   applies the first k steps of the budget drop order (Section 9): 1, SFL at view 13; 2, view
   13 in every arm; 3, seed 5; 4, seed 4 (at least 3 seeds stay).
 - ``timing`` (round ``maze-e5t<L>``): the timing calibration at L lanes per GPU on G GPUs:

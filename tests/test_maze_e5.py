@@ -498,6 +498,29 @@ def test_round_check_accepts_only_runs_that_failed_twice(mods):
         m.parse_check("maze-e5", 1, "", "tag 'x' not found", True)
 
 
+def test_round_check_uses_the_boxes_options_when_they_give_the_same_list(mods, tmp_path,
+                                                                         monkeypatch):
+    """round_manifest.py check compares the run-list options word for word: a queue started
+    as Section 2 says (--phase main) must pass the manifest stage's check (--drop 0)."""
+    m = mods["maze_e5"]
+    monkeypatch.setattr(m, "RUNS", tmp_path)
+    want = ["--phase", "main", "--drop", "0"]
+    assert m.queue_runs_args("maze-e5", want) == want                    # no manifest yet
+    for i, recorded in enumerate((["--phase", "main"], ["--phase", "main"])):
+        (tmp_path / f"maze-e5-manifest-{i}of2.json").write_text(json.dumps(
+            {"runs_args": recorded}))
+    assert m.queue_runs_args("maze-e5", want) == ["--phase", "main"]
+    assert m.queue_runs_args("maze-e5", ["--phase", "main", "--drop", "1"]) == [
+        "--phase", "main", "--drop", "1"]                               # another list
+    (tmp_path / "maze-e5-manifest-1of2.json").write_text(json.dumps(
+        {"runs_args": ["--phase", "main", "--drop", "0"]}))
+    assert m.queue_runs_args("maze-e5", want) == want                    # the boxes differ
+    (tmp_path / "maze-e5a-manifest-0of1.json").write_text(json.dumps(
+        {"runs_args": ["--phase", "audit"]}))
+    assert m.queue_runs_args("maze-e5a", ["--phase", "audit", "--drop", "0"]) == [
+        "--phase", "audit"]
+
+
 # --------------------------------------------------------------------------- the tag gate
 
 
@@ -536,6 +559,15 @@ def test_tag_gate_and_the_tagged_manifest(mods, tmp_path, monkeypatch):
     (repo / "code" / "a.py").write_text("x = 2\n")
     with pytest.raises(PermissionError, match="differs"):
         gate()
+    # git diff trusts the index for a file marked assume-unchanged or skip-worktree: the gate
+    # compares the bytes too.
+    for flag in ("assume-unchanged", "skip-worktree"):
+        _git(repo, "update-index", f"--{flag}", "code/a.py")
+        assert subprocess.run(["git", "diff", "--quiet", head, "--", "code"], cwd=repo,
+                              check=False).returncode == 0
+        with pytest.raises(PermissionError, match="byte for byte"):
+            gate()
+        _git(repo, "update-index", f"--no-{flag}", "code/a.py")
     (repo / "code" / "a.py").write_text("x = 1\n")
     (repo / "code" / "b.py").write_text("")
     with pytest.raises(PermissionError, match="untracked"):
@@ -569,6 +601,45 @@ def test_outputs_are_written_once(mods, tmp_path, monkeypatch):
     monkeypatch.setattr(m, "RUNS", tmp_path / "runs")
     with pytest.raises(PermissionError):
         m.main(["audit", "--run", "maze-e5-dr-v5-s1", "--name", "maze-e5a-dr-v5-s1"])
+
+
+def test_audit_job_of_a_missing_run_succeeds_and_files_are_checked_first(mods, tmp_path,
+                                                                         monkeypatch):
+    """A run that failed twice is missing in the manifest: its audit job (round maze-e5a lists
+    every run) records that and succeeds, so the round's check, which analyse requires, can
+    pass. A trained run's config file and checkpoints are checked before anything loads."""
+    m = mods["maze_e5"]
+    monkeypatch.setattr(m, "ROOT", tmp_path)
+    monkeypatch.setattr(m, "RUNS", tmp_path / "runs")
+    monkeypatch.setattr(m, "tag_gate", lambda *a, **k: {"commit": "c", "head": "c"})
+    ck = tmp_path / "runs" / "maze-e5-dr-v5-s1" / "ck" / "2"
+    ck.mkdir(parents=True)
+    (ck / "x").write_bytes(b"params")
+    cfg = tmp_path / "runs" / "maze-e5-dr-v5-s1" / "config.json"
+    cfg.write_text("{}")
+    trained = {"arm": "dr", "view": 5, "seed": 1, "status": "trained",
+               "config": "runs/maze-e5-dr-v5-s1/config.json",
+               "config_sha256": m.sha256_bytes(b"{}"),
+               "checkpoints": [{"update": 300, "step": 2, "path": "runs/maze-e5-dr-v5-s1/ck/2",
+                                "sha256": m.tree_sha256(ck)}]}
+    manifest = {"runs": {"maze-e5-dr-v5-s1": trained,
+                         "maze-e5-dr-v13-s1": {"arm": "dr", "view": 13, "seed": 1,
+                                               "status": "missing", "checkpoints": []}}}
+    monkeypatch.setattr(m, "tagged_file", lambda *a: json.dumps(manifest).encode())
+    m.main(["audit", "--run", "maze-e5-dr-v13-s1", "--name", "maze-e5a-dr-v13-s1"])
+    rec = json.loads((tmp_path / "runs" / "maze-e5a-dr-v13-s1" / "audit-run.json").read_text())
+    assert rec["status"] == "missing" and rec["files"] == {}
+    with pytest.raises(SystemExit, match="not a run in the manifest"):
+        m.main(["audit", "--run", "maze-e5-dr-v5-s9", "--name", "maze-e5a-dr-v5-s9"])
+    m.entry_files_match(trained)
+    cfg.write_text('{"gamma": 0.9}')
+    with pytest.raises(SystemExit, match="config.json does not match"):
+        m.main(["audit", "--run", "maze-e5-dr-v5-s1", "--name", "maze-e5a-dr-v5-s1"])
+    assert not (tmp_path / "runs" / "maze-e5a-dr-v5-s1").exists()
+    cfg.write_text("{}")
+    (ck / "x").write_bytes(b"other")
+    with pytest.raises(SystemExit, match="ck/2 does not match"):
+        m.entry_files_match(trained)
 
 
 # --------------------------------------------------------------------------- the audit
@@ -885,12 +956,16 @@ def test_timing_stage_projects_and_picks_the_lane_count(mods, tmp_path, monkeypa
             d = runs_dir / run["name"]
             d.mkdir(parents=True)
             per = slow[run["arm"]] * factor * 100
+            if lanes == 4 and (run["arm"], run["view"]) == ("dr", 13):     # 2 runs: the median
+                per = {4: 15.0, 10: 25.0}[t.index(run)]                    # is their mean, 0.2
             ends = [1000 + 40 + per * (b + 1) for b in range(5)]
             (d / "e5-run.json").write_text(json.dumps({"start_unix": 1000.0,
                                                        "block_ends_unix": ends}))
             recs.append({"name": run["name"], "status": "done"})
+        recorded = ({"runs_args": ["--phase", "timing", "--lanes-per-gpu", "8", "--gpus", "4"]}
+                    if lanes == 8 else {})                 # the box's options, when recorded
         (runs_dir / f"maze-e5t{lanes}-manifest-0of1.json").write_text(json.dumps(
-            {"gpus": 4, "lanes_per_gpu": lanes, "runs": recs}))
+            {"gpus": 4, "lanes_per_gpu": lanes, "runs": recs, **recorded}))
     for run in R.runs("timing-audit"):
         d = runs_dir / run["name"]
         d.mkdir()
@@ -900,11 +975,13 @@ def test_timing_stage_projects_and_picks_the_lane_count(mods, tmp_path, monkeypa
     out = json.loads((runs_dir / "maze-e5-timing.json").read_text())
     assert out["rates"]["4"]["sfl-v13"]["per_update_s"] == pytest.approx(0.5)
     assert out["rates"]["4"]["sfl-v13"]["startup_s"] == pytest.approx(40.0)
+    assert out["rates"]["4"]["dr-v13"] == {"per_update_s": pytest.approx(0.2),
+                                           "startup_s": pytest.approx(40.0), "runs": 2}
     x4, x8 = out["projection"]["4"]["x4"], out["projection"]["8"]["x4"]
     # 4 lanes: two waves (SFL then PLR or DR on the longest lane); 8: one wave, 10% slower
     assert x4["train_wall_h"] == pytest.approx((40 + 15000 + 40 + 6000) / 3600)
     assert x8["train_wall_h"] == pytest.approx((40 + 16500) / 3600)
-    assert out["lanes_per_gpu"] == 8
+    assert out["lanes_per_gpu"] == 8 and out["lanes_per_gpu_single_gpu_boxes"] in (4, 8)
     assert x4["audit_gpu_h"] == pytest.approx(30 * 16 * 120 / 3600)
     assert out["projection"]["4"]["single_gpu_boxes"]["boxes"] == 5
 
@@ -932,7 +1009,7 @@ def test_load_audits_reads_the_audit_files_and_checks_them(mods, tmp_path, monke
                       update=ck["update"], checkpoint_sha256=ck["sha256"])
         path = d / f"u{ck['update']:05d}-fresh.npz"
         files[path.name] = m.write_new(path, m.npz_bytes(**arrays))
-    (d / "audit-run.json").write_text(json.dumps({"files": files}))
+    (d / "audit-run.json").write_text(json.dumps({"run": "maze-e5-plr-v5-s1", "files": files}))
     names = {"maze-e5-plr-v5-s1": "maze-e5a-plr-v5-s1"}
     runs = m.load_audits(manifest, names)
     assert len(runs) == 1 and runs[0].arm == "plr" and len(runs[0].checkpoints) == 2
@@ -942,6 +1019,9 @@ def test_load_audits_reads_the_audit_files_and_checks_them(mods, tmp_path, monke
     assert e5.checkpoint_phase(ck) == "mid"
     (d / "audit-run.json").write_text(json.dumps({"files": {**files, "u00300-fresh.npz": "0"}}))
     with pytest.raises(SystemExit, match="does not match"):
+        m.load_audits(manifest, names)
+    (d / "audit-run.json").write_text(json.dumps({"run": "maze-e5-plr-v13-s1", "files": files}))
+    with pytest.raises(SystemExit, match="not the audit of"):
         m.load_audits(manifest, names)
     (d / "audit-run.json").write_text(json.dumps({"files": files}))
     entry["checkpoints"][0]["sha256"] = "f" * 64
