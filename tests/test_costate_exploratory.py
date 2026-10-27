@@ -1929,3 +1929,16 @@ def test_stage_file_checks_stamps(cx, tmp_path, monkeypatch):
     canon.partial = []                                    # a canonical run reads no partial one
     with pytest.raises(SystemExit, match="partial"):
         cx.stage_file(canon, "build.json")
+
+
+def test_width_check_problems(cx):
+    def unit(kept, err=None):
+        return {"label": "S2", "cols": {"kept_W": np.array(kept), "kept_H": np.array(kept)},
+                "checks": None if err is None else {"error": err}}
+
+    nan = float("nan")
+    assert cx.width_check_problems([unit([False, False])], np.array([nan, nan])) == []
+    assert cx.width_check_problems([unit([True, False], 1e-9)], np.array([1e-12, nan])) == []
+    assert cx.width_check_problems([unit([True, False])], np.array([1e-12, nan]))
+    assert cx.width_check_problems([unit([True], 1e-3)], np.array([1e-12]))
+    assert cx.width_check_problems([unit([True], 1e-9)], np.array([1e-3]))

@@ -5988,6 +5988,28 @@ def cs9_net_unit(state, unit) -> dict:
             "seconds": time.time() - t0}
 
 
+def width_check_problems(units: list[dict], j_gap) -> list[str]:
+    """The parent's re-check of the networks stage's width checks for one agent (amendment 9
+    item 4): every finite J gap within ``J_TOL``, and the JVP check within ``JVP_TOL`` on each
+    unit that kept a key at both horizons. A unit that kept none has no JVP check (its runs
+    all terminated or lost their buffer), which is no failure."""
+    import numpy as np
+
+    bad = []
+    jg = np.asarray(j_gap, float)
+    fin = jg[np.isfinite(jg)]
+    if fin.size and not float(fin.max()) <= J_TOL:
+        bad.append(f"the width loop's J is not own_return's ({float(fin.max()):.3g})")
+    for u in units:
+        c = u.get("checks")
+        kept = np.asarray(u["cols"]["kept_W"], bool) & np.asarray(u["cols"]["kept_H"], bool)
+        if c is None and kept.any():
+            bad.append(f"{u.get('label')}: a unit kept a key but ran no JVP check")
+        elif c is not None and not c["error"] <= JVP_TOL:
+            bad.append(f"the width VJP is not the JVP ({c['error']:.3g})")
+    return bad
+
+
 def n_blocks(wn, rows) -> list[dict]:
     """The world entries' parts on the given rows (an agent's): per stimulus entry its rows,
     Inputs, ObsJac, W, direction and landmark columns."""
@@ -6111,10 +6133,10 @@ def cs9_networks(run: Run, world) -> None:
         wiring = [g["wiring"] for g in gs if g["wiring"] is not None]
         checks = [g["checks"] for g in gs if g["checks"] is not None]
         jg = cols["j_gap"].astype(float)
-        jvp = max((c["error"] for c in checks), default=float("nan"))
-        if lim is None and not (np.nanmax(jg, initial=0.0) <= J_TOL and jvp <= JVP_TOL):
-            raise SystemExit(f"CS-9 {a}: a width check failed (J {np.nanmax(jg):.3g}, JVP "
-                             f"{jvp:.3g})")
+        bad = width_check_problems(gs, jg)
+        if lim is None and bad:
+            raise SystemExit(f"CS-9 {a}: {'; '.join(bad)}")
+        jvp = max((c["error"] for c in checks), default=None)
         why = {}
         for h in ("W", "H"):
             c: dict = {}
@@ -6122,14 +6144,17 @@ def cs9_networks(run: Run, world) -> None:
                 if not (kept is True or kept == 1.0):
                     c[str(wy) or "?"] = c.get(str(wy) or "?", 0) + 1
             why[h] = c
+        j_max = float(np.max(jg[np.isfinite(jg)], initial=0.0))
         nets[a] = {"run": agent_pin(run.rec, a), "rows": len(cols["rows"]),
                    "own_valid": int(np.sum(cols["own_valid"])),
                    "terminated": int(np.nansum(cols["terminated"].astype(float))),
                    "strip_end": int(np.nansum(cols["strip_end"].astype(float))),
                    "kept_W": int(np.nansum(cols["kept_W"].astype(float))),
                    "kept_H": int(np.nansum(cols["kept_H"].astype(float))), "dropped": why,
-                   "wiring": wiring, "j_gap_max": float(np.nanmax(jg, initial=0.0)),
-                   "jvp": jvp, "jvp_checks": checks,
+                   "wiring": wiring, "j_gap_max": j_max,
+                   "j_gap_rows": int(np.isfinite(jg).sum()), "jvp": jvp,
+                   "jvp_note": None if checks else "no unit kept a key at both horizons",
+                   "jvp_checks": checks,
                    "fd_descriptive": [g["fd"] for g in gs if g["fd"] is not None],
                    "seconds": float(sum(g["seconds"] for g in gs))}
         for k, v in cols.items():
