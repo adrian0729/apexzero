@@ -724,3 +724,348 @@ key-weighted.
 - There the networks' driving carries a smaller copy of the wall's price, and the critic's input
   gradient is what fails to express it.
 - None of this changes a decision of `costate-prereg-v1`.
+
+## CS-7 and CS-8: the runs (exploratory)
+
+- **Plan and code.** Both ran at `2056a3d` (code and tests), under the plan with amendment 7
+  (`3d41566`: their operational details, committed before any of their numbers) and amendment 8
+  (`79c19d6`: two corrections to amendment 7's text, also before any number).
+- **CS-7.** `scripts/costate_exploratory.py cs-7`: 72 units ((network, component) × 4 chunks)
+  on 4 workers × 2 XLA threads, niced, in 94 min. Worker time was 1,112–1,399 s per (network,
+  component). The plan estimated about 30 min pooled at 5 workers. Each of the 106 probe fits
+  per (network, component) takes 9–12 s, as measured on synthetic data before the run
+  (amendment 7).
+- **CS-8.** `cs-8`, with the same pool, in 30 min (its three pools are described under CS-8).
+- **Development runs.** Before the canonical runs, partial runs on G1 were written outside
+  `outputs/costate` to check the wiring: CS-8 for G1's scaling and (c), and CS-7 for G1's s
+  component. Only their structure, wiring gaps and timings were read, plus one outcome of
+  (c)'s choice: candidate 1 fails and candidate 2 passes. That choice reads targets only, and
+  the canonical run repeats it.
+- **Stamps.** Both outputs record an empty `changed_vs_head`, no partial flag, the plan's sha256
+  with 8 amendments, and the sha256 of every input:
+  - CS-7, 20 files: the world and its summary, the 9 networks' activations, and their checkpoints
+    through the record's pins;
+  - CS-8, 21 files: the same, with `gates/c2_null.json`.
+
+  They were re-verified before this note:
+  - each stamp's script sha256 is the script's blob at `2056a3d`, and its plan sha256 is the plan
+    at `79c19d6`;
+  - the `preds.npz` sha256s and the summaries' content sha256s were recomputed and match;
+  - the script's `verify` reports 0 problems.
+- **Wiring checks (all passed).**
+  - The frozen λ_res's interior residual shares equal the record's exactly (gap 0 in all four
+    components).
+  - In every unit, the pool actor of seed 0 rebuilds its stored h3 exactly.
+  - CS-7's random-init critic of seed 0 matches `Critic.apply` to at most 1.8·10⁻¹⁵ (tolerance
+    10⁻¹⁰), and every random critic has 5 heads.
+  - CS-8's cross-fit scheme reproduces `states.cross_fit` exactly.
+  - f̂_D's geometry-6 shares reproduce design 17.6: 11.78% and 9.00% of λ's sum of squares, 70.45%
+    and 64.66% of λ_res's.
+  - Every probe's targets are, bit for bit, λ and λ_res's own-fold residual (CS-7), or σ^ped and
+    σ_res's (CS-8).
+- **No calibrated R²** is reported by either item, so CS-1's rule for later items does not apply.
+
+## CS-7. Critic-layer and head-unit probes (exploratory)
+
+**Run** as above. Outputs: `outputs/costate/exploratory/cs-7/summary.json` (committed copy:
+[`costate-followups/cs-7-summary.json`](costate-followups/cs-7-summary.json)) and `preds.npz`
+(local). **Rows.** C1's rows (λ_s 1,643, λ_ξ 1,581) under C1's weights. **Targets.** λ_k
+winsorised, and the frozen λ_res,k (f̂_D, k = 8) by fold. Both of ξ's are scored by R²_wd.
+
+**Decodability** (ranges over the 9 networks; R² of the probe on z alone and on z ⊕ each layer):
+
+| Target | R²(z) | z ⊕ critic h3 | z ⊕ head units | z ⊕ actor h3 | Random critics' median gain (h3) |
+|---|---|---|---|---|---|
+| λ_s | 0.354–0.355 | 0.51–0.61 | −0.40 to 0.46 | 0.54–0.61 | 0.22–0.24 |
+| λ_ξ | 0.663–0.673 | 0.80–0.89 | 0.06–0.82 | 0.83–0.88 | 0.15–0.17 |
+| λ_res,s | −1.17 | −0.67 to −0.11 | −0.91 to −0.01 | −0.79 to −0.06 | 0.91–1.00 |
+| λ_res,ξ | 0.017–0.024 | −0.09 to 0.02 | −0.64 to 0.01 | −0.37 to −0.14 | −0.20 to −0.16 |
+
+**Gains beyond the controls.** Each cell gives the statistic's range over the 9 networks: the
+trained layer's gain over z minus the median of its 20 controls' gains (random-init critics'
+same layer, or the pool actors for the actor's h3). In brackets: the networks whose two-level CI
+lies above 0 / below 0.
+
+| Target | Critic h1 | Critic h2 | Critic h3 | Head units | Actor h3 |
+|---|---|---|---|---|---|
+| λ_s | −0.082 to 0.041 (0 / 1) | −0.050 to 0.049 (1 / 1) | −0.085 to 0.010 (0 / 3) | −0.983 to −0.094 (0 / 8) | −0.043 to 0.012 (0 / 1) |
+| λ_ξ | −0.054 to 0.023 (0 / 1) | −0.038 to 0.045 (0 / 0) | −0.023 to 0.066 (2 / 0) | −0.787 to −0.028 (0 / 4) | 0.000 to 0.059 (2 / 0) |
+| λ_res,s | −0.105 to 0.033 (0 / 0) | −0.109 to 0.051 (0 / 0) | −0.465 to 0.122 (0 / 0) | −0.785 to 0.129 (0 / 4) | −0.588 to 0.159 (0 / 1) |
+| λ_res,ξ | 0.018 to 0.150 (2 / 0) | −0.079 to 0.179 (4 / 0) | 0.063 to 0.196 (5 / 0) | −0.488 to 0.166 (3 / 0) | −0.191 to 0.024 (0 / 1) |
+
+On ξ, per network. Bold marks a statistic above 0.05 with its two-level CI above 0. The last
+column is R²(z ⊕ critic h3) on λ_res,ξ.
+
+| Network | λ_ξ: critic h3 | λ_ξ: actor h3 | λ_res,ξ: h1 | h2 | h3 | heads | actor h3 | R²(z ⊕ h3), λ_res,ξ |
+|---|---|---|---|---|---|---|---|---|
+| G1 | **0.056 [0.003, 0.116]** | 0.056 [0.009, 0.113] | 0.057 | 0.032 | **0.156** | 0.066 | −0.020 | 0.003 |
+| G1s1 | 0.022 | 0.025 | 0.045 | 0.021 | 0.089 | −0.488 | −0.014 | −0.046 |
+| G1s2 | **0.066 [0.004, 0.165]** | 0.059 [0.020, 0.110] | 0.115 | **0.121** | 0.128 | 0.137 | −0.085 | −0.011 |
+| G2 | 0.005 | 0.017 | 0.018 | 0.030 | **0.139** | 0.077 | −0.012 | −0.010 |
+| G2s1 | 0.020 | 0.003 | 0.063 | **0.169** | **0.162** | **0.166** | 0.024 | −0.002 |
+| G2s2 | −0.023 | 0.007 | 0.047 | −0.011 | 0.065 | −0.098 | −0.091 | −0.075 |
+| G3 | 0.021 | 0.000 | **0.133** | −0.079 | 0.063 | −0.286 | −0.018 | −0.085 |
+| G3s1 | 0.021 | 0.001 | 0.070 | **0.169** | **0.183** | **0.142** | −0.017 | 0.005 |
+| G3s2 | 0.023 | 0.030 | **0.150** | **0.179** | **0.196** | **0.138** | −0.191 | 0.018 |
+
+- **λ_s: no critic layer holds it beyond random critics' features.**
+  - The critic's h3 gains −0.085 to 0.010, with its CI below 0 in 3.
+  - The head units do worse than their random counterparts in all 9 (−0.98 to −0.09, CI below 0
+    in 8). With 320 units they over-fit: R²(z ⊕ head units) reaches −0.40 in G3.
+  - The actor's h3 is no different (−0.043 to 0.012).
+- **λ_ξ: the critic's h3 gains a little in G1 and G1s2, and so does the actor's.**
+  - The critic's h3 gains 0.056 and 0.066 beyond its random critics, with CIs above 0, first of
+    21 in both. In the other 7 it gains −0.023 to 0.023.
+  - The actor's h3 gains as much in the same two networks (0.056 and 0.059, CIs above 0). The
+    gain is not specific to the critic.
+- **λ_res,s is not decodable on these rows.** R²(z) is −1.17, and every layer, trained or random,
+  leaves the probe below 0 (z ⊕ critic h3: −0.67 to −0.11). The statistic is noise: no CI lies
+  above 0. This is geometry 6's residualisation error (CS-8 (c)).
+- **λ_res,ξ is not decodable either, and that is where the large gains come from.**
+  - R²(z) is 0.02. No trained layer lifts the probe above 0.02: R²(z ⊕ critic h3) is −0.09 to
+    0.02.
+  - The random critics' layers make the probe worse (their median gains are −0.20 to −0.14). The
+    trained critic's make it worse by much less (h3: −0.10 to 0.00).
+  - That gap is the statistic, 0.063–0.196 for h3, above 0.05 with its CI above 0 in 5. It
+    measures how much more random critics' features over-fit, not information in the trained
+    layer.
+  - The actor's h3 over-fits like its pool (−0.19 to 0.02).
+- **Means over s and ξ** (descriptive): on λ, the critic's h3 gains −0.032 to 0.017 with every CI
+  covering 0, and the head units −0.51 to −0.06 with every CI below 0.
+
+**Expected directions against the results.**
+- **E7.1** ("No critic layer gains more than 0.05 beyond z on λ or λ_res with its CI above 0"):
+  **does not hold as computed.** 16 cases are named, the same under the geometry-only CI.
+  - 2 are on λ_ξ: G1's and G1s2's h3 (0.056 and 0.066).
+  - 14 are on λ_res,ξ, where no layer predicts the target (R²(z ⊕ h) at most 0.02). There the
+    statistic exceeds 0.05 because the controls over-fit.
+- **E7.2** ("The critic's h3 gains at least as much as the actor's h3"): **does not hold.** It
+  holds in 1 of 9 on λ_s, 5 on λ_ξ, 4 on λ_res,s and 9 on λ_res,ξ. The 9 on λ_res,ξ come only from
+  the actor's h3 over-fitting as much as its pool.
+- **E7.3** ("The head units gain no more than the critic's h3"): **holds**, in 9, 9, 8 and 7 of
+  9.
+
+**What CS-7 says (exploratory).**
+- **The plan's reading of a gain above 0.05** ("λ is linearly present in the critic even though
+  ∇V does not match it") **does not apply to the cases found.**
+  - On λ_res,ξ the named gains carry no prediction of the target.
+  - On λ_ξ the two networks whose critic h3 passes are the two whose actor h3 passes too.
+  - λ itself is not decoy-controlled. So those gains may be position-and-speed information that
+    random features of z do not express linearly.
+- **No critic layer holds λ_s, or λ_res on either component,** beyond what random critics'
+  features of z give.
+- **So the gains near 0 extend C2's result to the critic** (the plan's reading). As far as
+  linear probes on these rows can tell, the costate is no more in the critic's layers than in
+  its input gradient. This differs from CS-5, where the critic's h3 held a little Π^in beyond z.
+- **A limit.** On C1's rows the frozen λ_res is not decodable by any probe (R²(z) −1.17 on s,
+  0.02 on ξ), so CS-7's λ_res half has little power. CS-8 (c)'s decoy 2 would give a better
+  λ_res for it. Rerunning on it would need an amendment, and is not done here.
+- None of this changes a decision of `costate-prereg-v1`.
+
+## CS-8. C2-sw's random-only null, C2-sw residualised, and C2 with a decoy that fits geometry 6 (exploratory)
+
+**Run.** 1,779 s in three pools on 4 workers:
+- G1's scaling first: 4 units, 69 s.
+- R6's rule: the other 8 scalings were projected at 8 × 69 s = 553 s, well under 3 h, so the
+  null also ran per network (32 units, 519 s).
+- (c): 18 units, 1,104 s.
+
+The plan estimated 20 min for G1's scaling and 2.7 h per network. Fitting each scaling's base and
+pool probes once (amendment 7) brought (a) and (b) together under 10 min. Outputs:
+`outputs/costate/exploratory/cs-8/summary.json` (committed copy:
+[`costate-followups/cs-8-summary.json`](costate-followups/cs-8-summary.json)) and `preds.npz`
+(local).
+
+**Rows.**
+- (a) and (b) use T's pedal-switching rows in the approach and exit phases: 976 + 1,531 = 2,507,
+  under the key weights renormalised on them. The confirmatory C2-sw used all 2,911, 404 of them
+  braking or corner rows. So these numbers are not on its rows.
+- (c) fits its probes on T's interior approach and exit rows (1,653) and scores each component
+  on C2's decision rows (s 1,643, ξ 1,581). The confirmatory C2 fitted on all 3,951 interior
+  rows, so (c) carries its own reference: f̂_D on the same rows (amendment 7 item 3).
+
+### (a) C2-sw's random-only null
+
+The trained networks on the 2,507 rows. Δsw is the trained h3's gain over z minus the pool's
+median gain, with the two-level CI. "Hosts ≥" is the share of the 20 null hosts whose statistic
+is at or above the network's, under G1's scaling and under the network's own.
+
+| Network | Δsw [two-level CI] | Trained gain | Pool median | Rank of 21 | Hosts ≥, G1's | Hosts ≥, own | Confirmatory Δsw (2,911 rows), rank |
+|---|---|---|---|---|---|---|---|
+| G1 | 0.049 [0.022, 0.116] | 0.186 | 0.137 | 1 | 0.00 | (G1's) | 0.028, 1 |
+| G1s1 | 0.043 [0.023, 0.103] | 0.177 | 0.133 | 1 | 0.00 | 0.00 | 0.030, 1 |
+| G1s2 | −0.113 [−0.469, 0.031] | 0.024 | 0.137 | 19 | 0.85 | 0.90 | 0.025, 1 |
+| G2 | 0.027 [0.008, 0.091] | 0.178 | 0.151 | 1 | 0.05 | 0.00 | 0.021, 1 |
+| G2s1 | 0.028 [0.002, 0.080] | 0.176 | 0.148 | 1 | 0.05 | 0.05 | 0.009, 3 |
+| G2s2 | 0.040 [0.016, 0.087] | 0.193 | 0.153 | 1 | 0.00 | 0.00 | 0.029, 1 |
+| G3 | 0.021 [0.002, 0.057] | 0.186 | 0.165 | 3 | 0.10 | 0.15 | 0.006, 3 |
+| G3s1 | 0.047 [0.018, 0.114] | 0.203 | 0.156 | 1 | 0.00 | 0.00 | 0.021, 1 |
+| G3s2 | 0.039 [0.013, 0.112] | 0.193 | 0.154 | 1 | 0.00 | 0.00 | 0.028, 1 |
+
+R²(z) on σ^ped is 0.738 in all 9.
+
+- **The null under G1's scaling** (hosts 20–39 against the pool 0–19).
+  - Its bulk sits at 0: median 0.0005, 95th percentile 0.025, largest 0.030.
+  - Its mean is −0.055 and its SD 0.151, because four hosts lie far below: −0.645, −0.191,
+    −0.121 and −0.094.
+  - In each of the four, the most influential geometry is 17 (R 14.6 m, θ 45°). Without it, each
+    lies within 0.01 of 0.
+  - Ruled decisions: 11 refute and 9 inconclusive; none confirms. Two CIs lie wholly above 0.
+- **Under each network's own scaling** the nulls are alike: means −0.014 to −0.021, SDs 0.042 to
+  0.064, medians −0.002 to 0.010, largest 0.026 to 0.034.
+- **The trained h3 on approach and exit rows.**
+  - In 8 of 9 its statistic is 0.021–0.049, with the two-level CI above 0. On all 2,911 rows it
+    was 0.006–0.030.
+  - The CIs' upper ends are 0.057–0.116, so all 8 carry the inconclusive band word. On 2,911 rows
+    all 9 refuted.
+  - It ranks first of 21 in 7: the confirmatory 7, with G2s1 in place of G1s2.
+  - Five networks lie above every G1-scaling host: G1, G1s1, G2s2, G3s1 and G3s2. G2 and G2s1
+    lie above 19 of the 20, G3 above 18.
+  - Against their own scaling's hosts, 6 of 9 lie above every one: those five and G2.
+  - In G1, 4 of the 48 leave-one-geometry-out sets reach the confirm band word. The full set's
+    point is 0.049, just under 0.05.
+- **G1s2 is the exception.** Its trained h3 gains only 0.024 over z, against the pool's median
+  0.137. Its most influential geometry is also 17: without it, its statistic is 0.021.
+
+**E8a.1** ("the null's points centre near or below 0, with an SD of about 0.01–0.02 … The 7
+networks that rank first of 21 lie above every host"): **does not hold.**
+- The mean is below 0 (−0.055).
+- The SD is 0.151, outside [0.005, 0.025): one geometry's outliers carry it.
+- Of the 7 networks, 5 lie above every host. G2 (0.027) lies below the largest host (0.030), and
+  G1s2 (−0.113) below 17 of the 20.
+
+### (b) C2-sw on σ^ped residualised on position and speed
+
+| Network | Δ on σ_res [two-level CI] | Rank of 21 | Trained gain | Pool median | Δsw on σ^ped, (a) |
+|---|---|---|---|---|---|
+| G1 | −0.002 [−0.153, 0.112] | 11 | −0.126 | −0.125 | 0.049 |
+| G1s1 | 0.050 [−0.071, 0.183] | 1 | −0.083 | −0.132 | 0.043 |
+| G1s2 | 0.005 [−0.162, 0.220] | 8 | −0.125 | −0.130 | −0.113 |
+| G2 | −0.031 [−0.191, 0.087] | 18 | −0.190 | −0.159 | 0.027 |
+| G2s1 | 0.004 [−0.100, 0.091] | 11 | −0.152 | −0.156 | 0.028 |
+| G2s2 | 0.085 [−0.020, 0.248] | 1 | −0.075 | −0.160 | 0.040 |
+| G3 | 0.079 [−0.026, 0.224] | 1 | −0.097 | −0.176 | 0.021 |
+| G3s1 | 0.011 [−0.091, 0.059] | 8 | −0.174 | −0.185 | 0.047 |
+| G3s2 | 0.117 [−0.001, 0.281] | 1 | −0.071 | −0.188 | 0.039 |
+
+- **f̂_D's decoys carry most of σ^ped.** On these rows σ_res keeps 11.6% of σ^ped's variance.
+- **What is left is not linearly decodable.**
+  - R²(z) on σ_res is −0.077 in all 9.
+  - Every hidden layer makes the probe worse, trained or random: the trained gains are −0.071 to
+    −0.190, and the pool's medians −0.125 to −0.188.
+  - The statistic (−0.031 to 0.117) therefore measures how much less a trained h3 over-fits than
+    random ones, not a signal any layer finds.
+- **Every two-level CI covers 0.** G3s2's lower end is −0.001; its geometry-only CI is
+  [0.001, 0.277]. Four networks rank first: G1s1, G2s2, G3 and G3s2.
+
+**E8b.1** ("the gain shrinks to at most half of its unresidualised value in at least 6 of 9 …
+the trained h3 ranks first of 21 in at most 4 of 9"): **does not hold.**
+- The first part holds in 4 of 8: G1, G2, G2s1 and G3s1. G1s1, G2s2, G3 and G3s2 are larger on
+  σ_res, inside CIs that cover 0. G1s2's statistic on σ^ped is negative, so it is not counted.
+- The second part holds: first of 21 in 4 of 9.
+- **The rank-1 pattern does not survive.** No network ranks first with its CI above 0, against
+  the plan's 7 of 9.
+
+### (c) C2 with a decoy that fits geometry 6
+
+**The choice** (targets only, before any probe was fitted; amendment 7 item 3). The thresholds
+are twice geometry 6's share of λ's sum of squares: 23.6% for s and 18.0% for ξ.
+
+| Decoy | Geometry 6's share of λ_res's sum of squares, s | ξ | Interior residual share, s | ξ | Kept |
+|---|---|---|---|---|---|
+| f̂_D (frozen) | 70.4% | 64.7% | 0.224 | 0.248 | – |
+| 1. Same θ and direction | 70.4% | 64.1% | 0.224 | 0.248 | no |
+| 2. × 3 on log R | 3.0% | 5.5% | 0.204 | 0.154 | **yes** |
+
+- Candidate 3 was not tried.
+- In both candidates the search fell back to the turn direction only for the 72 θ 60° rows,
+  wherever fold 2 was predicted (432 predictions in the 36 fits).
+- Under candidate 2 the power floor still passes s and ξ only (n 0.060, vx 0.063).
+- **Why candidate 1 does not help.** Geometry 6's held-out neighbours under f̂_D were already of
+  its θ and direction: 71% from the 22.9 m, 90° geometry, 26% from 8.4 m. Weighting log R by 3
+  draws them from the nearest radii instead: 81% from 8.4 m and 19% from 10.5 m. (A count of
+  D₁'s neighbours, made for this note; it reads no target.)
+
+**C2 under the chosen decoy**, against f̂_D on the same rows:
+
+| Network | Δ2 [two-level CI], decoy 2 | Rank of 21 | Gain s, ξ | Geometry 6's share of the base's error, s / ξ | Δ2 [two-level CI], f̂_D, same rows | Its geometry 6 share, s / ξ | CI width ratio | Band word |
+|---|---|---|---|---|---|---|---|---|
+| G1 | −0.005 [−0.220, 0.062] | 14 | 0.013, −0.024 | 0.059 / 0.071 | −0.058 [−0.619, 0.028] | 0.350 / 0.505 | 0.44 | inconclusive |
+| G1s1 | −0.027 [−0.180, 0.029] | 20 | −0.007, −0.047 | 0.057 / 0.068 | −0.192 [−0.690, 0.020] | 0.376 / 0.531 | 0.29 | refute |
+| G1s2 | 0.023 [−0.069, 0.133] | 4 | 0.063, −0.018 | 0.057 / 0.076 | 0.066 [−0.364, 1.328] | 0.367 / 0.541 | 0.12 | inconclusive |
+| G2 | −0.168 [−0.756, −0.018] | 21 | −0.014, −0.322 | 0.057 / 0.075 | 0.250 [−0.069, 1.773] | 0.375 / 0.533 | 0.40 | refute |
+| G2s1 | −0.045 [−0.206, 0.013] | 21 | −0.013, −0.077 | 0.058 / 0.072 | 0.028 [−0.216, 0.236] | 0.354 / 0.525 | 0.48 | refute |
+| G2s2 | −0.051 [−0.351, 0.034] | 21 | −0.021, −0.082 | 0.058 / 0.070 | 0.185 [−0.111, 1.516] | 0.366 / 0.536 | 0.24 | inconclusive (full set: refute) |
+| G3 | 0.005 [−0.168, 0.075] | 10 | 0.004, 0.006 | 0.057 / 0.075 | −0.114 [−0.714, 0.015] | 0.358 / 0.523 | 0.33 | inconclusive |
+| G3s1 | −0.010 [−0.203, 0.060] | 15 | 0.044, −0.063 | 0.056 / 0.072 | 0.043 [−0.164, 0.385] | 0.370 / 0.527 | 0.48 | inconclusive |
+| G3s2 | −0.074 [−0.455, 0.036] | 21 | 0.018, −0.165 | 0.055 / 0.073 | −0.126 [−0.637, 0.136] | 0.366 / 0.513 | 0.63 | inconclusive (full set: refute) |
+
+"CI width ratio" is the decoy-2 CI's width over f̂_D's on the same rows. "(full set: refute)"
+marks a refute that the single-geometry rule withdrew: in G2s2 4 of the 48 sets, and in G3s2 3,
+do not refute.
+
+- **With f̂_D on approach and exit rows, C2 is unstable.**
+  - Geometry 6 still holds 0.35–0.38 of the base's squared error on s and 0.51–0.54 on ξ.
+  - The statistic swings from −0.192 to 0.250, with two-level CIs 0.45–1.84 wide.
+- **Decoy 2 removes geometry 6's weight.**
+  - It holds 0.055–0.059 of the base's error on s and 0.068–0.076 on ξ, about its share of the
+    weight.
+  - Geometry 6 is the most influential geometry in no network (31 in 4, 8 in 2).
+- **The CIs are 1.6 to 8 times narrower** (0.20–0.74 wide).
+- **The trained h3 sits below the pool's median in 7 of 9.** It ranks 14th to 21st in 7, and last
+  of 21 in 4. Only G1s2 (4th) and G3 (10th) rank above the median.
+- **The base probe no longer predicts λ_res,s.** Its R² is −0.26 on s and 0.11–0.13 on ξ. What
+  is left of λ_s after decoy 2 is not linear in z and m on these rows.
+- **Against the confirmatory C2** (all interior rows, f̂_D): its CIs were 0.24–0.50 wide. Decoy
+  2's are narrower by a third in only 2 networks (G1s1 and G1s2), and wider in G1, G2 and G3s2.
+
+**E8c.1** ("Geometry 6's share of the base's squared error falls below 0.3. C2's two-level CIs
+narrow by at least a third. No point reaches 0.05"): **holds**, in 9 of 9 on each part.
+- Shares 0.055–0.076.
+- Width ratios 0.12–0.63 against f̂_D on the same rows.
+- Largest point 0.023.
+
+### What CS-8 says (exploratory)
+
+- **C2-sw's pool rank carries over to approach and exit rows, larger.** The trained h3's extra
+  gain over random h3s is 0.021–0.049 in 8 of 9, with CIs above 0. It ranks first of 21 in 7,
+  and 6 networks lie above every host of their own null.
+- **C2-sw's own null has a heavy lower tail, from one geometry.** Its median and 95th percentile
+  (0.000 and 0.025) describe it; its mean and SD (−0.055, 0.151) do not. Geometry 17, a θ 45°
+  corner, also drags G1s2's statistic below its null.
+- **The rank-1 gain does not survive residualisation on position and speed.** After f̂_D's
+  decoys, nothing linear in z is left for any layer to find. So the gain in (a) is consistent
+  with the position-and-speed information that design 15.10 named. It gives no evidence of
+  switching-function information beyond it.
+  - (b) is weak: σ_res keeps 12% of σ^ped's variance on 2,507 rows. It cannot tell "nothing
+    beyond the decoys" from "too little to find".
+- **A decoy that fits geometry 6 makes C2 more precise and leaves it without a confirm.**
+  - On the same rows its CIs are 1.6–8 times narrower than f̂_D's.
+  - The trained h3 sits below the pool's median in 7 of 9.
+  - The band words are 3 refute and 6 inconclusive. In 2 of the 6 the full set refutes, but
+    removing one of 3–4 geometries does not, so the single-geometry rule withdrew the refute.
+  - Geometry 6's weight was a residualisation artefact, as design 17.6 read it. With it removed,
+    C2 shows no sign of costate information in h3 beyond z, m and the decoys.
+- None of this changes a decision of `costate-prereg-v1`.
+
+## CS-7 and CS-8: where they leave the refute (exploratory)
+
+- **No layer of the critic or actor shows the costate beyond z, the actor's output and
+  position-and-speed decoys.**
+  - CS-7: the critic's layers and heads hold no more of λ_s, λ_res,s or λ_res,ξ than random
+    critics' features. Their small gains on λ_ξ, in two networks, match the actors'.
+  - CS-8 (c): with a decoy that fits geometry 6, the actor's h3 sits below its random pool's
+    median in 7 of 9, with CIs 1.6–8 times narrower than f̂_D's on the same rows.
+- **C2-sw's rank-1 pattern is real but not shown to be the switching function.** On approach and
+  exit rows the trained h3 adds more than every random actor in 7 of 9, and more than every null
+  host in 5–6. Once σ^ped is residualised on position and speed, no layer finds anything (CS-8
+  (b)). Design Section 9's switching-function reading therefore still needs a confirm it does not
+  have.
+- **Two measurement lessons for later items.**
+  - f̂_D's residuals are unstable on approach and exit rows (geometry 6). Decoy 2 (log R × 3,
+    same θ and direction) fixes it on targets alone.
+  - C2-sw's null has a heavy lower tail from one geometry (17, θ 45°), so its median and upper
+    percentiles are the robust comparison.
+  - CS-9's and CS-12's C2 inherit both points, and the lead may want decoy 2 co-reported there
+    (an amendment).
+- None of this changes a decision of `costate-prereg-v1`.
