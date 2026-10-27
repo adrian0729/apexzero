@@ -17,7 +17,10 @@ default, and then make_train gets no term at all, so the default path is unchang
 Cars: context sampled per reset in the plan's ranges, plus hidden +/-2% grip.
 Checkpoints at log-spaced timesteps (snapshot = params + both normalisers).
 Evaluation: timed laps on the R-dev circuits only (the lockbox is never touched), with
-the default car, against the s-domain OCP lap where one exists.
+the default car, against the s-domain OCP lap where one exists. --skip-eval-rdev skips it
+(off by default): the run then writes no R-dev completion or lap result anywhere, no
+eval_rdev.json and no R-dev line in its log, as VG-1's pilot needs (docs/prereg/
+vg1-value-gradient.md, Section 4.1).
 """
 
 import argparse
@@ -80,6 +83,8 @@ def main():
                     help="with --vg-coef: the VGL(lambda) of the term's targets")
     ap.add_argument("--vg-winsor", type=float, default=VG_DEFAULT.winsor,
                     help="with --vg-coef: per-component winsorisation quantile of the targets")
+    ap.add_argument("--skip-eval-rdev", action="store_true",
+                    help="skip the end-of-run R-dev evaluation: no eval_rdev.json, no R-dev line")
     ap.add_argument("--ensemble-heads", type=int, default=5)
     ap.add_argument("--seed", type=int, default=0)
     args = ap.parse_args()
@@ -155,6 +160,9 @@ def main():
     agent, _ = jax.jit(train)(jax.random.PRNGKey(args.seed))
     jax.block_until_ready(agent)
     log.close()
+    if args.skip_eval_rdev:
+        print("--skip-eval-rdev: no R-dev evaluation", flush=True)
+        return
 
     pol_actor = Actor(cfg, 2, False)
 

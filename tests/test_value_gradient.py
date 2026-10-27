@@ -652,6 +652,80 @@ def test_train_dr_refuses_bad_vg_flags(tmp_path, monkeypatch, extra, msg):
         mod.main()
 
 
+def _run_train_dr_rdev(mod, tmp_path, monkeypatch, name, extra):
+    """One tiny train_dr.py run with timed_laps recorded (circuit, start speed, runs)."""
+    from apexzero.env.adapters import reference_speed
+
+    calls = []
+
+    class Laps:
+        completion_rate, median_lap = 1.0, 80.0
+
+    def laps(policy, tr, v0, runs):
+        calls.append((tr.name, v0, runs))
+        assert np.isfinite(np.asarray(policy(np.zeros(racing.OBS_DIM, np.float32)))).all()
+        assert v0 == float(reference_speed(tr)[0]) * 0.9
+        return Laps()
+
+    monkeypatch.setattr(mod, "timed_laps", laps)
+    monkeypatch.setattr(mod, "refine_reference", lambda tr: tr)
+    if not (tmp_path / "data").exists():
+        (tmp_path / "data").symlink_to(REPO / "data")
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(sys, "argv", ["train_dr.py", "--name", name, "--steps", "128",
+                                      "--num-envs", "8", "--num-steps", "8", "--bank", "8",
+                                      "--refresh", "4", "--ensemble-heads", "2", *extra])
+    mod.main()
+    return calls
+
+
+@needs_tracks
+def test_train_dr_skip_eval_rdev_writes_no_rdev_result_and_the_default_is_unchanged(
+        tmp_path, monkeypatch, capsys, float32):
+    """VG-1's pilot option (docs/prereg/vg1-value-gradient.md, Section 4.1). Off by default,
+    every R-dev circuit is evaluated as before (timed_laps once per circuit in R_DEV's order,
+    from 0.9 x its reference start speed, 10 runs), written to eval_rdev.json and printed.
+    With --skip-eval-rdev no lap is run and no R-dev result is written or printed, and the
+    training is the same bit for bit: checkpoints, metrics and config but for the flag."""
+    from apexzero.tracks.corners import R_DEV
+
+    mod = _load_train_dr(monkeypatch)
+    calls = _run_train_dr_rdev(mod, tmp_path, monkeypatch, "default", [])
+    out_default = capsys.readouterr().out
+    skipped = _run_train_dr_rdev(mod, tmp_path, monkeypatch, "skip", ["--skip-eval-rdev"])
+    out_skip = capsys.readouterr().out
+    a, b = tmp_path / "runs" / "default", tmp_path / "runs" / "skip"
+
+    assert [c[0] for c in calls] == list(R_DEV) and {c[2] for c in calls} == {10}
+    rows = json.loads((a / "eval_rdev.json").read_text())
+    assert list(rows) == list(R_DEV)
+    assert all(r == {"completion": 1.0, "median_lap_s": 80.0} for r in rows.values())
+    assert all(f'{n} {{"completion": 1.0' in out_default for n in R_DEV)
+
+    assert skipped == [] and not (b / "eval_rdev.json").exists()
+    assert sorted(p.name for p in b.iterdir()) == ["ckpt", "config.json", "metrics.csv"]
+    low = out_skip.casefold()
+    assert not any(n.casefold() in low for n in R_DEV) and "completion" not in low
+    assert "lap" not in low.replace("--skip-eval-rdev: no r-dev evaluation", "")
+
+    ca, cb = (json.loads((d / "config.json").read_text()) for d in (a, b))
+    assert ca["args"]["skip_eval_rdev"] is False and cb["args"]["skip_eval_rdev"] is True
+    for c in (ca, cb):
+        del c["args"]["name"], c["args"]["skip_eval_rdev"]
+    assert ca == cb
+    cks = [sorted((d / "ckpt").glob("*.pkl")) for d in (a, b)]
+    assert [p.name for p in cks[0]] == [p.name for p in cks[1]] and cks[0]
+    for pa, pb in zip(*cks, strict=True):
+        assert pa.read_bytes() == pb.read_bytes(), pa.name
+    ma, mb = ((d / "metrics.csv").read_text().splitlines() for d in (a, b))
+    head = ma[0].split(",")
+    keep = [i for i, k in enumerate(head) if k not in ("wall_s", "sps")]
+    assert ma[0] == mb[0] and len(ma) == len(mb) >= 2
+    for ra, rb in zip(ma[1:], mb[1:], strict=True):
+        fa, fb = ra.split(","), rb.split(",")
+        assert [fa[i] for i in keep] == [fb[i] for i in keep]
+
+
 # ------------------------------------------------------------------ scripts/vgl.py
 
 
