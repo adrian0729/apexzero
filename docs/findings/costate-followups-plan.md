@@ -1582,3 +1582,222 @@ Nothing else changes: no question, row set, statistic, expected direction or che
 before it.** No CS-7 or CS-8 number, and no network output. Since amendment 7: the code and its
 tests on synthetic data, and the training-row counts of θ × turn-direction groups in each
 cross-fit fit (strata only).
+
+### Amendment 9 (2026-10-27)
+
+**What changed.** CS-9's operational details, where Section 4's text leaves a choice, with
+CS-10 (iii), N's CS-11 and N's CS-13; the stages and pools that compute them; descriptive
+companions; one part that cannot be done as written (N's CS-13's "same cell", item 7). No
+question or expected direction changes. Three row sets the plan does not name are fixed: N's C2
+stratum (item 6), the rows K2b on N draws its keys from (item 3) and N's CS-13 pairs (item 7).
+**Why.** To fix these choices before any CS-9 number exists. **Computed or seen before it.** No
+CS-9, CS-10 (iii), N's CS-11 or N's CS-13 number, and no network output at N. Read: the frozen
+code, the layouts of the bound files, and these facts, which involve key metadata and one key's
+targets only:
+- N's keys (`states.n_refs`): 8,136 anchored finals, all at W = 400, on 60 stimuli and 30
+  geometries, every one of them among T's 48 and every stimulus among the A2 keys' 136; per agent
+  G1 701, G1s1 710, G1s2 705, G2 722, G2s1 742, G2s2 723, G3 751, G3s1 760, G3s2 759, S1 766,
+  S2 404, S3 393. The 6 K0 keys (`gates/k0.json`'s `summary.not_ok_descriptive`) are 2 of G1's,
+  2 of G2's, 1 of G3's and 1 of G1s1's.
+- N's keys sit in step 1's approach-'B' cells (132 cells). None of them is one of the A2 keys'
+  136 cells, though every N stimulus is an A2 stimulus (item 7).
+- One N key's targets (`targets.key_targets`, 1.1 s): its x_1 is approach-phase, interior and
+  pedal-switching, and the jac and cheap routes give the same λ_1 there. Nothing else of it was
+  kept.
+
+1. **Shared.**
+   - **Agents.** Step 1's 12 finals: the 9 decision networks, on which E9.1 to E9.5 are read, and
+     S1–S3, descriptive in every part (no CS-13, item 7). Each is loaded through its record pin
+     (`load_agent`): the actor through `network.agent_net` and `probes.agent_nets`, the critic
+     through `critic.trained_critic`, after `unlock` (R4).
+   - **Folds and clusters.** An N row takes its geometry's index in T (`frozen.geometries`; a
+     geometry outside T's 48 stops the item) and that geometry's outer and inner folds of
+     partition 0 (`probes.folds` on T, which must equal `frozen.fold_partition0`). `Folds.cluster`
+     is T's index, so the single-geometry rule's labels are T's (`frozen.geometries`).
+   - **Bootstraps.** A statistic is bootstrapped over the geometries present in the rows it
+     scores: the clusters re-indexed over them in T's order and `probes.cluster_counts(G)` (stream
+     costate_boot), as `probes.gain` draws them when its counts are not given. The two-level CI
+     takes the frozen `probes.pool_draws(20)`.
+   - **Weights.** Key weights renormalised on each statistic's rows (`states.stratum_weights`);
+     N has one state per key.
+   - **Targets.** Winsorised at T's frozen bounds where the frozen statistic winsorises them.
+   - **Reading the expected directions** (as amendment 1 item 5): a condition stated without a
+     count holds in at least 6 of the 9; "all 9" means all 9; point estimates unless a CI is
+     named. Every part is counted and reported.
+   - **Stages.** `cs-9 --stage build | k2b | networks | analyse` (or `all`, in that order). Each
+     stage writes its own outputs under `outputs/costate/exploratory/cs-9/`. A later stage reads
+     an earlier one's only through its stamp: the file's sha256, the item CS-9, the label
+     exploratory, not partial. Its sha256 is recorded among the later stage's inputs.
+   - **Pools.** 4 workers × 2 threads, niced by 10 (R9). The build and K2b on N are the item's
+     solves; they do not run alongside each other.
+
+2. **Building N** (`--stage build`).
+   - **Keys.** `states.n_refs()` per agent. Its lists must equal the record's `key_sets`
+     `n:<agent>`, and their files the record's `content` hashes, or the item stops. Dropped and
+     listed: the 6 K0 keys (R6), any multi-basin key, and any key whose re-polish fails
+     (`targets.RepolishFailed`) or whose row cannot be built (`ValueError`).
+   - **Per key.** `targets.key_targets` (jac route: λ_1 = γ⁻¹ Φ_x(x_1, a*_1)ᵀ lam_g′[8:16] − e_s/10
+     with the pedal fold). Then, as `inputs.key_data` does for T but at `steps=[1]`
+     (`states.key_rows`): x_1's phase from the key's landmarks and its own plan's brake onset;
+     the interior flag (k = 10, the frozen thresholds); the contact, pedal-switching and other
+     strata; λ⁻_1, π_1, σ_1, Π_1; the wall side, δ's bound, V*_1, a*_1 and a*_0. The network
+     inputs are `critic.key_inputs(x, a, [1], anchored=True)`: x_1, with x_0 and a_0 giving
+     clip(a_0) as prev_action and the accel of x_0 → x_1. `critic.obs_jacobians` is evaluated on
+     the stimulus's road (`network.road`). The cheap route's |λ_1 − λ_1^cheap| is reported,
+     descriptively.
+   - **The world.** `inputs.save_world`'s layout (the table's columns; per entry its rows,
+     `Inputs` and `ObsJac`), with one entry per stimulus. The table adds `geometry_T`, each row's
+     index in T.
+   - **Wiring.** The same code at T's steps on T's first two keys must reproduce the bound
+     world's rows (every column) and `ObsJac` to 10⁻¹² relative, or the item stops.
+   - **Pooled.** One unit per stimulus and block of at most 128 of its keys.
+   - **Descriptives.** Keys and rows per agent; rows by phase; the interior, contact and
+     pedal-switching shares; geometries per agent; the routes' gap.
+
+3. **K2b on N** (`--stage k2b`; targets only, R5).
+   - **The keys.** Drawn from every key in N's world (the 12 agents pooled). The strata are R
+     tercile × θ class of N's distinct geometries (`states.r_tercile`, `states.theta_class`,
+     stratum = 10 × tercile + class, as `stage_k2b`). Pick i = 0, 1, … takes the stratum
+     i mod (their number), in sorted order, and a key from it drawn with
+     `numpy.random.default_rng([20261025, 9, i])` (R10; the unit is the pick). A key already
+     picked is skipped, until 26 distinct keys are drawn.
+   - **Per key.** `gates.k2b_key`'s procedure on the key's N row (t = 1):
+     - reach = s_1 + d_max(vx_1) (`racing.preview_offsets`' last point) and s2 = reach + 20 m;
+     - both severities, by `gates.k2b_solve`'s amplitude continuation and re-centring;
+     - λ_1 of each re-solve by the jac route, and |Δλ_k| / SD_T on K_P (`gates.lam_sd` on T);
+     - x_1's phase.
+
+     The code generalises `k2b_key` to any rows t. With T's rows, on the first key of
+     `gates/k2b.json`, it must reproduce that key's record (reach, s2, and every severity's rows)
+     to 10⁻⁶ (SD units), or the item stops.
+   - **The rule.** `gates.k2b_rule` on the 26 records: the p90 pooled over the keys' rows in a
+     phase, the worse severity, above 0.1. A failed severity is recorded and left out, as on T. A
+     phase with no N row gets no rule of its own. N's decision exclusions are, per phase, T's
+     frozen `k2b_excluded` together with N's own (the union). E9.4 reads N's own.
+   - **Pooled.** One unit per key.
+
+4. **The networks stage** (`--stage networks`; per agent; units of about a quarter of the agent's
+   keys, whole stimuli each: 48 units).
+   - **The critic at N.**
+     - `critic.pullback` (V and heads: g, g_held, value);
+     - the 20 random-init critics' main-V pullbacks (`critic.random_critics`, seeds 0–19, the
+       agent's obs_rms and σ_R, as `critic_of`);
+     - `inputs.width_derivative` (σ_R dV_c/dΔ).
+   - **CS-10 (iii).** `own.own_costate` from x_1, as `own_of` restarts T's interior states:
+     - the start: prev_action clip(a_0), the accel of x_0 → x_1, μ = 1, s_stop = +∞;
+     - count H = W − 1 = 399, with `maps0` = the N row's (M_x, M_a);
+     - recorded: λ^own_1 (on the manifold), λ^own_held,1 and whether the run is valid on all its
+       steps (no termination or strip end).
+   - **N's CS-11.** Amendment 3 item 3's computation from the same start:
+     - `own.own_return` over 800 steps gives H; a run that terminates is dropped;
+     - otherwise `width_vjp` at counts min(W − 1, H) and H, with B at both counts;
+     - the kept rules as on D, with W − 1 in place of W;
+     - the J check on every key, and the JVP check (10⁻⁶) and the descriptive Richardson
+       differences on each unit's first kept key;
+     - the units stop at once on a failed check (amendment 5). No width field is stored.
+   - **Wiring in the parent, per agent, before its units** (each stops the item). On T's first
+     key's rows, from the bound arrays:
+     - the pullback (main V, 8 components) against `post/critic`'s g, to `PULLBACK_TOL` (10⁻¹⁰)
+       of each row's largest |g|;
+     - the random critic of seed 0 against `random_g[0]`, to the same;
+     - dV_dwin against the stored one, to `DV_TOL` (10⁻⁹) of the network's largest |dV_dwin| on D;
+     - for the 9, λ^own at T's first interior restart row against `post/own`'s `lam_own`, to
+       `own.RESTART_RTOL` (10⁻⁹) of the row's largest |λ|.
+
+5. **The analyse stage** (`--stage analyse`; one unit per agent, 12 units).
+   - **Per agent.** Its flags under its own obs_rms on N (`inputs.flags`) and its decision mask:
+     `states.decision_mask` with s's observability and item 3's union.
+   - **The actor at N.** z is clip(z, ±10). The trained actor's h3 and m (`probes.hidden` of
+     `probes.agent_nets`), and the 20 pool actors' (`probes.random_actor(cfg, s)`, s = 0–19), on
+     N's z. Wiring for the 9, on T's first 64 rows: the trained actor's h3 equals the bound
+     `actor_h3`, and the pool actor of seed 0 the bound `random0_h3`, to 10⁻¹².
+   - **C1 on N** (step 2).
+     - Rows: the interior rows of the approach and exit phases, which are also the
+       calibration's fit rows.
+     - `analysis.c1` with the winsorised K_P targets, the frozen calibration (predictions clipped
+       to the bounds), the decision mask and one null: the 20 random critics (the best-of-20
+       floor).
+     - Every slope CI, and the single-geometry rule (`logo='rule'`).
+     - Its band and decision are descriptions. With one null the decision rule is weaker than
+       the confirmatory one.
+     - T's confirmatory C1 is quoted beside it.
+   - **C2 on N** (step 3).
+     - λ_res: `states.cross_fit` on the agent's N table (D₁, the winsorised K_P targets, N's
+       outer folds, the agent's N key weights, k = 8). It reads targets only, so every N row of
+       the agent enters.
+     - Its residual shares (`states.decoy_shares`) and the power floor they imply are reported;
+       the statistic uses the frozen floor (s, ξ).
+     - The stratum the probes are fitted on: the agent's interior rows of the approach and exit
+       phases, as in CS-8 (c). Each component is scored on its decision rows.
+     - `analysis.c2_network` as `probes_of`'s primary: base [z, m], the 20 pool actors, the
+       two-level CI and the single-geometry rule.
+   - **C2-sw on N** (step 4).
+     - Rows: the agent's pedal-switching rows of the approach and exit phases, as in CS-8.
+     - σ^ped winsorised at its frozen bounds.
+     - `analysis.c2_sw_network` as `probes_of`'s primary.
+   - **CS-10 (iii), C1-own on N** (step 5).
+     - Rows: the interior rows of the approach and exit phases whose run is valid, with finite
+       λ^own and g.
+     - `analysis.c1_own` as the confirmatory C1-own calls it (raw λ^own, no bounds), with
+       amendment 3 item 2's two companions (winsorised; accel-held).
+     - Status: K3b's trained analogue from `post/own/<f>.k3b.json`, value accuracy's pass from
+       `decisions.json`; S1–S3 have neither.
+     - The confirmatory C1-own is quoted beside it.
+   - **N's CS-11** (step 6).
+     - Rows: the interior rows of the approach phase.
+     - The common, kept-at-H and kept-at-(W − 1) sets, with amendment 3 item 3's three
+       comparisons (`agreement`, Π^in's frozen bounds), medians and zero shares.
+     - E11.1 to E11.3 are read on N's common rows, as descriptions.
+
+6. **N's C2 stratum** is the one named in item 5: the interior rows of the approach and exit
+   phases. The confirmatory C2 fitted on all of T's interior rows. Under R5 an exploratory probe
+   is fitted on approach and exit rows only.
+
+7. **N's CS-13** (step 7; the 9 decision networks).
+   - **Cannot be done as written.** N's keys sit in step 1's approach-'B' cells, none of which is
+     an A2 key's cell, so no T plan state shares a cell with an N state. "The same cell" is read
+     as the same stimulus: the same road, and so the same geometry, width and turn direction.
+   - **T's side.** T's interior rows of the approach and exit phases (1,653), with T's frozen
+     λ_res (`checked_lam_res`) and the bound activations (z clipped, `actor_h3`, m).
+   - **N's side.** The agent's interior rows of the approach and exit phases, with N's z, h3 and
+     m (item 5).
+   - **N's λ_res.** f̂_D at each N row comes from T's rows, by T's cross-fit scheme: for held-out
+     fold f, T's other five folds; for training fold g, T's folds other than f and g. So an N row
+     and a T row of one fold are residualised by the same fit. Wiring: the scheme on T's own rows
+     reproduces the frozen by-fold residuals to 10⁻¹², or the item stops.
+   - **The probes.**
+     - `probes.ridge_cv` with base [z, m] and full [z, m, h3], on the union of T's and N's rows.
+     - T's rows carry T's key weights renormalised on T's stratum, N's rows weight 0, and both
+       take T's folds. So the fit is T's, and each N row is predicted out of fold by the fit
+       that held its geometry's fold out.
+     - Wiring: T's predictions equal a fit on T's rows alone to 10⁻⁹ of their largest |value|,
+       or the item stops.
+   - **Pairs.** (N row, T row) of the same stimulus, with |Δ(s − s_apex)| < 2.5 m and |Δvx| <
+     1 m/s. Per component (s, ξ), only pairs whose two rows are both in their decision masks (N's
+     and the network's T mask). A component with fewer than 3 pairs is not scored.
+   - **The statistic.**
+     - For base and full: the weighted Spearman (`analysis.spearman_boot`) of the predicted
+       Δλ_res,k against the true Δλ_res,k (N minus T, each row's own-fold residual). The pair
+       weight is w_N × w_T, as `analysis.c2_pairs`.
+     - The difference full − base, on the same draws, with its CI.
+     - The bootstrap is over the pairs' geometries.
+   - **Readings.** E13.1 and E13.2, stated for T's pairs, are read on N's pairs as descriptions.
+
+8. **Readings of E9.**
+   - E9.1: the C1 decision is 'refute' (CI upper end < 0.2) in all 9.
+   - E9.2: C2 is 'inconclusive' or 'refute' in all 9; a 'not testable' network is named and does
+     not count toward the 9.
+   - E9.3: C2-sw is 'refute' in at least 6 of 9.
+   - E9.4: N's own rule excludes n and vx on the approach phase.
+   - E9.5: C1-own on N is 'refute' in at least 6 of 9.
+
+   Decisions are the ruled ones (after the single-geometry rule), with the unruled ones beside.
+
+9. **Outputs.** In `outputs/costate/exploratory/cs-9/`:
+   - `build.json` and `n_world.npz` (item 2);
+   - `k2b.json` (item 3);
+   - `networks.json` and `networks.npz` (item 4);
+   - `summary.json` (C1, C2, C2-sw, K2b on N, the build, E9), `cs10-iii.json`, `cs11-n.json`,
+     `cs13-n.json` and `rows.npz` (item 5's rows, masks and predictions).
+
+   Copies of the JSON summaries go under `docs/findings/costate-followups/`.
