@@ -49,9 +49,10 @@ Item 4 of Section 9 remains for the lead. Item 6, the build, is done (27 Oct 202
 - **One commit:**
   - all 120 runs train from the tagged commit, checked out (detached) on every box before launch;
   - each box's manifest (`scripts/round_manifest.py write`, which the queue runs when it ends) records HEAD, whether the tracked tree was clean and the tags at HEAD. `round_manifest.py check` and `scripts/gw3_analysis.py manifest` refuse a box whose HEAD is not the tag's commit or whose tree was not clean;
-  - with the width and VG options off, the training path is bit-identical to H4R's. Since H4R's `612ed7a` it has been touched by GW-2's opt-in commits (`bdfd442`, `1bd85ec`, and `3323a0e`'s batch size for (2b) only) and by VG-0's (`43d68fe`: `ppo.make_rollout`, `make_learner` and `make_train`, `adapters._bank_step`'s `info['final_state']`, `checkpoints.make_checkpoint_fn` and `train_dr.py`). Each option defaults off. The tests that hold the default path:
+  - with the width and VG options off, the training path is bit-identical to H4R's. Since H4R's `612ed7a` it has been touched by GW-2's opt-in commits (`bdfd442`, `1bd85ec`, and `3323a0e`'s batch size for (2b) only), by VG-0's (`43d68fe`: `ppo.make_rollout`, `make_learner` and `make_train`, `adapters._bank_step`'s `info['final_state']`, `checkpoints.make_checkpoint_fn` and `train_dr.py`) and by VG-1's `f5e300b` (`train_dr.py`'s `--skip-eval-rdev`). Each option defaults off. The tests that hold the default path:
     - generator and bank: `tests/test_stat_widths.py` (`test_default_is_bit_identical`, `test_default_bank_is_bit_identical`, `test_train_dr_default_path_is_unchanged`) and `tests/test_real_widths.py::test_default_is_unchanged`;
-    - PPO and env: `tests/test_value_gradient.py` (`test_default_racing_update_reproduces_the_pre_term_values`, `test_default_rollout_records_no_capture_and_defaults_are_off`, `test_train_dr_default_path_passes_no_term`) and `tests/test_ppo.py::test_make_train_reproduces_the_pre_split_update`.
+    - PPO and env: `tests/test_value_gradient.py` (`test_default_racing_update_reproduces_the_pre_term_values`, `test_default_rollout_records_no_capture_and_defaults_are_off`, `test_train_dr_default_path_passes_no_term`) and `tests/test_ppo.py::test_make_train_reproduces_the_pre_split_update`;
+    - the end-of-run evaluation: `tests/test_value_gradient.py::test_train_dr_skip_eval_rdev_writes_no_rdev_result_and_the_default_is_unchanged` (`f5e300b`).
     - The lead re-lists the commits at the tag. Any later option must also default off and come with such a test.
 - **One round of identical A6000s** (the user allowed more than one box on 27 Oct 2026, under the Phase 3 approval of the same day; Section 7):
   - **the plan:** one `massedcompute_A6000_plusx4` box (4 × NVIDIA RTX A6000 48 GB, 54 vCPU), each run on one GPU, 4 lanes per GPU, 16 runs at a time;
@@ -60,20 +61,20 @@ Item 4 of Section 9 remains for the lead. Item 6, the build, is done (27 Oct 202
   - Set up with `scripts/gpu_setup.sh`.
   - `scripts/gpu_sync.sh` pushes R-dev data only (centrelines and `outputs/ocp/<R-dev>.pkl` for the gap). No R_TEST circuit leaves the Mac.
 - **Queue:** `scripts/gpu_round.sh gw3 scripts/gw3_runs.py`, the shared round queue (`46cdd81`), with GW-3's run list in `scripts/gw3_runs.py`.
-  - **4 lanes per GPU**, XLA memory fraction 0.22 each (round(0.9 / 4, 2), as in H4R). Job j of a box's list goes to lane j mod L, with L = 4 × the box's GPUs; lane l runs on GPU l mod GPUs, and each lane runs its jobs in order.
+  - **4 lanes per GPU**, XLA memory fraction 0.23 each (Python's round(0.9 / 4, 2), as in H4R's queue; corrected 27 Oct 2026 from 0.22). Job j of a box's list goes to lane j mod L, with L = 4 × the box's GPUs; lane l runs on GPU l mod GPUs, and each lane runs its jobs in order.
   - **Job order:** seed-major, 12 jobs per seed and 120 in all. For seed index i = s − 20 (0 to 9), the cell list below is rotated left by i:
     `v1-base, v3-base, v1-cl-f1, v3-cl-f1, v1-sl-f1, v3-sl-f1, v1-cl-f2, v3-cl-f2, v1-sl-f2, v3-sl-f2, v1-sa, v3-sa`.
   - **Balance** (corrected 27 Oct 2026 for the boxes; `tests/test_gw3_analysis.py` checks each case):
     - one GPU (all 120 runs on one single-GPU box): lane k runs jobs k, k + 4, k + 8, …, 30 jobs per lane, and meets every cell 2 or 3 times;
     - the x4 box (16 lanes): each GPU runs 30 jobs on its 4 lanes, every cell 2 or 3 times. A lane runs 7 or 8 jobs, each a different cell, so a lane does not meet every cell;
     - two GPUs (8 lanes): each GPU runs every cell 5 times; a lane runs 15 jobs over 11 of the 12 cells;
-    - K single boxes: each box runs 10/K seeds, every cell 10/K times;
+    - K single boxes: each box runs 10/K seeds, every cell 10/K times. A lane runs 30/K jobs: with K = 2, 15 over the 6 cells of one variant; with K = 5, 6 jobs, each a different cell, 3 per variant; with K = 10, 3 jobs of one variant. With K = 2 or 10, two of a box's 4 lanes run only v1 and two only v3;
     - in every case, each wave of L consecutive jobs (the runs that start together) holds both variants and at least 2 arms.
   - **Retry:** a run that fails is re-run once from scratch with the same arguments, as H4R's queue does (its log kept as `.log.1`). It is **missing** only if it fails twice.
 - **Manifest:**
   - On each box the queue writes `runs/gw3-manifest-<i>of<K>.json` when it ends: the box's HEAD, tree and tags, GPUs, type, lanes and shard, and per run its status (done, retried or failed), start and end times, lane, GPU and config sha256. The lead then writes the box's sha256 list, `runs/gw3-sums-<i>of<K>.txt`, of every run's `config.json`, `eval_rdev.json` and final checkpoint (Section 8).
   - After pull-back, `round_manifest.py check --tag gw3-prereg-v1` checks the boxes' manifests and every run's recorded arguments against its command. Then `scripts/gw3_analysis.py manifest` writes `outputs/gw3/manifest.json`, which is committed. It holds every run's config (sha256 and arguments), timesteps, and the sha256 of its final checkpoint and `eval_rdev.json`, each checked against the box's list; each box's manifest, queue log, status file and list (sha256), type, GPUs, lanes and shard; the retry record; the check's report; and the launch commit.
-  - It refuses a run whose config differs from its cell's flags or from `train_dr.py`'s defaults at the tag. It also refuses a run missing for any reason other than failing twice, unless the lead names it with `--accept-missing RUN=REASON`, which the manifest records and the findings log as a deviation.
+  - It refuses a run whose config differs from its cell's flags, from `train_dr.py`'s defaults at the tag, or from H4R's PPO and env blocks. It also refuses a run missing for any reason other than failing twice, unless the lead names it with `--accept-missing RUN=REASON`, which the manifest records and the findings log as a deviation.
   - The analysis checks the manifest before reading anything.
 
 ## 3. Outcomes and the analysis (fixed now)

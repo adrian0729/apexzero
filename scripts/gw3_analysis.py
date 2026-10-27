@@ -10,7 +10,8 @@ PermissionError unless the annotated tag gw3-prereg-v1 is on origin (both refs n
 ``git ls-remote``), the local tag is the same tag object, HEAD descends from its commit, and the
 files this script reads (``GATED``: this script, the run list, the draft, (2a)'s width report,
 H4R's frozen harness with its imports, and tracks/corners.py; untracked files included) are the
-tagged ones in the working tree. scripts/round_manifest.py, the shared layer, is not gated, as
+tagged ones in the working tree, byte for byte (so a file marked assume-unchanged or
+skip-worktree is compared too). scripts/round_manifest.py, the shared layer, is not gated, as
 later rounds may fix it: the manifest records its sha256 and whether it is the tag's.
 
 **manifest** (Section 8, step 5: on the Mac, once every box's runs are pulled back with
@@ -20,14 +21,14 @@ report only when every problem it lists names a run that failed twice (Section 2
 to be missing) or a run named with ``--accept-missing RUN=REASON`` (missing for any other
 reason: a deviation, recorded with its reason). For every other run it records the box's
 status, lane, GPU and times and the retry record; its config.json (sha256 and args, which must
-be the cell's: Section 2's flags and train_dr.py's defaults at the tag, H4R's PPO block, no VG
-block); its eval_rdev.json (sha256, completion per R-dev circuit, circuits completed, a finite
-gap on every completed circuit); and its final checkpoint (the last of 16 in ckpt/,
-000199884800.pkl, holding 199,884,800 timesteps). Each of the three files' sha256 must equal the
-box's list. Per box it records the manifest, queue log, status file and sha256 list (each
-sha256), the box type, GPU model and count, lanes and shard, and the launch commit, which must be
-the tag's. It writes outputs/gw3/manifest.json (refused once a manifest was committed); commit
-it with git add -f.
+be the cell's: Section 2's flags and train_dr.py's defaults at the tag, H4R's PPO and env
+blocks, no VG block); its eval_rdev.json (sha256, completion per R-dev circuit, circuits
+completed, a finite gap on every completed circuit); and its final checkpoint (the last of 16
+in ckpt/, 000199884800.pkl, holding 199,884,800 timesteps). Each of the three files' sha256
+must equal the box's list. Per box it records the manifest, queue log, status file and sha256
+list (each sha256), the box type, GPU model and count, lanes and shard, and the launch commit,
+which must be the tag's. It writes outputs/gw3/manifest.json (refused once a manifest was
+committed); commit it with git add -f.
 
 **analyse** (Section 8, step 6: once). It refuses if outputs/gw3/analysis.json exists or was
 ever committed, and unless the manifest is committed at HEAD and unchanged on disk, of this tag
@@ -130,6 +131,10 @@ PPO = {"num_envs": 2048, "num_steps": 64, "total_timesteps": 200_000_000, "updat
        "normalize_reward": True, "log_std_init": -0.5, "network": "mlp", "actor_width": 256,
        "critic_width": 256, "mlp_layers": 3, "activation": "tanh", "obs_noise": 0.0,
        "ensemble_heads": 5}
+# config.json's "env" block: racing.EnvParams()'s defaults, H4R's (tests check it against them)
+ENV = {"dt": 0.05, "substeps": 10, "window_steps": 1200, "edge_margin": 1.0, "slow_speed": 2.0,
+       "slow_time": 2.0, "action_cost": 0.02, "progress_scale": 10.0, "obs_noise": 0.0,
+       "strip_tail": 520.0}
 
 # Section 3
 COMPLETION_MIN = h4r.COMPLETION_MIN                   # completed when completion > 0.5
@@ -215,7 +220,7 @@ def sha256_file(path: Path) -> str:
 def tag_gate(paths: tuple[str, ...] = GATED) -> dict:
     """PermissionError unless the annotated tag gw3-prereg-v1 is on origin, the local tag is
     the same tag object, HEAD descends from its commit, and ``paths`` (untracked files
-    included) in the working tree are the tagged ones, each present at the tag.
+    included) in the working tree are the tagged ones byte for byte, each present at the tag.
 
     The two refs are named in full: ``git ls-remote --tags origin gw3-prereg-v1`` prints only
     the tag line, never the peeled ``^{}`` one, and a ``gw3-prereg-v1*`` glob also matches
@@ -255,7 +260,19 @@ def tag_gate(paths: tuple[str, ...] = GATED) -> dict:
     untracked = git_run("ls-files", "--others", "--exclude-standard", "--", *paths)
     if untracked.returncode != 0 or untracked.stdout.strip():
         raise PermissionError(f"untracked files under the tagged paths: {untracked.stdout!r}")
+    # git diff does not look at a file marked assume-unchanged or skip-worktree: the bytes too
+    unequal = [p for p in paths if not (ROOT / p).is_file()
+               or sha256_file(ROOT / p) != sha256_bytes(git_blob(peeled, p) or b"")]
+    if unequal:
+        raise PermissionError(f"these differ from {TAG}'s on disk: {', '.join(unequal)}")
     return {"tag": TAG, "tag_object": obj, "commit": peeled, "head": git("rev-parse", "HEAD")}
+
+
+def git_blob(rev: str, rel: str) -> bytes | None:
+    """The bytes of ``rel`` in commit ``rev`` (None when it has no such file)."""
+    out = subprocess.run(["git", "cat-file", "blob", f"{rev}:{rel}"], cwd=ROOT,
+                         capture_output=True, check=False)
+    return out.stdout if out.returncode == 0 else None
 
 
 def ever_committed(rel: str) -> bool:
@@ -366,13 +383,14 @@ def expected_args(variant: str, arm: str, seed: int, defaults: dict) -> dict:
 
 def config_problems(cfg: dict, variant: str, arm: str, seed: int, defaults: dict) -> list[str]:
     """How a run's config.json departs from its cell (Section 2): its args (``expected_args``),
-    its PPO block (``PPO``), no VG block (train_dr.py writes one only with --vg-coef > 0) and no
-    other block than ppo, args and env; [] when it matches."""
+    its PPO block (``PPO``) and env block (``ENV``), H4R's, no VG block (train_dr.py writes one
+    only with --vg-coef > 0) and no other block than ppo, args and env; [] when it matches."""
     out = []
     if set(cfg) != {"ppo", "args", "env"}:
         out.append(f"config blocks {sorted(cfg)}, not ['args', 'env', 'ppo']")
     out += h4r._diff("args", cfg.get("args") or {}, expected_args(variant, arm, seed, defaults))
     out += h4r._diff("ppo", cfg.get("ppo") or {}, PPO)
+    out += h4r._diff("env", cfg.get("env") or {}, ENV)
     return out
 
 
@@ -602,12 +620,6 @@ def build_manifest(gate: dict, accept: dict[str, str] | None = None, check=None,
         else:
             tolerated.append(p)
     present = [r["name"] for r in runs if r["name"] not in missing | incomplete]
-    env_blocks = set()      # each run's PPO block is checked against PPO; the env blocks agree
-    for name in present:
-        cfg = json.loads((ROOT / entries[name]["config_path"]).read_text())
-        env_blocks.add(json.dumps(cfg.get("env"), sort_keys=True))
-    if len(env_blocks) > 1:
-        problems.append(f"the runs' env blocks differ ({len(env_blocks)} distinct)")
     man = {"round": ROUND, "draft": DRAFT_REL, "tag": {k: gate[k] for k in
                                                        ("tag", "tag_object", "commit")},
            "launch_commit": sorted({b["head"] for b in boxes if b["head"]}),
@@ -616,8 +628,7 @@ def build_manifest(gate: dict, accept: dict[str, str] | None = None, check=None,
            "check": {"script": CHECK_REL, "returncode": rc, "report": report,
                      "tolerated": tolerated},
            "boxes": boxes, "final_timesteps": FINAL_TIMESTEPS, "final_checkpoint": FINAL_CKPT,
-           "trainer_defaults": defaults, "ppo": PPO,
-           "env": json.loads(next(iter(env_blocks))) if len(env_blocks) == 1 else None,
+           "trainer_defaults": defaults, "ppo": PPO, "env": ENV,
            "runs": entries, "present": present, "missing": missing, "failed_twice": failed,
            "accepted_missing": {n: accept[n] for n in accept if n in missing},
            "retries": {n: {"first_attempt_log": entries[n]["first_attempt_log"]}
@@ -1091,6 +1102,10 @@ def load_networks(man: dict, ocp: dict[str, float]) -> tuple[dict, dict[str, str
             raise CheckFailed(f"{name}: its evaluation is not the manifest's ({lacks})")
         for c in R_DEV:
             row = ev[c]
+            if "ocp_lap_s" not in row:      # train_dr.py's row without outputs/ocp/<c>.pkl
+                if float(row["completion"]) > COMPLETION_MIN:
+                    raise CheckFailed(f"{name} {c}: completed, but no s-OCP lap")
+                continue
             if float(row["ocp_lap_s"]) != ocp[c]:
                 raise CheckFailed(f"{name} {c}: ocp_lap_s {row['ocp_lap_s']} is not "
                                   f"outputs/ocp's {ocp[c]}")

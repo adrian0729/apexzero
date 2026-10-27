@@ -126,6 +126,8 @@ def test_lane_balance_is_as_section_2_states(rl, mods):
     single-GPU boxes taking whole seeds (K = 2, 5, 10)."""
     rm = mods["round_manifest"]
     runs = rl.runs()
+    # gpu_round.sh's XLA_PYTHON_CLIENT_MEM_FRACTION at 4 lanes per GPU, as H4R's queue set it
+    assert f"XLA memory fraction {round(0.9 / 4, 2)} each" in section(2)
 
     def cell(r):
         return f"{r['variant']}-{r['arm']}"
@@ -154,6 +156,15 @@ def test_lane_balance_is_as_section_2_states(rl, mods):
             if gpus == 4:
                 assert sorted(len(x) for x in per_lane.values()) == [7] * 8 + [8] * 8
                 assert all(len(set(x)) == len(x) for x in per_lane.values())
+            if k > 1:
+                variants = [Counter(c[:2] for c in x) for x in per_lane.values()]
+                assert all(len(x) == 30 // k for x in per_lane.values())
+                assert [len(set(x)) for x in per_lane.values()] == [{2: 6, 5: 6, 10: 3}[k]] * 4
+                if k == 5:
+                    assert all(v == {"v1": 3, "v3": 3} for v in variants)
+                else:
+                    assert all(len(v) == 1 for v in variants)
+                    assert Counter(next(iter(v)) for v in variants) == {"v1": 2, "v3": 2}
             for w in range(0, len(plan), lanes):
                 wave = [r for _, _, _, r in plan[w:w + lanes]]
                 assert {r["variant"] for r in wave} == {"v1", "v3"}
@@ -182,15 +193,17 @@ def test_expected_args_are_the_trainers_parse_of_each_cmd(ga, rl, mods):
     assert (ValueGradient().lam, ValueGradient().winsor) == (ga.VG_LAMBDA, ga.VG_WINSOR)
 
 
-def test_ppo_block_is_train_drs_default(ga):
+def test_ppo_and_env_blocks_are_train_drs_defaults(ga, mods):
     from dataclasses import asdict
 
     from apexzero.agents.ppo import PPOConfig
+    from apexzero.env import racing
 
     cfg = PPOConfig(num_envs=2048, num_steps=64, total_timesteps=int(200e6), network="mlp",
                     gamma=0.995, gae_lambda=0.95, actor_width=256, critic_width=256,
                     mlp_layers=3, activation="tanh", ensemble_heads=5)
     assert asdict(cfg) == ga.PPO
+    assert racing.EnvParams()._asdict() == ga.ENV == mods["h4r"].expected_env()
     assert ga.FINAL_TIMESTEPS == 199_884_800 and ga.FINAL_CKPT == "000199884800.pkl"
 
 
@@ -200,15 +213,18 @@ def defaults(ga):
 
 def test_config_problems_name_a_wrong_flag(ga):
     d = defaults(ga)
-    cfg = {"ppo": dict(ga.PPO), "args": ga.expected_args("v3", "sl-f2", 24, d), "env": {}}
+    cfg = {"ppo": dict(ga.PPO), "args": ga.expected_args("v3", "sl-f2", 24, d),
+           "env": dict(ga.ENV)}
     assert ga.config_problems(cfg, "v3", "sl-f2", 24, d) == []
     bad = json.loads(json.dumps(cfg))
     bad["args"]["reexpress"] = True
     bad["args"]["stat_widths_from"] = ",".join(R_DEV)
     bad["vg"] = {"coef": 0.1}
+    bad["env"]["action_cost"] = 0.01
     probs = ga.config_problems(bad, "v3", "sl-f2", 24, d)
     assert any("reexpress" in p for p in probs) and any("stat_widths_from" in p for p in probs)
     assert any("config blocks" in p for p in probs)
+    assert "env.action_cost = 0.01, want 0.02" in probs
     assert ga.config_problems(cfg, "v1", "sl-f2", 24, d)      # v3's tilt is not v1's
     extra = json.loads(json.dumps(cfg))
     extra["args"]["an_option_added_later"] = False                # not in the tag's trainer
@@ -686,6 +702,22 @@ def test_tag_gate_passes_on_the_tag_and_refuses_a_changed_file(ga, tmp_path, mon
 
 
 @needs_git
+@pytest.mark.parametrize("flag", ["--assume-unchanged", "--skip-worktree"])
+def test_tag_gate_refuses_an_edit_git_diff_does_not_show(ga, tmp_path, monkeypatch, flag):
+    """git diff skips a file marked assume-unchanged or skip-worktree; the gate compares the
+    bytes on disk with the tag's."""
+    repo = Scratch(tmp_path, monkeypatch, ga)
+    repo.tag()
+    repo.git("update-index", flag, "scripts/gw3_analysis.py")
+    script = repo.clone / "scripts" / "gw3_analysis.py"
+    script.write_text(script.read_text().replace("ALPHA = Fraction(5, 100)",
+                                                 "ALPHA = Fraction(10, 100)"))
+    assert repo.git("diff", "--name-only", "gw3-prereg-v1") == ""
+    with pytest.raises(PermissionError, match="on disk: scripts/gw3_analysis.py"):
+        ga.tag_gate()
+
+
+@needs_git
 def test_tag_gate_refuses_a_local_tag_that_is_not_origins(ga, tmp_path, monkeypatch):
     repo = Scratch(tmp_path, monkeypatch, ga)
     repo.tag()
@@ -738,7 +770,7 @@ def plant_runs(ga, rl, clone: Path, nets: dict, status: dict | None = None,
         d = runs_dir / name
         d.mkdir()
         cfg = {"ppo": ga.PPO, "args": ga.expected_args(r["variant"], r["arm"], r["seed"], d_args),
-               "env": {"dt": 0.01, "grip": 1.0}}
+               "env": ga.ENV}
         (d / "config.json").write_text(json.dumps(cfg, indent=1))
         (runs_dir / f"{name}.log").write_text("trained\n")
         if st == "retried":
@@ -829,6 +861,34 @@ def test_manifest_and_analysis_end_to_end(ga, rl, scratch):
         ga.main(["analyse"])
     with pytest.raises(ga.CheckFailed, match="not rebuilt"):
         ga.main(["manifest"])
+
+
+def test_load_networks_reads_rows_without_an_s_ocp_lap(ga, tmp_path, monkeypatch):
+    """train_dr.py writes no ocp_lap_s or gap for a circuit without outputs/ocp/<c>.pkl on the
+    box: such a row is read when the circuit is not completed, and refused when it is."""
+    monkeypatch.setattr(ga, "ROOT", tmp_path)
+    name = "gw3-v1-base-s20"
+
+    def manifest(done: set) -> dict:
+        ev = {}
+        for c in R_DEV:
+            lap = 1.08 * OCP[c] if c in done else NAN
+            ev[c] = {"completion": 0.9 if c in done else 0.2, "median_lap_s": lap}
+            if c != "Zandvoort":
+                ev[c].update(ocp_lap_s=OCP[c], gap=lap / OCP[c] - 1.0)
+        raw = json.dumps(ev).encode()
+        (tmp_path / "runs" / name).mkdir(parents=True, exist_ok=True)
+        (tmp_path / "runs" / name / "eval_rdev.json").write_bytes(raw)
+        return {"present": [name], "runs": {name: {
+            "variant": "v1", "arm": "base", "seed": 20, "eval_path": f"runs/{name}/eval_rdev.json",
+            "eval_sha256": hashlib.sha256(raw).hexdigest(),
+            "completion": ga.eval_summary(ev)[0]["completion"]}}}
+
+    nets, _ = ga.load_networks(manifest({"Sepang"}), OCP)
+    assert ga.count(nets[name], R_DEV) == 1
+    assert ga.gaps(nets[name]) == {"Sepang": pytest.approx(8.0)}
+    with pytest.raises(ga.CheckFailed):
+        ga.load_networks(manifest({"Sepang", "Zandvoort"}), OCP)
 
 
 @needs_git
