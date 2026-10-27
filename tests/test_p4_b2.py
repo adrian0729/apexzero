@@ -682,6 +682,76 @@ def test_tracked_clean_sees_ignored_files_under_pre(b2, tmp_path, monkeypatch):
     assert b2.tracked_clean(["scripts/missing.py"]) == ["scripts/missing.py: not tracked"]
 
 
+def _add_buffers(repo, b2, names=("S4", "S5")) -> dict[str, Path]:
+    """Buffers on disk (ignored, never added) and a force-added buffers.json that records each
+    one's sha256, as the buffers stage writes them; the record is rewritten and both are
+    committed, so a tag on HEAD is on the record's commit."""
+    bdir = repo.clone / "outputs" / "p4b2" / "pre" / "buffers"
+    bdir.mkdir(parents=True)
+    files, recs = {}, {}
+    for n in names:
+        f = bdir / f"knn_{n}.npz"
+        f.write_bytes(f"buffer {n}".encode())
+        files[n] = f
+        recs[n] = {"path": f"{b2.PRE_REL}/buffers/knn_{n}.npz",
+                   "sha256": b2.sha256_bytes(f.read_bytes())}
+    (bdir / "buffers.json").write_text(json.dumps({"buffers": recs}))
+    (repo.clone / b2.RECORD_REL).write_text('{"buffers": true}\n')
+    repo.git("add", "-f", f"{b2.PRE_REL}/buffers/buffers.json")
+    repo.git("add", b2.RECORD_REL)
+    repo.git("commit", "-qm", "buffers.json and the record")
+    repo.git("push", "-q", "origin", "HEAD:refs/heads/main")
+    return files
+
+
+@needs_git
+def test_untracked_buffers_are_accepted_by_their_sha256(b2, tmp_path, monkeypatch):
+    """Decided 27 Oct 2026: the d_OOD buffers are not committed; the record binds each by
+    sha256. The small files under pre/ must still be tracked, and any other file is refused."""
+    repo = ScratchRepo(tmp_path, monkeypatch, b2)
+    files = _add_buffers(repo, b2)
+    assert repo.git("ls-files", "--", f"{b2.PRE_REL}/buffers") == \
+        f"{b2.PRE_REL}/buffers/buffers.json"                  # the buffers are not tracked
+    assert b2.recorded_buffers() == {f"{b2.PRE_REL}/buffers/knn_{n}.npz":
+                                     b2.sha256_file(f) for n, f in files.items()}
+    assert b2.buffer_problems() == []
+    assert b2.tracked_clean(["scripts/p4_b2.py", b2.PRE_REL]) == []
+    pre = repo.clone / "outputs" / "p4b2" / "pre"
+    (pre / "extra.json").write_text("{}")                      # a small file must be tracked
+    assert any("files not added" in p for p in b2.tracked_clean([b2.PRE_REL]))
+    (pre / "extra.json").unlink()
+    (pre / "buffers" / "knn_S9.npz").write_bytes(b"x")          # a buffer buffers.json omits
+    assert any("files not added" in p for p in b2.tracked_clean([b2.PRE_REL]))
+
+
+@needs_git
+def test_buffer_with_other_bytes_or_missing_is_refused(b2, tmp_path, monkeypatch):
+    repo = ScratchRepo(tmp_path, monkeypatch, b2)
+    files = _add_buffers(repo, b2)
+    files["S5"].write_bytes(b"buffer S5, changed")
+    probs = b2.tracked_clean([b2.PRE_REL])
+    assert len(probs) == 1 and "knn_S5.npz" in probs[0] and "sha256 is not the recorded" in probs[0]
+    files["S4"].unlink()
+    assert any("knn_S4.npz: missing" in p for p in b2.buffer_problems())
+
+
+@needs_git
+def test_tag_gate_allows_the_recorded_buffers_only(b2, tmp_path, monkeypatch):
+    repo = ScratchRepo(tmp_path, monkeypatch, b2)
+    files = _add_buffers(repo, b2)
+    repo.tag()
+    assert b2.tag_gate()["commit"] == repo.git("rev-parse", "HEAD")
+    pre_buffers = repo.clone / "outputs" / "p4b2" / "pre" / "buffers"
+    (pre_buffers / "knn_S9.npz").write_bytes(b"x")
+    with pytest.raises(PermissionError, match="untracked files"):
+        b2.tag_gate()
+    (pre_buffers / "knn_S9.npz").unlink()
+    assert b2.tag_gate()
+    files["S4"].write_bytes(b"not the recorded bytes")
+    with pytest.raises(PermissionError, match="not the recorded ones"):
+        b2.tag_gate()
+
+
 # ------------------------------------------------------------------------- rehearsals
 
 

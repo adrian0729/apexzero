@@ -1,10 +1,12 @@
 # P4, option B2: five fresh Hockenheim specialists (pre-registration, DRAFT)
 
 **Status.** DRAFT, 26 Oct 2026, for review. Nothing here is tagged. On 27 Oct 2026 the user
-accepted the draft's default for each of its five choices (Section 11) and approved its box time
-(Section 8). No specialist below has been trained, and nothing in this document has been computed
+accepted the draft's default for each of its five choices (Section 11), approved its box time
+(Section 8), and decided two more points: the queue's immediate retry in the same lane (Section
+11, item 6) and that the d_OOD buffers are bound by sha256, not committed (Section 11, item 7). No specialist below has been trained, and nothing in this document has been computed
 on one. After review the lead commits the final text, the five runs are trained, their manifest,
-d_OOD buffers and start states are built and committed, and the tag `p4-b2-prereg-v1` is placed
+d_OOD buffers and start states are built (the start states committed, the buffers bound by
+sha256 and not committed), and the tag `p4-b2-prereg-v1` is placed
 before any of them sees a protocol stimulus (Section 8). Only Hockenheim, an R-dev circuit, is
 used. R_TEST stays sealed and `outputs/sealed/` is not read.
 
@@ -38,7 +40,9 @@ P4). It is still open:
 1. **Prospective networks.** Five specialists that do not exist yet, trained on one A6000 under
    one commit.
 2. **Buffers before the tag.** Each specialist's d_OOD buffer and tier D start states are built,
-   hashed and committed before the tag. The "not testable" of step 1 cannot recur.
+   hashed before the tag: the record binds each buffer by its sha256, and the start states are
+   committed. The buffers themselves (about 36 MB each) are not committed (Section 11, item 7).
+   The "not testable" of step 1 cannot recur.
 3. **A fixed F6 set.** The 4 registered F6 conditions plus the 11 certified by option A (Section 3).
 4. **A corner-matched reading, fixed now** (Section 4.2). It addresses the reason option A was
    vacuous. P4's D is a median over 7–9 corners, and certified changes move d_OOD far only at
@@ -127,7 +131,8 @@ unseparated. This design turns that into a settled answer instead of an open que
   - The round manifest `runs/p4b2-manifest-0of1.json` records HEAD, the tree, the GPU model and
     count, the box type, the lanes, and each run's status, times and config sha256.
   - A run that fails is re-run once, from scratch and with the same arguments, in its own lane as
-    soon as it fails. This is the shared queue's rule. It replaces the drafted rule of waiting
+    soon as it fails. This is the shared queue's rule, accepted by the user on 27 Oct 2026
+    (Section 11, item 6). It replaces the drafted rule of waiting
     for the other four, which a new queue would have needed. A memory failure can therefore
     recur while the other four still train. That is unlikely: each lane holds 0.18 x 48 GB,
     about 8.6 GB, for a 3 x 256 MLP on 2,048 environments. The first attempt's log is kept as
@@ -399,7 +404,7 @@ From S1–S3 and option A. They are held weakly, and none of them decides anythi
 | Strips | The registered strips equal step 1's bit for bit. The certified strips match the frozen lists' per-corner sha256 | Passed: 449 of 449 and 90 of 90 |
 | Pipeline on S1–S3 | (a) With the registered F6 set it reproduces `decisions_all.json`'s P4 rows (sha256 `14c67486…`): class, label, failing condition, `vacuous`, `n_f6_at_or_above` and C exactly, d_OOD to 1e-6. (b) With the registered four plus the 10 planned conditions it reproduces `outputs/p4/classes.json` exactly. (c) With K-str 16e-3 added it reproduces `outputs/p4/extension/classes.json` exactly. (d) States and termination steps equal option A's stored runs bit for bit | Passed, all four (Section 12) |
 | CM on S1–S3 | Computed once as a dry run. It is reported as exploratory and post hoc for those networks. It does not change Section 4.2: any change after it is a dated amendment that states what was seen | Computed (Section 12). Nothing in Section 4.2 changed after it |
-| Tests | Planted tables for every CM cell type and class (fragile, keyed, mixed, unmatched, not testable); the reading map and the recipe rule; the tag gate; the lockbox refusal; distinct buffer streams | `tests/test_p4_b2.py`: 76 tests, all passing (57 at `40ebdf6`, 19 added by the review) |
+| Tests | Planted tables for every CM cell type and class (fragile, keyed, mixed, unmatched, not testable); the reading map and the recipe rule; the tag gate; the lockbox refusal; distinct buffer streams | `tests/test_p4_b2.py`: 79 tests, all passing (57 at `40ebdf6`, 19 added by the review, 3 for the uncommitted buffers on 27 Oct 2026) |
 | Freeze | No rollout of S4–S8 on any protocol stimulus (tiers A–G) before the tag. Allowed before it: loading and one forward pass, `eval.json`, the deterministic real lap (protocol exception 1, R1) and the buffer laps (exception 2) | Enforced: only `rollouts` drives a stimulus, behind the tag gate |
 | Tag gate (after the tag) | The post-tag stages refuse to run unless `p4-b2-prereg-v1` exists on origin and points at the recorded commit. `classify` runs once and refuses if its output exists | Built: as `scripts/lockbox.py`'s gate, with the record's commit as "the recorded commit" (Section 8, step 4). The bound files and the frozen tree are compared byte for byte, so a file marked assume-unchanged or skip-worktree cannot hide an edit. `classify` also refuses rollouts of another design or buffer |
 
@@ -426,7 +431,11 @@ From S1–S3 and option A. They are held weakly, and none of them decides anythi
      the box's manifest), each `agent.pkl`'s and checkpoint's sha256 against the box's list
      (step 2; the stage stops without it), then the manifest. Committed with `git add -f
      outputs/p4b2/pre/manifest.json`;
-   - `buffers` and `starts`: the five buffers and start states, committed the same way;
+   - `buffers`: the five buffers stay local and uncommitted (they are about 36 MB each). Only
+     `outputs/p4b2/pre/buffers/buffers.json`, which lists each buffer's sha256, is committed
+     (`git add -f`). `record` refuses a missing buffer or one whose bytes differ from that
+     sha256, and binds each in the record;
+   - `starts`: the five start states, committed the same way as the manifest;
    - `build`: the strip build and its checks, and the S4–S8 cells;
    - `build --owners check`, `starts --check`, `buffers --check`, `reproduce`, `cm-dryrun`: the
      S1–S3 checks and the CM dry run (done, Section 12);
@@ -447,7 +456,7 @@ From S1–S3 and option A. They are held weakly, and none of them decides anythi
 | Setup | H4R: rented and set up in 7 min (10:38–10:45, `h4r.md`) | 7–10 min |
 | Training, 5 lanes | A6000, 200M-step DR runs: 145k–179k steps/s per run at 4 lanes (18.7–22.9 min each), 386k alone (8.6 min; `h4r.md` Section 4.2). With no gain beyond 4 lanes, 5 lanes give about 128k steps/s each, so 26 min. On the Mac the specialist env ran 2.6 times faster per step than DR (47–49k against 18.4k steps/s), so 26 min is the upper end | 10–26 min |
 | `eval.json` and pull-back | 20 timed laps of one circuit; 5 small runs | about 5 min |
-| A retry, if one is needed | the shared queue restarts it in its lane at once, beside the runs still training: up to one more run's time | +10–26 min |
+| A retry, if one is needed | the shared queue restarts it in its lane at once, beside the runs still training (decided 27 Oct 2026): up to one more run's time | +10–26 min |
 
 - **Total: about 25–45 min, about 1 box-hour at most with one retry.**
 - **Approved, 27 Oct 2026.** The user approved this box time, about 1 h, as part of Phase 3's
@@ -520,12 +529,30 @@ the draft named an alternative, it is kept as history and was not taken.
    own certification before the tag: s-OCP solves and generalist runs, about 1 h on the Mac, plus a
    design.
 
+6. **The retry** (decided 27 Oct 2026). The shared queue's rule stands: a run that fails is
+   restarted at once, from scratch, in the same lane, beside the runs still training (Section 2,
+   Queue), and a run that fails twice is missing (Section 9). The user accepted it on 27 Oct
+   2026, with its extra box time of up to one more run (Section 8). Not taken: the drafted rule of
+   waiting for the other four before a retry. `scripts/p4b2_runs.py` is unchanged.
+7. **The buffers are hashes only** (decided 27 Oct 2026). The five d_OOD buffers (about 36 MB each)
+   are not committed. The record binds each by sha256, and the `record` stage and the tag gate
+   refuse a buffer that is missing or whose bytes differ from the sha256 in the committed
+   `buffers.json`. The small files (manifest, start states, `buffers.json`, build, checks) are
+   committed as before. Not taken: committing all five, about 182 MB.
+
 ## 12. Build status and the pre-tag artifacts (27 Oct 2026)
 
 Everything here ran on the Mac from the committed code (`40ebdf6`; each output's provenance
 gives HEAD and the script's sha256), at nice 15 with at most 3 workers. The JSON files under
 `outputs/p4b2/check/` are committed (`git add -f`). Their buffers, rollouts and cells are local,
 like option A's.
+
+**Dated note, 27 Oct 2026 (buffers).** After the user's decision (Section 11, item 7),
+`scripts/p4_b2.py`'s `record` stage no longer requires the buffers under `outputs/p4b2/pre/` to
+be tracked. It requires each file `buffers.json` lists to exist with the recorded sha256, records
+those hashes (`buffers_sha256`, and as before in `inputs_sha256`), and still requires every other
+file under `pre/` to be tracked and unchanged. The tag gate allows exactly those listed buffers
+as untracked and checks their bytes. Nothing in Sections 4 and 5 changed.
 
 **Built and checked on S1–S3** (Section 7):
 
@@ -573,8 +600,9 @@ and into the record when it is built:
 | Record | `scripts/p4b2_prereg.json` | pending |
 
 - **Size.** Each buffer is about 36 MB (40,000 observations of 222 float32 channels, with their
-  actions), so committing all five as Section 1 says adds about 182 MB to the repository. Each
-  real lap is about 0.4 MB.
+  actions), about 182 MB for the five, so they are not committed (Section 11, item 7): the record
+  binds each by its sha256, and `outputs/` stays ignored. Each real lap is about 0.4 MB and is
+  committed.
 - **Still to do before the tag:** the training round (with the box's sha256 list of Section 8,
   step 2); `manifest`, `buffers`, `starts`, `build` and `record`; the tag.
 

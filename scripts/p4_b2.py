@@ -1825,10 +1825,36 @@ BOUND = ("scripts/p4_b2.py", "scripts/p4b2_runs.py", RECORD_REL, DRAFT_REL,
          *(p for p, _ in CERT_LISTS.values()), PRE_REL)
 
 
+def recorded_buffers() -> dict[str, str]:
+    """{repo-relative path: sha256} of the d_OOD buffers outputs/p4b2/pre/buffers/buffers.json
+    records (empty without it). The buffers (about 36 MB each) are not committed: the record
+    binds each by its sha256, and they stay untracked and ignored (decided 27 Oct 2026)."""
+    f = ROOT / PRE_REL / "buffers" / "buffers.json"
+    if not f.is_file():
+        return {}
+    return {r["path"]: r["sha256"] for r in read_json(f)["buffers"].values()}
+
+
+def buffer_problems() -> list[str]:
+    """Each recorded buffer must exist under outputs/p4b2/pre/buffers/ with the sha256 that
+    buffers.json records (a tracked copy is fine too: the bytes are what is checked)."""
+    out = []
+    for path, sha in recorded_buffers().items():
+        p = ROOT / path
+        if not path.startswith(f"{PRE_REL}/buffers/"):
+            out.append(f"{path}: not under {PRE_REL}/buffers/")
+        elif not p.is_file():
+            out.append(f"{path}: missing")
+        elif sha256_file(p) != sha:
+            out.append(f"{path}: sha256 is not the recorded {sha[:12]}")
+    return out
+
+
 def tracked_clean(paths) -> list[str]:
     """Paths that are not tracked or differ from HEAD (directories: any file under them),
     and files git ignores under them (outputs/ is ignored, so an untracked file in
-    outputs/p4b2/pre/ would not show as untracked)."""
+    outputs/p4b2/pre/ would not show as untracked). The d_OOD buffers are the exception:
+    they are not committed, and are required by their recorded sha256 instead."""
     out = []
     for p in paths:
         if git_run("ls-files", "--error-unmatch", p).returncode != 0:
@@ -1837,9 +1863,11 @@ def tracked_clean(paths) -> list[str]:
               or byte_mismatches(tree_blobs("HEAD", (p,)) or {})):
             out.append(f"{p}: differs from HEAD")
         if p == PRE_REL:
-            ignored = git("ls-files", "--others", "--ignored", "--exclude-standard", "--", p)
+            ignored = [f for f in git("ls-files", "--others", "--ignored", "--exclude-standard",
+                                      "--", p).splitlines() if f not in recorded_buffers()]
             if ignored:
-                out.append(f"{p}: files not added: {ignored.split()[:5]}")
+                out.append(f"{p}: files not added: {ignored[:5]}")
+            out += buffer_problems()
     return out
 
 
@@ -1877,7 +1905,8 @@ def stage_record(args) -> None:
         raise SystemExit("the S1-S3 reproduction did not pass")
     probs = tracked_clean([b for b in BOUND if b != RECORD_REL])
     if probs:
-        raise SystemExit("commit these first (git add -f for outputs/p4b2/pre): "
+        raise SystemExit("commit these first (git add -f for outputs/p4b2/pre, except the "
+                         "buffers, which are bound by sha256 and stay uncommitted): "
                          + "; ".join(probs))
     man = read_manifest()
     for path, sha in new_finals(man).values():
@@ -1896,6 +1925,7 @@ def stage_record(args) -> None:
         "missing": man["missing"],
         "design_hash": read_json(BUILD / "build.json")["design_hash"],
         "inputs_sha256": inputs,
+        "buffers_sha256": recorded_buffers(),
         "created": time.strftime("%Y-%m-%dT%H:%M:%S"),
         "seconds": round(time.time() - t0, 1),
     }
@@ -1948,11 +1978,16 @@ def tag_gate() -> dict:
         raise PermissionError(f"bound files are not {TAG}'s byte for byte: {bad[:5]}")
     # outputs/ is ignored: an extra file in outputs/p4b2/pre/ shows only with --ignored (which
     # would also list __pycache__ under src/, so it is asked of that directory alone).
+    # The d_OOD buffers are the exception: uncommitted by decision, they are the files
+    # buffers.json (tracked, so the tagged one) records, each of that sha256.
+    bufs = recorded_buffers()
     for extra, paths in (((), BOUND), (("--ignored",), (PRE_REL,))):
         untracked = git_run("ls-files", "--others", *extra, "--exclude-standard", "--", *paths)
-        if untracked.returncode != 0 or untracked.stdout.strip():
-            raise PermissionError(f"untracked files under the bound paths: "
-                                  f"{untracked.stdout!r}")
+        left = [f for f in untracked.stdout.splitlines() if f not in bufs]
+        if untracked.returncode != 0 or left:
+            raise PermissionError(f"untracked files under the bound paths: {left!r}")
+    if bad := buffer_problems():
+        raise PermissionError(f"the d_OOD buffers are not the recorded ones: {bad[:5]}")
     return {"tag": TAG, "tag_object": obj, "commit": peeled,
             "head": git("rev-parse", "HEAD")}
 
