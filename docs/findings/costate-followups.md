@@ -1069,3 +1069,336 @@ narrow by at least a third. No point reaches 0.05"): **holds**, in 9 of 9 on eac
   - CS-9's and CS-12's C2 inherit both points, and the lead may want decoy 2 co-reported there
     (an amendment).
 - None of this changes a decision of `costate-prereg-v1`.
+
+## CS-9 with CS-10 (iii), N's CS-11 and N's CS-13: the runs (exploratory)
+
+- **Plan and code.** `scripts/costate_exploratory.py cs-9` at `6563b28` (code and tests), under
+  the plan with amendment 9 (`4541068`: the operational details of CS-9, CS-10 (iii), N's CS-11
+  and N's CS-13, committed before any of their numbers). It runs in four stages, each stamped
+  on its own, on 4 workers × 2 XLA threads, niced:
+  - **build** (targets only): 103 units (a stimulus and a block of at most 128 of its keys), 8
+    min;
+  - **k2b** (targets only): 27 units (26 keys and the wiring key), 14 min;
+  - **networks**: 48 units (an agent and a quarter of its keys), 77 min (worker time 25–41 min
+    per generalist, 4–12 min per specialist);
+  - **analyse**: 12 units (one per agent), 15 min.
+
+  The plan estimated 45–60 min pooled at 5 workers, plus the build, plus about 53 min for K2b
+  on N.
+- **Development runs.** Partial runs were written outside `outputs/costate` before the canonical
+  ones:
+  - the build on 6 stimulus blocks (350 keys), K2b on 3 keys of that partial world, and the
+    networks stage on G1's 19 rows in it;
+  - on the canonical N, the networks stage on a quarter of G1's rows (175), then the analyse
+    stage on those rows.
+
+  Their structure, wiring gaps and timings were read. Two outcomes were also seen:
+  - the 3 development K2b keys' rows. One of them, a G2s1 key outside the canonical picks,
+    moved λ_vx by 0.30 SD_T and λ_s by 0.23 under the slow second corner;
+  - from the partial analysis: G1's C1-own status ('secondary'), and that CS-13 finds no pair.
+    A count on states alone then showed that no N state of any agent has a matched T state
+    (item 7 below).
+- **The first networks run stopped.** It computed all 48 units (about 72 min), then the parent's
+  re-check of the width checks stopped on S2 and wrote nothing. Every S2 run terminates, so no S2
+  unit kept a key and none ran a JVP check, and the re-check required one. That is a code fault,
+  not a failed check: amendment 9 item 4 asks for the check on each unit's first kept key.
+  `950918c` lets an agent with no kept key through and records why, with a test. The rerun used
+  that commit. The only number seen from the stopped run is S2's (no kept key).
+- **Stamps.** Every output records an empty `changed_vs_head`, no partial flag, and the plan's
+  sha256 with 9 amendments. The build and K2b ran at `6563b28`; the networks stage and the
+  analyses at `950918c`. The inputs, by sha256:
+  - the build, 111: the world and its summary, all 34 networks' critic and K3 files, the 9
+    decision networks' own, K3b and activations files, `gates/k0.json` and `gates/k2b.json`, and
+    the 12 agents' N key sets (content hashes);
+  - K2b, 112: the same with N's world;
+  - the networks stage, 112: the checked groups, N's world and the 12 checkpoints through the
+    record's pins;
+  - the analyses, 115: those, with the build's, K2b's and the networks stage's outputs.
+
+  They were re-verified before this note:
+  - each stamp's script sha256 is the script's blob at its HEAD, and its plan sha256 the plan at
+    that HEAD (unchanged since `4541068`);
+  - the npz sha256s and the summaries' content sha256s were recomputed and match;
+  - the script's `verify` reports 0 problems.
+- **Wiring checks (all passed).**
+  - **Build.** The build's code at T's steps reproduces the bound world's rows (every column),
+    Inputs and ObsJac on T's first two keys exactly (gap 0; tolerance 10⁻¹²). The jac and cheap
+    routes' λ_1 agree to at most 1.0·10⁻¹² (median 7·10⁻¹⁷), descriptively.
+  - **K2b.** The generalised K2b code at T's rows reproduces `gates/k2b.json`'s first key
+    (reach, s2 and both severities' rows) exactly (gap 0; tolerance 10⁻⁶ SD_T).
+  - **Networks**, per agent on T's first key, from the bound arrays: the critic's pullback, the
+    random critic of seed 0 and dV_dwin reproduce the stored ones exactly (gap 0) for all 12
+    agents. λ^own at T's first interior restart reproduces `post/own` exactly for the 9 (gap 0).
+  - **The width loop.** Its J matches `own_return`'s to at most 3.0·10⁻¹¹ relative (G1s1;
+    tolerance 10⁻⁶). The JVP matches the VJP's contraction to at most 5.5·10⁻⁸ (G2s1; tolerance
+    10⁻⁶), on 40 keys: one per unit that kept a key (S2's 4 units kept none, S1's and S3's 4 of
+    8). Descriptive: on those keys, Richardson differences of J_env at h = 10⁻³ m differ from the
+    AD value by a median of 4.7·10⁻⁶ relative, at most 9.7·10⁻³; every perturbed run stays
+    alive.
+  - **Analyses.**
+    - The frozen λ_res's interior residual shares equal the record's exactly.
+    - The external cross-fit on T's own rows reproduces T's by-fold residuals exactly.
+    - On T's first 64 rows, the trained actor's h3 and the pool actor of seed 0 reproduce the
+      bound `actor_h3` and `random0_h3` exactly (the 9).
+    - CS-13's union fit reproduces the fit on T's rows alone to at most 8.3·10⁻¹² of T's
+      predictions (tolerance 10⁻⁹).
+- **No calibration but the frozen one** (CS-1's rule for later items did not fire).
+
+### N
+
+- **The keys.** The index's lists equal the record's key sets, and the key files its content
+  hashes, for all 12 agents. The 6 K0 keys are dropped (2 of G1's, 2 of G2's, 1 of G3's, 1 of
+  G1s1's). No key is multi-basin and no re-polish fails. That leaves 8,130 states: G1 699, G1s1
+  709, G1s2 705, G2 720, G2s1 742, G2s2 723, G3 750, G3s1 760, G3s2 759, S1 766, S2 404, S3
+  393.
+- **Where they are.** Every one of the 8,130 states is an approach-phase interior state, with no
+  contact. Their x_1 lie 213–173 m before the apex (5th–95th percentiles; median 183 m), at
+  67–87 m/s (median 85 m/s). 93–100% are pedal-switching. The generalists' states cover 26–29
+  of T's geometries, and the specialists' 30. All are θ 90° or 180° geometries.
+- **So N scores λ_s and λ_ξ on approach rows only.** It has no exit row, so s is scored only on
+  the approach phase, where it is also scored on T. Every N state is a decision row of both s
+  and ξ wherever s is observable.
+
+### K2b on N (targets only)
+
+- **The keys.** 26 picks over the 6 strata N's geometries form (R tercile × θ class 90° or 180°;
+  4–5 per stratum), from 10 agents (G3s2 4; G1, G1s1, G1s2, G2, G2s2 and S1 3 each; G3 2; S2
+  and S3 1). Every re-solve succeeds at both severities.
+- **The second corner sits much nearer than on T.** On T it starts 20 m beyond the furthest
+  preview point of all of a key's T states (beyond s_c1 + 50 m). On N it starts 20 m beyond
+  x_1's own preview, 1,149–1,414 m along the strip, well inside the window problem's
+  400-step plan (which ends at 2,080–2,502 m).
+- **|Δλ_k| / SD_T at x_1, approach phase (26 rows):**
+
+  | Severity | s | n | ξ | vx |
+  |---|---|---|---|---|
+  | fast (R 150 m, θ 60°): p90 | 0.0011 | 0.0001 | 0.0001 | 0.0013 |
+  | slow (R 30 m, θ 90°): p90 | 0.070 | 0.006 | 0.005 | 0.091 |
+  | slow: largest | 0.085 | 0.008 | 0.013 | 0.099 |
+
+- **The rule excludes nothing on N.** Every p90 is below 0.1, so N's own exclusions are empty.
+  N's decision exclusions are T's frozen ones (approach: n and vx). vx's slow p90 (0.091) is
+  close to the line. One of the 3 development keys, not among the 26, moved λ_vx by 0.30.
+- **E9.4** ("K2b on N excludes n and vx on approach, as on T"): **does not hold.** N's own rule
+  excludes no component on approach. With T's exclusions in the union, the decision rows are the
+  same components as on T.
+
+### C1 on N (CS-9 step 2)
+
+**Outputs.** `outputs/costate/exploratory/cs-9/summary.json` (committed copy:
+[`costate-followups/cs-9-summary.json`](costate-followups/cs-9-summary.json); the build, K2b and
+networks stages' records beside it as `cs-9-build.json`, `cs-9-k2b.json` and
+`cs-9-networks.json`) and `rows.npz` (per row, local).
+
+
+**Rows.** Each agent's N states, all of them approach-phase interior rows. λ_s and λ_ξ are
+scored on 699–760 rows per decision network (s is observable on every one). That is 0.43–0.46
+times C1's 1,643 s rows on T and 0.44–0.48 times its 1,581 ξ rows. The bootstrap is over the
+26–29 geometries present.
+
+| Network | rows | R²_c s / ξ | C1 statistic [CI] | band | ξ Spearman [CI] | best random critic: ξ R²_c; statistic minus its [CI] | T's confirmatory C1 [CI] |
+|---|---|---|---|---|---|---|---|
+| G1 | 699 | −0.025 / −0.084 | −0.054 [−0.711, −0.025] | refute | 0.17 [−0.10, 0.43] | 0.59; −0.34 [−0.78, −0.24] | 0.010 [−0.060, 0.025] |
+| G1s1 | 709 | −0.035 / −0.043 | −0.039 [−0.527, −0.002] | refute | 0.24 [−0.08, 0.55] | 0.10; −0.07 [−0.47, 0.00] | −0.726 [−1.354, −0.389] |
+| G1s2 | 705 | −0.026 / −0.055 | −0.041 [−0.614, −0.027] | refute | 0.08 [−0.15, 0.29] | 0.03; −0.04 [−0.37, −0.03] | −1.403 [−2.818, −0.593] |
+| G2 | 720 | −0.044 / −0.034 | −0.039 [−0.360, 0.043] | refute | 0.35 [−0.06, 0.67] | 0.54; −0.28 [−0.52, −0.12] | −0.049 [−0.179, 0.012] |
+| G2s1 | 742 | −0.018 / −0.152 | −0.085 [−0.313, −0.057] | refute | 0.21 [0.02, 0.41] | 0.17; −0.16 [−0.32, −0.05] | −2.477 [−4.802, −1.081] |
+| G2s2 | 723 | −0.027 / −0.073 | −0.050 [−0.505, −0.040] | refute | 0.08 [−0.16, 0.33] | 0.04; −0.06 [−0.30, −0.03] | −0.168 [−0.475, −0.036] |
+| G3 | 750 | −0.021 / −0.098 | −0.060 [−0.366, −0.017] | refute | 0.16 [−0.09, 0.34] | 0.18; −0.13 [−0.34, −0.09] | −1.359 [−2.932, −0.364] |
+| G3s1 | 760 | −0.048 / 0.474 | 0.213 [−0.023, 0.290] | inconclusive | 0.62 [0.36, 0.83] | 0.45; 0.03 [−0.10, 0.10] | −2.575 [−5.035, −1.054] |
+| G3s2 | 759 | −0.043 / −0.024 | −0.034 [−0.221, −0.007] | refute | 0.25 [0.09, 0.41] | 0.41; −0.21 [−0.33, −0.14] | −1.386 [−2.815, −0.480] |
+
+The statistic is C1's, with the frozen calibration, T's partition-0 folds, key weights and the
+single-geometry rule. Its one null is the best of the 20 random-init critics: the critic with the
+largest statistic, whose ξ R²_c is shown. The value-fit, QSS, barrier and far-geometry nulls are
+not rebuilt on N (plan CS-9). The last column is `decisions.json`'s C1 on T. No decision changes
+under the single-geometry rule.
+
+- **8 of 9 refute; G3s1 does not.** Every other network's CI upper end is below 0.05 (G2's 0.043
+  is the largest). G3s1's ξ R²_c is 0.474, its statistic 0.213 with CI [−0.023, 0.290]:
+  inconclusive. No single geometry carries it: removing any one of its 29 keeps the set
+  inconclusive, with the statistic between 0.17 and 0.26.
+- **G3s1's ξ is no better than a random critic's.**
+  - On N, the best random-init critic's ξ R²_c is 0.03–0.59 across the 9. G3s1's scores 0.45,
+    and G3s1's statistic exceeds that critic's by 0.03 [−0.10, 0.10].
+  - In 8 of the 9 networks the trained statistic lies below the best random critic's, with the
+    CI below 0 in 7.
+  - The likely reason is the state set. N holds one state per key, all at about the same
+    distance before the apex (median 183 m) and speed (85 m/s). λ_ξ there varies mainly across
+    geometries, and its SD on N is an eighth of T's approach rows' (0.18 against 1.42). Any
+    gradient that differs across geometries through J_z can then calibrate to it.
+- **s calibrates to nothing.** s's R²_c is −0.048 to −0.018 in all 9. G3s1's fitted s slope is
+  clamped at 0 in every fold (intercepts only).
+- **Ranks.** ξ's Spearman is 0.08–0.62. Its CI is above 0 in 3 (G2s1 0.21, G3s1 0.62, G3s2
+  0.25), and every other CI covers 0. s's Spearman is −0.40 to 0.10; G3s2's is negative with its
+  CI below 0.
+- **Specialists (descriptive).** S1 refutes (0.012 [−0.205, 0.098]). S2 (−0.036 [−0.701, 0.222])
+  and S3 (0.160 [−0.125, 0.267]) are inconclusive. Their best random critics reach ξ R²_c
+  0.50–0.67, above their own (−0.04 to 0.33).
+
+### C2 and C2-sw on N (CS-9 steps 3 and 4)
+
+**Rows.** C2 is fitted on each agent's N stratum (all its rows, every one an approach interior
+row) and scored on s and ξ there: 699–760 rows per decision network. C2-sw is scored on the
+agent's pedal-switching rows, 699–760 (93–100% of N). λ_res is f̂_D cross-fitted on the agent's
+own N rows.
+
+| Network | C2: statistic [two-level CI] | band | h3 rank of 21 | C2-sw: statistic [two-level CI] | band | h3 rank of 21 | C2-sw's R²(z) | T's C2; C2-sw |
+|---|---|---|---|---|---|---|---|---|
+| G1 | 0.001 [−0.001, 0.005] | refute | 4 | 4.5 [−0.07, 25.8] | inconclusive | 1 | −1.41 | inconclusive; refute |
+| G1s1 | 0.001 [−0.002, 0.001] | refute | 8 | −0.002 [−0.057, 0.051] | inconclusive | 11 | 0.59 | inconclusive; refute |
+| G1s2 | −0.001 [−0.003, 0.021] | refute | 16 | 42.2 [−0.07, 291.3] | inconclusive | 5 | −27.2 | inconclusive; refute |
+| G2 | 0.056 [−0.171, 0.175] | inconclusive | 1 | 0.008 [−0.014, 0.021] | refute | 2 | 0.62 | inconclusive; refute |
+| G2s1 | −0.027 [−0.402, 0.056] | inconclusive | 21 | −26.9 [−187.4, 0.002] | refute | 19 | −7.91 | inconclusive; refute |
+| G2s2 | −0.000 [−0.005, 0.002] | refute | 20 | 0.001 [−0.003, 0.008] | refute | 10 | 0.54 | refute; refute |
+| G3 | 0.017 [−0.016, 0.121] | inconclusive | 1 | 5.1 [0.030, 28.1] | confirm | 1 | −9.21 | inconclusive; refute |
+| G3s1 | −0.038 [−0.105, 0.007] | refute | 14 | 0.19 [−0.10, 1.33] | inconclusive | 9 | 0.92 | inconclusive; refute |
+| G3s2 | −0.004 [−0.015, 0.004] | refute | 16 | 9.0 [−0.0004, 49.2] | inconclusive | 1 | −15.2 | refute; refute |
+
+- **C2: no confirm, 6 refute.** G2 (0.056), G2s1 and G3 are inconclusive. G2's point is above
+  0.05, but its two-level CI is [−0.171, 0.175]. No decision moves under the single-geometry
+  rule.
+- **f̂_D residualises badly on N.**
+  - λ_res's share of λ's variance on N is 0.43–1.38 for s and 0.13–0.94 for ξ, against 0.224 and
+    0.248 on T's interior.
+  - Above 1 the decoy model adds variance. N's narrow states (one approach distance, one speed
+    band) are predicted from neighbours at other distances.
+  - So C2's targets on N hold more variance that no network can explain than on T.
+- **C2-sw on N cannot be read as an R² gain.** σ^ped's SD on N is a quarter of T's (0.017
+  against 0.066 on T's approach and exit switching rows). The z-only probe's out-of-fold R² then
+  ranges from −27 to 0.92 across the 9 networks, and the statistics are differences of such
+  numbers (−26.9 to 42.2).
+  - G3's 'confirm' (5.1 [0.030, 28.1]) has a z-only probe at R² −9.2, against the full probe's
+    0.60 and the pool's median −4.5. h3 repairs an extrapolation failure of z. That is not
+    evidence of switching-function information.
+  - Where the z-only probe holds up (R²(z) 0.54–0.92: G1s1, G2, G2s2, G3s1), the statistics are
+    −0.002 to 0.19, three of them within ±0.01.
+  - The co-reported Spearman ρ(m_pedal − 1, σ^ped) is 0.06–0.94.
+- **Specialists (descriptive).** C2: S1 refutes; S2 and S3 are inconclusive (their z-and-m-only
+  R² on ξ are −76 and −32). C2-sw: S1 refutes; S2 is inconclusive under the single-geometry rule
+  (its full set refutes); S3 is inconclusive.
+
+### CS-10 (iii): C1-own on N (CS-9 step 5)
+
+**Outputs.** `outputs/costate/exploratory/cs-9/cs10-iii.json` (committed copy:
+[`costate-followups/cs-10-iii-summary.json`](costate-followups/cs-10-iii-summary.json)).
+
+**Rows.** λ^own_1 comes from each N state over W − 1 = 399 steps of the policy's own loop, with
+the agent's own a_0 as prev_action. A run that terminates within them is dropped: G1s2 6, G2 12,
+G2s2 13, none in the other 6. The scored rows are 699–760 per decision network.
+
+| Network | rows | R²_c s / ξ | C1-own statistic [CI] | ξ Spearman [CI] | confirmatory C1-own [CI] |
+|---|---|---|---|---|---|
+| G1 | 699 | −0.039 / −0.028 | −0.034 [−0.123, −0.015] | 0.20 [−0.02, 0.41] | −0.122 [−0.313, −0.048] |
+| G1s1 | 709 | −0.006 / −0.001 | −0.004 [−0.548, −0.003] | 0.01 [−0.14, 0.18] | −0.054 [−31.190, −0.034] |
+| G1s2 | 699 | −0.007 / −0.031 | −0.019 [−0.095, −0.011] | 0.03 [−0.20, 0.27] | −0.047 [−11.153, −0.034] |
+| G2 | 708 | −0.152 / −0.189 | −0.171 [−0.410, −0.125] | 0.03 [−0.16, 0.19] | 0.029 [−0.284, 0.046] |
+| G2s1 | 742 | −0.032 / −0.035 | −0.034 [−0.598, −0.019] | −0.08 [−0.23, 0.10] | 0.026 [−0.425, 0.146] |
+| G2s2 | 710 | −0.037 / 0.011 | −0.013 [−0.237, 0.008] | 0.31 [0.09, 0.48] | −0.150 [−0.979, 0.115] |
+| G3 | 750 | −0.048 / −0.128 | −0.088 [−0.225, −0.069] | −0.11 [−0.29, 0.10] | −0.126 [−0.624, 0.035] |
+| G3s1 | 760 | −0.022 / −0.079 | −0.050 [−0.711, −0.034] | −0.16 [−0.34, 0.02] | −0.075 [−0.878, 0.113] |
+| G3s2 | 759 | −0.090 / −0.105 | −0.098 [−0.287, −0.062] | −0.07 [−0.29, 0.16] | −0.031 [−0.716, 0.152] |
+
+- **9 of 9 refute.** The largest CI upper end is 0.008 (G2s2). All 9 have 'secondary' status
+  (K3b's trained analogue and value accuracy passed).
+- **Companions (descriptive).** Winsorised at T's bounds, all 9 still refute (largest CI upper
+  end 0.008). The accel-held form repeats the primary.
+- **Ranks.** ξ's Spearman is −0.16 to 0.31, with its CI above 0 only in G2s2.
+- **G3s1 against its own policy.** Its ξ calibrates against λ* on N (R²_c 0.474) but not against
+  its own policy's λ^own (−0.079).
+- **Specialists (descriptive).** Their runs mostly crash from N's fast approaches: S1 keeps 200
+  of 766 runs, S2 none of 404, S3 20 of 393. S1 refutes (−0.135 [−0.910, −0.099]); S2 is not
+  testable; S3's 20 rows give −11.5.
+
+### N's CS-11: the policy's own width price at N (CS-9 step 6)
+
+**Outputs.** `outputs/costate/exploratory/cs-9/cs11-n.json` (committed copy:
+[`costate-followups/cs-11-n-summary.json`](costate-followups/cs-11-n-summary.json)).
+
+**Rows.** N's approach-phase interior rows whose run is kept at both horizons (W − 1 = 399 and
+H = 800). They are the same 699–760 rows as CS-10 (iii)'s: every run that survives also keeps a
+positive inside buffer. No Π^{in,own} is 0.
+
+| Network | rows | critic–own R² [CI] | own–optimum R² [CI] | own–optimum b_gl [CI] | critic–optimum R² [CI] | on D: critic–own; own–optimum; critic–optimum |
+|---|---|---|---|---|---|---|
+| G1 | 699 | 0.083 [−0.192, 0.243] | 0.323 [0.127, 0.667] | 0.43 [0.25, 0.69] | 0.339 [0.102, 0.741] | 0.047; 0.268; 0.145 |
+| G1s1 | 709 | 0.277 [0.073, 0.493] | 0.478 [0.226, 0.712] | 0.64 [0.39, 0.95] | 0.462 [0.238, 0.679] | 0.112; 0.390; 0.217 |
+| G1s2 | 699 | 0.037 [−0.230, 0.183] | 0.380 [0.076, 0.642] | 0.61 [0.29, 1.04] | 0.472 [0.249, 0.650] | 0.008; 0.079; 0.239 |
+| G2 | 708 | 0.264 [0.002, 0.395] | 0.585 [0.377, 0.748] | 0.74 [0.47, 1.05] | 0.591 [0.402, 0.693] | 0.031; 0.291; 0.068 |
+| G2s1 | 742 | −0.008 [−0.109, 0.069] | 0.213 [−0.067, 0.409] | 0.74 [0.27, 1.34] | 0.581 [0.375, 0.664] | 0.019; 0.076; 0.280 |
+| G2s2 | 710 | 0.368 [0.172, 0.678] | 0.545 [0.285, 0.867] | 0.99 [0.61, 1.45] | 0.436 [0.159, 0.788] | −0.007; 0.282; 0.129 |
+| G3 | 750 | 0.108 [−0.122, 0.329] | 0.407 [0.169, 0.624] | 0.82 [0.45, 1.34] | 0.406 [0.204, 0.577] | −0.030; 0.275; 0.263 |
+| G3s1 | 760 | 0.184 [−0.046, 0.375] | 0.673 [0.506, 0.785] | 0.76 [0.53, 1.04] | 0.442 [0.137, 0.618] | 0.037; 0.343; 0.334 |
+| G3s2 | 759 | 0.316 [−0.144, 0.623] | 0.308 [−0.175, 0.629] | 0.58 [0.25, 0.92] | 0.817 [0.718, 0.865] | 0.013; 0.049; 0.350 |
+
+The comparisons are W1's (C1's calibration, raw targets), bootstrapped over N's geometries. The
+last column is CS-11 on D (above), on D's 453–476 rows.
+
+- **At N every comparison is higher than at D.**
+  - The critic's width derivative against the optimum's Π^in reaches 0.34–0.82 (CI above 0 in
+    all 9), against 0.07–0.35 at D.
+  - The policy's own price against Π^in reaches 0.21–0.67 (CI above 0 in 7), against 0.05–0.39.
+  - The likely reason is again the state set. N's states share one approach distance and speed
+    band, so Π^in at them varies mainly with the geometry (median 0.48), and a width signal that
+    tracks the geometry calibrates well. D's rows spread over T's approach starts.
+- **The critic still agrees better with the optimum than with its own policy.** critic–own is
+  −0.008 to 0.368, below critic–optimum in all 9.
+- **The policies price the inside wall below the optimum.** b_gl (Π^{in,own} on Π^in) is
+  0.43–0.99, with its CI below 1 in 3 (G1, G1s1, G3s2). The median Π^{in,own} is 0.02–0.26,
+  against Π^in's 0.48.
+- **Specialists (descriptive).** S1 (200 rows) and S3 (20) have negative calibrated R² in every
+  comparison; S2 has no kept run.
+
+### N's CS-13: C2-pairs between N and T (CS-9 step 7)
+
+**Outputs.** `outputs/costate/exploratory/cs-9/cs13-n.json` (committed copy:
+[`costate-followups/cs-13-n-summary.json`](costate-followups/cs-13-n-summary.json)).
+
+- **Not scorable: no pair exists.** No N state of any agent has a T plan state of the same
+  stimulus within 2.5 m of s − s_apex and 1 m/s of vx.
+  - N's x_1 lie 173–213 m before the apex at 67–87 m/s (5th–95th percentiles), on step 1's fast
+    approaches (its 'B' cells).
+  - T's states on the A2 keys' approaches are slower: T's stratum is below 77 m/s at its 95th
+    percentile.
+- The probes were fitted and passed their wiring, but no Spearman is computed. E13.1 and E13.2
+  cannot be read on N.
+
+### Expected directions against the results
+
+- **E9.1** ("C1 on N is in the refute band in all 9"): **does not hold**: 8 of 9. G3s1 is
+  inconclusive (0.213 [−0.023, 0.290]), at the level of its best random critic.
+- **E9.2** ("C2 on N is inconclusive or in the refute band in all 9"): **holds**: 6 refute and 3
+  inconclusive; none is 'not testable'.
+- **E9.3** ("C2-sw on N is in the refute band", read as at least 6 of 9): **does not hold**: 3 of
+  9 (G2, G2s1, G2s2). G3 is 'confirm' and 5 are inconclusive, on a statistic that N's small σ^ped
+  variance makes uninterpretable (above).
+- **E9.4** ("K2b on N excludes n and vx on approach, as on T"): **does not hold**: N's own rule
+  excludes nothing (vx's p90 0.091, s's 0.070).
+- **E9.5** ("C1-own on N is in the refute band"): **holds**: 9 of 9.
+- On N's CS-11 rows (amendment 9 item 5, descriptions): E11.1 holds in 0 of 9, E11.2 in 3 of 9,
+  and E11.3 in 0 of 9 (own–optimum's R² is 0.21–0.67).
+- E13.1 and E13.2 cannot be read on N (no pair).
+
+### What CS-9 says (exploratory)
+
+- **At the networks' own states the critics' gradients still do not calibrate to λ.** C1 refutes
+  in 8 of 9, and C1-own (against the policy's own costate) in 9 of 9. G3s1's ξ calibrates to λ*
+  on N, but no better than its best random-init critic, and not to its own policy's λ^own.
+- **N is a narrow state set.** It holds one state per key, at about 183 m before the apex and
+  85 m/s. On it λ varies mainly with the geometry, so:
+  - random gradients calibrate on ξ;
+  - f̂_D adds variance rather than removing it;
+  - σ^ped varies little.
+
+  These properties, not the networks, decide C2-sw's numbers on N. They probably also raise W1's
+  comparisons above D's.
+- **The width prices.** At N the critic's inside-width derivative tracks the optimum's Π^in
+  across geometries (R² 0.34–0.82), better than it tracks its own policy's price. The policies
+  value the inside wall at about half the optimum's price or less (medians 0.02–0.26 against
+  0.48).
+- **The plan's reading of a score above 0.2** ("the critics' gradients are better at the states
+  their own policies reach") does not apply: G3s1's 0.213 is inconclusive and matched by random
+  critics.
+- **Scope.** Approach rows only: N has no exit, braking or corner state. K2b on N placed its
+  second corner just beyond x_1's preview, much nearer than on T, and still excluded nothing.
+- None of this changes a decision of `costate-prereg-v1`.
