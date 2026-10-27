@@ -730,3 +730,20 @@ The lead's notes (27 Oct 2026):
   taking whole seeds, if the x4 type is unavailable. The queue scripts work on any number of GPUs
   and boxes, and each round's manifest records the box type, GPU count and shard.
 
+
+**Decisions taken (27 Oct 2026, fifth round): P4-B2 and E5 details.**
+- P4-B2: the shared queue's immediate retry in the same lane is accepted. The five d_OOD buffers
+  are bound by sha256 and not committed (about 182 MB kept out of the public repo).
+- E5: SFL's `sfl/train/minigrid_plr.py` (38,737 bytes) and `sfl/util/jaxued/jaxued_utils.py`
+  (2,942 bytes, with two empty `__init__.py` files) downloaded, each checked against its blob
+  hash at commit `8b14e2ec`. No install was needed. Section 11 item 11: a score faithful in every
+  reached phase that also shifts is row A, not B or B'.
+
+The lead's notes (27 Oct 2026, launch):
+- `gw3-prereg-v1` and `p4-b2-train-v1` are tagged on `860939a`, which is also VG-1's pilot
+  commit. VG-1's main run uses 5 lanes per GPU on the x4 box if a memory check on the pilot box
+  passes, so every lane runs one run of each arm and the modelled cost tail of 4 lanes does not
+  arise (VG-1 draft, Section 10, item 9).
+- The account allowed two instances at once: one `massedcompute_A6000_plusx4` box for GW-3 (then
+  VG-1's main run after its tag) and one `massedcompute_A6000_plus` box for the memory check, the
+  VG-1 pilot and then P4-B2.
