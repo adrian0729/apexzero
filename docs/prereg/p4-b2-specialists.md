@@ -97,8 +97,10 @@ unseparated. This design turns that into a settled answer instead of an open que
 - **One machine, one GPU** (decided for the fourth round's boxes, 27 Oct 2026). P4-B2 is its own
   round, `p4b2`, on one single-GPU `massedcompute_A6000_plus` box (one NVIDIA RTX A6000 48 GB,
   $0.68/h), with all five runs on its GPU at once: `GPUS=1 LANES_PER_GPU=5`. It is set up with
-  `scripts/gpu_setup.sh`, and the account's one instance at a time means it is rented before or
-  after the round's `massedcompute_A6000_plusx4` box, not beside it. Why this and not the x4 box:
+  `scripts/gpu_setup.sh`. While the account allows one instance at a time, it is rented before or
+  after the other rounds' `massedcompute_A6000_plusx4` box; if the account allows two (the user
+  allowed more boxes on 27 Oct 2026), it may run beside that box, since it is a box of its own.
+  It may also follow another round on its box (Section 8). Why this and not the x4 box:
   - It keeps the 5 lanes decided on 27 Oct 2026 (Section 11, #4): the five runs train at once on
     one GPU under the same load. `gpu_round.sh` gives each lane XLA memory fraction round(0.9 /
     5, 2) = 0.18, the drafted value.

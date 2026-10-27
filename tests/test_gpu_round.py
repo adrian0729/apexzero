@@ -11,8 +11,9 @@ nvidia-smi by one listing FAKE_GPUS A6000s where a test needs it (otherwise it i
   j mod L and lane l on GPU l mod GPUS, in run-list order.
 - SHARD for K = 1, 2, 5 and 10: every run in exactly one shard, each seed's runs together,
   shard i the seeds whose first-appearance index is i mod K.
-- The environment's refusals (SHARD, GPUS, LANES_PER_GPU, more GPUS than nvidia-smi lists) and
-  the run list's (names, seeds, --name, the trainer, config paths, lockbox circuits).
+- The environment's refusals (SHARD, GPUS, LANES_PER_GPU, more GPUS than nvidia-smi lists), the
+  run list's (names, seeds, --name, the trainer, config paths, lockbox circuits) and a dirty
+  tracked tree's (the queue refuses it at launch; DRY_RUN notes it).
 - A real queue on the Mac with GPUS=1 and no nvidia-smi: each run's CUDA_VISIBLE_DEVICES and
   memory fraction, lanes in order, a run that fails once retried from scratch (first log
   kept), one that fails twice recorded as failed, the manifest, and the refusal to start over
@@ -435,6 +436,29 @@ def test_queue_on_the_mac(world):
     assert "GPU model None" in out
     assert "demo-other-s27: scripts/other.py's config format is unknown" in out
     assert "FAILED" in out and "OK" not in out
+
+
+def test_queue_refuses_a_dirty_tree(world):
+    """round_manifest.py check refuses a round whose tracked tree was not clean, so the queue
+    does not start on one (the refusal in the queue log, nothing trained); DRY_RUN only notes
+    it. Once the tree is clean the same shard starts: the refusal left nothing in its way."""
+    tmp = world["tmp"]
+    box = tmp / "boxes" / "dirty-box" / "apexzero"
+    _g(tmp, "clone", "-q", str(world["origin"]), str(box))
+    (box / "README.md").write_text("edited on the box\n")
+    dry = _round(box, _env(tmp, GPUS=1, DRY_RUN=1), "--seeds", "2")
+    assert dry.returncode == 0 and "the tracked tree is not clean" in dry.stderr
+    assert len(_tsv(dry)) == 6
+    proc = _round(box, _env(tmp, GPUS=1), "--seeds", "2")
+    assert proc.returncode == 1 and proc.stdout == ""
+    assert "the tracked tree is not clean" in proc.stderr and "README.md" in proc.stderr
+    assert "ERROR the tracked tree is not clean" in (box / "runs/demo-queue-0of1.log").read_text()
+    assert sorted(p.name for p in (box / "runs").iterdir()) == ["demo-queue-0of1.log"]
+    _g(box, "checkout", "--", "README.md")
+    again = _round(box, _env(tmp, GPUS=1), "--seeds", "2")
+    assert again.returncode == 0, again.stderr
+    man = json.loads((box / "runs/demo-manifest-0of1.json").read_text())
+    assert man["tree_clean"] is True and {r["status"] for r in man["runs"]} == {"done"}
 
 
 # --------------------------------------------------------------------------- write and check

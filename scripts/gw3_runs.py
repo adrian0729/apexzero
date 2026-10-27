@@ -80,7 +80,8 @@ def runs(phase: str = "main") -> list[dict]:
 def main(argv: list[str] | None = None) -> None:
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("--phase", choices=PHASES, default="main",
-                    help="GW-3 has one phase (accepted so that gpu_round.sh's example runs)")
+                    help="GW-3 has one phase (accepted; the draft's commands pass none, and "
+                         "every box, pull-round and check must use the same form)")
     a = ap.parse_args(argv)
     for run in runs(a.phase):
         sys.stdout.write(json.dumps(run) + "\n")

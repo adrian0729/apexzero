@@ -27,26 +27,28 @@
 # gpu_queue_h4r.sh. The queue logs to runs/<round>-queue-<i>of<K>.log and each run's start and
 # end to runs/<round>-status-<i>of<K>.tsv; at the end round_manifest.py write records
 # runs/<round>-manifest-<i>of<K>.json. It refuses to start if any of its runs' directories or
-# logs, or its shard's status file or manifest, exists already, and exits 1 if a run failed twice
-# or the manifest was not written.
+# logs, or its shard's status file or manifest, exists already, or if the tracked tree is not
+# clean (round_manifest.py check refuses such a round; DRY_RUN only notes it), and exits 1 if a
+# run failed twice or the manifest was not written.
 #
 # One massedcompute_A6000_plusx4 box (4 GPUs x 4 lanes = 16 runs at a time), from the Mac, with
-# the round's tag pushed:
+# the round's tag pushed (GW-3's commands, docs/prereg/gw3-width-round.md Section 8; a round's
+# run-list options, such as VG-1's --phase, go after the runs script, the same on every box and
+# in pull-round and check):
 #   ssh <box> 'bash -s' < scripts/gpu_setup.sh && scripts/gpu_sync.sh <box>
 #   ssh <box> 'cd ~/apexzero && git fetch --tags && git checkout --detach <tag>'
-#   ssh <box> 'cd ~/apexzero && DRY_RUN=1 bash scripts/gpu_round.sh gw3 scripts/gw3_runs.py \
-#     --phase main'
+#   ssh <box> 'cd ~/apexzero && DRY_RUN=1 bash scripts/gpu_round.sh gw3 scripts/gw3_runs.py'
 #   ssh <box> 'cd ~/apexzero && BREV_TYPE=massedcompute_A6000_plusx4 nohup bash \
-#     scripts/gpu_round.sh gw3 scripts/gw3_runs.py --phase main > /dev/null 2>&1 &'
+#     scripts/gpu_round.sh gw3 scripts/gw3_runs.py > /dev/null 2>&1 &'
 #   ssh <box> 'tail -n 20 ~/apexzero/runs/gw3-queue-0of1.log'
-#   scripts/gpu_sync.sh <box> pull-round gw3 scripts/gw3_runs.py --phase main
+#   scripts/gpu_sync.sh <box> pull-round gw3 scripts/gw3_runs.py
 #   uv run python scripts/round_manifest.py check --round gw3 --runs-script scripts/gw3_runs.py \
-#     --tag <tag> --runs-args --phase main
+#     --tag <tag>
 #
 # K single-GPU boxes (massedcompute_A6000_plus), box i of 0..K-1: the same setup on each, then
 #   ssh <box i> 'cd ~/apexzero && SHARD=i/K BREV_TYPE=massedcompute_A6000_plus nohup bash \
-#     scripts/gpu_round.sh gw3 scripts/gw3_runs.py --phase main > /dev/null 2>&1 &'
-#   SHARD=i/K scripts/gpu_sync.sh <box i> pull-round gw3 scripts/gw3_runs.py --phase main
+#     scripts/gpu_round.sh gw3 scripts/gw3_runs.py > /dev/null 2>&1 &'
+#   SHARD=i/K scripts/gpu_sync.sh <box i> pull-round gw3 scripts/gw3_runs.py
 # and one check on the Mac once every box's shard is back (it reads all K manifests).
 #
 # Stopping early (the stop rule): pkill -f scripts/gpu_round.sh first (its lanes, so nothing new
@@ -104,6 +106,9 @@ HELPER=(scripts/round_manifest.py)
 SEL=(--round "$ROUND" --runs-script "$RUNS_SCRIPT" --shard "$SHARD")
 SIZE=(--gpus "$GPUS" --lanes-per-gpu "$LANES_PER_GPU")
 if [ "$DRY_RUN" = 1 ]; then
+  if [ -n "$(git status --porcelain --untracked-files=no 2> /dev/null)" ]; then
+    echo "gpu_round.sh: note: the tracked tree is not clean, so the queue would refuse to start" >&2
+  fi
   exec "${PY[@]}" "${HELPER[@]}" schedule "${SEL[@]}" "${SIZE[@]}" --format tsv \
     --runs-args ${RUNS_ARGS[@]+"${RUNS_ARGS[@]}"}
 fi
@@ -111,6 +116,11 @@ fi
 TAG="${SHARD_I}of${SHARD_K}"
 mkdir -p runs || die "cannot create runs/"
 QLOG="runs/$ROUND-queue-$TAG.log"
+# round_manifest.py check refuses a round whose box's tracked tree was not clean, so the queue
+# does not start on one (after QLOG is set, so the refusal is in the queue log: nohup hides it)
+DIRTY=$(git status --porcelain --untracked-files=no) || die "git status failed"
+[ -z "$DIRTY" ] || die "the tracked tree is not clean, so round_manifest.py check would refuse" \
+  "the round: $(printf '%s\n' "$DIRTY" | head -n 3 | tr '\n' ' ')"
 STATUS="runs/$ROUND-status-$TAG.tsv"
 PLAN=$(mktemp "${TMPDIR:-/tmp}/gpu_round.XXXXXX") || die "mktemp failed"
 trap 'rm -f "$PLAN" "$PLAN.err"' EXIT

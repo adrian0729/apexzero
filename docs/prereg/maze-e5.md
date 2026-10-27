@@ -51,9 +51,10 @@ The build had its adversarial review the same day; its fixes are in Sections 2, 
   default is 4,577 updates (`TOTAL_TIMESTEPS` 3e8 // 256 // 256), so its runs set
   `learning.TOTAL_TIMESTEPS=1966080000` (30,000 × 256 × 256; DEV-E5-3). Its learning rate then
   anneals over the 30,000 updates, by its own schedule.
-- **Calling the code:** every run is `scripts/maze_e5.py train --arm A --view V --seed S --name N`
-  (the run list's command), which runs the arm's trainer in `runs/<name>/` with exactly the flags
-  below (`maze_e5.trainer_cmd`) and records the run (`runs/<name>/e5-run.json`):
+- **Calling the code:** every run is `scripts/maze_e5.py train --arm A --view V --seed S --updates
+  30000 --name N` with N `maze-e5-A-vV-sS` and A `dr`, `plr` or `sfl` (the run list's command
+  and names, e.g. `maze-e5-sfl-v13-s1`), which runs the arm's trainer in `runs/<name>/` with
+  exactly the flags below (`maze_e5.trainer_cmd`) and records the run (`runs/<name>/e5-run.json`):
   - JaxUED runs go through `scripts/run_jaxued_maze.py`, with its compatibility shim and wandb
     offline: `--run_name N --seed S --agent_view_size V --num_updates 30000 --eval_freq 100
     --checkpoint_save_interval 1 --max_number_of_checkpoints 300`, plus `--replay_prob 0
