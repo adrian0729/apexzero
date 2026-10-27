@@ -11,7 +11,9 @@ without them."""
 import ast
 import importlib
 import json
+import os
 import pickle
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -61,6 +63,7 @@ class FakeGit:
                        f"{COMMIT}\trefs/tags/protocol-v1^{{}}\n")
         self.remote_rc, self.local, self.kind, self.commit = 0, OBJ, "tag", COMMIT
         self.ancestor, self.diff_clean, self.untracked = True, True, ""
+        self.tracked, self.blobs = True, {}          # ls-files --error-unmatch; <commit>:<path>
         self.__dict__.update(kw)
         self.events = events if events is not None else []
 
@@ -74,6 +77,9 @@ class FakeGit:
         if cmd == "ls-remote":
             return cp(self.remote_rc, self.remote if self.remote_rc == 0 else "")
         if cmd == "rev-parse":
+            if ":" in args[-1]:
+                blob = self.blobs.get(args[-1].split(":", 1)[1])
+                return cp(0 if blob else 128, blob or "")
             if args[-1] == "refs/tags/protocol-v1":
                 return cp(0 if self.local else 1, self.local or "")
             if args[-1].endswith("^{commit}"):
@@ -86,6 +92,8 @@ class FakeGit:
         if cmd == "diff":
             return cp(0 if self.diff_clean else 1)
         if cmd == "ls-files":
+            if "--error-unmatch" in args:
+                return cp(0 if self.tracked else 1)
             return cp(0, self.untracked if "--others" in args else "")
         if cmd == "status":
             return cp(0, "")
@@ -122,6 +130,134 @@ def test_tag_gate_refuses(lb, monkeypatch, change):
     monkeypatch.setattr(lb, "git_run", FakeGit(**change))
     with pytest.raises(PermissionError):
         lb.tag_gate()
+
+
+needs_git = pytest.mark.skipif(shutil.which("git") is None, reason="git is not installed")
+SUBJECTS_REL = "docs/lockbox-subjects.json"
+
+
+class ScratchRepo:
+    """A bare ``origin`` and a clone of it in tmp_path, with real git and no user config: a
+    metric-code file and a committed subjects file. ``lb.ROOT`` points at the clone."""
+
+    def __init__(self, tmp_path: Path, monkeypatch, lb):
+        cfg = tmp_path / "gitconfig"
+        cfg.write_text("")
+        for k, v in {"GIT_CONFIG_GLOBAL": str(cfg), "GIT_CONFIG_NOSYSTEM": "1",
+                     "GIT_AUTHOR_NAME": "t", "GIT_AUTHOR_EMAIL": "t@example.invalid",
+                     "GIT_COMMITTER_NAME": "t", "GIT_COMMITTER_EMAIL": "t@example.invalid"}.items():
+            monkeypatch.setenv(k, v)
+        self.origin, self.clone = tmp_path / "origin.git", tmp_path / "clone"
+        subprocess.run(["git", "init", "-q", "--bare", str(self.origin)], check=True)
+        subprocess.run(["git", "clone", "-q", str(self.origin), str(self.clone)], check=True,
+                       capture_output=True)
+        (self.clone / "scripts").mkdir()
+        (self.clone / "scripts" / "lockbox.py").write_text("# metric code\n")
+        (self.clone / "docs").mkdir()
+        self.subjects = json.dumps({"subjects": [{"name": "s1", "checkpoint": "runs/s1/a.pkl",
+                                                  "sha256": "0" * 64}]}).encode()
+        (self.clone / SUBJECTS_REL).write_bytes(self.subjects)
+        self.git("add", "-A")
+        self.git("commit", "-qm", "first")
+        self.git("tag", "-a", "protocol-v10", "-m", "a different tag")
+        (self.clone / "notes.txt").write_text("second\n")
+        self.git("add", "-A")
+        self.git("commit", "-qm", "second")
+        self.git("push", "-q", "origin", "HEAD:refs/heads/main", "--tags")
+        monkeypatch.setattr(lb, "ROOT", self.clone)
+
+    def git(self, *args) -> str:
+        return subprocess.run(["git", *args], cwd=self.clone, check=True, capture_output=True,
+                              text=True).stdout.strip()
+
+    def tag(self, annotated: bool = True) -> None:
+        self.git("tag", *(["-a", "-m", "the lockbox"] if annotated else []), "protocol-v1")
+        self.git("push", "-q", "origin", "refs/tags/protocol-v1")
+
+
+@needs_git
+def test_tag_gate_passes_on_a_real_annotated_tag(lb, tmp_path, monkeypatch):
+    """Real git, not FakeGit: ``ls-remote --tags origin protocol-v1`` prints no peeled line,
+    so the gate must name both refs in full. protocol-v10 must not stand in for protocol-v1."""
+    repo = ScratchRepo(tmp_path, monkeypatch, lb)
+    with pytest.raises(PermissionError, match="not on origin"):   # only protocol-v10 exists
+        lb.tag_gate()
+    repo.tag()
+    got = lb.tag_gate()
+    assert got["tag_object"] == repo.git("rev-parse", "refs/tags/protocol-v1")
+    assert got["commit"] == repo.git("rev-parse", "HEAD") == got["head"]
+    assert got["tag_object"] != got["commit"]
+    (repo.clone / "scripts" / "lockbox.py").write_text("# changed\n")
+    with pytest.raises(PermissionError, match="differs"):
+        lb.tag_gate()
+
+
+@needs_git
+def test_tag_gate_refuses_a_real_lightweight_tag(lb, tmp_path, monkeypatch):
+    repo = ScratchRepo(tmp_path, monkeypatch, lb)
+    repo.tag(annotated=False)
+    with pytest.raises(PermissionError, match="not an annotated tag"):
+        lb.tag_gate()
+
+
+@needs_git
+def test_lockbox_subjects_file_is_the_tagged_blob(lb, tmp_path, monkeypatch):
+    """The file freeze reads is the file git checked: inside the repository, not a symlink,
+    tracked, and byte-identical to the tag commit's blob at the same path."""
+    repo = ScratchRepo(tmp_path, monkeypatch, lb)
+    repo.tag()
+    commit = lb.tag_gate()["commit"]
+    path = repo.clone / SUBJECTS_REL
+    r, raw = lb.tagged_subjects_file(path, commit)
+    assert (r, raw) == (SUBJECTS_REL, repo.subjects)
+    subs = lb.subjects_from_file(raw, r)
+    assert subs[0]["source"] == SUBJECTS_REL and subs[0]["name"] == "s1"
+    monkeypatch.chdir(repo.clone)                        # relative to the clone: the same file
+    assert lb.tagged_subjects_file(SUBJECTS_REL, commit) == (SUBJECTS_REL, repo.subjects)
+
+    elsewhere = tmp_path / "elsewhere"                   # same relative path, another tree
+    (elsewhere / "docs").mkdir(parents=True)
+    (elsewhere / SUBJECTS_REL).write_bytes(repo.subjects)
+    monkeypatch.chdir(elsewhere)
+    with pytest.raises(lb.CheckFailed, match="inside the repository"):
+        lb.tagged_subjects_file(SUBJECTS_REL, commit)
+    with pytest.raises(lb.CheckFailed, match="inside the repository"):
+        lb.tagged_subjects_file(tmp_path / "elsewhere" / "docs" / "lockbox-subjects.json",
+                                commit)
+    link = repo.clone / "docs" / "link.json"
+    link.symlink_to(path)
+    with pytest.raises(lb.CheckFailed, match="symlink"):
+        lb.tagged_subjects_file(link, commit)
+    new = repo.clone / "docs" / "new.json"               # untracked, and not in the tag
+    new.write_bytes(repo.subjects)
+    with pytest.raises(lb.CheckFailed, match="byte-identical"):
+        lb.tagged_subjects_file(new, commit)
+    path.write_bytes(repo.subjects.replace(b"s1", b"s2"))  # changed since the tag
+    with pytest.raises(lb.CheckFailed, match="byte-identical"):
+        lb.tagged_subjects_file(path, commit)
+
+
+def test_lockbox_subjects_file_checks_with_fake_git(lb, tmp_path, monkeypatch):
+    monkeypatch.setattr(lb, "ROOT", tmp_path)
+    raw = b'{"subjects": []}'
+    (tmp_path / "s.json").write_bytes(raw)
+    blob = lb.git_blob_id(raw)
+    monkeypatch.setattr(lb, "git_run", FakeGit(blobs={"s.json": blob}))
+    assert lb.tagged_subjects_file(tmp_path / "s.json", COMMIT) == ("s.json", raw)
+    for change in ({"tracked": False}, {"blobs": {}}, {"blobs": {"s.json": "0" * 40}}):
+        monkeypatch.setattr(lb, "git_run", FakeGit(**({"blobs": {"s.json": blob}} | change)))
+        with pytest.raises(lb.CheckFailed):
+            lb.tagged_subjects_file(tmp_path / "s.json", COMMIT)
+
+
+def test_git_blob_id_matches_git(lb, tmp_path):
+    if shutil.which("git") is None:
+        pytest.skip("git is not installed")
+    raw = b"{\r\n \"a\": 1}\n\x00"
+    (tmp_path / "f").write_bytes(raw)
+    out = subprocess.run(["git", "hash-object", "--no-filters", str(tmp_path / "f")],
+                         capture_output=True, text=True, check=True, env=dict(os.environ))
+    assert lb.git_blob_id(raw) == out.stdout.strip()
 
 
 def test_unsealed_guard_runs_only_behind_the_gate(lb, monkeypatch):
@@ -182,11 +318,17 @@ def test_dryrun_refuses_non_rdev_names(lb):
             lb.clear(bad, "dryrun")
 
 
-def _plant_freeze(root: Path, mode: str, circuits, tag=None) -> None:
+PLANTED_SUBJECT = {"name": "s1", "checkpoint": "runs/s1/agent.pkl", "sha256": "0" * 64}
+
+
+def _plant_freeze(root: Path, mode: str, circuits, tag=None, **change) -> None:
+    """A freeze.json as freeze writes it, except that no file is hashed (placeholder sha256s,
+    so no test reads a circuit file it does not need)."""
     root.mkdir(parents=True, exist_ok=True)
     rec = {"mode": mode, "freeze_id": "f" * 32, "circuits": list(circuits),
-           "variants": ["original", "mirrored", "reversed"], "subjects": [],
-           "circuit_files_sha256": {}, "tag": tag, "label": "planted"}
+           "variants": ["original", "mirrored", "reversed"], "subjects": [PLANTED_SUBJECT],
+           "circuit_files_sha256": {f"data/tracks/tumftm/{c}.csv": "0" * 64 for c in circuits},
+           "tag": tag, "label": "planted", **change}
     (root / "freeze.json").write_text(json.dumps(rec))
 
 
@@ -240,6 +382,48 @@ def test_modes_must_match_their_roots(lb, tmp_path, monkeypatch):
     _plant_freeze(lockbox_root, "dryrun", ["Norisring"])
     with pytest.raises(lb.CheckFailed):
         lb.load_freeze(lockbox_root)
+
+
+@pytest.mark.parametrize("stage", ["ocp", "laps", "analyse"])
+@pytest.mark.parametrize("change", [
+    {"circuit_files_sha256": {"outputs/sealed/x.csv": "0" * 64}},              # a planted key
+    {"circuit_files_sha256": {"data/tracks/tumftm/Norisring.csv": "0" * 64,
+                              "outputs/sealed/x.csv": "0" * 64}},              # one extra key
+    {"circuit_files_sha256": {}},                                              # one missing
+    {"circuit_files_sha256": ["data/tracks/tumftm/Norisring.csv"]},            # not a mapping
+    {"subjects": []},
+    {"subjects": [dict(PLANTED_SUBJECT, name="../s1")]},
+    {"subjects": [PLANTED_SUBJECT, PLANTED_SUBJECT]},
+    {"subjects": [{k: v for k, v in PLANTED_SUBJECT.items() if k != "checkpoint"}]},
+    {"subjects": [dict(PLANTED_SUBJECT, checkpoint="outputs/sealed/s1.pkl")]},
+])
+def test_later_stages_recheck_freeze_paths_before_reading(lb, tmp_path, monkeypatch, stage,
+                                                         change):
+    """A hand-edited freeze.json cannot point ocp, laps or analyse at another file: the
+    circuit-file keys and the subjects' paths are checked again before any file is read."""
+    reads = []
+    monkeypatch.setattr(lb, "sha256_file", lambda p: reads.append(p) or "0" * 64)
+    root = tmp_path / "dry"
+    _plant_freeze(root, "dryrun", ["Norisring"], **change)
+    with pytest.raises((lb.CheckFailed, PermissionError)):
+        lb.main([stage, "--root", str(root)])
+    assert not reads
+    assert not (root / "analysis.lock").exists() and not (root / "ocp").exists()
+
+
+def test_load_freeze_accepts_what_freeze_writes(lb, tmp_path):
+    root = tmp_path / "dry"
+    _plant_freeze(root, "dryrun", ["Norisring", "Hockenheim"])
+    rec, clr = lb.load_freeze(root)
+    assert clr.circuits == ("Norisring", "Hockenheim") and rec["subjects"] == [PLANTED_SUBJECT]
+
+
+def test_load_subject_refuses_a_sealed_checkpoint(lb, tmp_path, monkeypatch):
+    monkeypatch.setattr(lb, "SEALED", tmp_path)
+    ck = tmp_path / "a.pkl"
+    sha = _fake_checkpoint(ck)
+    with pytest.raises(PermissionError):
+        lb.load_subject({"name": "s1", "checkpoint": str(ck), "sha256": sha})
 
 
 def test_load_variant_admits_only_cleared_names(lb):
@@ -328,6 +512,10 @@ def test_freeze_writes_a_fresh_root_once(lb, tmp_path):
     assert rec["circuits"] == ["Norisring"] and rec["protocol"]["laps"]["runs"] == 4
     assert rec["tag"] is None and len(rec["freeze_id"]) == 32
     assert list(rec["circuit_files_sha256"]) == ["data/tracks/tumftm/Norisring.csv"]
+    assert rec["subjects_file"] == {"source": "(outside the repository) subjects.json",
+                                    "sha256": lb.sha256_file(spath)}
+    assert rec["subjects"][0]["source"] == rec["subjects_file"]["source"]
+    lb.load_freeze(root)                                  # later stages accept it
     assert len(lb.ocp_tasks(rec)) == 9
     assert lb.ocp_key("Norisring", "reversed", -0.5) == "Norisring-reversed__w-0.5"
     with pytest.raises(lb.CheckFailed):                  # never into a used root
@@ -351,12 +539,15 @@ def test_analyse_refuses_existing_outputs_and_locks_once(lb, tmp_path):
         lb.acquire_lock(root, "f" * 32)
 
 
+@needs_tracks
 def test_analyse_checks_inputs_before_the_lock(lb, tmp_path):
     """Missing or foreign inputs stop analyse before it locks, so it can run after a fix."""
     root = tmp_path / "dry"
     _plant_freeze(root, "dryrun", ["Norisring"])
     rec = json.loads((root / "freeze.json").read_text())
     rec["protocol"] = {"widths": {"deltas_m": [0.0, -0.5, 0.5]}}
+    csv_rel = "data/tracks/tumftm/Norisring.csv"
+    rec["circuit_files_sha256"] = {csv_rel: lb.sha256_file(ROOT / csv_rel)}
     (root / "freeze.json").write_text(json.dumps(rec))
     with pytest.raises(lb.CheckFailed, match="missing"):
         lb.main(["analyse", "--root", str(root)])
@@ -591,7 +782,8 @@ def test_analyse_end_to_end_on_a_planted_root(lb, tmp_path):
     protocol = json.loads(json.dumps(lb.PROTOCOL))
     protocol["laps"]["runs"] = 4
     protocol["stats"]["n_boot"] = 50
-    subs = [{"name": "good", "sha256": "1" * 64}, {"name": "bad", "sha256": "2" * 64}]
+    subs = [{"name": "good", "checkpoint": "runs/good/agent.pkl", "sha256": "1" * 64},
+            {"name": "bad", "checkpoint": "runs/bad/agent.pkl", "sha256": "2" * 64}]
     rec = {"mode": "dryrun", "freeze_id": fid, "circuits": ["Norisring"],
            "variants": list(lb.VARIANTS), "protocol": protocol, "subjects": subs,
            "circuit_files_sha256": {csv_rel: lb.sha256_file(ROOT / csv_rel)}, "tag": None,

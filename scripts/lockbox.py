@@ -40,8 +40,13 @@ Four stages, run in order on one root; each refuses what the one before it did n
   origin, the local tag is the same tag object, HEAD descends from its commit, and the metric
   code (``METRIC_PATHS``, untracked files included) in the working tree is the tagged code.
   Only behind that check does ``lockbox_guard(name, unsealed=True)`` run; it appears nowhere
-  else in this file (a test checks). The subjects file must be tracked and unchanged since
-  the tag.
+  else in this file (a test checks). The subjects file must sit inside the repository (not a
+  symlink), be tracked, and hold exactly the bytes of the tag commit's blob at that path;
+  freeze parses those checked bytes and records the repo-relative path and their sha256.
+
+Every later stage re-applies freeze's path checks to ``freeze.json`` before reading anything it
+names: the circuit-file keys must be exactly the cleared circuits' centrelines, and every
+subject's name and checkpoint path pass the same checks as at freeze (no outputs/sealed/).
 
 **Definitions** (``freeze`` writes the constants into ``freeze.json``; LB-1's pre-registration
 fixes the final values and may change any of them).
@@ -299,8 +304,12 @@ def lower_priority(level: int = NICE) -> None:
 def tag_gate() -> dict:
     """PermissionError unless the annotated tag protocol-v1 exists on origin, the local tag is
     the same tag object, HEAD descends from its commit, and the metric code in the working
-    tree (``METRIC_PATHS``, untracked files included) is the tagged code."""
-    ls = git_run("ls-remote", "--tags", "origin", TAG)
+    tree (``METRIC_PATHS``, untracked files included) is the tagged code.
+
+    The two refs are named in full: ``git ls-remote --tags origin protocol-v1`` prints only the
+    tag line, never the peeled ``^{}`` one, and a ``protocol-v1*`` glob also matches
+    protocol-v10. The parse below takes exact names only."""
+    ls = git_run("ls-remote", "origin", f"refs/tags/{TAG}", f"refs/tags/{TAG}^{{}}")
     if ls.returncode != 0:
         raise PermissionError(f"cannot list origin's tags ({ls.stderr.strip()}): the lockbox "
                               "stays sealed")
@@ -473,7 +482,18 @@ def load_freeze(root) -> tuple[dict, Clearance]:
     if mode == "lockbox" and clearance.tag["commit"] != (rec.get("tag") or {}).get("commit"):
         raise CheckFailed(f"{TAG} now points at {clearance.tag['commit']}, not the frozen "
                           f"{(rec.get('tag') or {}).get('commit')}")
+    # freeze.json names files that later stages read: re-apply freeze's own path checks, so a
+    # hand-edited record cannot point a stage at outputs/sealed/ or anywhere else.
+    files = rec.get("circuit_files_sha256")
+    if not isinstance(files, dict) or set(files) != circuit_file_keys(clearance.circuits):
+        raise CheckFailed("freeze.json's circuit files are not the cleared circuits' files")
+    check_subject_paths(rec.get("subjects"))
     return rec, clearance
+
+
+def circuit_file_keys(circuits) -> set[str]:
+    """The repo-relative centreline files of ``circuits``: the only keys freeze writes."""
+    return {rel(TRACK_DIR / f"{c}.csv") for c in circuits}
 
 
 # ------------------------------------------------------------------------- subjects
@@ -503,11 +523,40 @@ def subjects_from_h4r(names) -> list[dict]:
     return out
 
 
-def subjects_from_file(path: Path) -> list[dict]:
-    d = json.loads(Path(path).read_text())
+def subjects_from_file(raw: bytes, source: str) -> list[dict]:
+    """The subjects in a subjects file's bytes (the bytes that were checked, never a re-read).
+    ``source`` is what freeze.json records: a repo-relative path, never an absolute one."""
+    d = json.loads(raw.decode())
     subs = d["subjects"] if isinstance(d, dict) else d
     return [{"name": s["name"], "checkpoint": s["checkpoint"], "sha256": s["sha256"],
-             "source": rel(path)} for s in subs]
+             "source": source} for s in subs]
+
+
+def git_blob_id(raw: bytes, n_hex: int = 40) -> str:
+    """The object id git gives a blob of these bytes (SHA-1; SHA-256 for a 64-hex repo)."""
+    head = b"blob %d\0" % len(raw)
+    return (hashlib.sha1 if n_hex == 40 else hashlib.sha256)(head + raw).hexdigest()
+
+
+def tagged_subjects_file(path, commit: str) -> tuple[str, bytes]:
+    """Lockbox mode: (repo-relative path, bytes) of the subjects file. It must sit inside the
+    repository and not be a symlink, be tracked, and its bytes on disk must be exactly the blob
+    that the tag's commit holds at that same path. The bytes returned are the ones checked, so
+    the subjects that freeze reads are the tagged ones."""
+    p = Path(path)
+    if p.is_symlink():
+        raise CheckFailed(f"the subjects file ({p.name}) may not be a symlink")
+    full = p.resolve()
+    if not _inside(full, ROOT) or full == ROOT.resolve():
+        raise CheckFailed(f"the subjects file ({p.name}) must sit inside the repository")
+    r = full.relative_to(ROOT.resolve()).as_posix()
+    raw = full.read_bytes()
+    tracked = git_run("ls-files", "--error-unmatch", "--", r)
+    blob = git_run("rev-parse", "--verify", "--quiet", f"{commit}:{r}")
+    want = blob.stdout.strip() if blob.returncode == 0 else ""
+    if tracked.returncode != 0 or len(want) not in (40, 64) or git_blob_id(raw, len(want)) != want:
+        raise CheckFailed(f"{r} must be tracked and byte-identical to {TAG}'s copy of it")
+    return r, raw
 
 
 def checkpoint_file(sub: dict) -> Path:
@@ -515,19 +564,31 @@ def checkpoint_file(sub: dict) -> Path:
     return p if p.is_absolute() else ROOT / p
 
 
+def check_subject_paths(subs) -> None:
+    """Names distinct, non-empty and filesystem-safe; every subject names a checkpoint, and none
+    sits in outputs/sealed/. Freeze runs it, and every later stage runs it again on
+    freeze.json's subjects before any checkpoint is read."""
+    if not isinstance(subs, list) or not subs or not all(isinstance(s, dict) for s in subs):
+        raise CheckFailed("subjects must be a non-empty list of records")
+    names = [s.get("name") for s in subs]
+    if len(set(map(str, names))) != len(names):
+        raise CheckFailed(f"subjects must be distinct: {names}")
+    for s in subs:
+        if not isinstance(s.get("name"), str) or not SUBJECT_NAME.match(s["name"]):
+            raise CheckFailed(f"subject name {s.get('name')!r} is not filesystem-safe")
+        if not isinstance(s.get("checkpoint"), str) or not s["checkpoint"]:
+            raise CheckFailed(f"subject {s['name']} names no checkpoint")
+        if _inside(checkpoint_file(s), SEALED):
+            raise PermissionError("outputs/sealed/ is never read")
+
+
 def verify_subjects(subs: list[dict]) -> list[dict]:
     """Each subject's checkpoint must hash to its declared sha256; names must be distinct and
     filesystem-safe; no checkpoint may sit in outputs/sealed/."""
-    names = [s["name"] for s in subs]
-    if not subs or len(set(names)) != len(names):
-        raise CheckFailed(f"subjects must be distinct and non-empty: {names}")
+    check_subject_paths(subs)
     out = []
     for s in subs:
-        if not SUBJECT_NAME.match(s["name"]):
-            raise CheckFailed(f"subject name {s['name']!r} is not filesystem-safe")
         f = checkpoint_file(s)
-        if _inside(f, SEALED):
-            raise PermissionError("outputs/sealed/ is never read")
         raw = f.read_bytes()
         sha = sha256_bytes(raw)
         if sha != s["sha256"]:
@@ -545,6 +606,7 @@ def load_subject(sub: dict):
     from apexzero.agents.ppo import Actor, PPOConfig
     from apexzero.audit.rollouts import snapshot_from_pickle
 
+    check_subject_paths([sub])
     raw = checkpoint_file(sub).read_bytes()
     if sha256_bytes(raw) != sub["sha256"]:
         raise CheckFailed(f"{sub['name']}: checkpoint changed since freeze")
@@ -580,15 +642,17 @@ def stage_freeze(args) -> Path:
         raise CheckFailed("the lockbox run takes its subjects from a committed file")
     if args.runs < 3:
         raise CheckFailed("--runs must be at least 3")
+    subjects_file = None
     if args.subjects:
-        spath = Path(args.subjects)
         if mode == "lockbox":
-            r = rel(spath)
-            tracked = git_run("ls-files", "--error-unmatch", "--", r)
-            same = git_run("diff", "--quiet", clearance.tag["commit"], "--", r)
-            if tracked.returncode != 0 or same.returncode != 0:
-                raise CheckFailed(f"{r} must be tracked and unchanged since {TAG}")
-        subs = subjects_from_file(spath)
+            source, raw = tagged_subjects_file(args.subjects, clearance.tag["commit"])
+        else:
+            spath = Path(args.subjects).resolve()
+            source = (rel(spath) if _inside(spath, ROOT)
+                      else f"(outside the repository) {spath.name}")
+            raw = spath.read_bytes()
+        subs = subjects_from_file(raw, source)
+        subjects_file = {"source": source, "sha256": sha256_bytes(raw)}
     else:
         subs = subjects_from_h4r(args.h4r_subjects)
     subs = verify_subjects(subs)
@@ -602,7 +666,8 @@ def stage_freeze(args) -> Path:
         "mode": mode, "freeze_id": uuid.uuid4().hex,
         "created": time.strftime("%Y-%m-%dT%H:%M:%S"),
         "circuits": list(clearance.circuits), "variants": list(VARIANTS),
-        "protocol": protocol, "subjects": subs, "circuit_files_sha256": files,
+        "protocol": protocol, "subjects": subs, "subjects_file": subjects_file,
+        "circuit_files_sha256": files,
         "tag": clearance.tag, "provenance": provenance(t_start),
     }
     root.mkdir(parents=True, exist_ok=True)

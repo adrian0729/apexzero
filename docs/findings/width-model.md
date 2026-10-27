@@ -11,7 +11,10 @@ Results:
 - `outputs/width-report/report.json`: default, copied and (2a). Computed once at `bdfd442`.
 - `outputs/width-report/report-2b.json`: (2b). Computed once at `1bd85ec`.
 - Each has a provenance block: plan commit and sha256, script sha256, HEAD, changed paths, and the sha256 of every R-dev centreline read. `src/` was clean for both.
-- Files under `outputs/` are local and not in git.
+- The two reports are force-added to git (26 Oct 2026, after review), because GW-3's criterion 4 reads (2a)'s. Their sha256s, which GW-4 checks before reading:
+  - `report.json`: `5871664be5a6ff6ac882e3a38e131660fe16676f37ddd0a99ffba7294a42f014`;
+  - `report-2b.json`: `89ffd2a3a1c49de902e880c44f4e0dfec38ed790ebd2551435778e2c89f37755`.
+- Every other file under `outputs/` is local and not in git.
 
 **Every number here is exploratory**, or descriptive where it says so. Post hoc readings are labelled as such. No agent was trained or evaluated. Only the 12 R-dev circuits were read, each through `lockbox_guard`. R_TEST and `outputs/sealed/` were not touched.
 

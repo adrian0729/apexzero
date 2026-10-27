@@ -186,6 +186,11 @@ baseline is the largest of agent-only, J\* and BFS steps (the pilot's rule).
 - CIs are 95% percentile intervals.
 - A two-sided p is min(1, 2(1 + n_opposite)/(B + 1)), where n_opposite counts the draws on the
   other side of 0 from the point estimate.
+- A one-sided p against a bound b is (1 + n_beyond)/(B + 1), where n_beyond counts the draws at
+  or beyond b on the null's side. For "difference > 0" the null side is ≤ 0, so n_beyond counts
+  the draws ≤ 0.
+- **TOST** for |x| < c: p_low = (1 + #draws with x ≤ −c)/(B + 1) and p_high = (1 + #draws with
+  x ≥ c)/(B + 1). Its p is the larger of the two.
 
 **The trend test** (the plan's seed-slope t-test):
 - Per run, the OLS slope of z on log10(u_k) over all 16 checkpoints.
@@ -217,14 +222,16 @@ Per arm and primary score, read on both targets:
 | Row | Rule | Reading |
 |---|---|---|
 | A, faithful | Faithful in every reached phase on both targets, and no row G for the arm's stored score | "On JaxUED's own [arm] agents, [score] tracks exact regret throughout training" |
-| B, degrades late | ρ̄_late − ρ̄_early ≤ −0.1 with its CI excluding 0, and PF-trend negative and significant after Holm, on either target (which one is reported) | "The score tracks regret only while the agent is incompetent" |
-| B′, improves with competence (not in the plan's table) | The mirror image: ≥ +0.1, and a positive PF-trend | "The score tracks regret only once the agent solves most mazes" |
+| B, degrades late | On one target, both: ρ̄_last − ρ̄_first ≤ −0.1 with its CI excluding 0, and PF-trend negative and significant after Holm. It holds if they hold together on either target (the target or targets are reported) | "The score tracks regret only while the agent is incompetent" |
+| B′, improves with competence (not in the plan's table) | The mirror image, on one target: ≥ +0.1 with its CI excluding 0, and PF-trend positive and significant after Holm | "The score tracks regret only once the agent solves most mazes" |
 | C, uninformative | Uninformative in every reached phase on both targets | "Ground truth confirms No Regrets on the maze" |
 | F, observability | S3 (Section 5.3) significant after Holm, with \|difference\| ≥ 0.2 | "Fidelity depends on observability" |
 | G, fresh ≠ buffer | S2 significant after Holm, with \|difference\| ≥ 0.2 | "Fresh audits misstate what the curriculum actually sees" |
 | none of these | | reported per phase as mixed |
 
-- "Late" means the latest reached phase. If only one phase is reached, B and B′ are not testable.
+- "Last" (and "late" elsewhere) means the latest reached phase; "first" means the earliest reached
+  phase, which is early when early is reached. ρ̄_last − ρ̄_first is computed on the arm's runs and
+  bootstrapped as Section 4 fixes. If only one phase is reached, B and B′ are not testable.
 - Rows can co-occur, except A with B, B′ or C.
 - Rows D and E of the plan need track types and curricula on a shared pool, and do not apply.
 
@@ -232,8 +239,8 @@ Per arm and primary score, read on both targets:
 
 - **S1, the plan's MaxMC prediction** ("high ρ against absolute regret but near zero against
   normalised"). Per arm, in the latest reached phase, two tests:
-  - ρ̄_abs − ρ̄_norm > 0 (one-sided);
-  - |ρ̄_norm| < 0.2, by TOST: the larger of the two one-sided p values.
+  - ρ̄_abs − ρ̄_norm > 0 (one-sided; p against 0, Section 4);
+  - |ρ̄_norm| < 0.2, by TOST against ±0.2 (Section 4): the larger of the two one-sided p values.
 
   The prediction holds for an arm when both pass. 6 tests.
 - **S2, in-buffer against fresh** (the plan's prediction that in-buffer fidelity is lower).
@@ -315,6 +322,14 @@ Per arm and primary score, read on both targets:
 7. **The manifest** (every checkpoint's path, update and sha256; every run's config and queue
    events) is committed.
 8. **The tag** `maze-e5-prereg-v1`, placed by the lead.
+
+**Between training and the tag.** The 30 runs train from one commit (the training commit, which
+holds this text and step 3's build). Their logs show JaxUED's eval solve rates, and so which phases
+the runs reach, before the tag. From the start of training to the tag, any change to this text, E5's
+code (step 3's files and `apexzero.maze`) or the audit settings is an amendment appended at the end
+of this file, dated, stating what had been seen when it was written, including any training-log
+solve rates. At tagging the lead checks `git diff <training commit> HEAD` on those paths: anything
+other than the manifest and the recorded amendments is logged as a deviation.
 
 **After the tag:**
 

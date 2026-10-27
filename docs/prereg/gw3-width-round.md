@@ -5,7 +5,7 @@
 - Each run writes its outcome (`eval_rdev.json`) when its training ends, so the tag must precede training, not just the analysis.
 - Only the 12 R-dev circuits are evaluated. R_TEST stays sealed and `outputs/sealed/` is not read.
 
-**One item waits on the user** (Section 9). Neither width model met GW-2's bands ([`width-model.md`](../findings/width-model.md)). This draft therefore fixes the stat-model arms as **M = (2a)**, the recommended option, and words GW-4's criterion 4 to match. The user may choose (2b), or no stat-model arm, before the tag. Everything else here holds for any choice.
+**Items wait on the user** (Section 9). The main one: neither width model met GW-2's bands ([`width-model.md`](../findings/width-model.md)). This draft therefore fixes the stat-model arms as **M = (2a)**, the recommended option, and words GW-4's criterion 4 to match. The user may choose (2b), or no stat-model arm, before the tag. Everything else here holds for any choice.
 
 ## 1. Why
 
@@ -43,7 +43,10 @@
 - **One commit:**
   - all 60 runs train from the tagged commit;
   - the queue records `git rev-parse HEAD` at launch and refuses a dirty tree;
-  - with the width options off, the training path is bit-identical to H4R's (`tests/test_stat_widths.py`, `tests/test_real_widths.py`). As of this draft, only GW-2's opt-in commits have touched it since H4R's `612ed7a`. Any later option (VG-0's, for example) must also default off and keep it so.
+  - with the width and VG options off, the training path is bit-identical to H4R's. Since H4R's `612ed7a` it has been touched by GW-2's opt-in commits (`bdfd442`, `1bd85ec`, and `3323a0e`'s batch size for (2b) only) and by VG-0's (`43d68fe`: `ppo.make_rollout`, `make_learner` and `make_train`, `adapters._bank_step`'s `info['final_state']`, `checkpoints.make_checkpoint_fn` and `train_dr.py`). Each option defaults off. The tests that hold the default path:
+    - generator and bank: `tests/test_stat_widths.py` (`test_default_is_bit_identical`, `test_default_bank_is_bit_identical`, `test_train_dr_default_path_is_unchanged`) and `tests/test_real_widths.py::test_default_is_unchanged`;
+    - PPO and env: `tests/test_value_gradient.py` (`test_default_racing_update_reproduces_the_pre_term_values`, `test_default_rollout_records_no_capture_and_defaults_are_off`, `test_train_dr_default_path_passes_no_term`) and `tests/test_ppo.py::test_make_train_reproduces_the_pre_split_update`.
+    - The lead re-lists the commits at the tag. Any later option must also default off and come with such a test.
 - **One machine:** one rented NVIDIA RTX A6000, the cheapest Massed Compute instance, under the standing permission.
   - Set up with `scripts/gpu_setup.sh`.
   - `scripts/gpu_sync.sh` pushes R-dev data only (centrelines and `outputs/ocp/<R-dev>.pkl` for the gap). No R_TEST circuit leaves the Mac.
@@ -63,7 +66,7 @@
 - **Units.** One value per network or network pair, all out of 12:
   - **Baseline unit:** b_s = C(`base`, seed s, all 12).
   - **Leave-out unit:** u_s = C(`*-f1`, seed s, H_f1) + C(`*-f2`, seed s, H_f2). Seed s of fold f1 is paired with seed s of fold f2, so every R-dev circuit is judged once, by a network that never saw its widths.
-  - Each unit is a different network or pair. Values from one baseline network are not entered twice. The 2021 leave-out analysis did enter them twice: the same baselines sat in both folds' strata and were permuted independently, which understates the variance.
+  - Each unit is a different network or pair. Values from one baseline network are not entered twice. The leave-out analysis of 21 Oct 2026 (`width-test.md`, Section 7) did enter them twice: the same baselines sat in both folds' strata and were permuted independently, which understates the variance.
   - **All-12 unit:** a_s = C(`sa`, seed s, all 12).
 - **Primary test P1: `sl` above `base` on held-out circuits.**
   - Statistic T = Σ over variants of [mean_s u_s(sl) − mean_s b_s].
@@ -73,12 +76,14 @@
   - A missing run removes its unit (both halves of a pair are needed). Every relabelling of the remaining units is enumerated.
   - A test is **not testable** with fewer than 3 units in either arm of either variant. Not testable counts as not confirmed.
 - **Secondary** (exact one-sided permutation tests of the same construction at 0.05, unadjusted, labelled secondary):
-  - **S1:** `cl` above `base` on held-out circuits (u(cl) against b). This replicates the leave-out test with same-code baselines. The per-variant results are reported, v1 first.
+  - **S1:** `cl` above `base` on held-out circuits (u(cl) against b), both variants (T as in P1). This replicates the leave-out test with same-code baselines.
+    - **S1-v1 and S1-v3**, also secondary exact tests at 0.05, unadjusted: the same comparison within one variant, T = mean_s u_s(cl) − mean_s b_s, one-sided, with C(10, 5) = 252 relabellings. S1-v1 is reported first: it is the transfer reading follow-through Section 9.1 asks for. The not-testable rule applies per variant.
   - **S2:** `sa` above `base` on all 12 (a against b). It is in-sample for M's summaries.
   - **S3:** `sl` against `cl` on held-out circuits, two-sided, descriptive. The mean difference per (variant, fold) cell, with a 95% percentile bootstrap over seeds (20,000 draws, seed 0). GW-4's criterion 2 reads this point estimate.
 - **Lap time (GW-4's criterion 3; IN-4's form).**
   - Each network's median gap is the median over its completed R-dev circuits of (median lap / s-OCP lap − 1), in points.
-  - Δgap = mean over `sa` networks − mean over `base` networks, **both variants pooled** (10 against 10).
+  - A network with no completed circuit has no median gap. It is left out of Δgap, and the number left out is reported per arm and variant. If every `sa` or every `base` network is left out, Δgap is undefined and criterion 3 does not hold.
+  - Δgap = mean over `sa` networks − mean over `base` networks, **both variants pooled** (10 against 10, less any left out).
   - Also reported, descriptively:
     - per variant;
     - on the circuits both networks complete (paired by seed);
@@ -115,20 +120,22 @@ S1 is reported whatever P1 shows. It answers the transfer question of follow-thr
 GW-4 **adopts M, fitted on all 12 R-dev circuits, as `generator-v1`'s width model** if all five criteria hold (follow-through Section 7.4):
 1. **P1 confirms** (Section 3).
 2. **Not far below the copied model.** D2 ≥ −0.5, where D2 is the mean over the 4 (variant, fold) cells of [mean_s C(`sl-f`, H_f) − mean_s C(`cl-f`, H_f)], in circuits of 6. This is a point estimate (S3).
-3. **Lap time.** Δgap < 1.0 point (Section 3; point estimate, both variants pooled). IN-4's copied-width reference for this statistic is +0.30 points pooled (+0.52 in v1, +0.09 in v3), with a 95% half-width of about 0.45 points at 10 against 10 (`interp-leftovers.md`, Section 6.3).
+3. **Lap time.** Δgap < 1.0 point (Section 3; point estimate, both variants pooled; networks with no completed circuit left out, as Section 3 fixes). IN-4's copied-width reference for this statistic is +0.30 points pooled (+0.52 in v1, +0.09 in v3), with a 95% half-width of about 0.45 points at 10 against 10 (`interp-leftovers.md`, Section 6.3).
 4. **The width-report bands. PENDING THE USER** (Section 9). Neither model met them as fixed.
-   - Drafted for M = (2a): "(2a)'s committed width report (`outputs/width-report/report.json`) passes every v1 check in both folds and every no-copy check. Its v3 misses are limited to `share_1m` and `spectrum:8-16`."
+   - Drafted for M = (2a): "(2a)'s committed width report (`outputs/width-report/report.json`, sha256 `5871664be5a6ff6ac882e3a38e131660fe16676f37ddd0a99ffba7294a42f014`) passes every v1 check in both folds and every no-copy check. Its v3 misses are limited to `share_1m` and `spectrum:8-16`."
+   - The report is force-added to git (as `outputs/vg0/` is), with (2b)'s `report-2b.json` (sha256 `89ffd2a3a1c49de902e880c44f4e0dfec38ed790ebd2551435778e2c89f37755`). Both sha256s are also in `width-model.md`. GW-4 reads the report only after checking its sha256 against this line; a mismatch stops GW-4 for an amendment.
    - The recorded report already meets this wording. Adopting it is a deviation from the width-model plan's verdict rule, and it must be logged before the tag.
 5. **The default stays bit-identical** at the `generator-v1` commit. These tests pass there:
    - `tests/test_stat_widths.py::test_default_is_bit_identical`;
    - `::test_default_bank_is_bit_identical` and `::test_train_dr_default_path_is_unchanged`;
    - `tests/test_real_widths.py::test_default_is_unchanged`;
-   - and `tests/test_reexpress.py::test_default_and_2a_unchanged_and_2b_fit`, if (2b) is in the tree.
+   - `tests/test_reexpress.py::test_default_and_2a_unchanged_and_2b_fit`, if (2b) is in the tree;
+   - and, for the PPO and env path that E0 also trains through, `tests/test_value_gradient.py`'s three default-path tests and `tests/test_ppo.py::test_make_train_reproduces_the_pre_split_update` (Section 2).
 
 **What adoption means:**
 - **If all five hold:** `generator-v1` sets `stat_widths` (M fitted on all 12) as E0's training width model. The default stays the frozen default.
 - **Otherwise:** `generator-v1` is tagged with the default widths. #11 allows no further width-model round. Copied R-dev widths are not a fallback unless the user decides #12 for copying.
-- **Not decided here:** E0's curvature variant (v1 or v3). The rule adopts a width model for either, read pooled over both.
+- **E0's curvature variant (v1 or v3)** is not GW-4's to choose, and it may not be chosen on GW-3's per-variant results. It is fixed before the tag, without GW-3 data (Section 9, item 5), and recorded here. The rule adopts a width model for either, read pooled over both.
 - **GW-5 and GW-6** (#11's optional lever round and 1B pilot) may run after GW-3 on the chosen recipe. They do not change this rule.
 
 ## 6. The 80% gate (decision #10; recorded here, not read here)
@@ -175,4 +182,7 @@ GW-4 **adopts M, fitted on all 12 R-dev circuits, as `generator-v1`'s width mode
 2. **Seeds per cell (the user).** 5 (#13; about 7 h; power about 0.25–0.37 for a half-transferred gain) or 10 (about 14 h).
 3. **#12 (the user):** whether copied R-dev widths may be `generator-v1`'s fallback.
 4. **Seed ranges (the lead):** keep VG-1 and any other `train_dr.py` round off seeds 20–24 (20–29 if 10 seeds).
-5. **To build (the lead):** `scripts/gw3_analysis.py` with tests, `scripts/gpu_queue_gw3.sh`, and the manifest writer.
+5. **E0's curvature variant (the user, before the tag).** Decided on what exists now, never on GW-3's results; once tagged, a change is a deviation that makes E0's recipe exploratory.
+   - Recommended: **v1**, `train_dr.py`'s default. It is the variant where the copied-width effect replicates (H4R S1, +2.6 of 12; follow-through Section 7.4 requires v1 in GW-3 for that reason), and the curvature levers did not differ (v1/v2/v3 at 5.4/5.8/5.8; follow-through Section 8).
+   - The alternative is v3 (`--tilt-fraction 0.5 --tilt-alpha 2`), whose H4R baseline was higher (7.2 against 5.0 circuits of 12) and whose width effect was smaller.
+6. **To build (the lead):** `scripts/gw3_analysis.py` with tests, `scripts/gpu_queue_gw3.sh`, and the manifest writer.

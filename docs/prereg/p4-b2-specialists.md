@@ -65,9 +65,20 @@ unseparated. This design turns that into a settled answer instead of an open que
 - **One commit.** All five train from one commit, recorded at launch. The queue refuses a dirty
   tree.
   - S1 trained (18 Oct) before the PPO refactor merged in `3aa57d3`. S2 and S3 finished on
-    19 Oct, around that merge. Since then only `83ebe56` has touched the training path
-    (`env/adapters.py`, an option that is off by default), and other lanes may add more such
-    options, each required to leave the default path bit-identical.
+    19 Oct, around that merge.
+  - Since `3aa57d3`, these commits have touched `train.py`'s path (`agents/`, `env/`,
+    `tracks/generator.py`), each adding an option that is off by default:
+    - `83ebe56`, `2143a59` and `bdfd442`: copied and statistical width models (the generator;
+      `adapters.py` in `83ebe56` and `bdfd442`);
+    - `1bd85ec` and `3323a0e`: model (2b) and its batch size (generator, `adapters.py`);
+    - `43d68fe`: VG-0's value-gradient term (`ppo.make_rollout`, `make_learner` and
+      `make_train`, `adapters._bank_step`, `checkpoints.make_checkpoint_fn`).
+  - The default path is held by `tests/test_ppo.py::test_make_train_reproduces_the_pre_split_update`,
+    `tests/test_value_gradient.py` (`test_default_racing_update_reproduces_the_pre_term_values`,
+    `test_default_rollout_records_no_capture_and_defaults_are_off`), and, for the generator and
+    bank, `tests/test_stat_widths.py::test_default_bank_is_bit_identical` and
+    `tests/test_real_widths.py::test_default_is_unchanged`. The lead re-lists the commits at the
+    launch commit. Other lanes may add more such options, each with a default-path test.
   - S4–S8 are therefore a sample of their own. S1–S3 (Mac CPU, earlier or uncertain code) are
     compared with them descriptively only.
 - **One machine.** One rented NVIDIA RTX A6000 (the cheapest Massed Compute instance, under the
@@ -147,7 +158,14 @@ indices 135–139, distinct from S1–S3's 132–134 (a built-in check).
 - `scripts/p4_b2.py` and `tests/test_p4_b2.py`, both new, written, reviewed and committed before
   the tag.
 - It imports `src/apexzero/interp`, `scripts/psychophysics.py` and `scripts/p4_exploratory.py`
-  read-only, and refuses to run if any of them differs from its committed version.
+  read-only. Their versions are pinned in the record that the tag binds (Section 8, step 3):
+  the git blob and sha256 of each script, the git tree of `src/apexzero/interp`, and the commit
+  they were read at. As of this draft (at `c862a76`; none has changed since `f62f273` for
+  `psychophysics.py` and `interp/`, or `2fc517b` for `p4_exploratory.py`):
+  - `scripts/psychophysics.py`: blob `53d34e79…`, sha256 `40ac5e91…`;
+  - `scripts/p4_exploratory.py`: blob `f29eec60…`, sha256 `95183edf…`;
+  - `src/apexzero/interp`: tree `e4c456fe…`.
+- Every stage refuses to run if any of them differs, in git or byte for byte, from the record.
 - It adds no file under `src/` (the costate freeze hash covers `src/`), and writes nothing under
   `outputs/psychophysics/` or `outputs/p4/`. Its outputs go to `outputs/p4b2/`.
 
@@ -224,7 +242,7 @@ Section 6). No threshold is adjusted for it.
 | Class 2, non-vacuous | context-keyed, with the key named |
 | Class 2, vacuous | CM-1: fragile (CM). CM-2: context-keyed (CM). CM-6: mixed (CM). CM not testable: undecided |
 | Class 3 | corner-keyed |
-| Class 4 or 5 | reads the road (generally or locally) |
+| Class 4 or 5 | reads the road (class 4: generally; class 5: locally) |
 | Class 6 | mixed |
 
 ### 4.4 The recipe
@@ -234,6 +252,12 @@ Section 6). No threshold is adjusted for it.
   - A reading reached through CM counts with its kind: fragile with fragile (CM), context-keyed
     with context-keyed (CM), mixed with mixed (CM). The number reached through CM is reported.
   - "Undecided" counts on its own.
+  - Classes 4 and 5 count together, as "reads the road". The wording (Section 5) is class 5's,
+    "within its envelope", unless at least 3 of the 5 are class 4.
+  - Context-keyed through class 2 and through CM-2 count together. The key in the wording is
+    every key held by at least one specialist in the majority, each with its count, most held
+    first (for example "keyed by constant width (3 of 4) and the straightened road (1 of 4)").
+    A specialist whose class 2 names no key counts as "no key named".
   - With 5 specialists at most one reading can reach 3. A missing specialist counts against every
     reading, so the denominator stays 5.
 - **P4's registered recipe claim.** The same rule on the Section 4.1 classes alone is reported
@@ -248,9 +272,9 @@ before `protocol-v1` (#14).
 | Recipe reading | Wording fixed now |
 |---|---|
 | Fragile | "The Hockenheim specialists are fragile off their training manifold. Certified-irrelevant road changes no further from it break them as the failing single-factor change does, so memorisation cannot be diagnosed." The demo does not call them memorisers |
-| Context-keyed | "Context-keyed memorisation, keyed by [factor]. Certified-irrelevant changes at least as far off the manifold leave them intact, while one real-road factor breaks them." Their gap from the optimum is a fact about Hockenheim only |
+| Context-keyed | "Context-keyed memorisation, keyed by [factor]. Certified-irrelevant changes at least as far off the manifold leave them intact, while one real-road factor breaks them." [factor] is filled by Section 4.4's key rule. Their gap from the optimum is a fact about Hockenheim only |
 | Corner-keyed | "Corner-keyed memorisation" (protocol, interpretation table) |
-| Reads the road | "Reads the road within its envelope" (class 5) or "beyond it" (class 4) |
+| Reads the road | "Reads the road within its envelope", or "beyond it" if at least 3 of the 5 are class 4 (Section 4.4) |
 | Mixed | "No single label." The specialists are described per network and per corner |
 | Undecided | "Tied to Hockenheim's context (the single-factor failures and MI), with memorisation and fragility not separable by certified-irrelevant road changes" |
 | Not competent | "The recipe does not reliably give specialists competent from these states." P4 is not answerable |
@@ -347,7 +371,7 @@ From S1–S3 and option A. They are held weakly, and none of them decides anythi
 ## 10. Integrity and lockbox
 
 - **Frozen code is unchanged:** `src/apexzero/interp`, `scripts/psychophysics.py`, and the option A
-  script and lists, checked by hash at every stage.
+  script and lists, checked at every stage against the hashes the record pins (Section 3, Code).
 - **Only Hockenheim is built or driven.** Every track name passes `viz.export.lockbox_guard`, and
   the frozen builder admits Hockenheim only.
 - **No R_TEST circuit** and no mirrored or reversed variant of one is used. `outputs/sealed/` is

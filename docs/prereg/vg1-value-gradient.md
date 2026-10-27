@@ -3,7 +3,8 @@
 **Status.** DRAFT, 26 Oct 2026, for review. Nothing here is tagged and no VG-1 run exists.
 - After review the lead commits the final text, the measurement and analysis scripts with their tests, and the queue script.
 - A pilot of 6 runs (Section 4.1) then chooses β by a rule fixed here, on manipulation metrics only. The lead records the chosen β in Section 4.2 and places the annotated tag `vg1-prereg-v1` on that commit. It is pushed **before any main-run network is trained** (Section 9).
-- Each run writes its completion outcome (`eval_rdev.json`) when its training ends, so the tag must come before training, not just before the analysis.
+- The pilot computes M1, the primary statistic, on its 6 networks. So the text is frozen at the commit the pilot trains from: between the pilot and the tag only Section 4.2's β\* line and the pilot record may change, and the lead checks this at tagging (Section 9). Every item of Section 10 is settled before that commit.
+- Each main-run network writes its completion outcome (`eval_rdev.json`) when its training ends, so the tag must come before training, not just before the analysis. Pilot runs write none (Section 4.1).
 - Only the 12 R-dev circuits and generated strips are evaluated. R_TEST stays sealed, and `outputs/sealed/` is not read.
 
 **Decision #5 (25 Oct, second round) fixes the frame:**
@@ -11,7 +12,7 @@
 - 40 runs;
 - a positive result does not change E0's recipe, so VG-1 stays off the lockbox's critical path.
 
-This draft fixes everything else. Section 10 lists the items it could not settle.
+This draft fixes everything else. Section 10 lists the items it could not settle; each is settled before the pilot commit (Section 9), never after a pilot number exists.
 
 ## 1. Why
 
@@ -48,7 +49,7 @@ This draft fixes everything else. Section 10 lists the items it could not settle
 - **Scale:** scale_k² = Var(G'_k) + E[(dV/dy_k)²] over the rollout, with dV/dy from the rollout's critic. This is the targets' spread plus the critic's gradient size.
   - Without the second term, a random-init critic's first update scored about 26,000 in VG-0's smoke run. Almost all of it came from the accel channels, whose targets have an SD of about 1e-5 against the critic's 4·10⁻³ there.
   - With it, the first update scored about 21, and the later ones below 1.
-- **Ω** is diagonal and equal over the 12 components after standardisation.
+- **Ω** is diagonal and equal over the 12 components after standardisation (full-state Ω). #5 left the loss form and Ω to the user. This draft chooses full-state Ω from #5's manipulation-primary answer (Section 3.1) and puts it to the user before the pilot (Section 10, item 4).
 - The β-term's parameter gradient is a double backprop. The term reaches the critic only; the actor's loss is unchanged.
 - **Fixed settings:** λ = 0.95 (the GAE λ, so both targets look the same distance ahead) and winsor 0.005. β comes from the pilot (Section 4.1).
 
@@ -91,7 +92,7 @@ So s is almost absent from the one-step signal. ξ carries about a fifth of the 
 - A term that fits the full-state gradient moves g_s and g_ξ directly. But it spends much of the critic's capacity on directions the actor does not read in one step, so completion may not move even if the manipulation works.
 
 **How the design handles it:**
-1. **Full-state Ω** (Section 2). The primary is the manipulation (#5), so the term targets what C1 scores.
+1. **Full-state Ω** (Section 2). The primary is the manipulation (#5), so the term targets what C1 scores. This is the draft's choice, not yet the user's (Section 10, item 4).
 2. **The actor's horizon is longer than one step.** GAE's advantage integrates the critic over about 20 steps (λ 0.95, γ 0.995, about 1 s). Over that span a steer input moves ξ and then n, and a pedal input moves s through vx. So s and ξ reach the actor through the multi-step chain, not the one-step one. Even so, the full-state term is not a test of the action-projected path. It tests the full gradient, of which that path is a part.
 3. **The action-projected residual is measured** (S4). On the same rollouts as M0 (Section 5.2), with the per-action normalised residual of B_tᵀ dV/dy(y_{t+1}) against B_tᵀ G'_{t+1}, it says whether the full-state term also improved the signal the actor reads.
 4. **Completion is secondary** (#5), and its reading is conditioned on S4 (Section 6). If the manipulation works and S4 falls but completion does not move, "fix the critic's gradient" is closed as a lever at this scale. If S4 does not fall, a completion null says nothing about the actor path.
@@ -121,7 +122,7 @@ Section 6 reads them together.
 **Common to every run:**
 - `scripts/train_dr.py --steps 200e6 --seed <s> --name <name> [--vg-coef <β>]`.
 - Every other argument is the default, as in H4R and GW-3's baselines: v1 (the base grammar), 2,048 envs, 64 steps, MLP 3 × 256 tanh, `ensemble_heads` 5, bank 4,096, refresh 256, γ 0.995.
-- Each run writes 16 log-spaced checkpoints, the final one at 199,884,800 steps. It also writes `eval_rdev.json`: the default car, 10 timed laps per R-dev circuit from 0.9 × the reference start speed.
+- Each run writes 16 log-spaced checkpoints, the final one at 199,884,800 steps. It also writes `eval_rdev.json`: the default car, 10 timed laps per R-dev circuit from 0.9 × the reference start speed. Pilot runs skip it (Section 4.1).
 - `--vg-lambda` and `--vg-winsor` stay at their defaults (0.95, 0.005).
 
 **Seeds.**
@@ -138,7 +139,7 @@ Section 6 reads them together.
 - **Runs.** β ∈ {0.1, 0.3, 1.0} × seeds {15, 16} = 6 runs, named `vg1p-b<β>-s<seed>` (for example `vg1p-b0.3-s15`).
   - The grid brackets VG-0's 1-D result: β = 0.1 already lowered the gradient error there, and β = 1 lowered it most.
   - The racing value loss at 200M is about 0.01 (G1's `metrics.csv`). The term measured 0.67 after 6 updates in VG-0's overhead runs (Section 8). So β = 1 lets the term dominate the critic's loss.
-- **One commit.** All 6 train from one clean commit that contains VG-0. The queue records `git rev-parse HEAD` and refuses a dirty tree.
+- **One commit.** All 6 train from the pilot commit (Section 9, step 2), which contains VG-0 and this text with Section 10 settled. The queue records `git rev-parse HEAD`, refuses a dirty tree, and refuses any commit other than the pilot commit.
 - **Lanes.** 3 lanes, one per β: seed 15 in the first round, seed 16 in the second. A run's box time is its wall time divided by 3.
 - **Measured per run:**
   - **M1:** C1's R²_c (Section 5.1);
@@ -147,7 +148,10 @@ Section 6 reads them together.
   - non-finite metrics, if any;
   - the box time per run.
   
-  No pilot network's `eval_rdev.json` is read before the choice is recorded. Completion is not a pilot metric.
+  **No pilot completion exists before the tag.** Completion is not a pilot metric, and a promise not to read it is not enough: `train_dr.py` prints every R-dev row to the run's log, and `gpu_sync.sh pull` copies the log and `eval_rdev.json` back.
+  - The pilot runs pass `--skip-eval-rdev`, a `train_dr.py` option to be added before the pilot commit (off by default, with a test that the default path is unchanged; Section 10, item 5). It skips the end-of-run R-dev evaluation, so no `eval_rdev.json` and no R-dev line is written on the box or pulled back.
+  - The pilot queue refuses to start a pilot run without that flag.
+  - After the tag, `scripts/eval_rdev.py` (the same protocol as `train_dr.py`'s) evaluates each pilot network's final checkpoint on the Mac, for Section 5.3's pilot row only.
 - **Eligibility.** A β is eligible if both its runs:
   1. finished with finite metrics;
   2. have EV ≥ 0.90. The 10 v1 baselines on disk end at 0.926–0.942 (`runs/dr-pilot-200M*`, `runs/h4r-v1-base-s1*`), so 0.90 bounds the value-accuracy cost of Section 3.2;
@@ -160,14 +164,14 @@ Section 6 reads them together.
 ### 4.2 The main run (after the tag)
 
 - **Arms:** `base` (no VG flag; the default path, bit-identical to H4R's and GW-3's baselines) and `vgl` (`--vg-coef β*`).
-- **β\*:** to be recorded here after the pilot, before the tag.
+- **β\*:** to be recorded here after the pilot, before the tag. This line and the pilot record (`outputs/vg1/pilot.json`) are the only changes allowed between the pilot commit and the tag (Section 9).
 - **Runs:** 2 arms × 20 seeds (30–49) = 40, named `vg1-base-s<seed>` and `vg1-vgl-s<seed>`.
 - **One commit:** the tagged one. The queue records `git rev-parse HEAD` at launch and refuses a dirty tree.
 - **Queue:** `scripts/gpu_queue_vg1.sh`, to be written on the pattern of `scripts/gpu_queue_h4r.sh`.
   - 4 lanes, XLA memory fraction 0.22 each.
   - Lanes 0 and 1 run `base` and lanes 2 and 3 run `vgl`, each pair taking seeds 30, 31, … in turn, so every round has 2 runs of each arm.
   - The `vgl` lanes run longer. The lanes' drift is logged.
-- **Retry.** A run that fails is re-run once from scratch with the same arguments (its log kept as `.log.1`). It is **missing** only if it fails twice.
+- **Retry.** A run that fails is re-run once from scratch with the same arguments (its log kept as `.log.1`). It is **missing** only if it fails twice for a reason other than non-finite numbers (Section 5.1, "Failed and missing networks").
 - **Manifest:** `outputs/vg1/manifest.json`, committed after pull-back. It holds every run's config, final timesteps, and the sha256 of its final checkpoint and `eval_rdev.json`; the queue log's sha256; the retry record; and the launch commit.
   - The analysis checks it first.
   - It refuses a run whose config differs from its arm's flags: the `vgl` arm's `config.json` must carry `vg` = {coef β\*, lam 0.95, winsor 0.005}, the `base` arm's no `vg` key.
@@ -183,16 +187,33 @@ Section 6 reads them together.
 - The row counts are recorded per network. No braking or corner row is scored (decision #8).
 
 **The pipeline.**
-- **The script.** `scripts/vg1_c1.py` (to be built) runs in a git worktree whose `src/` is byte-identical to the tag `costate-prereg-v1`, as lane A's follow-ups do (`costate-followups-plan.md`, R2–R4). It reuses that lane's freeze and input checks:
-  - the tag;
-  - `src/` and the frozen scripts byte-identical;
-  - the record's code hash `d22e670c…`;
-  - the sha256 of `inputs/world.npz` and every other bound input.
+- **The script.** `scripts/vg1_c1.py` (to be built) runs in a git worktree whose `src/` is byte-identical to the tag `costate-prereg-v1`, as lane A's follow-ups do.
+  - **What it relies on, pinned.** Lane A's rules are R2–R4 of `docs/findings/costate-followups-plan.md`. That plan is not on main: it is on the branch `costate-exploratory` (first committed in `eaf1e80`; blob `e05eb306…` at `2056a3d`).
+  - The helpers that implement them (`freeze_problems`, `bound_hashes`, `check_inputs` and `verify` in that branch's `scripts/costate_exploratory.py`) are **copied into `vg1_c1.py` on main**, from one named commit of the branch: `2056a3d5148807a76d734aa5b0bf32601cd02e2f`, the head on 26 Oct 2026 (source blob `30befd8c…`). If the branch has moved when the script is built, the lead pins its then-current commit instead and records it here.
+  - `vg1_c1.py`'s header names the commit, the source blob and the plan's blob. A test checks that the copied functions' source equals the pinned blob's. At start the script checks that the pinned commit exists and that the plan's and the source's blobs there are the recorded ones, and refuses to run otherwise.
+  - The checks it runs:
+    - the tag;
+    - `src/` and the frozen scripts byte-identical;
+    - the record's code hash `d22e670c…`;
+    - the sha256 of `inputs/world.npz` and every other bound input.
 - **Checkpoints.** It reads only the final checkpoints listed in VG-1's manifest, sha256-checked.
 - **Wiring gate.** Before any VG-1 network, it recomputes G1's (`runs/dr-pilot-200M`) pullback at T from its pinned checkpoint, and C1 from that. Nothing is scored unless both hold:
   - the pullback equals G1's bound critic file (`post/critic/`), as CS-1's fresh VJP did bit for bit;
   - C1 reproduces `decisions.json`'s `stat`, `r2c` and the per-fold calibration to 1e-12. CS-1 reproduced them to 3.6·10⁻¹⁵.
-- **K3 after the tag.** Each network must pass the frozen after-the-tag checks (`k3_trained`, as the costate `critic` stage runs them). A network that fails is missing.
+- **K3 after the tag.** Each network gets the frozen after-the-tag checks (`gates.k3_trained` on D's raw observations, as the costate `critic` stage runs them) with **5 expected heads**, the recipe's `ensemble_heads`, for every VG-1 network.
+  - The frozen `gates.expected_heads` has no rule for VG-1's names: it returns None, and `k3_trained_judge` then fails every network on heads. So `vg1_c1.py` passes 5 itself.
+  - A **heads** failure is a wiring error, because the manifest check already holds every config at 5 heads. It stops the analysis for an amendment.
+  - An **extractor** or **float32** failure is numerical: the network is a failed network (below), not a missing one.
+
+**Failed and missing networks** (fixed now; one rule for P and S1–S6).
+- **A failed network** trained to the end but has a non-finite parameter in its final checkpoint, a non-finite value in its last `metrics.csv` row, a numerical K3 failure, or a non-finite R²_c. A run that raised on non-finite values, in training or in its end-of-run evaluation, is also a failed network. (Training has no NaN abort, so a diverged run normally finishes and is never retried.)
+  - Each of its statistics that is non-finite or cannot be computed takes the worst value in its test's direction: R²_c = −∞ (P, the lowest rank) and Spearman ρ = −∞ (S2); M0 and each S4 residual = +∞ (S3, S4); EV = −∞ (S5, the term's cost). A finite statistic is used as measured.
+  - Its completion (S1) is measured from its `eval_rdev.json` like any network's, and is 0 if the run raised before writing one.
+  - In S6, a pair with an R²_c of −∞ uses the lowest finite R²_c of the 40 networks in its place, so that the mean stays finite. The substitution is reported.
+  - The Hodges–Lehmann shift and its bootstrap use the values as set, infinities included: a difference of two equal infinities counts as 0, and nearest-rank percentiles keep the rest well defined.
+- **A missing network** is a run that failed twice for any other reason: the box, memory, I/O or the harness. Each failure is classified from its logs and recorded in the manifest before any outcome is read. Missing networks are dropped.
+- Ties, at ±∞ or elsewhere, take mid-ranks.
+- The counts of failed and missing networks are reported per arm.
 
 **P (primary): `vgl` above `base` on R²_c.**
 - **Test:** a one-sided exact Wilcoxon rank-sum (Mann–Whitney) test, `vgl` against `base`, 20 against 20.
@@ -200,7 +221,7 @@ Section 6 reads them together.
   - The distribution is enumerated by the standard recursion over ranks. A tie counts toward p.
 - **Why ranks.** R²_c is heavy-tailed: the five v1 baselines score 0.010, −0.138, −0.726, −1.359 and −1.403, because a wrong-sign tail of large ξ gradients meets the clamped calibration (findings Section 7.1). A mean-difference test would be decided by its tail.
 - **Confirm** if p ≤ 0.05. **Refute** if the opposite one-sided p ≤ 0.05. Otherwise **inconclusive**.
-- **Missing networks** are dropped, and the exact test is computed on the rest. P is **not testable** with fewer than 15 networks in either arm, and not testable counts as not confirmed.
+- **Missing networks** are dropped, and the exact test is computed on the rest; failed networks stay in at −∞. P is **not testable** with fewer than 15 networks (failed ones included) in either arm, and not testable counts as not confirmed.
 - **The point estimate** reported with P is the Hodges–Lehmann shift (the median of the 400 pairwise differences), with a 95% percentile bootstrap CI (20,000 draws, `numpy.random.default_rng(20261026)`).
 
 ### 5.2 Secondary (each at 0.05, unadjusted, labelled secondary)
@@ -241,19 +262,26 @@ Every secondary test is an exact rank-sum test of the same construction, unless 
 
 - **P (rank-sum, 20 against 20, one-sided 0.05; 4,000 simulations):**
   - for a location shift of 0.5, 0.8 and 1.0 SD, power is 0.44, 0.78 and 0.90;
-  - resampling the five v1 baselines' R²_c with smoothing (SD 0.66), shifts of +0.25, +0.5 and +0.75 in R²_c give power 0.38, 0.77 and 0.95.
+  - resampling the five v1 baselines' R²_c (SD 0.66) with Gaussian smoothing, shifts of +0.25, +0.5 and +0.75 in R²_c give power that depends on the smoothing bandwidth h (2,000 draws per cell, Monte Carlo SE about 0.01):
+    - h = 0.2: 0.37, 0.77 and 0.96;
+    - h = 0.4 (about Silverman's rule for five values): 0.27, 0.64 and 0.92;
+    - h = 0.66 (the values' own SD): 0.20, 0.49 and 0.81.
+  - Nothing is decided by these figures. The SD-shift line above is the one to quote.
 - **S1 (completion, two-sided; H4R's v1 baselines 5.0 ± 1.58 circuits, rounded):** shifts of +1.0, +1.5 and +2.0 circuits give power 0.46, 0.80 and 0.96.
 
 At 40 runs, a completion change of about 1.5 circuits is detectable. A smaller one would read as inconclusive.
 
 ## 6. What counts as the result
 
-| P | S3 (M0) | S1 | Reading |
+The rows are taken in order, and the first that matches is the reading. Each (P, S3) cell matches exactly one row.
+
+| Order | P | S3 (M0) | Reading |
 |---|---|---|---|
-| confirm | confirm | any | The term moves the critic's gradient toward the window problem's λ on the decided rows (pre-registered, p = …). S1 then says whether that reaches driving. If S1 is null and S4 confirmed for steer or pedal, "fix the critic's gradient" is closed as a completion lever at this scale (200M, v1). If S4 did not confirm, the actor's signal was not shown to change, and the actor path is not tested. |
-| not confirm | confirm | any | The term fits the pathwise ∇V^π it targets, but that does not bring the gradient closer to λ*. This is consistent with the gap lying between V^π's pathwise gradient and λ* (Sections 3.2 and 3.3), not only in the regression leaving the gradient undetermined. |
-| any | not confirm | any | The manipulation failed: the critic did not fit its targets better. P and S1 are reported but say nothing about the gradient's role. |
-| refute | any | any | The term lowers R²_c (pre-registered). Reported with S3–S5. |
+| 1 | refute | any | The term lowers R²_c (pre-registered, p = …). Reported with S3–S5. If S3 did not confirm, the term also did not fit its own targets better. |
+| 2 | confirm | confirm | The term moves the critic's gradient toward the window problem's λ on the decided rows (pre-registered, p = …). S1 then says whether that reaches driving. If S1 is null and S4 confirmed for steer or pedal, "fix the critic's gradient" is closed as a completion lever at this scale (200M, v1). If S4 did not confirm, the actor's signal was not shown to change, and the actor path is not tested. |
+| 3 | confirm | not confirm | R²_c rose (pre-registered, p = …) without the term fitting its targets measurably better. The mechanism is not shown, and S1 is reported without a mechanistic reading. |
+| 4 | inconclusive or not testable | confirm | The term fits the pathwise ∇V^π it targets, but that does not bring the gradient measurably closer to λ*. This is consistent with the gap lying between V^π's pathwise gradient and λ* (Sections 3.2 and 3.3), not only in the regression leaving the gradient undetermined. |
+| 5 | inconclusive or not testable | not confirm | The term neither fitted its targets better nor raised R²_c. P and S1 are reported but say nothing about the gradient's role. |
 
 - **S1 alone,** whatever P shows, is reported as the completion effect, with its CI and S5's cost.
 - **A positive result does not change E0** (#5). E0's recipe is fixed by GW-4 without VG. Any later use of the term is a new study.
@@ -299,26 +327,39 @@ At 40 runs, a completion change of about 1.5 circuits is detectable. A smaller o
 
 ## 9. Procedure
 
-1. **Review this draft.** The user decides Section 10's items marked "the user".
+1. **Review this draft.** The user decides Section 10's items marked "the user", and the lead settles the rest. Every Section 10 item is closed in this text before step 2's commit; none is settled after a pilot number exists.
 2. **Build and test,** on planted data only:
    - `scripts/vg1_c1.py`, with its wiring gate;
-   - `scripts/vg1_analysis.py`: the exact rank-sum, the sign-flip test, the pilot rule and the manifest checks;
-   - `scripts/gpu_queue_vg1.sh` (pilot and main modes).
+   - `scripts/vg1_analysis.py`: the exact rank-sum, the sign-flip test, the failed-network rule, the pilot rule and the manifest checks;
+   - `train_dr.py --skip-eval-rdev` (off by default, with a default-path test);
+   - `scripts/gpu_queue_vg1.sh` (pilot and main modes; pilot mode passes `--skip-eval-rdev` and refuses to run without it).
    
-   Commit them with this text.
-3. **Pilot.** Rent the box, train the 6 pilot runs from that commit, pull back (checking each checkpoint's sha256 against the box's), and delete the box. Run M1, M0 and EV, apply Section 4.1's rule, and record β\* and the per-run box times in Section 4.2.
-4. **Tag** `vg1-prereg-v1` (annotated) on the commit that records β\*, and push it. The tag object's sha is recorded in the findings.
-5. **Main run.** Rent the box, set it up at the tag, and run the queue. Pull back with sha256 checks, delete the box, and commit the manifest.
-6. **Measure:** `scripts/vg1_c1.py` (wiring gate first), then `scripts/vgl.py residual` on all 40.
-7. **Analyse** once: `scripts/vg1_analysis.py` refuses if its output exists or was ever committed. Write `docs/findings/vg1.md`.
+   Commit them with this text. That commit is the **pilot commit**.
+3. **Pilot.** Rent the box, train the 6 pilot runs from the pilot commit, pull back (checking each checkpoint's sha256 against the box's), and delete the box. Run M1, M0 and EV and apply Section 4.1's rule. Write the pilot record `outputs/vg1/pilot.json` (each run's M1, M0, EV, finiteness and box time, the eligibility of each β and the choice), and record β\* in Section 4.2. Commit the two together (the record force-added, as `outputs/vg0/` is).
+4. **The freeze check, then the tag.** Before tagging, the lead checks two things against the pilot commit:
+   - `git diff --name-only <pilot commit> HEAD -- docs/prereg/vg1-value-gradient.md outputs/vg1 scripts/vg1_c1.py scripts/vg1_analysis.py scripts/gpu_queue_vg1.sh scripts/vgl.py scripts/train_dr.py src tests/test_value_gradient.py` lists only this file and `outputs/vg1/pilot.json` (other studies' files may change meanwhile; VG-1's code and the training path may not);
+   - `git diff <pilot commit> HEAD -- docs/prereg/vg1-value-gradient.md` changes only Section 4.2's β\* line.
+   
+   Any other change to those paths between the two commits is an amendment appended at the end of this file, dated, stating what had been seen when it was written (at least the pilot's M1, M0 and EV). Then the lead tags `vg1-prereg-v1` (annotated) on the commit that records β\* and pushes it. The tag object's sha and the pilot commit's sha are recorded in the findings.
+5. **Pilot completion (descriptive).** After the tag, `scripts/eval_rdev.py` evaluates the 6 pilot networks' final checkpoints on the Mac (Section 4.1).
+6. **Main run.** Rent the box, set it up at the tag, and run the queue. Pull back with sha256 checks, delete the box, and commit the manifest.
+7. **Measure:** `scripts/vg1_c1.py` (wiring gate first), then `scripts/vgl.py residual` on all 40.
+8. **Analyse** once: `scripts/vg1_analysis.py` refuses if its output exists or was ever committed. Write `docs/findings/vg1.md`.
 
-**Deviations.** Any change after the tag is logged in the findings with its date and reason. A change to an outcome, test, seed or rule after any main-run network has started makes the affected result exploratory.
+**Deviations.** Any change after the tag is logged in the findings with its date and reason. Changes between the pilot commit and the tag follow step 4's rule. A change to an outcome, test, seed or rule after any main-run network has started makes the affected result exploratory.
 
 ## 10. Open items before the tag
+
+All items are settled in the text before the pilot commit (Section 9).
 
 1. **"With a rank test" (the lead, then the user).** This draft reads decision #5's phrase as the between-arm test being a rank test (P is an exact rank-sum on R²_c), because R²_c's tail would decide a mean test. C1's own rank agreement (Spearman) is S2. If #5 meant Spearman's ρ as a co-primary, P becomes a family of two with Holm (m = 2).
 2. **β's grid and the pilot rule (the user).** The grid {0.1, 0.3, 1.0}, the EV floor of 0.90 and the M0 eligibility condition are fixed above. A wider grid costs 2 runs per value.
 3. **C1-own (the user).** Include it as a secondary, or keep it optional and descriptive (Section 5.3). Its targets are the closest to what the term fits.
-4. **To build (the lead):** `scripts/vg1_c1.py`, `scripts/vg1_analysis.py`, `scripts/gpu_queue_vg1.sh` and the manifest writer. `vg1_c1.py` belongs with lane A's frozen worktree and needs that lane's check helpers (on the `costate-exploratory` branch, not on main).
-5. **Seed ranges (the lead).** Keep GW-3 and any other `train_dr.py` round off 15–19 and 30–49.
-6. **The box order (the lead).** VG-1 queues behind GW-3 on the one A6000 (follow-through Section 4, Phase 3). The pilot can run in any gap.
+4. **The loss form and Ω (the user; #5).** #5 lists them as the user's decision, "given the per-component outcome against an action-projected error". The second-round answer settled manipulation-primary, 40 runs and no change to E0, not these.
+   - **Drafted:** the GDHP-style squared error in full-state, diagonal Ω, equal over the 12 standardised components (Section 2).
+   - **The alternative:** the action-projected error, Ω = BBᵀ (costate design Section 9).
+   - **What the user decides on** (Section 3.1's VG-0 measurement on H4R's five v1 baselines): s carries 0.0003 of the steer projection and 0.0027–0.0032 of the pedal's, ξ 0.181–0.192 and 0.055–0.065. So Ω = BBᵀ would leave g_s, half of C1's statistic, nearly untouched, and the manipulation-primary design could barely move by construction. Full-state Ω moves g_s and g_ξ directly, at the cost of capacity spent on directions the actor does not read in one step. S4 measures the action-projected residual either way.
+   - The draft recommends full-state Ω. Ω = BBᵀ would need a new opt-in VG-0 code option (not built) and a re-measure of Section 8's cost before the pilot.
+5. **To build (the lead):** `scripts/vg1_c1.py` (with the pinned helpers, Section 5.1), `scripts/vg1_analysis.py`, `train_dr.py --skip-eval-rdev` (Section 4.1), `scripts/gpu_queue_vg1.sh` and the manifest writer.
+6. **Seed ranges (the lead).** Keep GW-3 and any other `train_dr.py` round off 15–19 and 30–49.
+7. **The box order (the lead).** VG-1 queues behind GW-3 on the one A6000 (follow-through Section 4, Phase 3). The pilot can run in any gap.
