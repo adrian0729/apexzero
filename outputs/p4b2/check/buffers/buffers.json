@@ -1,0 +1,80 @@
+{
+ "buffers": {
+  "S1": {
+   "equals_step1": true,
+   "lolo_median_nn": 0.39435717463493347,
+   "n_obs": 40000,
+   "n_steps": 75329,
+   "path": "outputs/p4b2/check/buffers/knn_S1.npz",
+   "sha256": "b6c3e295228024715b466ca9886ae0ca10f94cff86b538b8d4e57f12d1a0c5e3",
+   "snapshot": "runs/hockenheim-specialist-mlp-200M/agent.pkl",
+   "snapshot_sha256": "5394cd6e0cf8216948e5bb1e8b0ee81be2faa2f62adb7ddf2f1e313a3c565e6c",
+   "stream": 132
+  },
+  "S2": {
+   "equals_step1": true,
+   "lolo_median_nn": 0.3937182128429413,
+   "n_obs": 40000,
+   "n_steps": 75361,
+   "path": "outputs/p4b2/check/buffers/knn_S2.npz",
+   "sha256": "e16f0bfc83541b5d5855d9885fc96c54c59b8c7971e8c97d4f129e709b141075",
+   "snapshot": "runs/hockenheim-specialist-mlp-200M-s2/ckpt/000199884800.pkl",
+   "snapshot_sha256": "be554cd26ba3de8cb44fcc63fe6e18bd222759870b2ba9aa3a4b38528454147a",
+   "stream": 133
+  },
+  "S3": {
+   "equals_step1": true,
+   "lolo_median_nn": 0.4315301477909088,
+   "n_obs": 40000,
+   "n_steps": 73891,
+   "path": "outputs/p4b2/check/buffers/knn_S3.npz",
+   "sha256": "31bf5feb05742bd494bb5567fd7b2a83e6642f544556e63a9f5c93b7e53e7081",
+   "snapshot": "runs/hockenheim-specialist-mlp-200M-s3/ckpt/000199884800.pkl",
+   "snapshot_sha256": "486e8ee258f685cdfab244c1a1e737c2bd1328c5341d69990a9ea260ee6e4697",
+   "stream": 134
+  }
+ },
+ "provenance": {
+  "argv": [
+   "buffers",
+   "--check"
+  ],
+  "changed_paths": [
+   "M docs/prereg/p4-b2-specialists.md",
+   " M docs/prereg/vg1-value-gradient.md",
+   " M scripts/train_dr.py",
+   " M tests/test_value_gradient.py"
+  ],
+  "draft": {
+   "path": "docs/prereg/p4-b2-specialists.md",
+   "sha256": "122731a6cea0a7a965eeaae761cc37d33ba9a3ccd9f53818a58ff7738057dde1"
+  },
+  "end": "2026-10-27T02:37:24",
+  "environment": {
+   "XLA_FLAGS": "--xla_cpu_multi_thread_eigen=false intra_op_parallelism_threads=2",
+   "machine": "arm64",
+   "numpy": "2.5.4",
+   "python": "3.12.4",
+   "system": "Darwin"
+  },
+  "frozen_clean": true,
+  "git_head": "40ebdf6ad02c91d999bce7422ea3baba791a6602",
+  "inputs_sha256": {},
+  "script": "scripts/p4_b2.py",
+  "script_sha256": "8bf12ef48a15496ff5b65e7eab83930de727d815cfa38c8b10d91dcac18fb25f",
+  "seconds": 25.8,
+  "stage": "buffers",
+  "tag_gate": null
+ },
+ "status": "CHECK: S1-S3's buffers rebuilt and compared with step 1's",
+ "streams": {
+  "S1": 132,
+  "S2": 133,
+  "S3": 134,
+  "S4": 135,
+  "S5": 136,
+  "S6": 137,
+  "S7": 138,
+  "S8": 139
+ }
+}

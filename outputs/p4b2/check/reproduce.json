@@ -1,0 +1,326 @@
+{
+ "a": {
+  "S1": {
+   "d_ood_max_abs": 0.0,
+   "fields": {
+    "C": true,
+    "d_ood": true,
+    "failing_condition": true,
+    "label": true,
+    "n_f6_at_or_above": true,
+    "vacuous": true,
+    "verdict": true
+   },
+   "ok": true,
+   "reported_abs_diffs": {
+    "MI": 0.0,
+    "S_spec": 0.0,
+    "m": 0.0,
+    "phi": 0.0
+   }
+  },
+  "S2": {
+   "d_ood_max_abs": 0.0,
+   "fields": {
+    "C": true,
+    "d_ood": true,
+    "failing_condition": true,
+    "label": true,
+    "n_f6_at_or_above": true,
+    "vacuous": true,
+    "verdict": true
+   },
+   "ok": true,
+   "reported_abs_diffs": {
+    "MI": 0.0,
+    "S_spec": 0.0,
+    "m": 0.0,
+    "phi": 0.0
+   }
+  },
+  "S3": {
+   "d_ood_max_abs": 0.0,
+   "fields": {
+    "C": true,
+    "d_ood": true,
+    "failing_condition": true,
+    "label": true,
+    "n_f6_at_or_above": true,
+    "vacuous": true,
+    "verdict": true
+   },
+   "ok": true,
+   "reported_abs_diffs": {
+    "MI": 0.0,
+    "S_spec": 0.0,
+    "m": null,
+    "phi": 0.0
+   }
+  }
+ },
+ "b": {
+  "ok": true,
+  "per": {
+   "S1": {
+    "extended": true,
+    "family:F6s": true,
+    "family:Kstr": true,
+    "family:Wplus": true,
+    "registered": true,
+    "sets_equal": true
+   },
+   "S2": {
+    "extended": true,
+    "family:F6s": true,
+    "family:Kstr": true,
+    "family:Wplus": true,
+    "registered": true,
+    "sets_equal": true
+   },
+   "S3": {
+    "extended": true,
+    "family:F6s": true,
+    "family:Kstr": true,
+    "family:Wplus": true,
+    "registered": true,
+    "sets_equal": true
+   },
+   "recipe": true,
+   "recipe_registered": true
+  }
+ },
+ "c": {
+  "ok": true,
+  "per": {
+   "S1": {
+    "extended": true,
+    "family:F6s": true,
+    "family:Kstr": true,
+    "family:Wplus": true,
+    "planned": true,
+    "registered": true,
+    "sets_equal": true
+   },
+   "S2": {
+    "extended": true,
+    "family:F6s": true,
+    "family:Kstr": true,
+    "family:Wplus": true,
+    "planned": true,
+    "registered": true,
+    "sets_equal": true
+   },
+   "S3": {
+    "extended": true,
+    "family:F6s": true,
+    "family:Kstr": true,
+    "family:Wplus": true,
+    "planned": true,
+    "registered": true,
+    "sets_equal": true
+   },
+   "recipe": true,
+   "recipe_registered": true
+  }
+ },
+ "checks": {
+  "a_decisions_all": true,
+  "b_option_a_classes": true,
+  "c_option_a_extension_classes": true,
+  "cells_vs_step1_and_option_a": true,
+  "d_ood_option_a": true,
+  "d_runs_bitwise_option_a": true,
+  "tier_g_and_a_vs_step1": true
+ },
+ "d": {
+  "S1": [
+   {
+    "absent": 0,
+    "bitwise_equal": 828,
+    "file": "outputs/p4/specialists/registered/S1.npz",
+    "max_abs_diff_unequal": 0.0,
+    "n": 828
+   },
+   {
+    "absent": 0,
+    "bitwise_equal": 324,
+    "file": "outputs/p4/specialists/new/S1.npz",
+    "max_abs_diff_unequal": 0.0,
+    "n": 324
+   },
+   {
+    "absent": 0,
+    "bitwise_equal": 36,
+    "file": "outputs/p4/extension/specialists/new/S1.npz",
+    "max_abs_diff_unequal": 0.0,
+    "n": 36
+   }
+  ],
+  "S2": [
+   {
+    "absent": 0,
+    "bitwise_equal": 828,
+    "file": "outputs/p4/specialists/registered/S2.npz",
+    "max_abs_diff_unequal": 0.0,
+    "n": 828
+   },
+   {
+    "absent": 0,
+    "bitwise_equal": 324,
+    "file": "outputs/p4/specialists/new/S2.npz",
+    "max_abs_diff_unequal": 0.0,
+    "n": 324
+   },
+   {
+    "absent": 0,
+    "bitwise_equal": 36,
+    "file": "outputs/p4/extension/specialists/new/S2.npz",
+    "max_abs_diff_unequal": 0.0,
+    "n": 36
+   }
+  ],
+  "S3": [
+   {
+    "absent": 0,
+    "bitwise_equal": 828,
+    "file": "outputs/p4/specialists/registered/S3.npz",
+    "max_abs_diff_unequal": 0.0,
+    "n": 828
+   },
+   {
+    "absent": 0,
+    "bitwise_equal": 324,
+    "file": "outputs/p4/specialists/new/S3.npz",
+    "max_abs_diff_unequal": 0.0,
+    "n": 324
+   },
+   {
+    "absent": 0,
+    "bitwise_equal": 36,
+    "file": "outputs/p4/extension/specialists/new/S3.npz",
+    "max_abs_diff_unequal": 0.0,
+    "n": 36
+   }
+  ]
+ },
+ "d_ood": {
+  "S1": {
+   "max_abs_diff": 0.0,
+   "n": 297
+  },
+  "S2": {
+   "max_abs_diff": 0.0,
+   "n": 297
+  },
+  "S3": {
+   "max_abs_diff": 0.0,
+   "n": 297
+  }
+ },
+ "note": "tier G and tier A A2 are compared through the pair columns P4 reads and the tier G flag; their states against step 1's runs are reported (step 1 ran them in chunks of other sizes)",
+ "ok": true,
+ "provenance": {
+  "argv": [
+   "reproduce",
+   "--workers",
+   "3"
+  ],
+  "changed_paths": [
+   "M docs/prereg/p4-b2-specialists.md",
+   " M docs/prereg/vg1-value-gradient.md",
+   " M scripts/train_dr.py",
+   " M tests/test_value_gradient.py"
+  ],
+  "draft": {
+   "path": "docs/prereg/p4-b2-specialists.md",
+   "sha256": "773583d8e7fabc3ab8e2b886275c95ab88fa9dfa2465271aad5fdbef19caf520"
+  },
+  "end": "2026-10-27T02:39:52",
+  "environment": {
+   "XLA_FLAGS": "--xla_cpu_multi_thread_eigen=false intra_op_parallelism_threads=2",
+   "machine": "arm64",
+   "numpy": "2.5.4",
+   "python": "3.12.4",
+   "system": "Darwin"
+  },
+  "frozen_clean": true,
+  "git_head": "40ebdf6ad02c91d999bce7422ea3baba791a6602",
+  "inputs_sha256": {
+   "bank.npz": "c124cb39866dbd5dd0937e9e99eef1fe582c7a3f4bf417608dafb87cdc69e1ae",
+   "check/build/build.json": "651b548f47db3d0f173a92a3ef97db39af72e6ac6cf3654379fb37b0a8cbeac8",
+   "decisions_all.json": "14c674863e78b68cf01986bddcaec34480700ea21811aa0971550711feca4ea1",
+   "key_table.npz": "938fb380e2134b01a79ce500e03e8a0e840b5f817222654046bf98e3782f9e4e",
+   "outputs/p4/build/cells_meta.json": "d39de26d399841438362bbab21c45f6da39af987991ccf56f5baa43cbd545153",
+   "outputs/p4/classes.json": "dd73ea046bcc728019b516de5eab39d56c416530fbf156a611d37bae8787a9a6",
+   "outputs/p4/extension/classes.json": "35d332a4a44653e81a43afc59a5cf08d8ca5545ffa41807963b65e7479518f8f",
+   "outputs/p4/generalists/reference/G1_runs.npz": "6590d2e390cd571aaf15171ec04dfd95a22d07b694dba0d221f6024e95c6fcfa",
+   "outputs/p4/generalists/reference/G2_runs.npz": "f3a70859ba185328ba0042dee49fde23d604ffa6aa52e1c4c0488a8a1aa67685",
+   "outputs/p4/generalists/reference/G3_runs.npz": "9e006f13c483914791204bfd840fe4f42fe602c1a4b1bb7413b3157a49fcd2a9",
+   "outputs/psychophysics/controls/knn_S1.npz": "2dfd58e156a9383fd033651fa48967ef8a2c8aaecd4849f41b0cd7f6078c8e36",
+   "outputs/psychophysics/controls/knn_S2.npz": "32bd4bb604d77c4fbc4ba27123ef01aa145957b6f009ec18b6495a7b11727f7c",
+   "outputs/psychophysics/controls/knn_S3.npz": "ed9f969d144d717220b4df98583f89376a125cd6e8fff25e415a6e42d5799ec9"
+  },
+  "script": "scripts/p4_b2.py",
+  "script_sha256": "8bf12ef48a15496ff5b65e7eab83930de727d815cfa38c8b10d91dcac18fb25f",
+  "seconds": 147.2,
+  "stage": "reproduce",
+  "tag_gate": null
+ },
+ "status": "CHECK (Section 7, Pipeline on S1-S3): S1-S3 through this pipeline",
+ "tiers": {
+  "S1": {
+   "differences": [],
+   "n": 66,
+   "n_differences": 0,
+   "step1_bitwise": [
+    {
+     "absent": 0,
+     "bitwise_equal": 420,
+     "file": "outputs/psychophysics/rollouts/S1/000199884800.npz",
+     "max_abs_diff_unequal": 0.0,
+     "n": 420
+    }
+   ],
+   "tier_a_completion": 0.6296296296296297,
+   "tier_a_completion_step1": 0.6296296296296297,
+   "tier_g_crash": false,
+   "tier_g_crash_step1": false
+  },
+  "S2": {
+   "differences": [],
+   "n": 66,
+   "n_differences": 0,
+   "step1_bitwise": [
+    {
+     "absent": 0,
+     "bitwise_equal": 420,
+     "file": "outputs/psychophysics/rollouts/S2/000199884800.npz",
+     "max_abs_diff_unequal": 0.0,
+     "n": 420
+    }
+   ],
+   "tier_a_completion": 0.018518518518518517,
+   "tier_a_completion_step1": 0.018518518518518517,
+   "tier_g_crash": true,
+   "tier_g_crash_step1": true
+  },
+  "S3": {
+   "differences": [],
+   "n": 66,
+   "n_differences": 0,
+   "step1_bitwise": [
+    {
+     "absent": 0,
+     "bitwise_equal": 420,
+     "file": "outputs/psychophysics/rollouts/S3/000199884800.npz",
+     "max_abs_diff_unequal": 0.0,
+     "n": 420
+    }
+   ],
+   "tier_a_completion": 0.38425925925925924,
+   "tier_a_completion_step1": 0.38425925925925924,
+   "tier_g_crash": true,
+   "tier_g_crash_step1": true
+  }
+ }
+}

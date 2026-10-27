@@ -1,0 +1,133 @@
+{
+ "agents": {
+  "S1": {
+   "braking_unreachable": [],
+   "cause": "",
+   "class0": false,
+   "lap": "outputs/p4b2/check/starts/real_laps/S1_Hockenheim.npz",
+   "lap_sha256": "088af72571a13d24a958dd99c0cd2e7001ef2cf8f0c836025b2eceb372ebbba7",
+   "n_states": 20,
+   "snapshot": "runs/hockenheim-specialist-mlp-200M/agent.pkl",
+   "snapshot_sha256": "5394cd6e0cf8216948e5bb1e8b0ee81be2faa2f62adb7ddf2f1e313a3c565e6c",
+   "term_step": -1,
+   "unreachable": {}
+  },
+  "S2": {
+   "braking_unreachable": [],
+   "cause": "",
+   "class0": false,
+   "lap": "outputs/p4b2/check/starts/real_laps/S2_Hockenheim.npz",
+   "lap_sha256": "9b439bee3246cdffda7b6603be0dd05b219fc08ca282812a1c92f2c3bea8fce2",
+   "n_states": 20,
+   "snapshot": "runs/hockenheim-specialist-mlp-200M-s2/ckpt/000199884800.pkl",
+   "snapshot_sha256": "be554cd26ba3de8cb44fcc63fe6e18bd222759870b2ba9aa3a4b38528454147a",
+   "term_step": -1,
+   "unreachable": {}
+  },
+  "S3": {
+   "braking_unreachable": [],
+   "cause": "",
+   "class0": false,
+   "lap": "outputs/p4b2/check/starts/real_laps/S3_Hockenheim.npz",
+   "lap_sha256": "c85b83164a4d2cf3f26be3fa891dc4e218e72963f79185e97ae57181c2ca578e",
+   "n_states": 20,
+   "snapshot": "runs/hockenheim-specialist-mlp-200M-s3/ckpt/000199884800.pkl",
+   "snapshot_sha256": "486e8ee258f685cdfab244c1a1e737c2bd1328c5341d69990a9ea260ee6e4697",
+   "term_step": -1,
+   "unreachable": {}
+  }
+ },
+ "braking": [
+  0,
+  1,
+  3,
+  4,
+  7,
+  8,
+  14,
+  16,
+  17
+ ],
+ "check": {
+  "ok": true,
+  "per_agent": {
+   "S1": {
+    "lap_equal": {
+     "accel": true,
+     "prev_action": true,
+     "term_step": true,
+     "valid": true,
+     "x": true
+    },
+    "n_states": 20,
+    "n_step1": 20,
+    "states_equal": true
+   },
+   "S2": {
+    "lap_equal": {
+     "accel": true,
+     "prev_action": true,
+     "term_step": true,
+     "valid": true,
+     "x": true
+    },
+    "n_states": 20,
+    "n_step1": 20,
+    "states_equal": true
+   },
+   "S3": {
+    "lap_equal": {
+     "accel": true,
+     "prev_action": true,
+     "term_step": true,
+     "valid": true,
+     "x": true
+    },
+    "n_states": 20,
+    "n_step1": 20,
+    "states_equal": true
+   }
+  }
+ },
+ "files_sha256": {
+  "outputs/p4b2/check/starts/real_laps/S1_Hockenheim.npz": "088af72571a13d24a958dd99c0cd2e7001ef2cf8f0c836025b2eceb372ebbba7",
+  "outputs/p4b2/check/starts/real_laps/S2_Hockenheim.npz": "9b439bee3246cdffda7b6603be0dd05b219fc08ca282812a1c92f2c3bea8fce2",
+  "outputs/p4b2/check/starts/real_laps/S3_Hockenheim.npz": "c85b83164a4d2cf3f26be3fa891dc4e218e72963f79185e97ae57181c2ca578e",
+  "outputs/p4b2/check/starts/real_states.json": "15d62bf10e293032c33e476736ba5c8ccbc5d0a3d90dbf11229d1c560451f605",
+  "outputs/p4b2/check/starts/real_states_index.json": "81e63c3e944ffd9abdfc193c48dad0aac0be44cf1991612a1e858db031b08bed"
+ },
+ "provenance": {
+  "argv": [
+   "starts",
+   "--check"
+  ],
+  "changed_paths": [
+   "M docs/prereg/p4-b2-specialists.md",
+   " M docs/prereg/vg1-value-gradient.md",
+   " M scripts/train_dr.py",
+   " M tests/test_value_gradient.py"
+  ],
+  "draft": {
+   "path": "docs/prereg/p4-b2-specialists.md",
+   "sha256": "5621761cdb3eca802f2e764cdee20a0f0237fa7acb28b4c49ab2c43bc2666b69"
+  },
+  "end": "2026-10-27T02:36:57",
+  "environment": {
+   "XLA_FLAGS": "--xla_cpu_multi_thread_eigen=false intra_op_parallelism_threads=2",
+   "machine": "arm64",
+   "numpy": "2.5.4",
+   "python": "3.12.4",
+   "system": "Darwin"
+  },
+  "frozen_clean": true,
+  "git_head": "40ebdf6ad02c91d999bce7422ea3baba791a6602",
+  "inputs_sha256": {},
+  "script": "scripts/p4_b2.py",
+  "script_sha256": "8bf12ef48a15496ff5b65e7eab83930de727d815cfa38c8b10d91dcac18fb25f",
+  "seconds": 3.5,
+  "stage": "starts",
+  "tag_gate": null
+ },
+ "rule": "s_c - D_gap - 100 m on lap 2 (stimuli.real_state_requests), agents.real_state",
+ "status": "CHECK: S1-S3's real laps and tier D states recomputed"
+}
