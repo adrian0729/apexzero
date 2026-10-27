@@ -106,6 +106,14 @@ process reniced by ``--nice`` (default 10) before any item runs.
   random critics' pullbacks, the width derivative, lambda^own from x_1 over W - 1 steps and
   Pi^in,own; pooled, unlocks); and the analyses (C1, C2, C2-sw, C1-own, W1's comparisons and
   C2-pairs between N's states and T's plan states of the same stimulus; pooled).
+- CS-6, CS-12, CS-14 and CS-15 (plan Section 4 with amendment 10; a section each): C1 without
+  nulls at each decision network's 16 snapshots under its own observability, with the trends
+  in log timesteps (``cs6``, one process, unlocks); the primary C2 and C2-sw of the 25
+  networks outside the decision set against 20 pool actors computed on each one's z
+  (``cs12``, pooled); q_c's window rule from the key plans and its stop rule, applied before
+  K2b for q_c and any network (``cs14``, pooled, targets only); and the FWL check of the
+  primary C2's probes, C2 with the actor's h1 and h2, and C2 on D (``cs15``, pooled). CS-12
+  and CS-15 read CS-8's summary through its stamp (``item_output``); neither unlocks.
 """
 
 from __future__ import annotations
@@ -153,7 +161,8 @@ def _command(argv: Sequence[str]) -> str | None:
 # The items with worker pools (plan Section 1, "pooled"), and the BLAS libraries' thread
 # variables (scripts/costate.py's BLAS_THREADS): a pooled item pins BLAS to one thread before
 # numpy loads, in this process and so in every worker it spawns.
-POOLED_ITEMS = ("cs-4", "cs-5", "cs-7", "cs-8", "cs-9", "cs-10", "cs-11", "cs-12", "bc-a0")
+POOLED_ITEMS = ("cs-4", "cs-5", "cs-7", "cs-8", "cs-9", "cs-10", "cs-11", "cs-12", "cs-14",
+                "cs-15", "bc-a0")
 BLAS_THREADS = ("VECLIB_MAXIMUM_THREADS", "OPENBLAS_NUM_THREADS", "OMP_NUM_THREADS",
                 "MKL_NUM_THREADS")
 DEFAULT_THREADS = 2
@@ -226,8 +235,8 @@ ITEMS: tuple[Item, ...] = (
          ("world", "critic:decision", "activations:decision", "checkpoints"), needs=("CS-1",)),
     Item("CS-5", "W1 on the Pi targets",
          ("world", "critic:decision", "activations:decision", "checkpoints"), needs=("CS-1",)),
-    Item("CS-6", "C1-dev over the 16 snapshots", ("world", "snapshots"), trained=True,
-         needs=("CS-1",)),
+    Item("CS-6", "C1-dev over the 16 snapshots", ("world", "critic:decision", "snapshots"),
+         trained=True, needs=("CS-1",)),
     Item("CS-7", "Critic-layer and head-unit probes",
          ("world", "activations:decision", "checkpoints"), needs=("CS-1",)),
     Item("CS-8", "C2-sw's random-only null; C2-sw residualised; C2 with a decoy that fits "
@@ -240,12 +249,12 @@ ITEMS: tuple[Item, ...] = (
     Item("CS-11", "The policy's own width price Pi^in,own",
          ("world", "critic:decision", "checkpoints"), trained=True, needs=("CS-9",)),
     Item("CS-12", "C2 and C2-sw beyond the 9 decision networks (primary only)",
-         ("world", "activations:other", "checkpoints")),
+         ("world", "activations:other", "checkpoints"), needs=("CS-8",)),
     Item("CS-13", "C2-pairs", ("world", "activations:decision"), needs=("CS-9",)),
     Item("CS-14", "q_c, the action-projected critic signal, with K2b for q_c",
          ("world", "gates:k2b", "checkpoints"), trained=True, solves=True),
     Item("CS-15", "The FWL check, actor h1 and h2 probes, C2 on D",
-         ("world", "activations:decision")),
+         ("world", "activations:decision", "checkpoints"), needs=("CS-8",)),
     Item("BC-a0", "Braking and corner targets pilot (targets only)",
          ("world", "gates:k2b", "keys:a2"), solves=True),
 )
@@ -6732,6 +6741,860 @@ def cs9(run: Run) -> None:
         {"build": cs9_build, "k2b": cs9_k2b, "networks": cs9_networks,
          "analyse": cs9_analyse}[s](run, world)
         print(f"CS-9 {s}: {time.time() - t0:.0f} s", flush=True)
+
+
+# ------------------------------------------------------------------------- other items' outputs
+
+
+def item_output(run: Run, item_id: str, name: str, base: Path | None = None) -> Path:
+    """Another item's canonical output (amendment 10 item 1), read only through its stamp: the
+    label exploratory, the item ``item_id``, the stamp binding the file's bytes (a sidecar's
+    sha256, or an embedded stamp's content_sha256), and not partial unless this run is. Its
+    sha256 is recorded among the inputs. ``base``: the exploratory root (default
+    outputs/costate/exploratory)."""
+    from apexzero.fields import prereg as FP
+
+    root = Path(base) if base is not None else run.root / EXP_REL
+    path = refuse_sealed(root / item_id.lower() / name)
+    rel = f"{EXP_REL}/{item_id.lower()}/{name}"
+    if not path.exists():
+        raise SystemExit(f"{run.item.id}: {rel} is missing: run {item_id} first")
+    st = FP.read_stamp(path) or {}
+    sha = sha256_file(path)
+    if path.suffix == ".json":
+        bound = st.get("content_sha256") == F.content_sha256(json.loads(path.read_text()))
+    else:
+        bound = (st.get("files") or {}).get(path.name) == sha
+    bad = [why for why, ok in (
+        (f"its stamp is not an exploratory {item_id} stamp",
+         st.get("label") == LABEL and st.get("item") == item_id),
+        ("its stamp does not bind its bytes", bound),
+        ("it is a partial run's output", bool(run.partial) or not st.get("partial")))
+        if not ok]
+    if bad:
+        raise SystemExit(f"{run.item.id}: {rel}: {'; '.join(bad)}")
+    run.note_input(rel, sha)
+    return path
+
+
+# ------------------------------------------------------------------------- CS-6: C1-dev
+#
+# Plan Section 4 CS-6 with amendment 10 item 2, on the 9 decision networks' 16 pinned
+# snapshots each: the main V's on-manifold pullback at T, C1 without nulls under the snapshot's
+# own observability of s (``c1_bare``), and the trends with log timesteps
+# (``analysis.c1_dev``) of the statistic, R2_c and the Spearman of s and xi. The last
+# snapshot (the network's own pin) is computed first and checked against the stored g, the
+# decision mask and decisions.json's C1. One process, no pool (its measured cost is minutes).
+
+CS6_SERIES = ("stat", "r2c_s", "r2c_xi", "spearman_s", "spearman_xi")
+E61_HI = 0.2                             # analysis.C1_REFUTE: the CI upper end below it
+PIN_FIELDS = ("path", "sha256", "timesteps")
+
+
+def snapshot_pins(rec: dict, label: str) -> list[tuple[str, dict]]:
+    """[(key, pin)] of a decision network's snapshots (the record's ``snapshots.<label>``), by
+    timesteps."""
+    pins = (rec.get("snapshots") or {}).get(label)
+    if not pins:
+        raise SystemExit(f"CS-6: the record pins no snapshot of {label}")
+    return sorted(pins.items(), key=lambda kv: int(kv[1]["timesteps"]))
+
+
+def main_v_pullback(net, world):
+    """[n, 8] the main V's on-manifold g at T: ``critic.pullback`` per key on the bound world's
+    Inputs and ObsJac, as the critic stage computed it (``critic_of``)."""
+    import numpy as np
+
+    from apexzero.costate import critic as CR
+
+    g = np.full((world.n, 8), np.nan)
+    for k in world.keys:
+        g[k.rows] = CR.pullback(net, None, k.inp, k.oj).g[:, 0]
+    return g
+
+
+def row_gap(got, want) -> float:
+    """max over rows of max |got - want| / that row's largest |want| (NaN equal to NaN; inf
+    where the shapes or the NaNs differ)."""
+    import numpy as np
+
+    g, w = np.asarray(got, float), np.asarray(want, float)
+    if g.shape != w.shape or g.ndim != 2 or np.any(np.isnan(g) != np.isnan(w)):
+        return float("inf")
+    d = np.where(np.isnan(w), 0.0, np.abs(g - w)).max(axis=1)
+    sc = np.maximum(np.where(np.isnan(w), 0.0, np.abs(w)).max(axis=1), 1e-300)
+    return float(np.max(d / sc, initial=0.0))
+
+
+def c1_point(c1) -> dict:
+    """A snapshot's C1 in brief (amendment 10 item 2): the statistic with its CI and band, and
+    per component (s, xi) R2_c, the Spearman with its CI, the scored rows and the clamped
+    folds."""
+    import numpy as np
+
+    cl = np.asarray(c1.calibrated.clamped)
+    cl = cl.reshape(cl.shape[0], -1) if cl.ndim else cl.reshape(1, 1)
+    return {"stat": float(c1.stat), "ci": [float(v) for v in c1.ci], "decision": c1.decision,
+            "r2c": {c: float(c1.r2c[k]) for c, k in zip(SX, K_SX, strict=True)},
+            "spearman": {c: float(c1.spearman[k]) for c, k in zip(SX, K_SX, strict=True)},
+            "spearman_ci": {c: [float(v) for v in np.asarray(c1.spearman_ci)[k]]
+                            for c, k in zip(SX, K_SX, strict=True)},
+            "n_rows": {c: int(c1.n_rows[k]) for c, k in zip(SX, K_SX, strict=True)},
+            "clamped_folds": {c: int(np.sum(cl[:, k])) if cl.shape[1] > k else None
+                              for c, k in zip(SX, K_SX, strict=True)}}
+
+
+def series_value(pt: dict, series: str) -> float:
+    """One of ``CS6_SERIES`` from a snapshot's ``c1_point``."""
+    if series == "stat":
+        return float(pt["stat"])
+    kind, comp = series.rsplit("_", 1)
+    return float(pt[kind][comp])
+
+
+def cs6_trends(points: dict) -> dict:
+    """{series: ``analysis.c1_dev`` of the networks' (timesteps, value) pairs} (amendment 10
+    item 2); a non-finite value is left out of its network's pairs."""
+    import math
+
+    from apexzero.costate import analysis as AN
+
+    out = {}
+    for sname in CS6_SERIES:
+        pairs = {}
+        for lb, pts in points.items():
+            pr = [(int(p["timesteps"]), series_value(p, sname)) for p in pts]
+            pairs[lb] = [(t, v) for t, v in pr if math.isfinite(v)]
+        out[sname] = AN.c1_dev(pairs)
+    return out
+
+
+def cs6_expected(points: dict, trends: dict) -> dict:
+    """E6.1 to E6.3 (amendment 10 item 2)."""
+    below = {lb: sum(1 for p in pts if p["ci"][1] < E61_HI) for lb, pts in points.items()}
+    total = {lb: len(pts) for lb, pts in points.items()}
+    var_xi = trends["spearman_xi"]["variants"]
+    return {
+        "E6.1": {"snapshots_below_0.2": below, "snapshots": total,
+                 "count": int(sum(below.values())), "of": int(sum(total.values())),
+                 "holds": bool(all(below[lb] == total[lb] for lb in below))},
+        "E6.2": {"rho": trends["spearman_xi"]["rho"], "variants": var_xi,
+                 "holds": bool(var_xi and all(v == "confirm" for v in var_xi.values()))},
+        "E6.3": {"rho": trends["stat"]["rho"], "variants": trends["stat"]["variants"],
+                 "holds": None, "reading": "not predicted (plan E6.3): reported"},
+        "reading": "amendment 10 item 2"}
+
+
+@computes("CS-6")
+def cs6(run: Run) -> None:
+    """CS-6 (plan Section 4, amendment 10 item 2): per decision network, its last snapshot
+    first (checked against the stored g, decisions.json's mask and C1), then the other 15;
+    per snapshot the main V's pullback at T and C1 without nulls under its own observability;
+    then the trends and the expected directions; outputs summary.json and g.npz."""
+    import numpy as np
+
+    from apexzero.costate import analysis as AN
+    from apexzero.costate import critic as CR
+    from apexzero.costate import inputs as IN
+    from apexzero.costate import probes as PB
+    from apexzero.fields import network as NW
+
+    t0 = time.time()
+    world = load_world(run)
+    frozen = run.rec["frozen"]
+    k2b = frozen["k2b_excluded"]
+    counts = PB.cluster_counts(AN.geometry_clusters(world.tab)[1])
+    lim = getattr(run.args, "limit", None)
+    points, wiring, arrays = {}, {}, {}
+    for lb in decision_labels(run):
+        name = AN.network_of(lb)
+        stored = read_critic(run, name, ("g",))["g"][:, 0]
+        pins = snapshot_pins(run.rec, lb)
+        last_key, last = pins[-1]
+        net_pin = run.rec["networks"][name]
+        if any(str(last.get(f)) != str(net_pin.get(f)) for f in PIN_FIELDS):
+            raise SystemExit(f"CS-6 {lb}: its last snapshot's pin is not the network's")
+        order = [pins[-1], *pins[:-1]]
+        if lim is not None:
+            order = order[:int(lim)]
+        pts = []
+        for key, pin in order:
+            t1 = time.time()
+            ag = CS.load_agent(name, pin, run.root)
+            run.note_input(pin["path"], pin["sha256"])
+            net = CR.trained_critic(ag, pin["path"])
+            g = main_v_pullback(net, world)
+            flags = IN.flags(world, NW.upcast32(ag.obs_rms))
+            fr = CS.c1_frame(world, frozen, flags)
+            c1_rows(fr, k2b)                                     # the row guard (plan R5)
+            c1 = CS.c1_bare(fr, g, counts)
+            pt = {"snapshot": key, "timesteps": int(pin["timesteps"]), **c1_point(c1)}
+            if key == last_key:
+                gap = row_gap(g, stored)
+                bad = mask_problems(fr.valid, name, run.decisions)
+                cw = c1_wiring(c1, c1_reference(run.decisions, name)["C1"])
+                wiring[lb] = {"snapshot": key, "g_gap": gap, "mask_sha256": mask_sha256(fr.valid),
+                              "c1": cw, "tolerances": {"g": PULLBACK_TOL, "c1": WIRING_TOL}}
+                if not (gap <= PULLBACK_TOL and not bad
+                        and all(v <= WIRING_TOL for v in cw.values())):
+                    raise SystemExit(f"CS-6 {lb}: the last snapshot does not reproduce the "
+                                     f"stored network: g {gap:.3g}, mask {bad}, C1 {cw}")
+            pt["seconds"] = time.time() - t1
+            pts.append(pt)
+            arrays[f"{lb}/{int(pin['timesteps'])}/g"] = g.astype(np.float32)
+            arrays[f"{lb}/{int(pin['timesteps'])}/valid"] = np.asarray(fr.valid, bool)
+            print(f"CS-6 {lb} @ {int(pin['timesteps'])}: {time.time() - t1:.1f} s", flush=True)
+        points[lb] = sorted(pts, key=lambda p: p["timesteps"])
+    trends = cs6_trends(points)
+    out = {"item": "CS-6", "networks": {lb: {"run": AN.network_of(lb), "snapshots": pts,
+                                             "wiring": wiring.get(lb)}
+                                        for lb, pts in points.items()},
+           "trends": trends, "series": list(CS6_SERIES),
+           "expected": cs6_expected(points, trends),
+           "definitions": "plan Section 4 CS-6 and amendment 10 items 1 and 2",
+           "n_boot": len(counts), "partial": lim is not None, "seconds": time.time() - t0}
+    run.write_npz("g", arrays)
+    run.write_json("summary", plain(out))
+
+
+# ------------------------------------------------------------------------- CS-12: beyond the 9
+#
+# Plan Section 4 CS-12 with amendment 10 item 3, on the 22 generalists outside the decision set
+# and S1-S3: the primary C2 on the interior's approach and exit rows and the primary C2-sw on
+# the approach and exit pedal-switching rows, each against the 20 pool actors computed on the
+# network's own z (seeds 0-4 checked against the stored controls). One pool unit per
+# (network, statistic). No trained network is evaluated, so the item does not unlock.
+
+CS12_KINDS = ("C2", "C2-sw")
+E121_MIN, E122_GEN, E122_SPEC = 22, 15, 1
+
+
+def other_networks(rec: dict) -> list[str]:
+    """The record's networks outside the decision set: the 22 other generalists in
+    ``analysis.GENERALISTS``' order, then S1-S3 (amendment 10 item 3)."""
+    from apexzero.costate import analysis as AN
+
+    dec = {AN.network_of(lb) for lb in CS1_ORDER}
+    return [n for n in all_networks(rec) if n not in dec]
+
+
+def pool_actors(cfg, o, stored: dict | None = None) -> tuple[list, dict]:
+    """(the 20 pool actors' h3 on ``o``, {seed: gap}): ``probes.random_actor(cfg, s)``, s =
+    0-19, and for each seed in ``stored`` ({seed: (h3, m)}) the largest |difference| of its
+    rebuilt h3 and m from the stored ones (amendment 10 item 3)."""
+    import numpy as np
+
+    from apexzero.costate import probes as PB
+
+    pool, gaps = [], {}
+    for s in PB.POOL_SEEDS:
+        hid = PB.hidden(PB.random_actor(cfg, int(s)), o)
+        pool.append(hid["h3"])
+        if stored and int(s) in stored:
+            h, m = stored[int(s)]
+            gaps[int(s)] = float(max(np.max(np.abs(hid["h3"] - h)), np.max(np.abs(hid["m"] - m))))
+    return pool, gaps
+
+
+def cs12_unit(state, unit) -> dict:
+    """One (network, statistic) of CS-12 in a worker: the network's activations on the unit's
+    rows, the 20 pool actors on its z (seeds 0-4 checked against the stored controls first),
+    then ``analysis.c2_network`` (C2) or ``analysis.c2_sw_network`` (C2-sw) as the
+    confirmatory primary, on the rows given (arrays already subset to them)."""
+    import numpy as np
+
+    from apexzero.costate import analysis as AN
+    from apexzero.costate import probes as PB
+    from apexzero.costate import targets as TG
+
+    t0 = time.time()
+    idx = unit["idx"]
+    with np.load(unit["path"]) as d:
+        o = np.clip(d["z"][idx], -10.0, 10.0)
+        h3, m = d["actor_h3"][idx], d["m"][idx]
+        stored = {s: (d[f"random{s}_h3"][idx], d[f"random{s}_m"][idx])
+                  for s in range(PB.N_RANDOM_ACTORS)}
+    pool, gaps = pool_actors(unit["cfg"], o, stored)
+    worst = max(gaps.values())
+    if not worst <= RANDOM_TOL:
+        raise RuntimeError(f"CS-12 {unit['label']}/{unit['kind']}: the pool actors do not "
+                           f"rebuild the stored controls ({worst:.3g})")
+    draws = PB.pool_draws(len(pool))
+    every = np.ones(len(idx), bool)
+    try:
+        if unit["kind"] == "C2":
+            rec = AN.c2_network(h3, pool, o, m, unit["lam_res"], unit["fo"], None,
+                                unit["direction"], TG.K_P, unit["power_floor"], every,
+                                weights=unit["w"], mask=unit["valid"], pool=draws,
+                                controls=PB.POOL_SEEDS, logo="rule", labels=unit["labels"])
+        else:
+            rec = AN.c2_sw_network(h3, pool, o, unit["sigma"], m[:, 1], unit["fo"], unit["w"],
+                                   every, pool=draws, controls=PB.POOL_SEEDS, logo="rule",
+                                   labels=unit["labels"])
+    except PB.NotTestable as e:
+        rec = {"decision": "not testable", "reason": str(e)}
+    return {"record": trim_logo(rec), "random_gaps": gaps, "seconds": time.time() - t0}
+
+
+def cs12_expected(nets: dict, specialists=DESCRIPTIVE_SPECIALISTS) -> dict:
+    """E12.1 and E12.2 (amendment 10 item 3) on the ruled decisions and the pool ranks."""
+    c2 = {k: (v.get("C2") or {}).get("decision") for k, v in nets.items()}
+    ok = {k: d in ("inconclusive", "refute") for k, d in c2.items()}
+    confirm = [k for k, d in c2.items() if d == "confirm"]
+    untestable = [k for k, d in c2.items() if d == "not testable"]
+
+    def rank1(v) -> bool:
+        return ((v.get("C2-sw") or {}).get("pool") or {}).get("rank") == 1
+
+    gen = {k: rank1(v) for k, v in nets.items() if k not in specialists}
+    spec = {k: rank1(v) for k, v in nets.items() if k in specialists}
+    return {
+        "E12.1": {"decisions": c2, "inconclusive_or_refute": int(sum(ok.values())),
+                  "of": len(c2), "confirm": confirm, "not_testable": untestable,
+                  "holds": bool(sum(ok.values()) >= min(E121_MIN, len(c2)) and not confirm)},
+        "E12.2": {"rank1_generalists": gen, "count_generalists": int(sum(gen.values())),
+                  "of_generalists": len(gen), "rank1_specialists": spec,
+                  "count_specialists": int(sum(spec.values())),
+                  "holds": bool(sum(gen.values()) >= min(E122_GEN, len(gen))
+                                and sum(spec.values()) <= E122_SPEC)},
+        "reading": "amendment 10 item 3"}
+
+
+def cs8_quotes(run: Run) -> dict:
+    """The 9 decision networks' C2-sw on sigma^ped ((a)) and f_D reference C2 ((c)) on the same
+    rows, from CS-8's summary read through its stamp (amendment 10 items 1 and 3)."""
+    s = json.loads(item_output(run, "CS-8", "summary.json").read_text())
+    sw = (s.get("a_b") or {}).get("networks") or {}
+    c2 = ((s.get("c") or {}).get("networks")) or {}
+    return {lb: {"C2-sw": brief_c2(sw[lb]["sigma"]) | {
+                 "rank": ((sw[lb]["sigma"].get("pool") or {}).get("rank"))}
+                 if lb in sw else None,
+                 "C2": brief_c2(c2[lb]["frozen"]) if lb in c2 and "frozen" in c2[lb] else None}
+            for lb in CS1_ORDER}
+
+
+@computes("CS-12")
+def cs12(run: Run) -> None:
+    """CS-12 (plan Section 4, amendment 10 item 3): per network its frame and decision mask, its
+    stamped activations, then one pool unit per (network, statistic) (``cs12_unit``); the
+    decision networks' records quoted from CS-8; outputs summary.json."""
+    import numpy as np
+
+    from apexzero.costate import analysis as AN
+    from apexzero.costate import prereg as PR
+    from apexzero.costate import probes as PB
+    from apexzero.costate import states as ST
+
+    t0 = time.time()
+    world = load_world(run)
+    tab = world.tab
+    frozen = run.rec["frozen"]
+    k2b = frozen["k2b_excluded"]
+    _lam, by_fold, _oof, fo, res_gap = checked_lam_res(run, tab)
+    labels = AN.geometry_labels(tab)
+    direction = np.asarray(tab["direction"])
+    rows_c = cs5_rows(tab)
+    ic = np.flatnonzero(rows_c)
+    w_c = ST.stratum_weights(tab, rows_c)[ic]
+    rows_s = cs8_rows(tab)
+    i_s = np.flatnonzero(rows_s)
+    w_s = ST.stratum_weights(tab, rows_s)[i_s]
+    sig = ST.winsorise(np.asarray(tab["sigma_pedal"], float),
+                       frozen["winsor_bounds"]["sigma_pedal"])
+    quotes = cs8_quotes(run)
+    want = getattr(run.args, "network", None)
+    names = [n for n in other_networks(run.rec) if want is None or want == n]
+    if not names:
+        raise SystemExit(f"CS-12: --network {want} is not one of the 25 networks outside the "
+                         "decision set")
+    units, unames, frames = [], [], {}
+    for name in names:
+        agent, _flags, fr = network_frame(run, name, world)
+        for c, k in zip(SX, K_SX, strict=True):
+            guard_rows(tab, rows_c & fr.valid[:, k], c, k2b, fr.valid[:, k])
+        act = run.read(f"post/activations/{PR.net_file(name)}.npz", "stamped")
+        frames[name] = {"decision_rows": {c: int((rows_c & fr.valid[:, k]).sum())
+                                          for c, k in zip(SX, K_SX, strict=True)}}
+        units.append({"label": name, "kind": "C2", "path": str(act), "cfg": agent.cfg,
+                      "idx": ic, "lam_res": by_fold[:, ic], "fo": fo.subset(rows_c),
+                      "direction": direction[ic], "power_floor": frozen["power_floor"],
+                      "w": w_c, "valid": fr.valid[ic], "labels": labels})
+        units.append({"label": name, "kind": "C2-sw", "path": str(act), "cfg": agent.cfg,
+                      "idx": i_s, "sigma": sig[i_s], "fo": fo.subset(rows_s), "w": w_s,
+                      "labels": labels})
+        unames += [f"{name}/C2", f"{name}/C2-sw"]
+    lim = getattr(run.args, "limit", None)
+    if lim is not None:
+        units, unames = units[:int(lim)], unames[:int(lim)]
+    print(f"CS-12: {len(units)} units ({time.time() - t0:.0f} s)", flush=True)
+    t1 = time.time()
+    got = run.pool(cs12_unit, units, names=unames)
+    pool_s = time.time() - t1
+    nets: dict = {}
+    for u, r in zip(units, got, strict=True):
+        v = nets.setdefault(u["label"], {"descriptive_specialist":
+                                         u["label"] in DESCRIPTIVE_SPECIALISTS,
+                                         **frames[u["label"]], "random_gaps": {}, "seconds": {}})
+        v[u["kind"]] = r["record"]
+        v["random_gaps"][u["kind"]] = max(r["random_gaps"].values())
+        v["seconds"][u["kind"]] = r["seconds"]
+    complete = {k: v for k, v in nets.items() if all(h in v for h in CS12_KINDS)}
+    out = {"item": "CS-12", "networks": nets,
+           "expected": cs12_expected(complete) if complete else None,
+           "decision_networks_cs8": quotes,
+           "rows": {"C2_stratum": int(rows_c.sum()), "C2-sw": int(rows_s.sum())},
+           "controls": "the 20 pool actors, seeds 0-19, computed on each network's z (seeds "
+                       "0-4 checked against the stored controls)",
+           "residual_share_gap": res_gap, "random_tol": RANDOM_TOL,
+           "definitions": "plan Section 4 CS-12 and amendment 10 items 1 and 3",
+           "n_boot": PB.N_BOOT, "pool_seconds": pool_s, "partial": lim is not None,
+           "seconds": time.time() - t0}
+    run.write_json("summary", plain(out))
+
+
+# ------------------------------------------------------------------------- CS-14: q_c
+#
+# Plan Section 4 CS-14 with amendment 10 item 4. The window rule (step 4) is computed first,
+# from the key plans alone (targets only): a T interior row of the approach or exit phase
+# passes when its plan states x_t ... x_{t+64} all lie in its own phase. K2b for q_c can only
+# remove rows, so the stop rule (step 8, fewer than 200 rows) is applied to this count before
+# K2b for q_c and before any network; the item then writes its counts and stops.
+
+Q_WINDOW = 64                            # GAE's cut: the window t ... t + 64
+Q_MIN_ROWS = 200                         # the plan's stop rule (step 8)
+Q_BLOCK = 32                             # keys per pool unit
+S_TOL = 1e-12                            # the plan's s_t against T's column (relative)
+
+
+def window_pass(x, lm, s_b: float, t: int, W: int, phase: str,
+                window: int = Q_WINDOW) -> tuple[bool, str, float]:
+    """(passes, why not, s_{t+window} - s_t) of one T row under CS-14's window rule
+    (amendment 10 item 4): t + window <= W and every plan state x_t ... x_{t+window} in the
+    row's own phase (``states.phases``)."""
+    import numpy as np
+
+    from apexzero.costate import states as ST
+
+    if t + window > W:
+        return False, "beyond_W", float("nan")
+    ph = ST.phases(np.asarray(x, float)[t:t + window + 1, 0], lm, s_b)
+    length = float(x[t + window, 0] - x[t, 0])
+    if np.all(ph == phase):
+        return True, "", length
+    return False, "phase", length
+
+
+def cs14_unit(state, unit) -> dict:
+    """One block of T's keys under CS-14's window rule in a worker (amendment 10 item 4): per
+    key ``targets.key_targets`` (the plan T's targets read), its landmarks and brake onset,
+    the wiring of its T rows against T's columns, then each scored row's window."""
+    import numpy as np
+
+    from apexzero.costate import states as ST
+    from apexzero.costate import targets as TG
+
+    t0 = time.time()
+    bank = _bank()
+    cols: dict = {f: [] for f in ("row", "passes", "why", "length")}
+    wiring = {"s": 0.0, "phase": 0, "s_b": 0, "W": 0}
+    for kd in unit["keys"]:
+        kt = TG.key_targets(kd["ref"], bank=bank)
+        cs = kt.jac
+        x, W = np.asarray(cs.x, float), int(cs.W)
+        lm = bank.stimuli[kd["ref"].stim_id].landmarks
+        s_b = ST.brake_onset(cs, lm)
+        t = np.asarray(kd["t"], int)
+        wiring["s"] = max(wiring["s"], rel_gap(x[t, 0], kd["s"]))
+        wiring["phase"] += int(np.sum(ST.phases(x[t, 0], lm, s_b) != kd["phase"]))
+        same_sb = (np.isnan(s_b) and np.isnan(kd["s_b"])) or s_b == kd["s_b"]
+        wiring["s_b"] += int(not same_sb)
+        wiring["W"] += int(W != kd["W"])
+        for j in np.flatnonzero(kd["scored"]):
+            ok, why, length = window_pass(x, lm, s_b, int(t[j]), W, str(kd["phase"][j]))
+            cols["row"].append(int(kd["rows"][j]))
+            cols["passes"].append(bool(ok))
+            cols["why"].append(why)
+            cols["length"].append(length)
+    return {"cols": {k: np.asarray(v) for k, v in cols.items()}, "wiring": wiring,
+            "seconds": time.time() - t0}
+
+
+@computes("CS-14")
+def cs14(run: Run) -> None:
+    """CS-14 (plan Section 4, amendment 10 item 4): the window rule on T's interior approach
+    and exit rows from the key plans, pooled by blocks of keys (``cs14_unit``), its wiring
+    against T's columns, then the stop rule on its count; outputs summary.json. With fewer
+    than ``Q_MIN_ROWS`` rows the item is 'not scorable under #8' and stops there (and, by the
+    amendment, with more too, until a further amendment)."""
+    import numpy as np
+
+    from apexzero.costate import states as ST
+
+    t0 = time.time()
+    world = load_world(run)
+    tab = world.tab
+    ph = np.asarray(tab["phase"]).astype(str)
+    scored = np.asarray(tab["interior"], bool) & np.isin(ph, SCORED_PHASES)
+    guard_rows(tab, scored)
+    a2 = {r.key_id: r for r in ST.a2_refs()}
+    keys = []
+    for k in world.keys:
+        rr = np.asarray(k.rows, int)
+        ref = a2.get(str(k.key_id))
+        if ref is None:
+            raise SystemExit(f"CS-14: T's key {k.key_id} is not an A2 key")
+        keys.append({"ref": ref, "rows": rr, "t": np.asarray(tab["t"], int)[rr],
+                     "s": np.asarray(tab["s"], float)[rr], "phase": ph[rr],
+                     "s_b": float(np.asarray(tab["s_b"], float)[rr[0]]),
+                     "W": int(np.asarray(tab["W"], int)[rr[0]]), "scored": scored[rr]})
+    lim = getattr(run.args, "limit", None)
+    units = [{"keys": keys[i:i + Q_BLOCK]} for i in range(0, len(keys), Q_BLOCK)]
+    if lim is not None:
+        units = units[:int(lim)]
+    print(f"CS-14: {len(units)} units over {sum(len(u['keys']) for u in units)} keys "
+          f"({time.time() - t0:.0f} s)", flush=True)
+    t1 = time.time()
+    got = run.pool(cs14_unit, units, names=[f"keys{i}" for i in range(len(units))])
+    pool_s = time.time() - t1
+    cols = {k: np.concatenate([g["cols"][k] for g in got]) for k in got[0]["cols"]}
+    wiring = {"s": max(g["wiring"]["s"] for g in got),
+              **{f: int(sum(g["wiring"][f] for g in got)) for f in ("phase", "s_b", "W")},
+              "s_tol": S_TOL}
+    if not (wiring["s"] <= S_TOL and wiring["phase"] == 0 and wiring["s_b"] == 0
+            and wiring["W"] == 0):
+        raise SystemExit(f"CS-14: the key plans are not T's: {wiring}")
+    rows = cols["row"].astype(int)
+    passes = cols["passes"].astype(bool)
+    if lim is None and not np.array_equal(np.sort(rows), np.flatnonzero(scored)):
+        raise SystemExit("CS-14: the pool did not return every scored row")
+    by_phase = {p: {"rows": int(np.sum(ph[rows] == p)),
+                    "pass": int(np.sum(passes & (ph[rows] == p))),
+                    "beyond_W": int(np.sum((cols["why"] == "beyond_W") & (ph[rows] == p)))}
+                for p in SCORED_PHASES}
+    n_pass = int(passes.sum())
+    length = cols["length"].astype(float)
+    lp = length[passes & np.isfinite(length)]
+    la = length[np.isfinite(length)]
+    kid = np.asarray(tab["key_id"]).astype(str)
+    stop = n_pass < Q_MIN_ROWS
+    out = {"item": "CS-14", "window": Q_WINDOW, "rows_scored_phases": len(rows),
+           "rows_pass": n_pass, "by_phase": by_phase,
+           "keys_with_a_passing_row": len(np.unique(kid[rows[passes]])),
+           "window_length_m": {"all": {"median": float(np.median(la)) if la.size else None,
+                                       "min": float(la.min()) if la.size else None,
+                                       "max": float(la.max()) if la.size else None},
+                               "passing": {"median": float(np.median(lp)) if lp.size else None,
+                                           "min": float(lp.min()) if lp.size else None,
+                                           "max": float(lp.max()) if lp.size else None}},
+           "stop_rule": {"min_rows": Q_MIN_ROWS, "fires": bool(stop)},
+           "decision": ("not scorable under #8" if stop else
+                        "stopped before K2b for q_c: a further amendment fixes the rest"),
+           "k2b_for_q_c": "not run: it can only remove rows (amendment 10 item 4)",
+           "networks": "none evaluated",
+           "expected": {e: {"holds": None, "reading": "not read: the item stopped at the "
+                                                     "window rule (amendment 10 item 4)"}
+                        for e in ("E14.1", "E14.2", "E14.3")},
+           "wiring": wiring,
+           "definitions": "plan Section 4 CS-14 (steps 4 and 8) and amendment 10 item 4",
+           "pool_seconds": pool_s, "partial": lim is not None, "seconds": time.time() - t0}
+    run.write_json("summary", plain(out))
+
+
+# ------------------------------------------------------------------------- CS-15
+#
+# Plan Section 4 CS-15 with amendment 10 item 5, on the 9 decision networks: (1) the primary
+# C2 on the interior's approach and exit rows from its own probes (checked against CS-8 (c)'s
+# f_D reference record), and the same with every full probe replaced by its two-stage (FWL)
+# fit at its own penalties; (2) C2 with the actor's h1 or h2 against the pool's h1 or h2,
+# computed here; (3) C2 on D's rows. Four pool units per network. No trained network is
+# evaluated, so the item does not unlock.
+
+CS15_PARTS = ("h3", "h1", "h2", "D")
+CS8_REF_TOL = 1e-10                      # step 1's record against CS-8 (c)'s f_D reference
+CS8_REF_FIELDS = ("stat", "ci", "ci_geometry", "gain", "raw", "r2_base", "r2_full")
+E151_TOL = 0.01
+
+
+def c2_probes(hs, z, m, Y, fo, w, names) -> tuple:
+    """(the base probe, the full probes): ``probes.c2``'s conditional probes, base [z, m] and
+    full [z, m, h] for each h in ``hs``, on the rows given."""
+    import numpy as np
+
+    from apexzero.costate import probes as PB
+
+    n = len(w)
+    base = np.hstack([np.asarray(z).reshape(n, -1), np.asarray(m).reshape(n, -1)])
+    return PB.conditional(list(hs), base, Y, fo, w, names)
+
+
+def c2_from_probes(pb, fulls, w, fo, direction, passing, mask, pool=None, controls=None,
+                   labels=None, logo: str | None = "rule") -> tuple[dict, object]:
+    """(record, ``probes.Gain``) of C2 from fitted probes (``fulls[0]`` the network's, the rest
+    its controls), assembled as ``analysis.c2_network`` assembles its record on the rows
+    given (amendment 10 item 5)."""
+    import numpy as np
+
+    from apexzero.costate import analysis as AN
+    from apexzero.costate import probes as PB
+
+    mk = np.asarray(mask, bool).reshape(len(w), -1)
+    gn = PB.gain(pb, fulls[0], list(fulls[1:]), w, fo, direction, passing, None, None,
+                 mask=mk, pool=pool, logo=logo, labels=labels)
+    rec = gn.record()
+    rec["n_stratum"] = len(w)
+    rec["scored_rows"] = mk.sum(0).tolist()
+    if controls is not None:
+        rec["controls"] = AN.controls_label(controls, pool is not None)
+    return rec, gn
+
+
+def raw_gain(pb, full, w, fo, direction, passing, mask) -> object:
+    """``probes.gain`` without controls: the network's own gain R2(full) - R2(base), its mean
+    over the passing components and the geometry-bootstrap draws of that mean."""
+    import numpy as np
+
+    from apexzero.costate import probes as PB
+
+    mk = np.asarray(mask, bool).reshape(len(w), -1)
+    return PB.gain(pb, full, [], w, fo, direction, passing, None, None, mask=mk)
+
+
+def one_component(passing: dict, comp: str) -> dict:
+    """The power floor's verdicts with every component but ``comp`` off."""
+    return {c: bool(v) and c == comp for c, v in passing.items()}
+
+
+def paired(a, b) -> dict:
+    """{point, ci} of b - a on the same draws (two ``probes.Gain``)."""
+    import numpy as np
+
+    from apexzero.costate import analysis as AN
+
+    d = np.asarray(b.boot, float) - np.asarray(a.boot, float)
+    return {"point": float(b.stat - a.stat), "ci": list(AN._ci(d))}
+
+
+def fwl_record(pb, fulls, Yb, base_x, hs, w, fo, direction, passing, mask, pool, controls,
+               labels, names) -> dict:
+    """Step 1's FWL part (amendment 10 item 5): every full probe refitted by ``probes.fwl`` at
+    its own penalties; the trained h3's raw gain one-stage and FWL (per component and their
+    mean) with the paired difference, and the C2 statistic under FWL beside the one-stage one
+    with the paired two-level difference."""
+    from apexzero.costate import probes as PB
+
+    fw = [PB.fwl(base_x, h, Yb, fo, w, f.alpha, names) for h, f in zip(hs, fulls, strict=True)]
+    rec_one, g_one = c2_from_probes(pb, fulls, w, fo, direction, passing, mask, pool, controls,
+                                    labels, None)
+    rec_fwl, g_fwl = c2_from_probes(pb, fw, w, fo, direction, passing, mask, pool, controls,
+                                    labels, None)
+    raw = {}
+    for nm, ps in (("mean", passing), *((c, one_component(passing, c)) for c in SX)):
+        a = raw_gain(pb, fulls[0], w, fo, direction, ps, mask)
+        b = raw_gain(pb, fw[0], w, fo, direction, ps, mask)
+        raw[nm] = {"one_stage": float(a.stat), "fwl": float(b.stat), "difference": paired(a, b)}
+    return {"raw_gain": raw,
+            "statistic": {"one_stage": rec_one["stat"], "fwl": rec_fwl["stat"],
+                          "fwl_ci": rec_fwl["ci"], "difference": paired(g_one, g_fwl)},
+            "fwl_preds": fw[0].pred}
+
+
+def cs8_ref_gap(rec: dict, ref: dict) -> float:
+    """The largest |difference| of a C2 record from CS-8 (c)'s reference over
+    ``CS8_REF_FIELDS`` (None as NaN, NaN equal to NaN; inf on a missing or misshapen field)
+    and the pool rank (inf when it differs)."""
+    import numpy as np
+
+    worst = 0.0
+    for f in CS8_REF_FIELDS:
+        if f not in rec or f not in ref:
+            return float("inf")
+        a = np.asarray([np.nan if v is None else v for v in np.atleast_1d(rec[f]).tolist()],
+                       float)
+        b = np.asarray([np.nan if v is None else v for v in np.atleast_1d(ref[f]).tolist()],
+                       float)
+        if a.shape != b.shape or np.any(np.isnan(a) != np.isnan(b)):
+            return float("inf")
+        worst = max(worst, float(np.max(np.where(np.isnan(a), 0.0, np.abs(a - b)),
+                                        initial=0.0)))
+    if (rec.get("pool") or {}).get("rank") != (ref.get("pool") or {}).get("rank"):
+        return float("inf")
+    return worst
+
+
+def cs15_unit(state, unit) -> dict:
+    """One (network, part) of CS-15 in a worker (amendment 10 item 5): 'h3' the primary C2 from
+    its own probes (checked against CS-8 (c)'s record at once) with its FWL part; 'h1' and
+    'h2' C2 with that layer against the pool's same layer, computed here; 'D' the primary C2
+    on D's rows. Arrays are already subset to the part's rows."""
+    import numpy as np
+
+    from apexzero.costate import analysis as AN
+    from apexzero.costate import probes as PB
+    from apexzero.costate import targets as TG
+
+    t0 = time.time()
+    part, idx, cfg = unit["part"], unit["idx"], unit["cfg"]
+    tag = f"CS-15 {unit['label']}/{part}"
+    with np.load(unit["path"]) as d:
+        o = np.clip(d["z"][idx], -10.0, 10.0)
+        m = d["m"][idx]
+        h = d["actor_h3" if part in ("h3", "D") else f"actor_{part}"][idx]
+        stored0 = d["random0_h3"][idx]
+        pool = ([d[f"random{s}_h3"][idx] for s in PB.POOL_SEEDS] if part in ("h3", "D")
+                else None)
+    if pool is None:                       # h1 or h2: the pool's same layer, computed here
+        pool = []
+        for s in PB.POOL_SEEDS:
+            hid = PB.hidden(PB.random_actor(cfg, int(s)), o)
+            if int(s) == 0:
+                gap = float(np.max(np.abs(hid["h3"] - stored0)))
+            pool.append(hid[part])
+    else:
+        gap = pool_actor_gap(cfg, o, stored0)
+    if not gap <= RANDOM_TOL:
+        raise RuntimeError(f"{tag}: the pool actor of seed 0 does not rebuild its stored h3 "
+                           f"({gap:.3g})")
+    draws = PB.pool_draws(len(pool))
+    w, fo, direction, valid = unit["w"], unit["fo"], unit["direction"], unit["valid"]
+    passing = unit["power_floor"]
+    out: dict = {"label": unit["label"], "part": part, "random0_gap": gap}
+    if part == "h3":
+        names = tuple(f"lam_{c}" for c in TG.K_P)
+        Yb = unit["lam_res"]
+        hs = [h, *pool]
+        pb, fulls = c2_probes(hs, o, m, Yb, fo, w, names)
+        rec, _g = c2_from_probes(pb, fulls, w, fo, direction, passing, valid, draws,
+                                 PB.POOL_SEEDS, unit["labels"])
+        ref = unit.get("cs8_ref")
+        if ref is not None:
+            out["cs8_gap"] = cs8_ref_gap(rec, ref)
+            if not out["cs8_gap"] <= CS8_REF_TOL:
+                raise RuntimeError(f"{tag}: C2 does not reproduce CS-8 (c)'s reference "
+                                   f"({out['cs8_gap']:.3g})")
+        n = len(w)
+        base_x = np.hstack([o.reshape(n, -1), m.reshape(n, -1)])
+        fw = fwl_record(pb, fulls, Yb, base_x, hs, w, fo, direction, passing, valid, draws,
+                        PB.POOL_SEEDS, unit["labels"], names)
+        out["record"] = trim_logo(rec)
+        out["fwl"] = {k: v for k, v in fw.items() if k != "fwl_preds"}
+        out["preds"] = {"base": pb.pred, "full": fulls[0].pred, "fwl": fw["fwl_preds"],
+                        "y": pb.y}
+    else:
+        try:
+            rec = AN.c2_network(h, pool, o, m, unit["lam_res"], fo, None, direction, TG.K_P,
+                                passing, np.ones(len(idx), bool), weights=w, mask=valid,
+                                pool=draws, controls=PB.POOL_SEEDS, logo="rule",
+                                labels=unit["labels"])
+        except PB.NotTestable as e:
+            rec = {"decision": "not testable", "reason": str(e)}
+        out["record"] = trim_logo(rec)
+    out["seconds"] = time.time() - t0
+    return out
+
+
+def cs15_expected(nets: dict) -> dict:
+    """E15.1 to E15.3 (amendment 10 item 5)."""
+    def get(v, part):
+        return (v.get(part) or {}).get("record") or {}
+
+    e1 = _count_of(nets, lambda v: abs(v["h3"]["fwl"]["raw_gain"]["mean"]["difference"]["point"])
+                   <= E151_TOL)
+    e1s = {lb: v["h3"]["fwl"]["statistic"]["difference"]["point"] for lb, v in nets.items()}
+    e2 = {L: _count_of(nets, lambda v, L=L: get(v, L)["stat"] <= get(v, "h3")["stat"])
+          for L in ("h1", "h2")}
+    e3 = _count_of(nets, lambda v: get(v, "D").get("decision") in ("not testable",
+                                                                     "inconclusive"))
+    n = len(nets)
+    return {
+        "E15.1": {**e1, "statistic_difference": e1s,
+                  "holds": bool(e1["count"] >= min(E_COUNT, n))},
+        "E15.2": {**e2, "holds": bool(all(p["count"] >= min(E_COUNT, n) for p in e2.values()))},
+        "E15.3": {**e3, "decisions": {lb: get(v, "D").get("decision") for lb, v in nets.items()},
+                  "holds": bool(e3["count"] >= min(E_COUNT, n))},
+        "reading": "amendment 10 item 5"}
+
+
+@computes("CS-15")
+def cs15(run: Run) -> None:
+    """CS-15 (plan Section 4, amendment 10 item 5): the frozen lambda_res; CS-8 (c)'s reference
+    records; per network its frame and decision mask; 4 pool units per network
+    (``cs15_unit``); outputs summary.json and preds.npz."""
+    import numpy as np
+
+    from apexzero.costate import analysis as AN
+    from apexzero.costate import prereg as PR
+    from apexzero.costate import probes as PB
+    from apexzero.costate import states as ST
+
+    t0 = time.time()
+    world = load_world(run)
+    tab = world.tab
+    frozen = run.rec["frozen"]
+    k2b = frozen["k2b_excluded"]
+    _lam, by_fold, _oof, fo, res_gap = checked_lam_res(run, tab)
+    labels_geo = AN.geometry_labels(tab)
+    direction = np.asarray(tab["direction"])
+    s8 = json.loads(item_output(run, "CS-8", "summary.json").read_text())
+    ref8 = ((s8.get("c") or {}).get("networks")) or {}
+    rows_c = cs5_rows(tab)
+    d_mask = np.zeros(world.n, bool)
+    d_mask[CS.d_rows(world)] = True
+    rows_d = guard_rows(tab, d_mask)
+    strata = {"h3": rows_c, "h1": rows_c, "h2": rows_c, "D": rows_d}
+    wts = {k: ST.stratum_weights(tab, r) for k, r in (("C", rows_c), ("D", rows_d))}
+    units, names = [], []
+    for lb in decision_labels(run):
+        name = AN.network_of(lb)
+        agent, _flags, fr = network_frame(run, name, world)
+        act = run.read(f"post/activations/{PR.net_file(name)}.npz")
+        ref = (ref8.get(lb) or {}).get("frozen")
+        if ref is None:
+            raise SystemExit(f"CS-15 {lb}: CS-8 (c) holds no f_D reference record")
+        for part in CS15_PARTS:
+            rows = strata[part]
+            for c, k in zip(SX, K_SX, strict=True):
+                guard_rows(tab, rows & fr.valid[:, k], c, k2b, fr.valid[:, k])
+            idx = np.flatnonzero(rows)
+            units.append({"label": lb, "part": part, "path": str(act), "cfg": agent.cfg,
+                          "idx": idx, "lam_res": by_fold[:, idx], "fo": fo.subset(rows),
+                          "direction": direction[idx], "valid": fr.valid[idx],
+                          "w": wts["D" if part == "D" else "C"][idx],
+                          "power_floor": frozen["power_floor"], "labels": labels_geo,
+                          "cs8_ref": ref if part == "h3" else None})
+            names.append(f"{lb}/{part}")
+    lim = getattr(run.args, "limit", None)
+    if lim is not None:
+        units, names = units[:int(lim)], names[:int(lim)]
+    print(f"CS-15: {len(units)} units ({time.time() - t0:.0f} s)", flush=True)
+    t1 = time.time()
+    got = run.pool(cs15_unit, units, names=names)
+    pool_s = time.time() - t1
+    nets: dict = {}
+    arrays: dict = {}
+    for u, r in zip(units, got, strict=True):
+        lb, part = r["label"], r["part"]
+        v = nets.setdefault(lb, {"run": AN.network_of(lb)})
+        v[part] = {k: x for k, x in r.items() if k not in ("label", "part", "preds")}
+        v[part]["rows"] = len(u["idx"])
+        if part == "h3":
+            if not r.get("cs8_gap", float("inf")) <= CS8_REF_TOL:
+                raise SystemExit(f"CS-15 {lb}: C2 does not reproduce CS-8 (c)'s reference")
+            arrays[f"{lb}/rows"] = u["idx"]
+            for k, x in r["preds"].items():
+                arrays[f"{lb}/{k}"] = np.asarray(x, np.float32)
+    for lb, v in nets.items():
+        conf = ((run.decisions.get("networks") or {}).get(v["run"]) or {}).get("C2") or {}
+        v["confirmatory_c2"] = {k: conf.get(k) for k in ("stat", "ci", "decision", "n_stratum")}
+    complete = {lb: v for lb, v in nets.items() if all(p in v for p in CS15_PARTS)}
+    out = {"item": "CS-15", "networks": nets,
+           "expected": cs15_expected(complete) if complete else None,
+           "rows": {"stratum": int(rows_c.sum()), "D": int(rows_d.sum())},
+           "residual_share_gap": res_gap, "cs8_ref_tol": CS8_REF_TOL,
+           "definitions": "plan Section 4 CS-15 and amendment 10 items 1 and 5",
+           "n_boot": PB.N_BOOT, "pool_seconds": pool_s, "partial": lim is not None,
+           "seconds": time.time() - t0}
+    run.write_npz("preds", arrays)
+    run.write_json("summary", plain(out))
 
 
 def plain(obj):

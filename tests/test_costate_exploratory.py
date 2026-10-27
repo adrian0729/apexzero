@@ -1942,3 +1942,266 @@ def test_width_check_problems(cx):
     assert cx.width_check_problems([unit([True, False])], np.array([1e-12, nan]))
     assert cx.width_check_problems([unit([True], 1e-3)], np.array([1e-12]))
     assert cx.width_check_problems([unit([True], 1e-9)], np.array([1e-3]))
+
+
+# ------------------------------------------------------------------------- CS-6, CS-12, CS-14, CS-15
+
+
+def test_cs6_cs12_cs14_cs15_are_registered(cx):
+    six = cx.BY_CMD["cs-6"]
+    assert six.trained and not six.solves and not six.pooled and "CS-6" in cx.COMPUTE
+    assert {"world", "critic:decision", "snapshots"} <= set(six.reads)
+    for cmd in ("cs-12", "cs-15"):
+        it = cx.BY_CMD[cmd]
+        assert it.id in cx.COMPUTE and not it.trained and not it.solves and it.pooled, cmd
+        assert "checkpoints" in it.reads and it.needs == ("CS-8",), cmd
+    assert "activations:other" in cx.BY_CMD["cs-12"].reads
+    assert "activations:decision" in cx.BY_CMD["cs-15"].reads
+    q = cx.BY_CMD["cs-14"]
+    assert q.trained and q.solves and q.pooled and "CS-14" in cx.COMPUTE
+
+
+def test_cs12_cs15_stay_locked(cx, monkeypatch, tmp_path, locked):
+    monkeypatch.setattr(cx, "preflight", lambda root=None: [])
+    monkeypatch.setattr(cx, "load_context", lambda root=None: ({}, {}, {}))
+    monkeypatch.setattr(cx, "check_inputs", lambda run: [])
+    for cmd in ("cs-12", "cs-15"):
+        seen = []
+        it = cx.BY_CMD[cmd]
+        monkeypatch.setitem(cx.COMPUTE, it.id, lambda run, seen=seen: seen.append(locked()))
+        cx.run_item(it, _args(out=str(tmp_path)))
+        assert seen == [[False, False, False]], cmd
+
+
+def test_snapshot_pins_from_the_record(cx):
+    from apexzero.costate import analysis as AN
+
+    rec = json.loads(PREREG.read_text())
+    for lb in cx.CS1_ORDER:
+        pins = cx.snapshot_pins(rec, lb)
+        ts = [int(p["timesteps"]) for _, p in pins]
+        assert len(pins) == 16 and ts == sorted(ts) and ts[0] == 10_000_000, lb
+        last = pins[-1][1]
+        net = rec["networks"][AN.network_of(lb)]
+        assert all(str(last[f]) == str(net[f]) for f in cx.PIN_FIELDS), lb
+    with pytest.raises(SystemExit, match="no snapshot"):
+        cx.snapshot_pins(rec, "S1")
+
+
+def test_row_gap(cx):
+    a = np.array([[1.0, -2.0], [np.nan, np.nan], [0.5, 0.0]])
+    assert cx.row_gap(a, a.copy()) == 0.0
+    b = a.copy()
+    b[0, 1] += 2e-11
+    assert cx.row_gap(b, a) == pytest.approx(1e-11)
+    b = a.copy()
+    b[2, 1] = 1e-12
+    assert cx.row_gap(b, a) == pytest.approx(2e-12)
+    c = a.copy()
+    c[1, 0] = 0.0
+    assert cx.row_gap(c, a) == float("inf")
+    assert cx.row_gap(a[:2], a) == float("inf")
+
+
+def _point(ts, stat, hi, xi_rho):
+    return {"timesteps": ts, "stat": stat, "ci": [stat - 0.1, hi], "r2c": {"s": stat, "xi": stat},
+            "spearman": {"s": 0.0, "xi": xi_rho}}
+
+
+def test_cs6_trends_and_expected(cx):
+    ts = [10_000_000, 20_000_000, 50_000_000, 200_000_000]
+    up = {lb: [_point(t, -0.1, 0.1, 0.1 * i) for i, t in enumerate(ts)] for lb in cx.CS1_ORDER}
+    tr = cx.cs6_trends(up)
+    assert set(tr) == set(cx.CS6_SERIES)
+    assert all(v == pytest.approx(1.0) for v in tr["spearman_xi"]["rho"].values())
+    assert set(tr["spearman_xi"]["variants"].values()) == {"confirm"}
+    assert all(v == 0.0 for v in tr["stat"]["rho"].values())    # a constant series
+    e = cx.cs6_expected(up, tr)
+    assert e["E6.1"]["holds"] and e["E6.1"]["count"] == 36 and e["E6.2"]["holds"]
+    assert e["E6.3"]["holds"] is None
+    down = {lb: [_point(t, -0.1, 0.25 if i == 0 else 0.1, -0.1 * i) for i, t in enumerate(ts)]
+            for lb in cx.CS1_ORDER}
+    down["G1"][1]["spearman"]["xi"] = float("nan")               # left out of G1's pairs
+    tr2 = cx.cs6_trends(down)
+    e2 = cx.cs6_expected(down, tr2)
+    assert not e2["E6.1"]["holds"] and e2["E6.1"]["snapshots_below_0.2"]["G1"] == 3
+    assert not e2["E6.2"]["holds"] and tr2["spearman_xi"]["rho"]["G1"] == pytest.approx(-1.0)
+    assert cx.series_value(up["G1"][2], "spearman_xi") == pytest.approx(0.2)
+    assert cx.series_value(up["G1"][2], "r2c_s") == -0.1
+
+
+def test_other_networks(cx):
+    from apexzero.costate import analysis as AN
+
+    rec = json.loads(PREREG.read_text())
+    got = cx.other_networks(rec)
+    dec = {AN.network_of(lb) for lb in cx.CS1_ORDER}
+    assert len(got) == 25 and not set(got) & dec and got[-3:] == ["S1", "S2", "S3"]
+    assert got[:22] == [n for n in AN.GENERALISTS if n not in dec]
+
+
+def test_pool_actors_rebuild_the_stored_controls(cx):
+    from apexzero.costate import probes as PB
+
+    cfg = PB.g1_config()
+    z = np.clip(np.random.default_rng(31).standard_normal((40, 222)), -10, 10)
+    stored = {}
+    for s in range(PB.N_RANDOM_ACTORS):
+        h = PB.hidden(PB.random_actor(cfg, s), z)
+        stored[s] = (h["h3"], h["m"])
+    pool, gaps = cx.pool_actors(cfg, z, stored)
+    assert len(pool) == 20 and set(gaps) == set(range(5)) and max(gaps.values()) == 0.0
+    np.testing.assert_array_equal(pool[3], stored[3][0])
+    stored[2] = (stored[2][0] + 1e-9, stored[2][1])
+    assert cx.pool_actors(cfg, z, stored)[1][2] == pytest.approx(1e-9)
+
+
+def _c2_case(rng, n=240, G=12, J=4):
+    from apexzero.costate import probes as PB
+
+    fo = _synthetic_folds(n, G, rng)
+    z = rng.standard_normal((n, 5))
+    m = np.tanh(z[:, :2] + 0.1 * rng.standard_normal((n, 2)))
+    lam = np.stack([z[:, 0] + 0.3 * rng.standard_normal(n), rng.standard_normal(n),
+                    np.sin(z[:, 1]) + 0.2 * rng.standard_normal(n), rng.standard_normal(n)], 1)
+    Y = np.stack([lam + 0.05 * f * rng.standard_normal((n, 4)) for f in range(6)])
+    h3 = np.tanh(z @ rng.standard_normal((5, 4)) + 0.5 * lam[:, :1])
+    rnd = [np.tanh(z @ rng.standard_normal((5, 4))) for _ in range(J)]
+    direction = rng.choice([-1, 1], n)
+    rows = rng.random(n) < 0.85
+    ws = rng.random(n) + 0.5
+    ws = ws / ws[rows].sum()
+    valid = np.stack([rng.random(n) < 0.9, np.zeros(n, bool), rng.random(n) < 0.8,
+                      np.zeros(n, bool)], 1)
+    labels = np.stack([np.arange(G) + 5.0, np.full(G, 90.0)], 1)
+    passing = {"s": True, "n": False, "xi": True, "vx": False}
+    return dict(fo=fo, z=z, m=m, Y=Y, h3=h3, rnd=rnd, direction=direction, rows=rows, ws=ws,
+                valid=valid, labels=labels, passing=passing, draws=PB.pool_draws(J),
+                seeds=tuple(range(J)))
+
+
+def test_c2_from_probes_equals_c2_network(cx):
+    """CS-15's step 1 assembles the primary C2 from its own probes (amendment 10 item 5):
+    the record equals analysis.c2_network's exactly."""
+    from apexzero.costate import analysis as AN
+    from apexzero.costate import targets as TG
+
+    c = _c2_case(np.random.default_rng(32))
+    r = c["rows"]
+    want = AN.c2_network(c["h3"], c["rnd"], c["z"], c["m"], c["Y"], c["fo"], None,
+                         c["direction"], TG.K_P, c["passing"], r, weights=c["ws"][r],
+                         mask=c["valid"], pool=c["draws"], controls=c["seeds"], logo="rule",
+                         labels=c["labels"])
+    sub = c["fo"].subset(r)
+    names = tuple(f"lam_{k}" for k in TG.K_P)
+    hs = [c["h3"][r], *[x[r] for x in c["rnd"]]]
+    pb, fulls = cx.c2_probes(hs, c["z"][r], c["m"][r], c["Y"][:, r], sub, c["ws"][r], names)
+    got, gn = cx.c2_from_probes(pb, fulls, c["ws"][r], sub, c["direction"][r], c["passing"],
+                                c["valid"][r], c["draws"], c["seeds"], c["labels"])
+    assert _same(got, want)
+    # the same arrays subset first and passed whole (CS-12's and CS-15's units)
+    every = np.ones(int(r.sum()), bool)
+    again = AN.c2_network(c["h3"][r], [x[r] for x in c["rnd"]], c["z"][r], c["m"][r],
+                          c["Y"][:, r], sub, None, c["direction"][r], TG.K_P, c["passing"],
+                          every, weights=c["ws"][r], mask=c["valid"][r], pool=c["draws"],
+                          controls=c["seeds"], logo="rule", labels=c["labels"])
+    assert _same(again, want)
+    assert cx.cs8_ref_gap(got, want) == 0.0
+    bumped = dict(want, stat=want["stat"] + 1e-9)
+    assert cx.cs8_ref_gap(got, bumped) == pytest.approx(1e-9)
+    assert cx.cs8_ref_gap(got, dict(want, pool={"rank": 99})) == float("inf")
+    assert cx.cs8_ref_gap(got, {k: v for k, v in want.items() if k != "ci"}) == float("inf")
+    # FWL's part: the one-stage numbers are the record's
+    n = int(r.sum())
+    base_x = np.hstack([c["z"][r], c["m"][r]])
+    fw = cx.fwl_record(pb, fulls, c["Y"][:, r], base_x, hs, c["ws"][r], sub, c["direction"][r],
+                       c["passing"], c["valid"][r], c["draws"], c["seeds"], c["labels"], names)
+    assert fw["statistic"]["one_stage"] == got["stat"]
+    raw = np.asarray(got["raw"], float)
+    assert fw["raw_gain"]["mean"]["one_stage"] == pytest.approx(np.mean(raw[[0, 2]]), abs=1e-12)
+    assert fw["raw_gain"]["s"]["one_stage"] == pytest.approx(raw[0], abs=1e-12)
+    for k in ("mean", "s", "xi"):
+        d = fw["raw_gain"][k]
+        assert d["difference"]["point"] == pytest.approx(d["fwl"] - d["one_stage"], abs=1e-12)
+        lo, hi = d["difference"]["ci"]
+        assert lo <= hi
+    assert fw["fwl_preds"].shape == (n, 4)
+    assert gn.stat == got["stat"]
+
+
+def test_window_pass(cx):
+    lm = SimpleNamespace(s_c0=500.0, s_apex=600.0, s_c1=650.0)
+    x = np.zeros((101, 8))
+    x[:, 0] = np.arange(101) * 10.0                        # s = 0, 10, ..., 1000 m
+    ok, why, length = cx.window_pass(x, lm, 450.0, 0, 100, "approach", window=40)
+    assert ok and why == "" and length == 400.0            # s_40 = 400 < s_b
+    ok, why, _ = cx.window_pass(x, lm, 450.0, 10, 100, "approach", window=40)
+    assert not ok and why == "phase"                       # s_50 = 500 is past s_b
+    ok, why, _ = cx.window_pass(x, lm, 450.0, 70, 100, "exit", window=30)
+    assert ok                                              # all past s_c1
+    ok, why, length = cx.window_pass(x, lm, 450.0, 80, 100, "exit", window=30)
+    assert not ok and why == "beyond_W" and np.isnan(length)
+    assert cx.window_pass(x, lm, float("nan"), 0, 100, "approach", window=45)[0]
+    ok, _, _ = cx.window_pass(x, lm, float("nan"), 0, 100, "approach", window=50)
+    assert not ok                                          # no brake: s_c0 starts braking
+
+
+def test_cs12_expected(cx):
+    def net(c2, rank):
+        return {"C2": {"decision": c2}, "C2-sw": {"pool": {"rank": rank}}}
+
+    nets = {f"g{i}": net("inconclusive" if i % 2 else "refute", 1) for i in range(22)}
+    nets.update({"S1": net("refute", 3), "S2": net("not testable", 1), "S3": net("refute", 5)})
+    e = cx.cs12_expected(nets)
+    assert e["E12.1"]["inconclusive_or_refute"] == 24 and e["E12.1"]["not_testable"] == ["S2"]
+    assert e["E12.1"]["holds"] and e["E12.2"]["holds"]
+    assert e["E12.2"]["count_generalists"] == 22 and e["E12.2"]["count_specialists"] == 1
+    nets["g0"] = net("confirm", 2)
+    nets["S1"] = net("refute", 1)
+    e = cx.cs12_expected(nets)
+    assert not e["E12.1"]["holds"] and e["E12.1"]["confirm"] == ["g0"]
+    assert not e["E12.2"]["holds"] and e["E12.2"]["count_specialists"] == 2
+
+
+def test_cs15_expected(cx):
+    def net(d_fwl, s3, s1, s2, dd):
+        return {"h3": {"record": {"stat": s3}, "fwl": {
+                    "raw_gain": {"mean": {"difference": {"point": d_fwl}}},
+                    "statistic": {"difference": {"point": d_fwl}}}},
+                "h1": {"record": {"stat": s1}}, "h2": {"record": {"stat": s2}},
+                "D": {"record": {"decision": dd}}}
+
+    nets = {lb: net(0.001, 0.01, 0.0, 0.005, "inconclusive") for lb in cx.CS1_ORDER}
+    e = cx.cs15_expected(nets)
+    assert e["E15.1"]["holds"] and e["E15.2"]["holds"] and e["E15.3"]["holds"]
+    for lb in cx.CS1_ORDER[:4]:
+        nets[lb] = net(0.02, 0.0, 0.01, 0.0, "refute")
+    nets["G3"]["h2"] = {"record": {"decision": "not testable"}}         # no stat: not counted
+    e = cx.cs15_expected(nets)
+    assert not e["E15.1"]["holds"] and e["E15.1"]["count"] == 5
+    assert e["E15.2"]["h1"]["count"] == 5 and e["E15.2"]["h2"]["count"] == 8
+    assert not e["E15.2"]["holds"] and not e["E15.3"]["holds"]
+
+
+def test_item_output_checks_stamps(cx, tmp_path, monkeypatch):
+    monkeypatch.setattr(cx, "import_problems", lambda *a, **k: [])
+    w8 = cx.Run(cx.BY_CMD["cs-8"], _args(out=str(tmp_path)), REPO, {}, {}, {})
+    p = w8.write_json("summary", {"n": 3})
+    reader = cx.Run(cx.BY_CMD["cs-12"], _args(out=str(tmp_path)), REPO, {}, {}, {})
+    assert cx.item_output(reader, "CS-8", "summary.json", base=tmp_path) == p
+    assert reader.inputs[f"{cx.EXP_REL}/cs-8/summary.json"] == cx.sha256_file(p)
+    with pytest.raises(SystemExit, match="missing"):
+        cx.item_output(reader, "CS-8", "preds.npz", base=tmp_path)
+    canon = cx.Run(cx.BY_CMD["cs-12"], _args(out=str(tmp_path)), REPO, {}, {}, {})
+    canon.partial = []                                    # a canonical run reads no partial one
+    with pytest.raises(SystemExit, match="partial"):
+        cx.item_output(canon, "CS-8", "summary.json", base=tmp_path)
+    w10 = cx.Run(cx.BY_CMD["cs-10"], _args(out=str(tmp_path / "x")), REPO, {}, {}, {})
+    q = w10.write_json("summary", {"n": 1})
+    (tmp_path / "y" / "cs-8").mkdir(parents=True)
+    (tmp_path / "y" / "cs-8" / "summary.json").write_bytes(q.read_bytes())
+    with pytest.raises(SystemExit, match="not an exploratory CS-8"):
+        cx.item_output(reader, "CS-8", "summary.json", base=tmp_path / "y")
+    p.write_text(p.read_text().replace('"n": 3', '"n": 4'))
+    with pytest.raises(SystemExit, match="does not bind"):
+        cx.item_output(reader, "CS-8", "summary.json", base=tmp_path)
