@@ -15,6 +15,11 @@ Implementation details, following "The 37 Implementation Details of PPO":
 - per-minibatch advantage normalisation.
 
 Environments are given as an ``Env`` of pure functions; ``from_gymnax`` adapts gymnax.
+
+An optional value-gradient term in the critic's loss (``ValueGradient``, VG-0; see the
+section of that name below) is off unless a ``ValueGradient`` is passed to ``make_train``,
+``make_rollout`` and ``make_learner``; without one they trace exactly the computation they
+always did.
 """
 
 from __future__ import annotations
@@ -78,6 +83,68 @@ class PPOConfig:
         return replace(self, **kw)
 
 
+@dataclass(frozen=True)
+class ValueGradient:
+    """The value-gradient term in the critic's loss (VG-0, follow-through plan 7.3).
+
+    GDHP-style (Werbos; Prokhorov & Wunsch 1997): besides its value regression the critic
+    fits its gradient with respect to the environment's continuous state y, dV/dy, to
+    VGL(lambda) targets G' taken through the simulator (Fairbank & Alonso 2012):
+
+        G'_t = D_y [ r_t / sigma_t + gamma ( lam G'_{t+1} + (1 - lam) dV/dy(y_{t+1}) ) ]
+
+    with D_y the total derivative of the recorded transition, the action's dependence on y
+    through the policy mean at the recorded noise; 0 after a termination, dV/dy at the
+    pre-reset state after a truncation and at the rollout's end (``vgl_scan``). The term is
+
+        coef * mean_rows mean_k ((dV/dy_k(y_t) - G'_{t,k}) / scale_k)^2
+
+    over the rows with finite targets (and inside the loss mask), after each component's
+    targets are winsorised at their ``winsor`` and 1 - ``winsor`` quantiles over the rollout,
+    with scale_k^2 = Var(G'_k) + E[(dV/dy_k)^2] over the rollout (the rollout critic's own
+    gradient; ``vg_standardise``): per-component normalised squared errors, Omega diagonal
+    and equal over the components after standardisation. Its derivative in the critic's
+    parameters is a double backprop.
+
+    ``coef`` 0 builds every capture, target and metric but leaves the loss and the update
+    exactly the plain critic's (tests/test_value_gradient.py). The settings are not
+    ``PPOConfig`` fields: the frozen scripts/h4r.py compares ``asdict(PPOConfig(...))`` with
+    the H4R runs' config.json, so any new field would change that harness's verdicts.
+    """
+
+    coef: float = 0.0       # beta
+    lam: float = 0.95       # VGL(lambda)
+    winsor: float = 0.005   # per-component two-sided winsorisation quantile of the targets (0: off)
+
+    def __post_init__(self):
+        if not self.coef >= 0.0:
+            raise ValueError(f"ValueGradient.coef must be >= 0, got {self.coef}")
+        if not 0.0 <= self.lam <= 1.0:
+            raise ValueError(f"ValueGradient.lam must be in [0, 1], got {self.lam}")
+        if not 0.0 <= self.winsor < 0.5:
+            raise ValueError(f"ValueGradient.winsor must be in [0, 0.5), got {self.winsor}")
+
+
+class VGModel(NamedTuple):
+    """An environment's differentiable side, for the value-gradient term. Per env
+    (unbatched), with ``state`` the env's own per-env state and ``params`` its parameter carry:
+
+    - ``get(state) -> y`` [dim]: the continuous Markov state the gradient is taken in;
+    - ``obs(y, state, params) -> ob``: the raw (un-normalised) observation at y, the other
+      per-env quantities (track, car, timers) read from ``state``; at y = get(state) it is the
+      observation the env returned for ``state``;
+    - ``step(y, action, state, params) -> (y_next, reward)``: the env's transition without a
+      reset, the reward unscaled; at y = get(state) it is the env's own step, and it is
+      differentiable in y and the action almost everywhere.
+    """
+
+    get: Callable[[Any], jax.Array]
+    obs: Callable[[jax.Array, Any, Any], jax.Array]
+    step: Callable[[jax.Array, jax.Array, Any, Any], tuple[jax.Array, jax.Array]]
+    dim: int
+    names: tuple[str, ...] = ()
+
+
 # --------------------------------------------------------------------------- envs
 
 
@@ -89,6 +156,10 @@ class Env(NamedTuple):
     parameter carry (for example a bank of tracks). ``init_params(key)`` creates it and
     ``refresh(key, params, update)``, if given, updates it between PPO updates (for
     example regenerating part of the track bank).
+
+    ``vg_model``, if given, is the environment's differentiable side (``VGModel``), which
+    only the value-gradient term reads; its ``step`` must also put the pre-reset state in
+    ``info['final_state']``.
     """
 
     reset: Callable[[jax.Array, Any], tuple[jax.Array, Any]]
@@ -98,6 +169,7 @@ class Env(NamedTuple):
     discrete: bool
     init_params: Callable[[jax.Array], Any] | None = None
     refresh: Callable[[jax.Array, Any, jax.Array], Any] | None = None
+    vg_model: VGModel | None = None
 
 
 def from_gymnax(name: str, truncation_as_termination: bool = True, **kw) -> Env:
@@ -370,11 +442,30 @@ class Rollout(NamedTuple):
     last_heads: jax.Array     # [N, E]
     mask: jax.Array | None    # [T, N] transitions to train on (``mask_fn``), else None
     trace: Any                # ``trace_fn`` output per step, else None
+    vg: VGCapture | None = None   # the value-gradient term's per-step capture, else None
+
+
+class VGCapture(NamedTuple):
+    """What the value-gradient term records per step ([T, N] leading axes)."""
+
+    state: Any                # the env state before the step
+    final_state: Any          # the env state after the step, before any reset (info['final_state'])
+    reward_scale: jax.Array   # the divisor of the step's reward: sqrt(ret_rms.var + 1e-8), or 1
+
+
+def _check_vg(env: Env, vg: ValueGradient | None) -> None:
+    if vg is None:
+        return
+    if env.discrete:
+        raise ValueError("the value-gradient term needs continuous actions")
+    if env.vg_model is None:
+        raise ValueError("the value-gradient term needs an Env with a vg_model")
 
 
 def make_rollout(cfg: PPOConfig, env: Env, actor: Actor, critic: Critic,
                  mask_fn: Callable[[Any], jax.Array] | None = None,
-                 trace_fn: Callable[[Any, dict], Any] | None = None):
+                 trace_fn: Callable[[Any, dict], Any] | None = None,
+                 vg: ValueGradient | None = None):
     """``rollout(agent, env_state, obs, ret_acc, ep_ret, ep_len, key, env_params)`` runs
     ``cfg.num_steps`` steps with frozen parameters and returns (new carry, ``Rollout``).
 
@@ -384,8 +475,11 @@ def make_rollout(cfg: PPOConfig, env: Env, actor: Actor, critic: Critic,
       from those envs only, and the mask is returned for ``learn``.
     - ``trace_fn(env_state, info) -> pytree`` records extra per-step data (level ids,
       progress) next to the trajectory.
+    With ``vg`` the rollout also records ``Rollout.vg`` (``VGCapture``) for the
+    value-gradient term; it changes nothing else.
     Without hooks the computation is exactly the one ``make_train`` always ran.
     """
+    _check_vg(env, vg)
 
     def norm_obs(agent, obs):
         return agent.obs_rms.normalize(obs) if cfg.normalize_obs else obs
@@ -441,17 +535,31 @@ def make_rollout(cfg: PPOConfig, env: Env, actor: Actor, critic: Critic,
             tr = Transition(o_in, action, logp, value, scaled, term, trunc, final_value, reward,
                             heads, final_heads)
             trace = trace_fn(prev_state, info) if trace_fn is not None else None
+            if vg is not None:
+                if "final_state" not in info:
+                    raise ValueError("the value-gradient term needs info['final_state'] "
+                                     "(the pre-reset state) from env.step")
+                scale = (jnp.sqrt(ret_rms.var + 1e-8) if cfg.normalize_reward
+                         else jnp.ones((), reward.dtype))
+                cap = VGCapture(prev_state, info["final_state"],
+                                jnp.broadcast_to(scale, reward.shape).astype(reward.dtype))
+                return ((agent, env_state, nobs, ret_acc, ep_ret, ep_len, key),
+                        (tr, stats, obs, mask, trace, cap))
             return (agent, env_state, nobs, ret_acc, ep_ret, ep_len, key), (tr, stats, obs, mask, trace)
 
-        carry, (traj, stats, raw_obs, mask, trace) = jax.lax.scan(
+        carry, ys = jax.lax.scan(
             env_step, (agent, env_state, obs, ret_acc, ep_ret, ep_len, key), None, cfg.num_steps)
+        if vg is not None:
+            traj, stats, raw_obs, mask, trace, cap = ys
+        else:
+            (traj, stats, raw_obs, mask, trace), cap = ys, None
         agent, obs = carry[0], carry[2]
         if cfg.ensemble_heads:
             last_value, last_heads = critic.apply(agent.critic.params, norm_obs(agent, obs), with_heads=True)
         else:
             last_value = critic.apply(agent.critic.params, norm_obs(agent, obs))
             last_heads = jnp.zeros((cfg.num_envs, 0))
-        return carry, Rollout(traj, stats, raw_obs, last_value, last_heads, mask, trace)
+        return carry, Rollout(traj, stats, raw_obs, last_value, last_heads, mask, trace, cap)
 
     return rollout
 
@@ -463,9 +571,157 @@ def _masked_mean(x, w, n):
     return jnp.where(wb, x, 0.0).sum() / (n * (x.size // w.size))
 
 
-def make_learner(cfg: PPOConfig, env: Env, actor: Actor, critic: Critic, num_updates: int):
+# --------------------------------------------------------------------------- value gradient
+#
+# The pieces of the value-gradient term (``ValueGradient``). All take one env's quantities
+# (unbatched) unless stated; the learner vmaps them. y is the env's continuous state
+# (``VGModel.get``), dV/dy is in the critic's units (reward / sigma_R) per unit of y.
+
+
+def _norm_fn(cfg: PPOConfig):
+    if cfg.normalize_obs:
+        return lambda rms, ob: rms.normalize(ob)
+    return lambda rms, ob: ob
+
+
+def state_value_fn(cfg: PPOConfig, critic: Critic, model: VGModel):
+    """``value(critic_params, obs_rms, y, state, env_params)``: the critic's main value at the
+    normalised (clipped) observation of y, as the rollout evaluates it (without obs noise)."""
+    norm = _norm_fn(cfg)
+
+    def value(critic_params, obs_rms, y, state, env_params):
+        return critic.apply(critic_params, norm(obs_rms, model.obs(y, state, env_params)))
+
+    return value
+
+
+def state_gradient_fn(cfg: PPOConfig, critic: Critic, model: VGModel):
+    """dV/dy, the gradient of ``state_value_fn`` in y (same arguments)."""
+    return jax.grad(state_value_fn(cfg, critic, model), argnums=2)
+
+
+def transition_fn(cfg: PPOConfig, actor: Actor, model: VGModel):
+    """``h(y, action, state, actor_params, obs_rms, env_params) -> (reward, y_next)`` of one
+    recorded transition, with the action's dependence on y through the policy mean at the
+    recorded noise: a(y) = action + (mu(o(y)) - stop_gradient(mu(o(y)))), so a equals the
+    recorded action exactly and da/dy = dmu/dy (the reparametrised stochastic policy). The
+    mean is taken at the noise-free observation, also when ``cfg.obs_noise`` is set."""
+    norm = _norm_fn(cfg)
+
+    def h(y, action, state, actor_params, obs_rms, env_params):
+        mean, _ = actor.apply(actor_params, norm(obs_rms, model.obs(y, state, env_params)))
+        a = action + (mean - jax.lax.stop_gradient(mean))
+        y1, r = model.step(y, a, state, env_params)
+        return r, y1
+
+    return h
+
+
+def vgl_scan(jr, jy, g_next, reward_scale, terminated, truncated, gamma: float, lam: float):
+    """VGL(lambda) targets [T, N, Y] by a reverse scan over the rollout.
+
+    jr [T, N, Y] is D_y r_t (unscaled), jy [T, N, Y, Y] is D_y y_{t+1} (rows: y_{t+1}'s
+    components), g_next [T, N, Y] is dV/dy at the state after step t before any reset, and
+    reward_scale [T, N] the step's reward divisor. With c_t the bootstrap of step t,
+
+        c_t = 0 after a termination; g_next_t after a truncation and at t = T - 1;
+              lam G'_{t+1} + (1 - lam) g_next_t otherwise,
+        G'_t = jr_t / reward_scale_t + gamma jy_t' c_t.
+    """
+
+    def body(g_after, t):
+        jr_t, jy_t, gn_t, rs_t, te_t, tr_t = t
+        mixed = lam * g_after + (1.0 - lam) * gn_t
+        c = jnp.where(te_t[:, None], 0.0, jnp.where(tr_t[:, None], gn_t, mixed))
+        g = jr_t / rs_t[:, None] + gamma * jnp.einsum("nij,ni->nj", jy_t, c)
+        return g, g
+
+    _, G = jax.lax.scan(body, g_next[-1], (jr, jy, g_next, reward_scale, terminated, truncated),
+                        reverse=True)
+    return G
+
+
+def vg_standardise(G, valid, winsor: float, g_critic):
+    """(winsorised G, scale [Y]). Each component of the targets G [..., Y] is clipped to its
+    ``winsor`` and 1 - ``winsor`` quantiles over the ``valid`` rows (``winsor`` 0: not
+    clipped). Its scale is sqrt(Var(G_k) + E[g_k^2]) over those rows, with g_critic [..., Y]
+    the rollout critic's own dV/dy: the targets' spread plus the critic's gradient size, so
+    a component whose targets barely vary (the accel channels, about 1e-5) cannot weigh 1e5
+    times the others while the critic's gradient there is still far off (1 where undefined
+    or 0)."""
+    Y = G.shape[-1]
+    flat = lambda g: jnp.where(valid[..., None], g, jnp.nan).reshape(-1, Y)
+    if winsor > 0:
+        lo = jnp.nanquantile(flat(G), winsor, axis=0)
+        hi = jnp.nanquantile(flat(G), 1.0 - winsor, axis=0)
+        G = jnp.clip(G, lo, hi)
+    var = jnp.nanvar(flat(G), axis=0) + jnp.nanmean(flat(g_critic) ** 2, axis=0)
+    ok = jnp.isfinite(var) & (var > 0)
+    return G, jnp.sqrt(jnp.where(ok, var, 1.0)).astype(G.dtype)
+
+
+class VGTargets(NamedTuple):
+    y: jax.Array          # [T, N, Y] the state before each step
+    target: jax.Array     # [T, N, Y] winsorised targets, 0 on invalid rows
+    scale: jax.Array      # [Y] each component's standardisation scale
+    valid: jax.Array      # [T, N] finite targets (and inside the loss mask)
+    raw: jax.Array        # [T, N, Y] the targets before winsorisation
+
+
+def vg_targets(cfg: PPOConfig, vg: ValueGradient, actor: Actor, critic: Critic, model: VGModel,
+               agent: AgentState, traj: Transition, cap: VGCapture, env_params,
+               mask: jax.Array | None = None) -> VGTargets:
+    """The term's targets for one rollout, from the rollout's own networks and normalisers
+    (as GAE's targets use the rollout's values). Jacobians one time step at a time (bounded
+    memory): jacfwd of ``transition_fn`` and the critic's dV/dy at the pre-reset states."""
+    h = transition_fn(cfg, actor, model)
+    grad_y = state_gradient_fn(cfg, critic, model)
+    ap, cp, rms = agent.actor.params, agent.critic.params, agent.obs_rms
+
+    def per_step(args):
+        st, fst, act = args
+        y = jax.vmap(model.get)(st)
+        y1 = jax.vmap(model.get)(fst)
+        jr, jy = jax.vmap(lambda q, a, s: jax.jacfwd(h)(q, a, s, ap, rms, env_params))(y, act, st)
+        g1 = jax.vmap(lambda q, s: grad_y(cp, rms, q, s, env_params))(y1, fst)
+        return y, jr, jy, g1
+
+    y, jr, jy, g1 = jax.lax.map(per_step, (cap.state, cap.final_state, traj.action))
+    raw = vgl_scan(jr, jy, g1, cap.reward_scale, traj.terminated, traj.truncated, cfg.gamma, vg.lam)
+    valid = jnp.all(jnp.isfinite(raw), -1)
+    if mask is not None:
+        valid = valid & mask.astype(bool)
+    target, scale = vg_standardise(raw, valid, vg.winsor, g1)
+    target = jnp.where(valid[..., None], target, 0.0)
+    return VGTargets(y, target, scale, valid, raw)
+
+
+def vg_loss_fn(cfg: PPOConfig, critic: Critic, model: VGModel):
+    """``loss(critic_params, obs_rms, y [B, Y], state [B], target [B, Y], scale [Y], w [B],
+    env_params)``: the mean over the rows in ``w`` of mean_k ((dV/dy_k - target_k) /
+    scale_k)^2, the term before ``coef``. Its gradient in critic_params is a double backprop."""
+    grad_y = state_gradient_fn(cfg, critic, model)
+
+    def loss(critic_params, obs_rms, y, state, target, scale, w, env_params):
+        g = jax.vmap(grad_y, in_axes=(None, None, 0, 0, None))(critic_params, obs_rms, y, state,
+                                                               env_params)
+        e = (g - target) / scale
+        per = jnp.mean(e * e, -1)
+        n = jnp.maximum(w.sum(), 1).astype(per.dtype)
+        return jnp.where(w, per, 0.0).sum() / n
+
+    return loss
+
+
+def make_learner(cfg: PPOConfig, env: Env, actor: Actor, critic: Critic, num_updates: int,
+                 vg: ValueGradient | None = None):
     """``learn(agent, traj, last_value, last_heads, key, upd, mask=None)``: GAE and the PPO
     epochs on one rollout; returns (agent, key, (advantages, targets, minibatch metrics)).
+
+    With ``vg`` (``ValueGradient``) ``learn`` also takes ``vg_data`` (the rollout's
+    ``VGCapture``) and ``env_params``; it computes the term's targets once per rollout, adds
+    coef times the term to the critic's loss, and appends the term and the share of valid
+    rows to the minibatch metrics. The value loss reported stays the plain one.
 
     With ``mask`` [T, N] (spec DEV-16, the per-transition form of PLR-perp's "no gradient
     on exploratory levels"): every loss term (policy, entropy, value, ensemble heads) is a
@@ -494,10 +750,22 @@ def make_learner(cfg: PPOConfig, env: Env, actor: Actor, critic: Critic, num_upd
         _, (adv, head_adv) = jax.lax.scan(gae_step, init, traj, reverse=True)
         return adv, adv + traj.value, head_adv + traj.heads
 
-    def learn(agent, traj, last_value, last_heads, key, upd, mask=None):
+    _check_vg(env, vg)
+    if vg is not None:
+        vg_term = vg_loss_fn(cfg, critic, env.vg_model)
+
+    def learn(agent, traj, last_value, last_heads, key, upd, mask=None, vg_data=None,
+              env_params=None):
         adv, targets, head_targets = gae(traj, last_value, last_heads)
         data = (traj, adv, targets, head_targets) if mask is None else (
             traj, adv, targets, head_targets, mask)
+        if vg is not None:
+            if vg_data is None:
+                raise ValueError("learn: the value-gradient term needs the rollout's VGCapture")
+            vt = vg_targets(cfg, vg, actor, critic, env.vg_model, agent, traj, vg_data,
+                            env_params, mask)
+            valid_share = vt.valid.mean()
+            data = data + (vt.y, vg_data.state, vt.target, vt.valid)
 
         # PPO epochs over shuffled minibatches.
         def epoch(c, _):
@@ -510,6 +778,8 @@ def make_learner(cfg: PPOConfig, env: Env, actor: Actor, critic: Critic, num_upd
                     (cfg.num_minibatches, cfg.minibatch_size) + x.shape[1:]), flat)
 
             def minibatch(agent, mb):
+                if vg is not None:
+                    mb, (yb, sb, gb, vb) = mb[:-4], mb[-4:]
                 if mask is None:
                     (t, a, tgt, htgt), w = mb, None
                 else:
@@ -554,12 +824,25 @@ def make_learner(cfg: PPOConfig, env: Env, actor: Actor, critic: Critic, num_upd
                     return cfg.vf_coef * 0.5 * (mean(vl) + head_loss)
 
                 (_, aux), ga = jax.value_and_grad(actor_loss, has_aux=True)(agent.actor.params)
-                vloss, gc = jax.value_and_grad(critic_loss)(agent.critic.params)
+                if vg is None:
+                    vloss, gc = jax.value_and_grad(critic_loss)(agent.critic.params)
+                else:
+                    vw = vb if w is None else vb & w.astype(bool)
+
+                    def critic_loss_vg(params):
+                        base = critic_loss(params)
+                        term = vg_term(params, agent.obs_rms, yb, sb, gb, vt.scale, vw, env_params)
+                        return (base + vg.coef * term if vg.coef else base), (base, term)
+
+                    (_, (vloss, vgl)), gc = jax.value_and_grad(critic_loss_vg, has_aux=True)(
+                        agent.critic.params)
                 new = agent._replace(actor=agent.actor.apply_gradients(grads=ga),
                                      critic=agent.critic.apply_gradients(grads=gc))
                 if w is not None:
                     keep = w.any()
                     new = jax.tree.map(lambda x, y: jnp.where(keep, x, y), new, agent)
+                if vg is not None:
+                    return new, (vloss,) + aux + (vgl, valid_share)
                 return new, (vloss,) + aux
 
             agent, m = jax.lax.scan(minibatch, agent, mbs)
@@ -572,14 +855,18 @@ def make_learner(cfg: PPOConfig, env: Env, actor: Actor, critic: Critic, num_upd
 
 
 def make_train(cfg: PPOConfig, env: Env, log_fn: Callable[[dict], None] | None = None,
-               checkpoint_fn: Callable[[Any, Any], None] | None = None):
+               checkpoint_fn: Callable[[Any, Any], None] | None = None,
+               vg: ValueGradient | None = None):
     """``checkpoint_fn(snapshot, update)`` is called on the host after every update with the
-    actor/critic params and normalisers; it decides itself which updates to keep."""
+    actor/critic params and normalisers; it decides itself which updates to keep.
+
+    ``vg`` adds the value-gradient term (``ValueGradient``) and the metrics ``vg_loss`` (the
+    term before its coefficient) and ``vg_valid`` (the share of rows with finite targets)."""
     actor = Actor(cfg, env.action_dim, env.discrete)
     critic = Critic(cfg)
     n_up = cfg.num_updates
-    rollout = make_rollout(cfg, env, actor, critic)
-    learn = make_learner(cfg, env, actor, critic, n_up)
+    rollout = make_rollout(cfg, env, actor, critic, vg=vg)
+    learn = make_learner(cfg, env, actor, critic, n_up, vg=vg)
 
     def init(key):
         ka, kc, ke, kp = jax.random.split(key, 4)
@@ -607,7 +894,11 @@ def make_train(cfg: PPOConfig, env: Env, log_fn: Callable[[dict], None] | None =
             (agent, env_state, obs, ret_acc, ep_ret, ep_len, key), ro = rollout(
                 agent, env_state, obs, ret_acc, ep_ret, ep_len, key, env_params)
             traj = ro.traj
-            agent, key, (_, targets, m) = learn(agent, traj, ro.last_value, ro.last_heads, key, upd)
+            if vg is None:
+                agent, key, (_, targets, m) = learn(agent, traj, ro.last_value, ro.last_heads, key, upd)
+            else:
+                agent, key, (_, targets, m) = learn(agent, traj, ro.last_value, ro.last_heads, key,
+                                                    upd, vg_data=ro.vg, env_params=env_params)
 
             if cfg.normalize_obs:
                 agent = agent._replace(obs_rms=agent.obs_rms.update(ro.raw_obs.reshape(-1, env.obs_dim)))
@@ -630,6 +921,9 @@ def make_train(cfg: PPOConfig, env: Env, log_fn: Callable[[dict], None] | None =
                 "clip_frac": m[4].mean(),
                 "explained_var": 1.0 - jnp.var(targets - traj.value) / (var_t + 1e-8),
             }
+            if vg is not None:
+                metrics["vg_loss"] = m[5].mean()
+                metrics["vg_valid"] = m[6].mean()
             if log_fn is not None:
                 jax.debug.callback(log_fn, metrics)
             if checkpoint_fn is not None:

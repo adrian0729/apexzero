@@ -53,15 +53,18 @@ def save_snapshot(out_dir: Path, snap: dict, cfg: PPOConfig, timesteps: int, **e
     return path
 
 
-def make_checkpoint_fn(out_dir: Path, cfg: PPOConfig, first: float = 10e6, n: int = 16):
-    """A ``checkpoint_fn`` for ``make_train`` saving ~n log-spaced snapshots plus the last."""
+def make_checkpoint_fn(out_dir: Path, cfg: PPOConfig, first: float = 10e6, n: int = 16,
+                       extra: dict | None = None):
+    """A ``checkpoint_fn`` for ``make_train`` saving ~n log-spaced snapshots plus the last;
+    ``extra`` keys (for example the value-gradient settings) are stored in each one."""
     (Path(out_dir) / "ckpt").mkdir(parents=True, exist_ok=True)
     at_update = checkpoint_schedule(cfg.total_timesteps, cfg.batch_size, first, n)
+    extra = extra or {}
 
     def checkpoint_fn(snap, upd):
         upd = int(upd)
         if upd in at_update:
-            save_snapshot(out_dir, snap, cfg, at_update[upd])
+            save_snapshot(out_dir, snap, cfg, at_update[upd], **extra)
 
     return checkpoint_fn
 

@@ -13,7 +13,7 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 
-from apexzero.agents.ppo import Env
+from apexzero.agents.ppo import Env, VGModel
 from apexzero.env import racing
 from apexzero.oracle.qss import GG, speed_profile, speed_profile_jax
 from apexzero.tracks.generator import Grammar, generate
@@ -59,16 +59,54 @@ def _get(bank: TrackBank, i):
 
 
 def _bank_step(reset_fn, params):
+    """Step with automatic reset. ``info['final_obs']`` and ``info['final_state']`` hold the
+    pre-reset observation and state (the learner bootstraps truncated windows from them;
+    the value-gradient term reads the state)."""
     def step(key, state, action, bank):
         tr, _ = _get(bank, state.track_id)
         obs, st, r, term, trunc, info = racing.step_no_reset(state.env, action, tr, params)
         done = term | trunc
         obs_r, state_r = reset_fn(key, bank)
-        out_state = jax.tree.map(lambda a, b: jnp.where(done, a, b), state_r, BankState(st, state.track_id))
+        final = BankState(st, state.track_id)
+        out_state = jax.tree.map(lambda a, b: jnp.where(done, a, b), state_r, final)
         out_obs = jnp.where(done, obs_r, obs)
-        return out_obs, out_state, r, term, trunc, dict(info, final_obs=obs)
+        return out_obs, out_state, r, term, trunc, dict(info, final_obs=obs, final_state=final)
 
     return step
+
+
+VG_NAMES = ("s", "n", "xi", "vx", "vy", "r", "delta", "pedal", "prev_steer", "prev_pedal",
+            "ax", "ay")
+
+
+def bank_vg_model(params: racing.EnvParams = racing.EnvParams()) -> VGModel:
+    """The bank envs' differentiable side for the value-gradient term (``ppo.VGModel``).
+
+    y = (x [8], prev_action [2], accel [2]): every continuous state the observation and the
+    reward read, so V(y) is the critic of the env's own Markov state. The track, the car
+    context, the hidden grip and the timers (t, slow, s0) are read from the state and held.
+    ``step`` is ``racing.step_no_reset`` itself (the reward includes the termination penalty
+    on a terminal step), ``obs`` is ``racing.observe`` with the step's own vehicle params.
+    """
+
+    def get(state: BankState) -> jax.Array:
+        e = state.env
+        return jnp.concatenate([e.x, e.prev_action, e.accel])
+
+    def put(y, state: BankState) -> racing.EnvState:
+        return state.env._replace(x=y[:8], prev_action=y[8:10], accel=y[10:12])
+
+    def obs(y, state: BankState, bank: TrackBank) -> jax.Array:
+        tr, _ = _get(bank, state.track_id)
+        st = put(y, state)
+        return racing.observe(st, tr, racing.params_from_context(st.ctx, hidden_mu=st.hidden_mu))
+
+    def step(y, action, state: BankState, bank: TrackBank):
+        tr, _ = _get(bank, state.track_id)
+        _, new, r, *_ = racing.step_no_reset(put(y, state), action, tr, params)
+        return jnp.concatenate([new.x, new.prev_action, new.accel]), r
+
+    return VGModel(get, obs, step, len(VG_NAMES), VG_NAMES)
 
 
 def bank_env(bank: TrackBank, params: racing.EnvParams = racing.EnvParams(),
@@ -85,7 +123,7 @@ def bank_env(bank: TrackBank, params: racing.EnvParams = racing.EnvParams(),
         return obs, BankState(st, tid)
 
     return Env(reset, _bank_step(reset, params), racing.OBS_DIM, racing.ACTION_DIM, False,
-               init_params=lambda key: bank)
+               init_params=lambda key: bank, vg_model=bank_vg_model(params))
 
 
 def generate_bank(key: jax.Array, g: Grammar, size: int, g_alt: Grammar | None = None,
@@ -166,4 +204,4 @@ def procedural_env(g: Grammar, bank_size: int = 4096, refresh_per_update: int = 
         return jax.tree.map(lambda old, new: old.at[idx].set(new), bank, fresh)
 
     return Env(reset, _bank_step(reset, params), racing.OBS_DIM, racing.ACTION_DIM, False,
-               init_params=init_params, refresh=refresh)
+               init_params=init_params, refresh=refresh, vg_model=bank_vg_model(params))

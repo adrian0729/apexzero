@@ -11,6 +11,9 @@ profiles, which copies no circuit (with --reexpress, model 2b: fitted on the raw
 and re-expressed as refine_reference would); all are off by default. Only training changes:
 the audit level sets (tracks/levels.py, pilot_audit.py, interp/) keep the default width
 model, as they already ignore --tilt-*, so they stay fixed across runs.
+With --vg-coef > 0 the critic's loss adds the value-gradient term (VG-0, ppo.ValueGradient:
+VGL(--vg-lambda) targets through the simulator, winsorised at --vg-winsor); it is off by
+default, and then make_train gets no term at all, so the default path is unchanged.
 Cars: context sampled per reset in the plan's ranges, plus hidden +/-2% grip.
 Checkpoints at log-spaced timesteps (snapshot = params + both normalisers).
 Evaluation: timed laps on the R-dev circuits only (the lockbox is never touched), with
@@ -30,7 +33,7 @@ import jax
 import numpy as np
 
 from apexzero.agents.checkpoints import make_checkpoint_fn
-from apexzero.agents.ppo import Actor, PPOConfig, make_train
+from apexzero.agents.ppo import Actor, PPOConfig, ValueGradient, make_train
 from apexzero.env import racing
 from apexzero.env.adapters import procedural_env, reference_speed
 from apexzero.eval.laps import timed_laps
@@ -38,6 +41,8 @@ from apexzero.tracks.corners import R_DEV
 from apexzero.tracks.generator import fit_grammar, tilted
 from apexzero.tracks.reference import refine_reference
 from apexzero.tracks.track import load_tumftm
+
+VG_DEFAULT = ValueGradient()
 
 
 def main():
@@ -69,6 +74,12 @@ def main():
     ap.add_argument("--reexpress", action="store_true",
                     help="with --stat-widths: model 2b, fitted on the raw centreline profiles and "
                          "re-expressed on a smoothed reference as refine_reference would")
+    ap.add_argument("--vg-coef", type=float, default=0.0,
+                    help="beta of the value-gradient term in the critic's loss (0: off)")
+    ap.add_argument("--vg-lambda", type=float, default=VG_DEFAULT.lam,
+                    help="with --vg-coef: the VGL(lambda) of the term's targets")
+    ap.add_argument("--vg-winsor", type=float, default=VG_DEFAULT.winsor,
+                    help="with --vg-coef: per-component winsorisation quantile of the targets")
     ap.add_argument("--ensemble-heads", type=int, default=5)
     ap.add_argument("--seed", type=int, default=0)
     args = ap.parse_args()
@@ -92,6 +103,15 @@ def main():
         raise SystemExit("--stat-widths and --real-widths are alternatives; choose one")
     if args.reexpress and not args.stat_widths:
         raise SystemExit("--reexpress needs --stat-widths")
+    if args.vg_coef < 0:
+        raise SystemExit("--vg-coef must be >= 0")
+    if args.vg_coef == 0 and (args.vg_lambda != VG_DEFAULT.lam or args.vg_winsor != VG_DEFAULT.winsor):
+        raise SystemExit("--vg-lambda and --vg-winsor: each needs --vg-coef > 0")
+    try:
+        vg = (ValueGradient(coef=args.vg_coef, lam=args.vg_lambda, winsor=args.vg_winsor)
+              if args.vg_coef > 0 else None)
+    except ValueError as e:
+        raise SystemExit(str(e)) from None
     width_from = width_from or stat_from
     width_tracks = [d for n, d in zip(R_DEV, dev) if n in width_from] if width_from else None
     if args.stat_widths:
@@ -106,8 +126,10 @@ def main():
                     network=args.network, gamma=0.995, gae_lambda=0.95, actor_width=256,
                     critic_width=256 if args.network == "mlp" else 384, mlp_layers=3,
                     activation="tanh", ensemble_heads=args.ensemble_heads)
-    (out / "config.json").write_text(json.dumps({"ppo": asdict(cfg), "args": vars(args),
-                                                 "env": racing.EnvParams()._asdict()}, indent=1))
+    run_cfg = {"ppo": asdict(cfg), "args": vars(args), "env": racing.EnvParams()._asdict()}
+    if vg is not None:
+        run_cfg["vg"] = asdict(vg)
+    (out / "config.json").write_text(json.dumps(run_cfg, indent=1))
     log = open(out / "metrics.csv", "w", newline="")  # noqa: SIM115  (written from a JAX callback)
     writer = None
     t0 = time.perf_counter()
@@ -125,7 +147,11 @@ def main():
         writer.writerow(m)
         log.flush()
 
-    train, _, _ = make_train(cfg, env, log_fn, make_checkpoint_fn(out, cfg))
+    if vg is None:
+        train, _, _ = make_train(cfg, env, log_fn, make_checkpoint_fn(out, cfg))
+    else:
+        train, _, _ = make_train(cfg, env, log_fn,
+                                 make_checkpoint_fn(out, cfg, extra={"vg": asdict(vg)}), vg=vg)
     agent, _ = jax.jit(train)(jax.random.PRNGKey(args.seed))
     jax.block_until_ready(agent)
     log.close()
