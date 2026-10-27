@@ -1,8 +1,9 @@
 """scripts/p4_b2.py (P4, option B2; docs/prereg/p4-b2-specialists.md) and its run list
 scripts/p4b2_runs.py: the corner-matched reading's cell types and classes, the reading table, the
 recipe rule with its pooling and key wording, P4's classes on the 15-condition F6 set, the tier A
-and tier G pair columns, the tag gate (real git, in a scratch repository), the run-once write, the
-lockbox refusal, the buffer streams and the frozen pins.
+and tier G pair columns, the manifest's box sha256 list and load, the tag gate and the frozen pins
+byte for byte (real git, in a scratch repository), the pre-tag refusals, the run-once write, the
+lockbox refusal and the buffer streams.
 
 Planted tables only; nothing is rolled out and no OCP is solved. Two tests read local data
 (S2's run directory and the frozen certified lists' strips) and skip without it."""
@@ -583,7 +584,9 @@ def test_tag_gate_passes_on_the_record_commit(b2, tmp_path, monkeypatch):
 
 @needs_git
 @pytest.mark.parametrize("change", ["lightweight", "not_record_commit", "script_changed",
-                                    "pre_extra_file", "pre_changed"])
+                                    "pre_extra_file", "pre_changed", "assume_unchanged",
+                                    "skip_worktree", "pre_skip_worktree", "only_v10_on_origin",
+                                    "local_tag_differs", "head_before_tag"])
 def test_tag_gate_refuses(b2, tmp_path, monkeypatch, change):
     repo = ScratchRepo(tmp_path, monkeypatch, b2)
     if change == "not_record_commit":
@@ -591,15 +594,70 @@ def test_tag_gate_refuses(b2, tmp_path, monkeypatch, change):
         repo.git("add", "notes.txt")
         repo.git("commit", "-qm", "not the record")
         repo.git("push", "-q", "origin", "HEAD:refs/heads/main")
+    if change == "only_v10_on_origin":       # the tag's name is matched in full, not as a prefix
+        repo.git("tag", "-a", "-m", "P4-B2", "p4-b2-prereg-v10")
+        repo.git("push", "-q", "origin", "refs/tags/p4-b2-prereg-v10")
+        with pytest.raises(PermissionError, match="not on origin"):
+            b2.tag_gate()
+        return
     repo.tag(annotated=change != "lightweight")
+    pre = repo.clone / "outputs" / "p4b2" / "pre"
     if change == "script_changed":
         (repo.clone / "scripts" / "p4_b2.py").write_text("# changed\n")
     if change == "pre_extra_file":
-        (repo.clone / "outputs" / "p4b2" / "pre" / "extra.npz").write_bytes(b"x")
+        (pre / "extra.npz").write_bytes(b"x")
     if change == "pre_changed":
-        (repo.clone / "outputs" / "p4b2" / "pre" / "manifest.json").write_text('{"a": 1}\n')
+        (pre / "manifest.json").write_text('{"a": 1}\n')
+    if change in ("assume_unchanged", "skip_worktree"):   # git diff trusts the index for these
+        repo.git("update-index", "--" + change.replace("_", "-"), "scripts/p4_b2.py")
+        (repo.clone / "scripts" / "p4_b2.py").write_text("# changed\n")
+        assert repo.git("diff", "p4-b2-prereg-v1", "--", "scripts/p4_b2.py") == ""
+    if change == "pre_skip_worktree":
+        repo.git("update-index", "--skip-worktree", "outputs/p4b2/pre/manifest.json")
+        (pre / "manifest.json").write_text('{"a": 1}\n')
+    if change == "local_tag_differs":
+        repo.git("tag", "-f", "-a", "-m", "another tag object", "p4-b2-prereg-v1")
+    if change == "head_before_tag":
+        repo.git("checkout", "-q", "--detach", "HEAD~1")
     with pytest.raises(PermissionError):
         b2.tag_gate()
+
+
+@needs_git
+def test_frozen_tree_pin_is_byte_level(b2, tmp_path, monkeypatch):
+    """A frozen tree's files are compared byte for byte with the pinned tree's blobs, so a file
+    marked assume-unchanged or skip-worktree cannot hide an edit."""
+    repo = ScratchRepo(tmp_path, monkeypatch, b2)
+    (repo.clone / "frozen").mkdir()
+    (repo.clone / "frozen" / "code.py").write_text("x = 1\n")
+    repo.git("add", "frozen/code.py")
+    repo.git("commit", "-qm", "frozen code")
+    pins = {"frozen": {"tree": repo.git("rev-parse", "HEAD:frozen")}}
+    assert b2.frozen_problems(pins) == []
+    for flag in ("--assume-unchanged", "--skip-worktree"):
+        repo.git("update-index", flag, "frozen/code.py")
+        (repo.clone / "frozen" / "code.py").write_text("x = 2\n")
+        assert repo.git("status", "--porcelain", "--", "frozen") == ""
+        assert any("byte for byte" in p for p in b2.frozen_problems(pins))
+        (repo.clone / "frozen" / "code.py").write_text("x = 1\n")
+        repo.git("update-index", flag.replace("--", "--no-"), "frozen/code.py")
+    assert b2.frozen_problems(pins) == []
+
+
+@needs_git
+@pytest.mark.parametrize("stage", ["manifest", "buffers", "buffers --check", "starts",
+                                   "starts --check", "build", "build --owners check", "reproduce",
+                                   "cm-dryrun", "record"])
+def test_pre_tag_stages_refuse_after_the_tag(b2, tmp_path, monkeypatch, stage):
+    """Section 3: every pre-tag stage, its S1-S3 check variants included, is refused once the
+    tag exists (before it reads or writes anything)."""
+    repo = ScratchRepo(tmp_path, monkeypatch, b2)
+    repo.tag()
+    monkeypatch.setattr(b2, "require_frozen", lambda: None)
+    name, *rest = stage.split()
+    args = _args(check="--check" in rest, owners="check" if "check" in rest[1:] else "new")
+    with pytest.raises(SystemExit, match="after the tag"):
+        b2.PRE_TAG[name](args)
 
 
 @pytest.mark.skipif(not (ROOT / "data" / "tracks" / "tumftm" / "Hockenheim.csv").exists(),
@@ -650,20 +708,58 @@ def test_manifest_stage_rehearsal(b2, tmp_path, monkeypatch):
            "runs": [{"name": S2_RUN.name, "status": "done"}, {"name": s5, "status": "failed"}]}
     monkeypatch.setattr(b2, "shard_manifests", lambda: [(tmp_path / "m.json", box)])
     (tmp_path / "m.json").write_text(json.dumps(box))
+    # The box's sha256 list (Section 8, step 2), in sha256sum's format.
+    files = [S2_RUN / "agent.pkl", *sorted((S2_RUN / "ckpt").glob("*.pkl"))]
+    listing = tmp_path / "p4b2-box-sha256-0of1.txt"
+    listing.write_text("".join(f"{b2.sha256_file(p)}  {p.relative_to(ROOT)}\n" for p in files))
+    monkeypatch.setattr(b2, "box_sha256_files", list)
+    with pytest.raises(SystemExit, match="sha256sum"):
+        b2.stage_manifest(_args())
+    monkeypatch.setattr(b2, "box_sha256_files", lambda: [listing])
     b2.stage_manifest(_args())
     man = json.loads((tmp_path / "pre" / "manifest.json").read_text())
     assert list(man["networks"]) == ["S4"] and list(man["missing"]) == ["S5"]
     assert man["networks"]["S4"]["final"]["timesteps"] == b2.FINAL_TIMESTEPS
     assert man["k4_gate"]["per_network"]["S4"]["passes"] is True
+    assert man["box_sha256"]["files_equal"] == 17
+    assert man["load"]["decided"] is False           # the planted box records no lanes
     assert b2.new_finals(man) == {"S4": (man["networks"]["S4"]["final"]["path"],
                                          man["networks"]["S4"]["final"]["sha256"])}
     with pytest.raises(SystemExit, match="exists"):
         b2.stage_manifest(_args())
+    # A pulled file that is not the box's stops the stage.
+    lines = listing.read_text().splitlines()
+    listing.write_text("\n".join(["0" * 64 + lines[0][64:], *lines[1:]]) + "\n")
+    with pytest.raises(SystemExit, match="not the box's"):
+        b2.stage_manifest(_args(force=True))
     # Any problem other than a run that failed twice stops the stage.
     monkeypatch.setattr(b2, "round_check", lambda tag: (1, report + "\n  the boxes' GPU "
                                                         "models differ"))
     with pytest.raises(SystemExit, match="other than"):
         b2.stage_manifest(_args(force=True))
+
+
+def test_read_sha256sum(b2):
+    text = f"{'a' * 64}  runs/x/agent.pkl\n{'b' * 64} *runs/x/ckpt/1.pkl\nsha256sum: y: missing\n"
+    assert b2.read_sha256sum(text) == {"runs/x/agent.pkl": "a" * 64, "runs/x/ckpt/1.pkl": "b" * 64}
+
+
+def test_load_summary(b2):
+    """Section 2's load (all five at once on GPU 0) holds at GPUS=1 LANES_PER_GPU=5 only."""
+    names = [r["name"] for r in b2.p4b2_runs.runs()]
+
+    def recs(gpus, lanes):
+        n = gpus * lanes
+        return {name: {"gpu": (j % n) % gpus, "lane": j % n} for j, name in enumerate(names)}
+
+    def box(gpus, lanes):
+        return [(Path("m.json"), {"shard": "0/1", "gpus": gpus, "lanes_per_gpu": lanes,
+                                  "gpu_count": gpus})]
+
+    assert b2.load_summary(box(1, 5), recs(1, 5))["decided"] is True
+    for gpus, lanes in ((1, 4), (4, 4)):             # S8 after S4, or beside it on GPU 0
+        got = b2.load_summary(box(gpus, lanes), recs(gpus, lanes))
+        assert got["decided"] is False and got["deviation"]
 
 
 HAVE_CHECK = (ROOT / "outputs" / "p4b2" / "check" / "rollouts" / "GA" / "results.json").exists()
@@ -691,9 +787,22 @@ def test_classify_stage_rehearsal(b2, tmp_path, monkeypatch):
     monkeypatch.setattr(b2, "BUILD", build)
     monkeypatch.setattr(b2, "ROLL", roll)
     monkeypatch.setattr(b2, "DECISIONS", tmp_path / "decisions.json")
-    monkeypatch.setattr(b2, "_post_tag", lambda: ({"tag": "rehearsal"}, {}))
+    buffers = {f"outputs/psychophysics/controls/knn_{a}.npz" for a in ("S1", "S2", "S3")}
+    rec = {"design_hash": json.loads((check / "build" / "build.json").read_text())["design_hash"],
+           "inputs_sha256": {p: b2.sha256_file(ROOT / p) for p in buffers}}
     monkeypatch.setattr(b2, "read_manifest", lambda: man)
     monkeypatch.setattr(b2, "committed_ever", lambda path: False)
+    # The rollouts must be of the recorded design, each against its recorded buffer.
+    monkeypatch.setattr(b2, "_post_tag", lambda: ({"tag": "rehearsal"},
+                                                  {**rec, "design_hash": "0" * 64}))
+    with pytest.raises(SystemExit, match="not the recorded design"):
+        b2.stage_classify(_args())
+    monkeypatch.setattr(b2, "_post_tag", lambda: ({"tag": "rehearsal"},
+                                                  {**rec, "inputs_sha256": {}}))
+    with pytest.raises(SystemExit, match="recorded buffer"):
+        b2.stage_classify(_args())
+    assert not (tmp_path / "decisions.json").exists()
+    monkeypatch.setattr(b2, "_post_tag", lambda: ({"tag": "rehearsal"}, rec))
     b2.stage_classify(_args())
     d = json.loads((tmp_path / "decisions.json").read_text())
     labels = {a: r["label"] for a, r in d["readings"].items()}

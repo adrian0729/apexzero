@@ -14,7 +14,10 @@ processes, each at nice 15.
   failed twice in the queue is listed as missing; any other problem stops the stage), then per
   run its config.json, agent.pkl (sha256, timesteps 199,884,800, a forward pass), the 16
   checkpoints' sha256, eval.json (reported beside K4's gate; it decides nothing) and training
-  log, and the round's box manifest, queue log and status file. outputs/p4b2/pre/manifest.json.
+  log, and the round's box manifest, queue log and status file. The agent.pkl and checkpoints
+  must match the sha256 listed on the box before it was deleted (runs/p4b2-box-sha256-*.txt,
+  ``BOX_SHA256_CMD``), and the load (all five at once on one GPU, Section 2) is recorded with
+  any deviation from it. outputs/p4b2/pre/manifest.json.
 - ``buffers``: each specialist's d_OOD buffer, the frozen ``controls.build_knn_buffer`` (50
   stochastic laps of real Hockenheim, 40,000 observations, its own obs_rms, protocol exception
   2). The agent ids S4-S8 give stream indices 135-139, distinct from S1-S3's 132-134 (checked).
@@ -232,6 +235,38 @@ def git(*args: str) -> str:
     return out.stdout.strip() if out.returncode == 0 else ""
 
 
+def tree_blobs(rev: str, paths=()) -> dict[str, str] | None:
+    """{path: blob id} of every file of ``rev`` (a commit, or a tree id with paths relative to
+    it) under ``paths``; None when git cannot list it."""
+    proc = git_run("ls-tree", "-r", "-z", rev, "--", *paths)
+    if proc.returncode != 0:
+        return None
+    out = {}
+    for entry in proc.stdout.split("\0"):
+        if entry:
+            meta, path = entry.split("\t", 1)
+            if meta.split()[1] == "blob":
+                out[path] = meta.split()[2]
+    return out
+
+
+def byte_mismatches(want: dict[str, str]) -> list[str]:
+    """The paths whose bytes in the working tree are not the blob ``want`` names, or that are
+    missing. git diff and git status trust the index for a file marked assume-unchanged or
+    skip-worktree, so the bytes are hashed here (``git hash-object --no-filters``)."""
+    present = [p for p in want if (ROOT / p).is_file()]
+    have = {}
+    if present:
+        proc = subprocess.run(["git", "hash-object", "--no-filters", "--stdin-paths"], cwd=ROOT,
+                              input="".join(p + "\n" for p in present), capture_output=True,
+                              text=True, check=False)
+        ids = proc.stdout.split()
+        if proc.returncode != 0 or len(ids) != len(present):
+            return [f"git hash-object failed ({proc.stderr.strip()})"]
+        have = dict(zip(present, ids, strict=True))
+    return [p for p, b in want.items() if have.get(p) != b]
+
+
 def sha256_bytes(raw: bytes) -> str:
     return hashlib.sha256(raw).hexdigest()
 
@@ -326,8 +361,9 @@ def _sha_or_none(path: Path) -> str | None:
 
 def frozen_problems(pins: dict | None = None) -> list[str]:
     """Every way the frozen code differs from its pins (Section 3): the git blob or tree at
-    HEAD, the working file's sha256, a working-tree change or an untracked file, and the
-    imported modules' files being elsewhere."""
+    HEAD, the working file's sha256 (a tree's files: their bytes against the pinned tree's
+    blobs), a working-tree change or an untracked file, and the imported modules' files being
+    elsewhere."""
     out = []
     for path, pin in (FROZEN if pins is None else pins).items():
         got = git("rev-parse", f"HEAD:{path}")
@@ -341,6 +377,12 @@ def frozen_problems(pins: dict | None = None) -> list[str]:
             p = ROOT / path
             if not p.is_file() or sha256_file(p) != pin["sha256"]:
                 out.append(f"{path}: sha256 is not the pinned {pin['sha256'][:12]}")
+        if "tree" in pin:
+            blobs = tree_blobs(pin["tree"])
+            bad = (["the pinned tree is not in this repository"] if blobs is None else
+                   byte_mismatches({f"{path}/{p}": b for p, b in blobs.items()}))
+            if bad:
+                out.append(f"{path}: not the pinned tree's files byte for byte ({bad[:3]})")
     if pins is None:
         here = {Path(P4A.__file__).resolve(): CODE_ROOT / "scripts" / "p4_exploratory.py",
                 Path(A.__file__).resolve().parent: CODE_ROOT / "src" / "apexzero" / "interp"}
@@ -497,6 +539,57 @@ def unexplained(problems: list[str] | None, failed: set[str]) -> list[str]:
     return [p for p in problems if not any(p.startswith(f"{n}:") for n in failed)]
 
 
+BOX_SHA256 = f"{ROUND}-box-sha256-*of*.txt"     # in runs/, listed from the box (Section 8, 2)
+BOX_SHA256_CMD = ("ssh <box> 'cd ~/apexzero && sha256sum runs/hockenheim-specialist-mlp-200M-s[4-8]"
+                  "/agent.pkl runs/hockenheim-specialist-mlp-200M-s[4-8]/ckpt/*.pkl' > "
+                  f"runs/{ROUND}-box-sha256-0of1.txt")
+
+
+def box_sha256_files() -> list[Path]:
+    return sorted((ROOT / "runs").glob(BOX_SHA256))
+
+
+def read_sha256sum(text: str) -> dict[str, str]:
+    """``sha256sum``'s lines (the hash, a space, a mode character, the path): path -> hash."""
+    out = {}
+    for ln in text.splitlines():
+        h, _, path = ln.partition(" ")
+        if len(h) == 64 and path[:1] in (" ", "*"):
+            out[path[1:]] = h
+    return out
+
+
+def box_sha256_problems(networks: dict[str, dict], listed: dict[str, str]) -> tuple[int, list[str]]:
+    """Each present run's agent.pkl and checkpoints against the sha256 listed on the box before
+    it was deleted (Section 8, step 2): (files that match, problems)."""
+    n, probs = 0, []
+    for e in networks.values():
+        for f in (e["final"], *e["checkpoints"]):
+            want = listed.get(f["path"])
+            if want is None:
+                probs.append(f"{f['path']}: not in the box's sha256 list")
+            elif want != f["sha256"]:
+                probs.append(f"{f['path']}: not the box's file (sha256)")
+            else:
+                n += 1
+    return n, probs
+
+
+def load_summary(shards: list[tuple[Path, dict]], recs: dict[str, dict]) -> dict:
+    """Section 2's load: all five runs at once on one GPU (GPUS=1 LANES_PER_GPU=5). Any other
+    schedule (the x4 box's fallback, or the lanes left at gpu_round.sh's default of 4, which
+    puts S8 after S4) is a deviation, recorded here and in the findings."""
+    boxes = [{k: m.get(k) for k in ("shard", "box_type", "gpu_count", "gpus", "lanes_per_gpu")}
+             for _, m in shards]
+    runs = {a: {k: recs.get(RUNS[a]["name"], {}).get(k) for k in ("gpu", "lane")} for a in NEW}
+    slots = {(r["gpu"], r["lane"]) for r in runs.values()}
+    decided = (len(boxes) == 1 and boxes[0]["gpus"] == 1 and boxes[0]["lanes_per_gpu"] == len(NEW)
+               and len(slots) == len(NEW) and all(g == 0 for g, _ in slots))
+    return dict(rule="all five at once on one GPU: GPUS=1 LANES_PER_GPU=5 (Section 2)",
+                boxes=boxes, runs=runs, decided=bool(decided),
+                deviation=None if decided else "not the decided load (Section 2): a deviation")
+
+
 def manifest_entry(agent: str, run: dict, rec: dict) -> tuple[dict | None, list[str]]:
     """One present run: its config, final snapshot (loaded, one forward pass), checkpoints,
     evaluation and logs, or the problems that keep it out."""
@@ -580,9 +673,23 @@ def stage_manifest(args) -> None:
             networks[a] = e
     if probs:
         raise SystemExit("runs not as Section 2 needs them: " + "; ".join(probs))
+    # The final checkpoints' (and every checkpoint's) sha256 against the box's (Section 8, 2).
+    lists = box_sha256_files()
+    if not lists:
+        raise SystemExit(f"no runs/{BOX_SHA256}: the box's sha256 list is written before the box "
+                         f"is deleted (Section 8, step 2): {BOX_SHA256_CMD}")
+    listed = {}
+    for p in lists:
+        listed.update(read_sha256sum(p.read_text()))
+    n_box, box_probs = box_sha256_problems(networks, listed)
+    if box_probs:
+        raise SystemExit("the pulled runs are not the box's: " + "; ".join(box_probs[:10]))
+    load = load_summary(shards, recs)
+    if not load["decided"]:
+        print(f"note: {load['deviation']}: {load['boxes']}", flush=True)
     commit = git("rev-parse", "--verify", "--quiet", f"{args.train_tag}^{{commit}}")
     logs = {rel(p): sha256_file(p) for p in sorted((ROOT / "runs").glob(f"{ROUND}-*"))
-            if p.is_file() and p.suffix in (".log", ".tsv", ".json")}
+            if p.is_file() and p.suffix in (".log", ".tsv", ".json", ".txt")}
     boxes = [dict(path=rel(p), sha256=sha256_file(p),
                   **{k: m.get(k) for k in ("shard", "head", "tree_clean", "tags", "box_type",
                                            "gpu_model", "gpu_count", "gpus", "lanes_per_gpu",
@@ -595,7 +702,9 @@ def stage_manifest(args) -> None:
                   "has seen a protocol stimulus",
         "round": ROUND, "runs_script": RUNS_SCRIPT, "train_tag": args.train_tag,
         "train_commit": commit, "check": dict(returncode=rc, report=report.splitlines()),
-        "boxes": boxes, "round_files_sha256": logs, "networks": networks, "missing": missing,
+        "boxes": boxes, "load": load, "round_files_sha256": logs,
+        "box_sha256": dict(lists=[rel(p) for p in lists], files_equal=n_box),
+        "networks": networks, "missing": missing,
         "k4_gate": dict(rule="completion 100% and gap <= 8% (reported, decides nothing)",
                         per_network=k4),
         "final_timesteps": FINAL_TIMESTEPS,
@@ -612,11 +721,11 @@ def stage_buffers(args) -> None:
 
     t0 = time.time()
     require_frozen()
+    refuse_after_tag("buffers")
     ids = check_streams()
     if args.check:
         snaps, out_dir = old_finals(), CHECK / "buffers"
     else:
-        refuse_after_tag("buffers")
         snaps, out_dir = new_finals(), PRE / "buffers"
     track = hockenheim()
     rec = {}
@@ -678,10 +787,10 @@ def stage_starts(args) -> None:
 
     t0 = time.time()
     require_frozen()
+    refuse_after_tag("starts")
     if args.check:
         snaps, out_dir = old_finals(), CHECK / "starts"
     else:
-        refuse_after_tag("starts")
         snaps, out_dir = new_finals(), PRE / "starts"
     if (out_dir / ST.REAL_STATES_FILE).exists() and not args.force:
         raise SystemExit(f"{rel(out_dir)} exists (--force rebuilds it before the tag)")
@@ -1724,7 +1833,8 @@ def tracked_clean(paths) -> list[str]:
     for p in paths:
         if git_run("ls-files", "--error-unmatch", p).returncode != 0:
             out.append(f"{p}: not tracked")
-        elif git("status", "--porcelain", "--untracked-files=all", "--", p):
+        elif (git("status", "--porcelain", "--untracked-files=all", "--", p)
+              or byte_mismatches(tree_blobs("HEAD", (p,)) or {})):
             out.append(f"{p}: differs from HEAD")
         if p == PRE_REL:
             ignored = git("ls-files", "--others", "--ignored", "--exclude-standard", "--", p)
@@ -1799,8 +1909,8 @@ def tag_gate() -> dict:
     """PermissionError unless the annotated tag p4-b2-prereg-v1 exists on origin, the local tag
     is the same tag object, it points at the commit that last changed the record, HEAD descends
     from it, and every bound path (the code, the draft, the record, the frozen code and lists,
-    outputs/p4b2/pre/) in the working tree is the tagged one, with no untracked file. Both refs
-    are named in full, as scripts/lockbox.py's gate names them."""
+    outputs/p4b2/pre/) in the working tree is the tagged one byte for byte, with no untracked
+    file. Both refs are named in full, as scripts/lockbox.py's gate names them."""
     ls = git_run("ls-remote", REMOTE, f"refs/tags/{TAG}", f"refs/tags/{TAG}^{{}}")
     if ls.returncode != 0:
         raise PermissionError(f"cannot list {REMOTE}'s tags ({ls.stderr.strip()})")
@@ -1831,6 +1941,11 @@ def tag_gate() -> dict:
         raise PermissionError(f"HEAD does not descend from {TAG} ({peeled[:12]})")
     if git_run("diff", "--quiet", peeled, "--", *BOUND).returncode != 0:
         raise PermissionError(f"a bound path differs from {TAG}'s")
+    # git diff trusts the index for a file marked assume-unchanged or skip-worktree: the bytes.
+    tagged = tree_blobs(peeled, BOUND)
+    bad = ["cannot list the tag's files"] if tagged is None else byte_mismatches(tagged)
+    if bad:
+        raise PermissionError(f"bound files are not {TAG}'s byte for byte: {bad[:5]}")
     # outputs/ is ignored: an extra file in outputs/p4b2/pre/ shows only with --ignored (which
     # would also list __pycache__ under src/, so it is asked of that directory alone).
     for extra, paths in (((), BOUND), (("--ignored",), (PRE_REL,))):
@@ -1887,9 +2002,30 @@ def committed_ever(path: Path) -> bool:
     return bool(git("log", "--all", "--format=%H", "--", rel(path)))
 
 
+def rollout_problems(rec: dict, owners: list[str]) -> list[str]:
+    """The tier D rollouts classify reads must be each owner's, on the recorded design, with
+    d_OOD against its recorded buffer (the rollouts stage writes both into results.json)."""
+    res_path = ROLL / "D" / "results.json"
+    have = read_json(res_path)["agents"] if res_path.exists() else {}
+    out = []
+    for a in owners:
+        r = have.get(a)
+        if not r or r.get("error"):
+            out.append(f"{a}: no tier D rollouts")
+            continue
+        if r.get("design_hash") != rec.get("design_hash"):
+            out.append(f"{a}: tier D rollouts of design {str(r.get('design_hash'))[:12]}, not the "
+                       "record's")
+        buf = r.get("buffer") or {}
+        if not buf.get("sha256") or buf["sha256"] != rec.get("inputs_sha256", {}).get(
+                buf.get("path")):
+            out.append(f"{a}: d_OOD against {buf.get('path')}, not its recorded buffer")
+    return out
+
+
 def stage_classify(args) -> None:
     t0 = time.time()
-    gate, _ = _post_tag()
+    gate, rec = _post_tag()
     if DECISIONS.exists() or committed_ever(DECISIONS):
         raise SystemExit(f"{rel(DECISIONS)} exists or was committed: classify runs once")
     if not (ROLL / "rollouts.json").exists():
@@ -1900,6 +2036,9 @@ def stage_classify(args) -> None:
     man = read_manifest()
     meta = read_json(BUILD / "cells_meta.json")
     owners = meta["owners"]
+    probs = rollout_problems(rec, owners)
+    if probs:
+        raise SystemExit("the rollouts are not the recorded design's: " + "; ".join(probs))
     _, scells = ST.load_design(pio.STIMULI_DIR)
     keys = pio.load_table(BUILD / "keys.npz")
     ct = P4A.cond_tables([ROLL / "D"], owners, keys, with_d_ood=True)
