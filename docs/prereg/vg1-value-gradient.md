@@ -182,7 +182,7 @@ Section 6 reads them together.
 ### 4.2 The main run (after the tag)
 
 - **Arms:** `base` (no VG flag; the default path, bit-identical to H4R's and GW-3's v1 baselines) and `vgl` (`--vg-coef β*`).
-- **β\*:** to be recorded here after the pilot, before the tag. This line and the pilot record (`outputs/vg1/pilot.json`) are the only changes allowed between the pilot commit and the tag (Section 9).
+- **β\*:** none (recorded 28 Oct 2026 from the pilot record, `outputs/vg1/pilot.json`). No β of the grid is eligible: each has a run with EV below 0.90 (β = 0.1: 0.880 at seed 15; β = 0.3: 0.836 and 0.860; β = 1.0: 0.750 and 0.771). Under Section 4.1 the main run does not start, and the pilot goes to the user. This line and the pilot record (`outputs/vg1/pilot.json`) are the only changes allowed between the pilot commit and the tag (Section 9).
 - **Runs:** 2 arms × 20 seeds (30–49) = 40, named `vg1-base-s<seed>` and `vg1-vgl-s<seed>`.
 - **One commit:** the tagged one, checked out detached on every box. Each box's manifest records HEAD, the tags at HEAD and whether the tracked tree was clean; `round_manifest.py check --tag vg1-prereg-v1` fails a run from any other commit or a dirty tree.
 - **The run list:** `scripts/vg1_runs.py --phase main` (round `vg1`). It reads β\* from `outputs/vg1/pilot.json` and refuses to list the main run unless that record is committed, unchanged against HEAD and names an eligible β of the grid.

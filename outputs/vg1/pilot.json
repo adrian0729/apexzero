@@ -1,0 +1,198 @@
+{
+ "record": "vg1-pilot",
+ "label": "exploratory (the pilot; never confirmatory)",
+ "pilot_commit": "860939a17709ffb676bcb0b228a5b731fecfc468",
+ "runs": {
+  "vg1p-b0.1-s15": {
+   "name": "vg1p-b0.1-s15",
+   "beta": "0.1",
+   "seed": 15,
+   "status": "done",
+   "finished": true,
+   "gpu_minutes": 12.394444444444444,
+   "m1": -0.35051420107809694,
+   "m0": 0.666245698928833,
+   "ev": 0.879873514175415,
+   "k3_pass": true,
+   "params_finite": true,
+   "s4": {
+    "steer": 0.8954089283943176,
+    "pedal": 0.7410842776298523
+   },
+   "metrics_finite": true,
+   "nonfinite_metrics": []
+  },
+  "vg1p-b0.3-s15": {
+   "name": "vg1p-b0.3-s15",
+   "beta": "0.3",
+   "seed": 15,
+   "status": "done",
+   "finished": true,
+   "gpu_minutes": 12.75,
+   "m1": -0.1543608295279637,
+   "m0": 0.5340509414672852,
+   "ev": 0.8364014029502869,
+   "k3_pass": true,
+   "params_finite": true,
+   "s4": {
+    "steer": 0.8584470152854919,
+    "pedal": 0.3961905539035797
+   },
+   "metrics_finite": true,
+   "nonfinite_metrics": []
+  },
+  "vg1p-b1.0-s15": {
+   "name": "vg1p-b1.0-s15",
+   "beta": "1.0",
+   "seed": 15,
+   "status": "done",
+   "finished": true,
+   "gpu_minutes": 12.744444444444444,
+   "m1": -0.19128343104780254,
+   "m0": 0.7526578307151794,
+   "ev": 0.7496733069419861,
+   "k3_pass": true,
+   "params_finite": true,
+   "s4": {
+    "steer": 0.9740064144134521,
+    "pedal": 0.5363659262657166
+   },
+   "metrics_finite": true,
+   "nonfinite_metrics": []
+  },
+  "vg1p-b0.1-s16": {
+   "name": "vg1p-b0.1-s16",
+   "beta": "0.1",
+   "seed": 16,
+   "status": "done",
+   "finished": true,
+   "gpu_minutes": 11.455555555555556,
+   "m1": -0.19978436640268427,
+   "m0": 0.7270092964172363,
+   "ev": 0.9057653546333313,
+   "k3_pass": true,
+   "params_finite": true,
+   "s4": {
+    "steer": 0.8760046362876892,
+    "pedal": 0.6443898677825928
+   },
+   "metrics_finite": true,
+   "nonfinite_metrics": []
+  },
+  "vg1p-b0.3-s16": {
+   "name": "vg1p-b0.3-s16",
+   "beta": "0.3",
+   "seed": 16,
+   "status": "done",
+   "finished": true,
+   "gpu_minutes": 12.791666666666666,
+   "m1": -0.6983223667024123,
+   "m0": 0.7737312316894531,
+   "ev": 0.8600257635116577,
+   "k3_pass": true,
+   "params_finite": true,
+   "s4": {
+    "steer": 0.9807443022727966,
+    "pedal": 0.5210344195365906
+   },
+   "metrics_finite": true,
+   "nonfinite_metrics": []
+  },
+  "vg1p-b1.0-s16": {
+   "name": "vg1p-b1.0-s16",
+   "beta": "1.0",
+   "seed": 16,
+   "status": "done",
+   "finished": true,
+   "gpu_minutes": 12.697222222222223,
+   "m1": -0.188989257150462,
+   "m0": 0.9948283433914185,
+   "ev": 0.7705988883972168,
+   "k3_pass": true,
+   "params_finite": true,
+   "s4": {
+    "steer": 1.0000708103179932,
+    "pedal": 0.8399064540863037
+   },
+   "metrics_finite": true,
+   "nonfinite_metrics": []
+  }
+ },
+ "eligible": {
+  "0.1": false,
+  "0.3": false,
+  "1.0": false
+ },
+ "ineligible_because": {
+  "0.1": [
+   "vg1p-b0.1-s15 EV 0.8799 < 0.9"
+  ],
+  "0.3": [
+   "vg1p-b0.3-s15 EV 0.8364 < 0.9",
+   "vg1p-b0.3-s16 EV 0.8600 < 0.9"
+  ],
+  "1.0": [
+   "vg1p-b1.0-s15 EV 0.7497 < 0.9",
+   "vg1p-b1.0-s16 EV 0.7706 < 0.9"
+  ]
+ },
+ "median_m1": {
+  "0.1": -0.2751492837403906,
+  "0.3": -0.426341598115188,
+  "1.0": -0.19013634409913227
+ },
+ "beta_star": null,
+ "beta_star_text": null,
+ "cost_check": {
+  "applies": false,
+  "reason": "no beta is eligible: the main run does not start"
+ },
+ "queue_gpu_hours": 1.2472222222222222,
+ "rule": {
+  "ev_min": 0.9,
+  "m0_max_exclusive": 13.99,
+  "betas": [
+   "0.1",
+   "0.3",
+   "1.0"
+  ],
+  "tie": "the smaller beta",
+  "finite": "M1, M0, EV, the last metrics.csv row and the final checkpoint's parameters"
+ },
+ "provenance": {
+  "script": "scripts/vg1_analysis.py",
+  "script_sha256": "c67aa82d11abb3c85e9a59431e72125e750c9691c7cd8ccc4d14f949e2a6bece",
+  "head": "012157b9d723c053a192f1dfb08c5aa0124ba920",
+  "changed": [],
+  "inputs": {
+   "outputs/vg1/c1/pilot.json": "458777334f3121e7337134dd571d5567044e40a708b03a36d547a8ad394e44bb",
+   "outputs/vg1/m0/vg1p-b0.1-s15.check.json": "129ac3743f2057bcaa88a29b749c3bad510fe1e35fcd3b9733ec69b248ccd878",
+   "outputs/vg1/m0/vg1p-b0.1-s15.json": "25ed7178340ff20b02f3ba6ebd37fbe9f4bc1e9fd917e0a5ade48c7f60959c50",
+   "outputs/vg1/m0/vg1p-b0.1-s16.check.json": "123cd6f2e75482d29c67f4ad662a36fe8f2a9ac65b1081971737be58c4a2d2a7",
+   "outputs/vg1/m0/vg1p-b0.1-s16.json": "934eba290d93e6ababb0d2b9d8eb372aab45eac65bc6dae4ec1dee061e1fcaf1",
+   "outputs/vg1/m0/vg1p-b0.3-s15.check.json": "b4fe8a4dccbe96f92725393cab8592c8e44def72f7c1c111d1ba5a92f7d0597f",
+   "outputs/vg1/m0/vg1p-b0.3-s15.json": "ca29718ba85393fdb5b10b5735b3d378df7162ec0facf7a71cb27437a08a18ee",
+   "outputs/vg1/m0/vg1p-b0.3-s16.check.json": "1f9f2242f0acd3cc4bff734311c1a014bcd21dd93140b13ea08b45a069a5fed8",
+   "outputs/vg1/m0/vg1p-b0.3-s16.json": "dce593f43447717fa7d97a545029b8fbd8a0329be331d6e73bb5d0d7ce52c4fd",
+   "outputs/vg1/m0/vg1p-b1.0-s15.check.json": "b33a5e5a61098ef99256f6df9e79a970525bfebb1a7ec8bdaf08f4740aced1f4",
+   "outputs/vg1/m0/vg1p-b1.0-s15.json": "dbae3dcaff05189fce66058c473f6bd8840fe54bac0a0cb311ca510166e63874",
+   "outputs/vg1/m0/vg1p-b1.0-s16.check.json": "963723e78287fa629f2aa66257538c25da6db663190c9db450f70f3ec204668d",
+   "outputs/vg1/m0/vg1p-b1.0-s16.json": "e588b45ce29cfc6e2c3f915533153825b38c13bc12cb97cd63025a7b82faf884",
+   "outputs/vg1/manifest-pilot.json": "7c683a2f3f8eaf6f1ed1786b0f352349e445d53d1bb3224e183be29f89999683"
+  },
+  "argv": [
+   "scripts/vg1_analysis.py",
+   "pilot",
+   "--box-gpu-hours",
+   "1.50"
+  ],
+  "start": "2026-10-27T21:04:51",
+  "end": "2026-10-27T21:04:51",
+  "environment": {
+   "python": "3.12.4",
+   "numpy": "2.5.4",
+   "machine": "arm64",
+   "system": "Darwin"
+  }
+ }
+}
