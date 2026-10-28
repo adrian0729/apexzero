@@ -1,6 +1,6 @@
 """E0's run manifest and gate (docs/plan/e0.md, Sections 2 and 3).
 
-    uv run python scripts/e0_gate.py manifest --tag e0-train-v1 --box-sums runs/e0-box-sha256.txt
+    uv run python scripts/e0_gate.py manifest --tag e0-train-v1 --box-sums runs/e0-box-sha256-*.txt
     uv run python scripts/e0_gate.py gate
     uv run python -c "import sys; sys.path.insert(0, 'scripts'); import e0_gate; e0_gate.box_command()"
 
@@ -22,14 +22,17 @@ with the box's own ``sha256sum`` lines, from ``box_command()``, in ``--box-sums`
 ``round_manifest.py check`` on round e0 against the tag (``--runs-args --phase main``, the
 queue's form). Its only tolerated problems are those of a run outputs/e0/failures.json lists
 (committed; a run that failed twice: status "failed" and a reason; the queue re-runs a failed
-run once). Then, per run: every checkpoint's sha256 and timesteps, the final one at
-``FINAL_TIMESTEPS``, checked against the box's sums; config.json, metrics.csv, eval_rdev.json and
-the logs' sha256; the config's args (``config_problems``: --real-widths, no --real-widths-from,
+run once). Then, per run: every checkpoint's sha256 and timesteps, checked against the box's
+sums (a done or retried run's are the 16 of ``CHECKPOINT_TIMESTEPS``, the last at
+``FINAL_TIMESTEPS``); every file the box's sums list under the run is here, so a file the
+pull-back missed refuses the manifest (run it before the box is deleted, and pull again);
+config.json, metrics.csv, eval_rdev.json and the logs' sha256; the config's args (``config_problems``: --real-widths, no --real-widths-from,
 no --stat-widths, no --tilt-*, --vg-coef 0, --steps 1e9, the run's seed, every other argument
 train_dr.py's default at the tag); the box's status, times, lane and GPU. The box's sums must
 also hold the 12 R-dev centrelines and the 12 R-dev OCP files, each equal to ``RDEV_SHA256`` /
-``OCP_SHA256``; they are recorded. A run with no eval_rdev.json is recorded as it is (the gate
-counts it 0). Writes outputs/e0/manifest.json, write-once.
+``OCP_SHA256``; they are recorded. A run with no eval_rdev.json, here or in the box's sums, is
+recorded as it is (the gate counts it 0). Writes outputs/e0/manifest.json, write-once, and only
+when there is no problem.
 
 **gate** (Section 3), once, after the manifest is committed: refuses if outputs/e0/gate.json or
 gate.lock exists or was ever committed; re-checks the committed manifest and every input's
@@ -126,6 +129,11 @@ OCP_SHA256 = {
 # train_dr.py's last update at --steps 1e9: floor(1e9 / (2048 x 64)) = 7,629 updates of 131,072
 # steps (checkpoints.checkpoint_schedule names the final snapshot by the timesteps it ends on)
 FINAL_TIMESTEPS = 999_948_288
+# checkpoints.checkpoint_schedule(1e9, 131072): the 16 snapshots a finished run keeps, by name
+# (the log-spaced targets, then the final update)
+CHECKPOINT_TIMESTEPS = (10_000_000, 13_593_563, 18_478_497, 25_118_864, 34_145_488, 46_415_888,
+                        63_095_734, 85_769_589, 116_591_440, 158_489_319, 215_443_469,
+                        292_864_456, 398_107_170, 541_169_526, 735_642_254, FINAL_TIMESTEPS)
 # the two defaults train_dr.py computes (ppo.ValueGradient's lam and winsor)
 COMPUTED_DEFAULTS = {"vg_lambda": 0.95, "vg_winsor": 0.005}
 COMPLETED = 0.5                    # a circuit is completed when completion > 0.5 over 10 laps
@@ -579,6 +587,11 @@ def build_manifest(sums: dict[str, str], runs: list[dict], failures: dict, check
         final = cks[-1] if cks and cks[-1]["timesteps"] == FINAL_TIMESTEPS else None
         if done and final is None:
             problems.append(f"{name}: no final checkpoint at {FINAL_TIMESTEPS} timesteps")
+        got = {c["timesteps"] for c in cks}
+        if done and got != set(CHECKPOINT_TIMESTEPS):
+            problems.append(f"{name}: its checkpoints are not train_dr.py's schedule at --steps "
+                            f"1e9 (missing {sorted(set(CHECKPOINT_TIMESTEPS) - got)}, extra "
+                            f"{sorted(got - set(CHECKPOINT_TIMESTEPS))})")
         ent["final"] = final
         for f in ("config.json", "metrics.csv", "eval_rdev.json"):
             p = d / f
@@ -592,6 +605,11 @@ def build_manifest(sums: dict[str, str], runs: list[dict], failures: dict, check
                 problems.append(f"{name}: {c['path']} has no box sha256 (--box-sums)")
             elif want != c["sha256"]:
                 problems.append(f"{name}: {c['path']} is not the box's file (sha256)")
+        # the other way: every file the box's sums list under the run is here (a missing
+        # eval_rdev.json would otherwise be recorded as none, and the gate would count it 0)
+        for path in sorted(p for p in sums if p.startswith(f"runs/{name}/")):
+            if not (ROOT / path).is_file():
+                problems.append(f"{name}: {path} is in the box's sums but not here (pull again)")
         if done and fail is not None:
             problems.append(f"{name}: listed in failures.json but its status is {box['status']!r}")
         if done:

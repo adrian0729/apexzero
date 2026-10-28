@@ -96,6 +96,8 @@ def test_final_timesteps_is_the_last_checkpoint_of_the_1e9_schedule():
     assert batch == 131_072 and int(float(ER.STEPS)) == 1_000_000_000
     sched = checkpoint_schedule(1e9, batch)
     assert max(sched.values()) == E.FINAL_TIMESTEPS == 999_948_288
+    assert E.CHECKPOINT_TIMESTEPS == tuple(sorted(sched.values()))
+    assert E.CHECKPOINT_TIMESTEPS[-1] == E.FINAL_TIMESTEPS
     assert E.FINAL_TIMESTEPS == (1_000_000_000 // batch) * batch == 7629 * batch
     assert len(sched) == 16 and 9_900_000 < min(sched.values()) <= 10_000_000
     assert max(checkpoint_schedule(200e6, batch).values()) == 199_884_800      # VG-1's, same rule
@@ -652,7 +654,7 @@ def plant_round(root: Path) -> tuple[list, Path]:
     for k, r in enumerate(runs):
         d = root / "runs" / r["name"]
         (d / "ckpt").mkdir(parents=True)
-        for ts in (10_027_008, E.FINAL_TIMESTEPS):
+        for ts in E.CHECKPOINT_TIMESTEPS:
             (d / "ckpt" / f"{ts:012d}.pkl").write_bytes(f"{r['name']}{ts}".encode())
         (d / "config.json").write_text(json.dumps(good_config(r["seed"])))
         (d / "metrics.csv").write_text("explained_var\n0.93\n")
@@ -683,7 +685,8 @@ def test_manifest_records_every_file_and_the_box(root):
     m = build(root, runs, sums)
     assert m["record"] == "e0-manifest" and m["commit"] == COMMIT and len(m["runs"]) == 5
     e = m["runs"][0]
-    assert e["final"]["timesteps"] == E.FINAL_TIMESTEPS and len(e["checkpoints"]) == 2
+    assert e["final"]["timesteps"] == E.FINAL_TIMESTEPS
+    assert [c["timesteps"] for c in e["checkpoints"]] == list(E.CHECKPOINT_TIMESTEPS)
     assert e["final"]["sha256"] == E.sha256_file(root / e["final"]["path"])
     assert e["eval_rdev_sha256"] == E.sha256_file(root / "runs" / "e0-s50" / "eval_rdev.json")
     assert e["config_sha256"] and e["metrics_sha256"] and list(e["logs_sha256"]) == [
@@ -747,6 +750,68 @@ def test_manifest_refuses_mismatches(root, plant, msg):
     plant(root)
     with pytest.raises(E.CheckFailed, match=msg):
         build(root, runs, sums)
+
+
+MID = f"{E.CHECKPOINT_TIMESTEPS[7]:012d}.pkl"
+
+
+@pytest.mark.parametrize("drop", ["eval_rdev.json", f"ckpt/{MID}",
+                                  f"ckpt/{E.FINAL_TIMESTEPS:012d}.pkl", ""])
+def test_manifest_refuses_a_file_the_box_listed_but_the_pull_missed(root, drop):
+    """A file in the box's sums under a run that is not here refuses the manifest: before, a
+    missing eval_rdev.json was recorded as none and the gate counted the seed 0 ("" drops the
+    whole run's directory)."""
+    runs, sums = plant_round(root)
+    p = root / "runs" / "e0-s52" / drop
+    if p.is_dir():
+        shutil.rmtree(p)
+    else:
+        p.unlink()
+    with pytest.raises(E.CheckFailed, match=r"e0-s52: runs/e0-s52/\S+ is in the box's sums but "
+                                            r"not here"):
+        build(root, runs, sums)
+
+
+def test_manifest_records_a_run_with_no_evaluation_on_the_box_or_here(root):
+    runs, sums = plant_round(root)
+    (root / "runs" / "e0-s52" / "eval_rdev.json").unlink()
+    edit_sums(sums, "runs/e0-s52/eval_rdev.json", None)
+    assert build(root, runs, sums)["runs"][2]["eval_rdev_sha256"] is None
+
+
+@pytest.mark.parametrize("change, msg", [
+    ("drop", rf"missing \[{E.CHECKPOINT_TIMESTEPS[7]}\], extra \[\]"),
+    ("add", r"missing \[\], extra \[10027008\]"),
+])
+def test_manifest_needs_a_done_runs_checkpoints_to_be_the_schedule(root, change, msg):
+    """The same checkpoints on the box and here, but not the schedule's 16: refused."""
+    runs, sums = plant_round(root)
+    ck = root / "runs" / "e0-s51" / "ckpt"
+    if change == "drop":
+        (ck / MID).unlink()
+        edit_sums(sums, f"runs/e0-s51/ckpt/{MID}", None)
+    else:
+        (ck / "000010027008.pkl").write_bytes(b"extra")
+        with sums.open("a") as fh:
+            fh.write(f"{E.sha256_file(ck / '000010027008.pkl')}  "
+                     "runs/e0-s51/ckpt/000010027008.pkl\n")
+    with pytest.raises(E.CheckFailed, match=rf"e0-s51: its checkpoints are not train_dr.py's "
+                                            rf"schedule at --steps 1e9 \({msg}\)"):
+        build(root, runs, sums)
+
+
+def test_a_listed_failure_may_stop_short_of_the_schedule(root):
+    runs, sums = plant_round(root)
+    box = root / "runs" / "e0-manifest-0of1.json"
+    m = json.loads(box.read_text())
+    m["runs"][3]["status"] = "failed"
+    box.write_text(json.dumps(m))
+    ck = root / "runs" / "e0-s53" / "ckpt"
+    for ts in E.CHECKPOINT_TIMESTEPS[8:]:
+        (ck / f"{ts:012d}.pkl").unlink()
+        edit_sums(sums, f"runs/e0-s53/ckpt/{ts:012d}.pkl", None)
+    got = build(root, runs, sums, {"e0-s53": {"status": "failed", "reason": "OOM twice"}})
+    assert len(got["runs"][3]["checkpoints"]) == 8 and got["runs"][3]["final"] is None
 
 
 def test_manifest_tolerates_only_a_listed_failure(root):
