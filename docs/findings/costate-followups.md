@@ -1,22 +1,458 @@
-# Idea 2's follow-ups: findings (exploratory)
+# Idea 2's follow-ups: the critics' gradients miss λ_s and λ_ξ at their own states and at every training snapshot, linear probes find little of λ_s or λ_ξ in hidden layers beyond z and random features, and unseen road moves braking and corner λ too much for the existing λ to be BC-1's target (exploratory)
 
-**Status.** Every number here is **exploratory**. Each comes from an item of
-[the follow-ups plan](costate-followups-plan.md) (first committed in `eaf1e80`, before any
-computation; amendments appended there). None is confirmatory on these 34 networks, and none
-changes a decision of `costate-prereg-v1` (`outputs/costate/analyse/decisions.json`). Where a
-frozen band is named ("the refute band"), it describes the number; it decides nothing (plan R1).
-Each item's expected directions are quoted beside its result.
+Results of 25–28 Oct 2026. **Every number in this note is exploratory.** Each one comes from an
+item of [the follow-ups plan](costate-followups-plan.md). The plan was first committed in
+`eaf1e80`, before any computation, and has 14 dated amendments, each committed before the numbers
+it governs. These items are lane A of [`docs/plan/follow-through.md`](../plan/follow-through.md)
+(Sections 7.2 and 7.3, and decisions #8, #9 and #16 of Section 10). None of them is
+pre-registered with a tag, none is confirmatory on these 34 networks, and none changes a decision
+of `costate-prereg-v1` (`outputs/costate/analyse/decisions.json`, committed in `9b25cc2`). The
+confirmatory record is [`costate.md`](costate.md). It is not edited here. Section 3 below says
+how each result bears on it.
+
+**Where it ran.** Everything ran on the branch `costate-exploratory`, in a worktree cut from
+`c66dcec`. Its `src/`, `scripts/costate.py`, `scripts/_bootstrap.py`, `scripts/fields.py` and the
+design document are byte-identical to the tag's. The code for these items is one new script,
+`scripts/costate_exploratory.py`, with `tests/test_costate_exploratory.py` (121 tests at
+`8f2ad68`).
+
+**What the script checks before every item:**
+- the plan, the freeze and the tag (plan R2);
+- the sha256 of every bound file it reads, against `decisions.json`'s `inputs` or the record's
+  `outputs` (plan R3);
+- that it calls the modules' `unlock_trained` only after those checks;
+- that every scored row passes one guard. The guard refuses braking- and corner-phase rows, and,
+  for λ, any row outside K2b's frozen decision mask (decision #8, plan R5).
+
+**Checked for this note:**
+- `costate_exploratory.py verify` reports 0 problems over the 127 bound files and the unbound
+  activations, at `bf9b9a1`.
+- Every committed summary under [`costate-followups/`](costate-followups/) is byte-identical to its
+  stamped local output.
+- No committed file holds a local path.
+
+Labels used throughout:
+- **Exploratory.** Every number here.
+- **Band word** ("in the refute band", "inconclusive"). A frozen band applied to an exploratory
+  number describes it and decides nothing (plan R1).
+- **Descriptive companion.** A number an amendment added beside an item, with no expected
+  direction.
+- **Targets only.** BC-a0, K2b on N and CS-14 read no network output, so they may read every
+  phase (plan R5).
+- **Expected** (E1.1 and so on). A direction written into the plan before the item ran. A miss is
+  a miss of the plan's prediction. It is not a failed check.
 
 Sources:
-- each item's `outputs/costate/exploratory/<item>/summary.json` (local, stamped);
-- the committed copies under [`costate-followups/`](costate-followups/).
+- Each item's stamped `outputs/costate/exploratory/<item>/summary.json` (local).
+- The committed copies under [`costate-followups/`](costate-followups/).
+- Appendix A maps each key number to its file and JSON path, and Appendix B lists the commits.
+
+## 1. Summary
+
+The confirmatory study refuted C1 in all 9 decision networks. On approach-phase interior states,
+the critics' pulled-back value gradients do not match the window problem's λ_s and λ_ξ. It found
+C2 mostly inconclusive and C2-sw refuted by its band, and C3-w ruled out a strong association.
+Its Section 10 listed follow-ups. Lane A ran the plan's 16 items (CS-1 to CS-15 and BC-a0) in the
+plan's order, except CS-13 on T. CS-13 ran only on N, where no pair exists, and CS-14 stopped at
+its stop rule. Network outputs were scored against window-problem targets only on approach and
+exit rows (decision #8). Network-only descriptives (CS-2) read every interior row, braking and
+corner rows included, as R5 allows. Of the 44 expected directions that could be read, 18 held.
+
+**C1: the refute holds everywhere it was checked, and the failure sits in the critic's input
+gradient.**
+- It holds at the policies' own states:
+  - **CS-10:** C1-own on own-run states is in the refute band in 9 of 9, on 11–14 times the
+    confirmatory rows. The largest CI upper end is 0.117.
+  - **CS-10 (iii):** on N it is in the band in 9 of 9 (largest upper end 0.008).
+- **CS-9:** C1 on N is in the refute band in 8 of 9. G3s1 is inconclusive at 0.213, no better
+  than its best random-init critic.
+- **CS-6:** all 144 training snapshots are in the refute band. The statistic is best at 10M–15M
+  timesteps (0.076–0.149) and falls with training in all 9 (ρ with log timesteps −0.55 to −0.98).
+- **CS-2:** every one of the 155 value heads is in the refute band, though the heads agree with
+  each other (ρ 0.960–0.997).
+- **CS-4:** λ is in what the networks see. A ridge on z gives R² 0.354–0.355 for λ_s and
+  0.663–0.673 for λ_ξ, and one hidden layer gives 0.641–0.651 and 0.817–0.845. Adding the
+  critic's own gradient adds nothing (ΔC1 −0.017 to 0.022).
+- **CS-1:** the very negative ξ scores come from the critic's gradients with respect to the near
+  half of the edge preview. They sit on the late approach (125–50 m before the apex) to the two
+  44.7 m corners, at high tyre utilisation. On 87–94% of tail rows that near half's
+  contribution has the sign opposite to λ_ξ. The observation map plays no part. No other
+  calibration passes its plants.
+
+**Linear probes find little of λ_s or λ_ξ in a hidden layer beyond z and random features. The
+decoy-controlled test of the critic's layers is underpowered, and on the Π targets the seed-0
+critics' h3 met the plan's "first sign".**
+- **CS-7:** no critic layer or head holds λ_s beyond random-init critics. On λ_ξ, which is not
+  decoy-controlled, the critic's h3 gains 0.056 and 0.066 in two networks (G1 and G1s2, CI above
+  0), and the actor's h3 gains as much there. The λ_res half has little power: λ_res is not
+  decodable by any probe on these rows. Its 14 λ_res,ξ cases above 0.05 with the CI above 0 (h1
+  to h3 and the head units) measure how much more random critics' features over-fit, not
+  information in the trained layer.
+- **CS-5:** 5 critic-h3 gains on the Π targets pass 0.05 with the CI above 0, all in the seed-0
+  network of each variant (G1 on Π^out and Π^μ, G2 on Π^μ, G3 on Π^in and Π^out). The plan
+  calls that "the first sign that a layer holds a shadow price beyond the input". A layer that V
+  is linear in, and that tracks the room the road leaves, need not encode a price, so this is a
+  sign, not a finding.
+- **CS-8 (c):** with a decoy model that fits geometry 6, C2's CIs are 1.6–8 times narrower than
+  f̂_D's on the same rows. The actor's h3 sits below its pool's median in 7 of 9, and no point
+  reaches 0.05.
+- **CS-12, CS-15 and CS-9:** C2 is inconclusive in all 25 other networks, h1 and h2 give no
+  confirm, and C2 on N gives no confirm. C2-sw on N gave one band-word confirm (G3, 5.1
+  [0.030, 28.1]); it is read as uninterpretable, because σ^ped barely varies on N.
+
+**C2-sw's rank-1 pattern is real, and consistent with position-and-speed information. There is
+no evidence of switching-function information beyond it, but the test for it has low power.**
+- **CS-8 (a):** on approach and exit rows the trained h3 beats all 20 random actors in 7 of 9,
+  and lies above every host of its own random-only null in 6.
+- **CS-8 (b):** once σ^ped is residualised on position and speed, no network's gain has its CI
+  above 0. Four networks still rank first, with points larger than before, inside CIs that cover
+  0. σ_res keeps 12% of σ^ped's variance, so (b) cannot tell "nothing beyond the decoys" from
+  "too little to find".
+- **CS-12:** the pattern recurs in 10 of the 22 other generalists.
+
+**The wall price: the policies carry a smaller copy of the optimum's; the critics' width
+derivative agrees moderately with the optimum's but not with their own policies'.**
+- **CS-11:** in 6 of 9 the policy's own inside-wall price agrees with the optimum's (calibrated
+  R² 0.27–0.39, CI above 0), at 37–76% of its median size (28–85% over all 9). The critic's
+  derivative agrees with its own policy's price in none of the 9 (R² at most 0.112, every CI
+  reaching 0). Against the optimum's Π^in it agrees moderately (R² 0.068–0.350, CI above 0 in 5
+  of 9), about as well as the policies' own price does.
+- **CS-5:** the critic's h3 holds a little Π^in beyond random critics (0.021–0.056, CI above 0
+  in 8 of 9). That need not encode a price: V is linear in that layer, and the value of a state
+  depends on the room ahead.
+- **CS-3:** nothing links a network's gradient errors to its driving errors (largest |r| 0.109).
+- **BC-a0:** the Π targets themselves move by about 0.8–1.8 SD_T with road beyond the preview.
+
+**Braking and corner states (targets only).**
+- **BC-a0:** realistic road beyond the preview moves λ by 9–103% of its phase variance per state.
+  On corner rows that is about twice as much as K2b's slow second corner. The largest shares are
+  corner λ_vx's (U 1.03) and braking λ_s's (0.75). No component-phase cell allows BC-1 to
+  pre-register against the existing λ with a bound of 0.1. The recommended route is the
+  preview-matched average target (option (ii)), at about 2.3–2.9 times the plan's 150–380 CPU-h
+  at W = 400 rates, and more with W = 800 states.
+- **CS-14:** q_c cannot be scored under decision #8. Only 134 rows pass its 64-step window
+  rule, short of 200.
+
+**Reading.** The follow-ups narrow the confirmatory refute's alternatives but do not change it.
+- The gap is not an artefact of:
+  - the optimum's states (CS-10, CS-9);
+  - the final checkpoint (CS-6);
+  - head-level indeterminacy (CS-2);
+  - the observation (CS-4);
+  - the calibration (CS-1);
+  - the optimum-against-policy terms (C1-own on 11–14 times the rows).
+- For λ_s and λ_ξ, it is the critics' input gradient that fails to express a costate their
+  input carries (CS-4).
+- The wall price Π^in is a shadow price of the window problem too, but not one of C1's
+  components. There the picture is mixed (CS-11, CS-5). The policies' own price tracks the
+  optimum's in 6 of 9. The critics' width derivative tracks the optimum's about as well (CI above
+  0 in 5 of 9) but not its own policy's, in any of the 9. The seed-0 critics' h3 holds a little Π
+  beyond random critics.
+- The confirmatory run's positive C2 points do not survive on approach and exit rows. Under the
+  frozen f̂_D, restricting to those rows already makes G1's and G1s1's negative (as `costate.md`
+  found on approach rows alone); decoy 2, which fits geometry 6, removes G1s2's and G3s1's
+  (CS-8 (c)).
+- C2-sw's rank pattern is consistent with position-and-speed information. Residualised on
+  position and speed, no gain has its CI above 0, but that test has low power (CS-8 (b)).
+- Every claim is still narrow:
+  - λ_s and λ_ξ only;
+  - approach and exit rows only;
+  - synthetic corners;
+  - linear probes;
+  - one PPO configuration.
+
+## 2. The items against the plan
+
+"Held" counts the item's expected directions that held, out of those that could be read. The
+item sections below quote each one beside its result.
+
+| Item | Question | Held | Result | Summary |
+|---|---|---|---|---|
+| CS-1 | Where does the ξ tail sit; is it the critic or the map; do other calibrations help? | 1 of 4 | Late approach to geometries 38 and 36, near preview, critic not map; Huber and rank fail their plants in 9 of 9; the rule for later items does not fire | [cs-1](costate-followups/cs-1-summary.json) |
+| CS-2 | Descriptives: heads, winsorisation, floor, C1 on D, accel term | 3 of 6 | Heads agree (ρ ≥ 0.96) and all 155 refute; C1 on D refutes in 34 of 34; accel term 3.2–5.1% of \|g_vx\| | [cs-2](costate-followups/cs-2-summary.json) |
+| CS-3 | C3-int: do gradient errors go with driving errors, network × geometry? | 1 of 1 | No: largest \|r\| 0.109, smallest Holm p 0.130 | [cs-3](costate-followups/cs-3-summary.json) |
+| CS-4 | ΔC1, R²_z, the MLP-on-z ceiling | 3 of 4 | λ decodable from z (0.35, 0.67; MLP 0.64, 0.83); ΔC1 −0.017 to 0.022 | [cs-4](costate-followups/cs-4-summary.json) |
+| CS-5 | W1 on the Π targets; hidden layers beyond z | 0 of 3 | Π^in less decodable than expected (0.26); actor h3 adds nothing; critic h3 adds 0.021–0.056 on Π^in; 5 critic-h3 cases, all in seed-0 networks, meet the plan's "first sign" (gain above 0.05, CI above 0) | [cs-5](costate-followups/cs-5-summary.json) |
+| CS-6 | C1-dev over 16 snapshots | 1 of 2 | 144 of 144 in the refute band; best at 10M–15M, falls with training in 9 of 9 | [cs-6](costate-followups/cs-6-summary.json) |
+| CS-7 | Critic-layer and head-unit probes of λ and λ_res | 1 of 3 | Nothing on λ_s or λ_res; λ_ξ gains in G1 and G1s2 matched by the actor's h3 | [cs-7](costate-followups/cs-7-summary.json) |
+| CS-8 | C2-sw's random-only null; C2-sw residualised; C2 with decoy 2 | 1 of 3 | Rank 1 of 21 in 7 and above every own-scaling host in 6; no CI above 0 once residualised (low power); decoy 2: 3 refute, 6 inconclusive, h3 below pool median in 7 | [cs-8](costate-followups/cs-8-summary.json) |
+| CS-9 | N: C1, C2, C2-sw at the networks' own states, with K2b on N | 2 of 5 | C1 refutes in 8 of 9; C2 6 refute, 3 inconclusive; C2-sw not interpretable on N; K2b on N excludes nothing | [cs-9](costate-followups/cs-9-summary.json) |
+| CS-10 | C1-own on own-run states, then on N | 1 of 2 (D); E9.5 on N | Refute band 9 of 9 on D's own runs (11–14× rows) and 9 of 9 on N | [cs-10](costate-followups/cs-10-summary.json), [N](costate-followups/cs-10-iii-summary.json) |
+| CS-11 | The policy's own width price Π^{in,own} | 0 of 3 | Critic–own R² ≤ 0.112 in 9 of 9; own–optimum 0.27–0.39 in 6 of 9; on N every agreement higher | [cs-11](costate-followups/cs-11-summary.json), [N](costate-followups/cs-11-n-summary.json) |
+| CS-12 | C2 and C2-sw beyond the 9 (primary only) | 1 of 2 | C2 inconclusive in 25 of 25; C2-sw rank 1 in 10 of 22 generalists, 2 of 3 specialists | [cs-12](costate-followups/cs-12-summary.json) |
+| CS-13 | C2-pairs at matched decoys | not read | On N no pair exists; on T not run (Section 6) | [N](costate-followups/cs-13-n-summary.json) |
+| CS-14 | q_c, the action-projected critic signal | not read | Stopped: 134 rows pass the window rule, under 200; no network evaluated | [cs-14](costate-followups/cs-14-summary.json) |
+| CS-15 | FWL check, actor h1 and h2, C2 on D | 1 of 3 | FWL lower by up to 0.076 (raw gain, mostly s); h1 and h2 no confirm; D 7 inconclusive, 2 refute | [cs-15](costate-followups/cs-15-summary.json) |
+| BC-a0 | How much unseen road moves braking and corner λ (targets only) | 2 of 3 | Per-state U 0.09–1.03; route (ii) in all 8 cells; Π p90 0.79–1.78 SD_T on approach and exit | [bc-a0](costate-followups/bc-a0-summary.json) |
+
+Some misses were narrow:
+- E1.2's clipping part: κ clipping not enriched in 5 of 9, against the 6 needed. Its central
+  part did not narrowly miss: no row lies in the 83.3 m/s kink band (speeds stop at 81.0 m/s),
+  and the tail's vx is only about 1 m/s higher;
+- E4.4: G3s1's s ΔC1 is 0.022, against a bound of 0.02;
+- E10.2: 5 of 9, against 6.
+
+Others went the opposite way:
+- E1.3: the tail is in the near preview, not the far;
+- E5.3: Π^slip and Π^μ are more decodable than Π^in;
+- E11.1: the critic agrees less with its own policy's price than with the optimum's, in 9 of 9;
+- Ea0.2: λ_s's share U is larger in braking than in the corner, because λ_s varies little within
+  braking.
+
+## 3. How they bear on the confirmatory findings
+
+Section numbers in this section are `costate.md`'s. Nothing below changes a decision there. Each
+point says how an exploratory result qualifies or extends a confirmatory reading.
+
+**5.2 C1 (refute in all 9).**
+- **The state set.** At the policies' own states the refute stands.
+  - CS-10 scored own-run approach and exit rows, 2,223–2,298 (s) and 1,814–1,853 (ξ) per
+    network. R²_c is at most 0.014 for s and 0.105 for ξ.
+  - On N, C1 is in the band in 8 of 9 (CS-9). The exception, G3s1 (ξ R²_c 0.474), is matched by
+    a random-init critic on N's narrow states (ξ R²_c 0.45).
+- **The checkpoint.** CS-6 shows the final checkpoint is not an unlucky one. Every snapshot is in
+  the band. The earliest critics (10M–15M) come closest, with CI lower ends above 0 in 7
+  networks, and agreement then falls as ξ's calibration collapses.
+- **The observation.** CS-4 rules out an observation that lacks λ: a ridge on z predicts λ_ξ at
+  R² 0.663–0.673 and λ_s at 0.354–0.355.
+- **The rank agreement.** Section 1's Spearman of 0.34–0.40 recurs at own-run states only weakly
+  (CS-10: −0.15 to 0.33, CI above 0 in 5). Over training its trend depends on the variant
+  (CS-6).
+- **The far-geometry and random-critic nulls** are not rebuilt off T, except the best random
+  critic on N (CS-9).
+
+**5.3 C2 (inconclusive in 7, refute in 2).**
+- **The positive points.** Section 8 read the inconclusive positive points (G1, G1s1, G1s2 and
+  G3s1, 0.030–0.039) as lying above every random-only null host, under G1's scaling. On approach
+  and exit rows they do not survive, but much of that is the change of rows, not the decoy.
+  - Under the frozen f̂_D on CS-8 (c)'s approach and exit rows, G1 and G1s1 are already negative
+    (−0.058 and −0.192). `costate.md` Section 8 found the same on approach rows alone, where all
+    four points are negative.
+  - Decoy 2 (log R × 3, same θ and direction), which fits geometry 6, removes the remaining two:
+    G1s2 goes from 0.066 to 0.023 and G3s1 from 0.043 to −0.010 (CS-8 (c)). G1 and G1s1 become
+    −0.005 and −0.027.
+  - The actor's h3 sits below its pool's median in 7 of 9.
+- **Geometry 6.** It falls from 0.35–0.54 of the base's squared error to 0.055–0.076, which
+  confirms design 17.6's reading that its weight is a residualisation artefact.
+- **The rows.** CS-8 (c) fits on approach and exit rows, not the confirmatory 3,951 interior
+  rows, so its band words (3 refute, 6 inconclusive) are not on C2's rows.
+- **Breadth.** C2 is inconclusive in all 25 other networks (CS-12), and h1 and h2 show no more
+  than h3 (CS-15).
+
+**5.4 C2-sw (refute by its band in all 9; rank 1 of 21 in 7, descriptive).**
+- **The null.** Section 9 noted that C2-sw had no between-network null. CS-8 (a) builds one, on
+  the 2,507 approach and exit switching rows.
+  - Its bulk sits at 0: median 0.0005, 95th percentile 0.025.
+  - The trained h3 lies above every host of its own scaling in 6 of 9.
+- **The band word moves on these rows.** The statistic is 0.021–0.049 in 8 of 9, and the band
+  word is inconclusive in all 8. On all 2,911 rows the 9 refuted.
+- **What the gain is.** The result is consistent with the caveat in Section 8. Residualised on
+  position and speed, σ^ped keeps 11.6% of its variance, no layer decodes the rest linearly, and
+  every CI covers 0 (CS-8 (b)). Four networks still rank first, with larger points inside those
+  CIs, and the test has low power, so it does not show that nothing is left.
+- **The reading.** The rank pattern is consistent with the position-and-speed information design
+  15.10 named. Design Section 9's switching-function reading still has no support.
+
+**5.6 C3-w and 5.9 W1 (wall price).**
+- **The policy's own price.** CS-11 adds the comparison the confirmatory run lacked.
+  - In 6 of 9 the policies' own price of the inside wall agrees with the optimum's at a smaller
+    size.
+  - The critics' derivative agrees with its own policy's price in none of the 9. On D's rows it
+    agrees moderately with the optimum's Π^in (R²_c 0.068–0.350, CI above 0 in 5 of 9).
+  - So in 6 of 9 W1's near-zero agreement lies in the critic's derivative rather than in the
+    policies' valuation. In G1s2, G2s1 and G3s2 the policy's own price also agrees poorly with
+    the optimum's (R²_c below 0.08).
+- **C3-int.** CS-3 finds no within-network link between gradient errors and driving errors, the
+  link C3-w could not test (largest |r| 0.109).
+- **The target.** BC-a0 measures how much Π moves with road beyond the preview: p90 |ΔΠ|/SD_T is
+  0.79–1.02 on approach rows and 0.96–1.78 on exit rows. That qualifies Π^in as the reference for
+  W1, C3-w's x and CS-5. Part of any disagreement with Π^in may be Π^in's own sensitivity to road
+  no network sees.
+
+**5.7 C1-own (refute in all 9, on about 162 rows per component).**
+- CS-10 gives an exploratory, better-powered analogue on own-run approach and exit states
+  (11–14 times the rows, with CIs 0.001–0.19 times as wide), which also refutes. These are the
+  kept runs' every-5th states, not T's restarts.
+- CS-10 (iii) gives the same analogue on N. The refute band holds in 9 of 9 both times.
+- Section 8 said that C1-own rests on few rows with wide CIs. The confirmatory C1-own's caveat
+  stands for its own rows; CS-10 does not change its CIs.
+
+**5.9 C1-heads.**
+- CS-2 extends it to every head's C1. All 155 heads are in the refute band.
+- They follow the main V's R²_c only where it is near 0. Where the ξ tail drags the main V far
+  below 0, the heads lie 0.1–1.3 below it.
+
+**7.1 The ξ tail.** CS-1 answers Section 10's first item.
+- **Where.** Geometries 38 and 36, 125–50 m before the apex, at tyre utilisation near 0.9.
+- **What.** The near half of the edge preview: 77–88% of |g_ξ|, with the sign opposite to λ_ξ on
+  87–94% of tail rows.
+- **Not the pullback.** No observation-clip, preview-spacing or tyre-channel kink of the pullback
+  is involved.
+- **Calibrations.** Neither the rank calibration nor design Section 6's original Huber fit passes
+  its plants.
+- **Over training.** CS-6 suggests that the tail grows with training, since ξ's R²_c turns
+  negative between 22M and 49M timesteps. It does not locate the tail at each snapshot.
+
+**8 What it means.**
+- **"Values fit, gradients do not."** The follow-ups sharpen this reading.
+  - **The gradient.** The heads' gradients agree with each other (ρ 0.960–0.997), so the
+    mismatch is not head-level indeterminacy (CS-2). It is not the policy's own costate either
+    (CS-10), and on ξ it worsens with training (CS-6).
+  - **The values.** CS-6 did not measure value accuracy over training.
+- **Design Section 9's two readings.** Neither is established.
+  - "The regression does not determine the gradient" cannot be tested through the heads, since
+    they share a trunk.
+  - "A determined gradient, but of V^π" is not supported. At the policies' own states the
+    gradient does not match the deterministic policy's costate either (CS-10). λ^own is still
+    not exactly the costate of the V^π the critic estimates (`costate.md` Section 8).
+
+**9 What it does not mean.**
+
+Limits these items narrow:
+- the optimum's states (CS-10, CS-9);
+- final checkpoints only (CS-6);
+- other forms of λ in the critic: layers and heads (CS-7), per-head R²_c (CS-2);
+- calibration dependence (CS-1);
+- geometry 6 and the decoy (CS-8 (c));
+- the C2-sw band without a null (CS-8 (a));
+- C2's h3-only probe (CS-15);
+- the deferred analyses: C3-int, C1-dev, ΔC1 and N (CS-3, CS-6, CS-4, CS-9).
+
+Limits that stand:
+- **The decision set.** λ_s and λ_ξ only, approach and exit rows only. Decision #8 keeps braking
+  and corner rows for BC-1, and BC-a0 measured only targets.
+- **q_c.** Not scorable under #8 (CS-14).
+- **The probes.** Linear probes of hidden layers. The only MLP is CS-4's, on z alone.
+- **The setting.** Synthetic A2 corners, one PPO configuration, and nothing about R_TEST.
+
+**10 What next.**
+- Item 1 is done (CS-1).
+- Item 2 is done except C2-pairs on T: C1-dev (CS-6), ΔC1 (CS-4), C3-int (CS-3). C2-pairs is not
+  scorable on N.
+- Item 3 is done (CS-8 (a) and (c)).
+- Item 4 has its pilot (BC-a0). Its route recommendation goes to the lead under decision #6.
+- Item 5, the intervention, is outside this lane.
+
+## 4. What it means (exploratory)
+
+- **The critics' input gradients do not express λ_s or λ_ξ, at any state set or snapshot
+  tried, and the failure is specific.**
+  - What the networks see carries λ: z predicts λ_ξ at R² about 0.67 linearly and 0.83 with one
+    hidden layer.
+  - The critics' gradients do not carry it. What they carry on ξ is a large, wrong-sign response
+    to the near edge preview on the late approach to the 44.7 m corners. On ξ the early
+    critics, at 10M–15M timesteps, come closer than the final ones.
+- **The wall price is a different case.** The policies' own Π^{in,own} tracks the optimum's in
+  6 of 9 (CS-11). The critics' width derivative agrees moderately with the optimum's Π^in
+  (calibrated R² up to 0.35 on D, CI above 0 in 5 of 9), about as well as the policies' price
+  does. What it fails to match, in all 9, is its own policy's price.
+- **Linear probes find little of λ_s or λ_ξ in a hidden layer beyond z and random features.**
+  - Critic h1–h3 and the head units (CS-7). Their only λ gains, on λ_ξ in G1 and G1s2, are not
+    decoy-controlled and are matched by the actor's h3. The decoy-controlled half (λ_res) has
+    little power, since λ_res is not decodable by any probe on these rows.
+  - Actor h3 under decoy 2, which fits geometry 6 (CS-8 (c)), and h1 and h2 under f̂_D (CS-15).
+  - The exception is the critic's h3 on the Π targets (CS-5). It holds 0.02–0.06 of Π^in beyond
+    random critics in 8 of 9, and 5 gains in the seed-0 networks meet the plan's "first sign"
+    (above 0.05, CI above 0). It need not encode a price: V is linear in that layer, and the
+    value of a state depends on the room ahead.
+- **The actor's switching-step gain over random actors is real, and consistent with
+  position-and-speed information.** It ranks first of 21 in 7 of 9 and clears the random-only
+  null. Once σ^ped is residualised on position and speed, no gain has its CI above 0, but that
+  test has low power, so there is no evidence of switching-function information beyond position
+  and speed, and no evidence against it either.
+- **BC-1 needs a new target, and it costs more than planned.** The existing λ in braking and
+  corner states depends on unseen road by 9–103% of its phase variance, mostly as a common shift
+  from the stored straight continuation. A preview-matched average target (option (ii)) is the
+  only route the pilot leaves open, at about 2.3–2.9 times the planned cost at W = 400 rates,
+  and more with W = 800 states. Its W = 800 states need a solver that reaches full amplitude.
+
+## 5. What it does not mean (limits)
+
+- **Exploratory only.** No result here is a test. The items report dozens of statistics, and only
+  CS-3 corrects for multiplicity (Holm). The expected directions were written in advance, but a
+  held direction is not a confirmed hypothesis, and 26 of 44 missed.
+- **What was seen before the plan's details were fixed.**
+  - The amendments fix operational details. Amendments 4–6 and 12–14 were written after a
+    development run or a stopped run had been seen, and each records what it saw:
+    - amendments 4–6: CS-11's wiring gaps;
+    - amendments 12–14: BC-a0's costs and failure counts.
+  - Amendment 9 was committed before CS-9's code, and no CS-9 number had been seen. CS-9's
+    development runs came after it, before the canonical run. Three of their outcomes were seen:
+    a G2s1 development key moving λ_vx by 0.30 SD_T, G1's 'secondary' C1-own status, and CS-13
+    finding no pair. No amendment records them; the CS-9 section discloses them.
+  - Partial development runs, mostly on G1, came before most canonical runs. They were written
+    outside `outputs/costate`. Only their wiring and timings, and the outcomes each item
+    section names, were read.
+- **The rows.** Decision #8 keeps every comparison of a network output with a target off braking
+  and corner rows (CS-2's network-only descriptives read them). So nothing
+  here says whether the critics hold λ where most of the policies' states lie.
+  - CS-10's own runs hold 3,248–3,657 braking and 2,555–2,931 corner states per network, only
+    counted.
+  - λ_n and λ_vx are never scored against a network output.
+- **N is narrow.** One state per key, at about 183 m before the apex and 85 m/s.
+  - λ there varies mainly across geometries. So random gradients calibrate on ξ, f̂_D adds
+    variance, and σ^ped varies little.
+  - C2-sw on N cannot be read as an R² gain.
+  - N's higher wall-price agreements (CS-11 on N) probably reflect the state set.
+- **The controls.** Random-init critics and actors are the only controls for the hidden-layer
+  gains (CS-5, CS-7, CS-8). A gain over them says a layer holds more than random features of z,
+  not that it encodes a price. The random-init critics' h3 equals the pool actors' h3 (same
+  trunk architecture, same seeds), so the critic's and the actor's h3 are compared with one
+  shared random-feature control, and their gains in CS-5 and CS-7 are contrasts against it.
+- **The Π targets move with unseen road** (BC-a0, p90 about 0.8–1.8 SD_T). So CS-5's and
+  CS-11's comparisons against Π^in are against a target that the road beyond the preview moves.
+- **BC-a0 is a pilot.**
+  - Its shares rest on 21 keys and 43 states (26 keys before the drops), after 5 of the 6
+    W = 800 keys were dropped for failed re-solves.
+  - The dropped keys are mostly tight corners, so the shares probably understate the movement.
+  - Its costs were measured on a shared machine.
+- **The probe machinery.** CS-15's FWL check differs from the joint ridge by up to 0.076 on the
+  raw gain. The likely cause, the base's ridge penalty, was not checked (α_B was not recorded).
+- **The setting.** Synthetic corners, mostly 12 m wide. One PPO configuration at 200M steps.
+  R_TEST and `outputs/sealed/` were never read.
+
+## 6. Not done, and questions for the lead
+
+Not done:
+- **CS-13 on T** (C2-pairs at matched decoys, about 30 min, stored arrays only). The plan's order
+  puts it with CS-6 and CS-12, but no step of this lane ran it. The follow-through rates it low
+  value, since it qualifies a C2 confirm and C2 never confirmed. On N it is not scorable: no N
+  state has a matched T state.
+- **CS-14 beyond its stop rule.** q_c, its check against σ and K2b for q_c were never computed
+  (amendment 10 item 4).
+- **CS-7's λ_res half on decoy 2.** On C1's rows the frozen λ_res is not decodable by any probe,
+  so this half has little power. A rerun on decoy 2 needs an amendment.
+- **Decoy 2 co-reported for C2 on N and in CS-12.** It also needs an amendment.
+- **CS-15's chosen base penalty α_B.** It was not recorded, so the FWL gap's explanation is
+  unchecked.
+
+Questions for the lead (plan Section 6, and from the results):
+1. **Random-init hosts under #8.** May C2-sw's random-only null be computed on all 2,911
+   confirmatory rows? Those are the rows its trained statistic was decided on.
+2. **Π under #8.** The plan treats the Π targets as window-problem targets. The confirmatory W1
+   already scored Π^in on braking and corner rows, and BC-a0 shows Π moves with unseen road.
+3. **C2-sw on N.** Should it be reported only as "not interpretable on N" (σ^ped's SD on N is a
+   quarter of T's)?
+4. **N.** Does N's narrow state set warrant any further N analysis?
+5. **BC-1's route** under decision #6. BC-a0 recommends option (ii) in all 8 cells, at about
+   2.3–2.9 times the planned CPU-h at W = 400 rates, and more with W = 800 states. Should q_c
+   (CS-14) be part of BC-1's design?
+6. **CS-13 on T.** Run it, or drop it as the follow-through's Section 8 allows?
+
+## 7. The items
+
+The item sections follow in the order they ran, each with its run, rows, wiring checks, results,
+expected directions and a closing reading. Each was written when its item finished and is kept as
+written, except that numbers found misquoted against the summaries at the close of the lane were
+corrected in place, and the CS-5 and CS-7 sections gained a note on their shared control. The
+CS-5 section's open |ΔΠ|/SD_T was later answered in the BC-a0 section.
 
 ## CS-1. The ξ tail (exploratory)
 
 **The run.**
 - `scripts/costate_exploratory.py cs-1` at `70979ee`, under the plan with amendment 1 (`320ef22`,
   CS-1's operational details, committed before any CS-1 number).
-- The 9 decision networks, 131 s on the Mac, niced, no pool.
+- The 9 decision networks, 125 s on the Mac (the stamps' start to end), niced, no pool.
 - Outputs: `outputs/costate/exploratory/cs-1/summary.json` (committed copy:
   [`costate-followups/cs-1-summary.json`](costate-followups/cs-1-summary.json)) and `rows.npz`
   (per row, local).
@@ -217,7 +653,7 @@ the later items report R²_c under the frozen calibration only.
 
 ## CS-2. The descriptives pack (exploratory)
 
-**Run.** 402 s, all 34 networks. Output: `outputs/costate/exploratory/cs-2/summary.json`
+**Run.** 381 s (the stamps' start to end), all 34 networks. Output: `outputs/costate/exploratory/cs-2/summary.json`
 (committed copy: [`costate-followups/cs-2-summary.json`](costate-followups/cs-2-summary.json)).
 **Rows.** C1's rows (λ_s 1,643 and λ_ξ 1,581 rows in the 9 decision networks), D's 477 rows, and
 for the accel term (no target) the interior.
@@ -313,7 +749,7 @@ quantiles.
 | Pair | Networks | Cells | r | p | Holm p | Null |
 |---|---|---|---|---|---|---|
 | s, G − 1 | 29 | 1,364 | 0.081 | 0.018 | 0.130 | [0.028, 0.079] |
-| s, B | 29 | 1,364 | −0.027 | 0.235 | 0.720 | [−0.042, 0.005] |
+| s, B | 29 | 1,364 | −0.027 | 0.234 | 0.720 | [−0.042, 0.005] |
 | s, entry-speed ratio − 1 | 9 | 432 | 0.109 | 0.016 | 0.130 | [−0.025, 0.103] |
 | s, brake-onset residual | 9 | 333 | −0.034 | 0.619 | 1 | [−0.127, 0.048] |
 | ξ, G − 1 | 29 | 1,364 | −0.078 | 0.127 | 0.720 | [−0.091, −0.030] |
@@ -321,7 +757,7 @@ quantiles.
 | ξ, entry-speed ratio − 1 | 9 | 432 | −0.078 | 0.165 | 0.720 | [−0.109, 0.016] |
 | ξ, brake-onset residual | 9 | 333 | 0.003 | 0.960 | 1 | [−0.042, 0.119] |
 | *With S1–S3 (descriptive):* | | | | | | |
-| s, entry-speed ratio − 1 | 12 | 576 | 0.034 | 0.158 | – | [−0.036, 0.054] |
+| s, entry-speed ratio − 1 | 12 | 576 | 0.034 | 0.157 | – | [−0.036, 0.054] |
 | s, brake-onset residual | 12 | 444 | 0.051 | 0.189 | – | [−0.051, 0.085] |
 | ξ, entry-speed ratio − 1 | 12 | 576 | −0.018 | 0.495 | – | [−0.058, 0.032] |
 | ξ, brake-onset residual | 12 | 444 | −0.047 | 0.183 | – | [−0.070, 0.069] |
@@ -338,7 +774,8 @@ braking.
 - **The nulls are not centred on 0.** The permutation keeps each geometry within its R tercile ×
   θ class block, so an association at the level of the blocks survives into the null. s with
   G − 1 has a null band of [0.028, 0.079], and its r of 0.081 lies just above it.
-- **With the specialists** every pair is smaller (|r| ≤ 0.051, p ≥ 0.16).
+- **With the specialists** the entry-speed pairs shrink (|r| 0.034 and 0.018) and the
+  brake-onset pairs stay small (|r| ≤ 0.051), though both grow; every p ≥ 0.157.
 
 **Expected direction against the result.**
 - **E3.1** ("Every |r| < 0.15, and no pair has a Holm-adjusted p ≤ 0.05"): **holds.**
@@ -419,7 +856,10 @@ at their frozen bounds and scored by raw R².
 
 The pool's columns are the median over each network's 20 controls of R²(z ⊕ control h3) −
 R²_z: the 20 pool actors for the actor, 20 random-init critics for the critic. Ranges are over
-the 9 networks.
+the 9 networks. *Note added at the close of the lane:* the two control sets give bit-identical
+h3 gains in all 36 (network, target) cells. A random-init critic and a pool actor share the
+trunk architecture and the seed, so their h3 is the same. The actor's and the critic's h3 are
+therefore compared with one shared random-feature control.
 
 **Gains beyond z, against the controls** (the trained h3's gain minus the controls' median;
 two-level CI; rank among the 21):
@@ -458,6 +898,8 @@ CIs and ranks are shown where the CI's lower end is at or above 0; bold marks a 
   (braking and corner rows included) was not re-scored here (decision #8).
 - **|ΔΠ|/SD_T** awaits BC-a0 (amendment 2). K2b was never measured for the Π targets, so how much
   unseen road moves them on these rows is not yet known.
+  - *Added at the close of the lane:* BC-a0 has since measured it. Its p90 is 0.79–1.02 on
+    approach rows and 0.96–1.78 on exit rows (BC-a0 section, 'For CS-5 and CS-14').
 
 **Expected directions against the results.**
 - **E5.1** ("Π^in and Π^out are decodable from z (R² ≥ 0.3)"): **does not hold.** Π^out is, in 9
@@ -552,7 +994,7 @@ CIs and ranks are shown where the CI's lower end is at or above 0; bold marks a 
     - The JVP matches the VJP's contraction to at most 5.6·10⁻⁸ (G2s2; tolerance 10⁻⁶), on 36 keys
       (one per unit).
     - **Descriptive.** On those 36 keys, Richardson differences of J_env at h = 10⁻³ m differ from
-      the AD value by a median of 3·10⁻⁷ relative, at most 8.7·10⁻³ (one G2s1 key). Every perturbed
+      the AD value by a median of 2·10⁻⁷ relative, at most 8.7·10⁻³ (one G2s1 key). Every perturbed
       run stays alive.
 - **No calibration but the frozen one** (CS-1's rule for later items did not fire).
 
@@ -668,7 +1110,7 @@ key-weighted.
     most 0.215).
   - On the same rows, critic–optimum is 0.068–0.350 (CI above 0 in 5 of 9) and own–optimum is
     0.049–0.390 (CI above 0 in 6 of 9).
-  - All three Spearmans are moderate (0.26–0.63).
+  - All three Spearmans are moderate (0.26–0.62).
 - **The policy's price has the optimum's shape at a smaller size.**
   - In the 6 networks where own–optimum is 0.27–0.39 with its CI above 0, the policy's price
     tracks the optimum's at least as well as the critic's derivative tracks either (in G3 and
@@ -719,7 +1161,7 @@ key-weighted.
   costate** on approach and exit rows (CS-10). This holds with 11–14 times the rows and much
   narrower CIs than the confirmatory C1-own.
 - **In 6 of 9 the policies price the inside wall roughly as the optimum does**, only smaller
-  (Spearman 0.35–0.63; calibrated R² 0.27–0.39, CI above 0). **The critics price it unlike their
+  (Spearman 0.51–0.62; calibrated R² 0.27–0.39, CI above 0). **The critics price it unlike their
   own policies in all 9** (CS-11).
 - There the networks' driving carries a smaller copy of the wall's price, and the critic's input
   gradient is what fails to express it.
@@ -784,7 +1226,10 @@ winsorised, and the frozen λ_res,k (f̂_D, k = 8) by fold. Both of ξ's are sco
 **Gains beyond the controls.** Each cell gives the statistic's range over the 9 networks: the
 trained layer's gain over z minus the median of its 20 controls' gains (random-init critics'
 same layer, or the pool actors for the actor's h3). In brackets: the networks whose two-level CI
-lies above 0 / below 0.
+lies above 0 / below 0. *Note added at the close of the lane:* as in CS-5, the random-init
+critics' h3 equals the pool actors' h3 (same trunk, same seeds; their control gains are
+bit-identical), so the critic-h3 and actor-h3 columns are contrasts against one shared
+random-feature control.
 
 | Target | Critic h1 | Critic h2 | Critic h3 | Head units | Actor h3 |
 |---|---|---|---|---|---|
@@ -1412,7 +1857,8 @@ last column is CS-11 on D (above), on D's 453–476 rows.
 - **CS-12.** `cs-12`: 50 units ((network, statistic)) on 4 workers × 2 XLA threads, niced, in
   33 min (C2 about 195 s and C2-sw about 70 s of worker time per network). The plan estimated
   45–60 min.
-- **CS-14.** `cs-14`: 15 units (blocks of at most 32 of T's keys), same pool, in 32 s.
+- **CS-14.** `cs-14`: 15 units (blocks of at most 32 of T's keys), same pool, in about 30 s (31 s
+  from the stamps' start to end; `seconds` 28.9).
 - **CS-15.** `cs-15`: 36 units ((network, part)), same pool, in 32 min (about 200–220 s of worker
   time per unit). The plan estimated about 1 h.
 - **Development runs.** Before the canonical runs, partial runs were written outside
@@ -1815,7 +2261,7 @@ before it, so these shares are lower bounds.
   (7 rows on 6 keys), U is 2.8, 0.13, 0.14 and 1.19.
 - **The other λ components** (per state, U). Braking: λ_vy 0.10, λ_r 0.02, λ_δ 0.24 and λ_pedal
   0.05. Corner: 0.47, 0.11, 0.0003 and 0.14.
-- **The bias part dominates.** U_bias is 70–85% of U on every K_P component and phase. So the
+- **The bias part dominates.** U_bias is 70–83% of U on every K_P component and phase. So the
   continuations move λ mostly the same way: relative to the road the grammar generates, the
   stored straight is atypical. What remains once a state's preview is fixed is the
   continuations' spread, U_spread. It is 0.02–0.04 of the phase variance, except for braking λ_s
@@ -1831,7 +2277,7 @@ the interior rows CS-5 and CS-14 score.
   about one SD_T with the road beyond the preview, on the very rows CS-5 scored. This is the
   caveat CS-5 recorded ("Π's sensitivity to unseen road is unmeasured"), now measured: it is
   large.
-- **σ.** |Δσ^ped|/SD_T has p90s of 0.58 on approach and 0.36 on exit. σ^steer does not move (p90
+- **σ.** |Δσ^ped|/SD_T has p90s of 0.57 on approach and 0.36 on exit. σ^steer does not move (p90
   about 10⁻¹⁰).
 - **Where U is not read.** U is not reported where T's phase variance is near zero: Π^in and
   Π^slip on corner and exit rows (variance ≤ 3·10⁻⁵), and σ^steer outside the corner phase
@@ -1858,18 +2304,20 @@ the interior rows CS-5 and CS-14 score.
   lower bound.
 - **Cost.** Option (ii) is costed in the plan at 2,298 states × M draws at 60–75 s each. The
   per-state re-solves here took a median of 175 s at W = 400, on a shared machine. At W = 800
-  they took 984 s, and 61% failed at IPOPT's iteration cap. At these rates option (ii) needs
-  roughly 2.5–3 times the plan's 150–380 CPU-h. Its W = 800 states also need a solver that
+  they took 984 s, and 61% failed (20 of the 22 at IPOPT's iteration cap). At the W = 400 rate
+  option (ii) needs about 2.3–2.9 times the plan's 150–380 CPU-h (175 s against 60–75 s), and
+  more with W = 800 states. Its W = 800 states also need a solver that
   reaches full amplitude.
 - **The pilot's limits.**
-  - It rests on 26 keys, with 1–2 states on each, and 3 continuations per state.
+  - Its shares rest on 21 keys and 43 states (26 keys before the drops), with 1–2 states on each
+    key and 3 continuations per state.
   - It has one W = 800 key.
   - The dropped, mostly tight-corner keys would probably raise the shares, not lower them.
 
 ### What BC-a0 says (exploratory, targets only)
 
 - **On braking and corner rows, the existing λ is not a target BC-1 can pre-register against
-  with a bound of 0.1.** Realistic road beyond the preview moves it by 9–100% of its phase
+  with a bound of 0.1.** Realistic road beyond the preview moves it by 9–103% of its phase
   variance (per state). On corner rows it moves λ about twice as much as K2b's slow second corner
   did. The biggest moves are λ_vx in the corner (U ≈ 1) and λ_s in braking (U ≈ 0.75).
 - **Most of the movement is a common shift, not noise.** The stored straight continuation is
@@ -1880,3 +2328,69 @@ the interior rows CS-5 and CS-14 score.
 - **The Π targets are also sensitive on approach and exit rows** (p90 about 0.8–1.8 SD_T). That
   qualifies CS-5's and W1's Π comparisons; σ^ped's is smaller (0.4–0.6).
 - No network was computed or read. None of this changes a decision of `costate-prereg-v1`.
+
+## Appendix A. Sources of the key numbers
+
+Each `<item>` file is `outputs/costate/exploratory/<item>/summary.json` (local, stamped), and
+each has a committed, byte-identical copy under [`costate-followups/`](costate-followups/). In
+that folder the CS-9 stage records are named `cs-9-build.json`, `cs-9-k2b.json` and
+`cs-9-networks.json`. The local `cs10-iii.json`, `cs11-n.json` and `cs13-n.json` are committed as
+`cs-10-iii-summary.json`, `cs-11-n-summary.json` and `cs-13-n-summary.json`. Every file carries
+its stamp under `provenance`, and its expected directions under `expected`. `<run>` is a network's
+label, G1 to G3s2 for the 9 and the run path for the others, except in `cs-2`, which keys every
+network, the 9 included, by its run path (the label is under `.label`).
+
+| Quantity | File | JSON path |
+|---|---|---|
+| ξ tail: where it sits, flags, enrichment | `cs-1` | `networks.<run>.tail`, `.where` |
+| ξ tail: critic against map, channel groups | `cs-1` | `networks.<run>.critic_vs_map`; `groups` |
+| Frozen, Huber and rank calibrations; plants | `cs-1` | `networks.<run>.calibrations`; `plants`, `plant_interval` |
+| The rule for later items | `cs-1` | `rule_for_later_items` |
+| Heads' ρ and C1, winsorisation, floor, folds | `cs-2` | `networks.<run>.heads`, `.reliability`, `.components`, `.folds_mean` |
+| C1 on D; accel share | `cs-2` | `networks.<run>.c1_on_d`; `networks.<run>.accel` |
+| C3-int pairs (r, p, Holm p, null) | `cs-3` | `pairs.<component>~<measure>`; `descriptive_with_specialists` |
+| R²_z, R²_MLP, ΔC1 | `cs-4` | `networks.<run>.components`, `.mean`, `.c1_stat` |
+| Π decodability and layer gains; W1 on Π^in | `cs-5` | `networks.<run>.targets`; `networks.<run>.w1_pi_in`; `controls` |
+| \|ΔΠ\|/SD_T (left to BC-a0) | `cs-5`; `bc-a0` | `delta_pi_sd_t`; `per_key.<phase>.targets` |
+| C1 over the 16 snapshots; trends | `cs-6` | `networks.<run>.snapshots`; `trends.<stat,r2c_s,r2c_xi,spearman_s,spearman_xi>` |
+| Critic-layer, head-unit and actor-h3 probes | `cs-7` | `networks.<run>.components`, `.mean_over_s_xi`; `controls` |
+| C2-sw random-only null (G1's scaling, own scaling) | `cs-8` | `a_b.null_g1`, `a_b.null_own` |
+| C2-sw on approach and exit rows; on σ_res | `cs-8` | `a_b.networks.<run>.sigma`, `.res`, `.share_of_g1_hosts_at_or_above`; `sigma_res_share` |
+| Decoy choice and C2 under decoy 2 | `cs-8` | `c.tried`, `c.chosen`, `c.thresholds`; `c.networks.<run>.chosen`, `.frozen`, `.ci_width` |
+| N: keys, rows, descriptives | `cs-9-build.json` | `keys`, `n_rows`, `k0_dropped`, `descriptives` |
+| K2b on N | `cs-9-k2b.json` | `rule`, `excluded_N`, `excluded_union`, `E9.4` |
+| C1, C2 and C2-sw on N | `cs-9` | `agents.<run>.C1`, `.C2`, `["C2-sw"]`, `.residual_shares`, `.confirmatory_T` |
+| C1-own on own-run states | `cs-10` | `networks.<run>.c1_own`, `.confirmatory`, `.winsorised`, `.held`, `.runs`, `.xi_rows_vs_T` |
+| C1-own on N | `cs-10-iii-summary.json` | `agents.<run>.c1_own`, `.rows`, `.confirmatory` |
+| Π^{in,own} on D | `cs-11` | `networks.<run>.common`, `.kept_H`, `.kept_W`, `.B` |
+| Π^{in,own} on N | `cs-11-n-summary.json` | `agents.<run>.common` |
+| C2 and C2-sw beyond the 9 | `cs-12` | `networks.<run>.C2`, `["C2-sw"]`; `decision_networks_cs8` |
+| C2-pairs on N | `cs-13-n-summary.json` | `networks.<run>`; `pair_tolerances` |
+| q_c's window rule and stop rule | `cs-14` | `by_phase`, `rows_pass`, `stop_rule`, `decision` |
+| FWL, actor h1 and h2, C2 on D | `cs-15` | `networks.<run>.h3`, `.h1`, `.h2`, `.D`, `.confirmatory_c2` |
+| BC-a0 per-state and per-key shares, p90 | `bc-a0` | `per_state.<phase>.targets`, `per_key.<phase>.targets`; `k2b_frozen_p90` |
+| BC-a0 failures, route, cost | `bc-a0` | `failed`, `route`, `unit_seconds` |
+| Confirmatory numbers quoted for comparison | `outputs/costate/analyse/decisions.json` | as in [`costate.md`](costate.md) Appendix A |
+
+## Appendix B. The record
+
+Each amendment was committed on its own, before any number it governs. Amendments 4–6 and 12–14
+followed stopped or development runs, and each records what was seen.
+
+| Commit | What |
+|---|---|
+| `eaf1e80` | The plan (CS-0), before any computation |
+| `e1bd601` | The exploratory scaffold |
+| `320ef22` → `70979ee` → `0f7f616` | Amendment 1; CS-1 code and tests; CS-1 results |
+| `f95456f` → `b62ead3` → `87bb607` | Amendment 2; CS-2 to CS-5 code and tests; results |
+| `c9b79db` → `705c5c2` | Amendment 3; CS-10 (ii) and CS-11 on D code and tests |
+| `60fe838`, `1c47451`, `d06f28e` (with `6b3ffe2`, `e175355`, `b340a50`) → `fb5f704` | Amendments 4–6 (CS-11's wiring tolerances); CS-10 and CS-11 results |
+| `3d41566`, `79c19d6` → `2056a3d` → `d562923` | Amendments 7 and 8; CS-7 and CS-8 code and tests; results |
+| `4541068` → `6563b28`, `950918c` → `b737815` | Amendment 9; CS-9 code, tests and the networks-stage fix; results |
+| `5cf5d2d` → `937b712` → `df7a806` | Amendment 10; CS-6, CS-12, CS-14 and CS-15 code and tests; results |
+| `5491194` → `296bcb3`; `f0c8d7c`, `f21afaf` (with `f478ebd`), `bf80190` (with `8f2ad68`) → `bf9b9a1` | Amendments 11–14; BC-a0 code, tests, logs and unit cache; results |
+
+The canonical runs took about 6.7 h of wall time for the CS items and 10.6 h for BC-a0, on the
+Mac, with pools of 4 workers × 2 threads, niced, beside another workflow. That excludes
+development runs and the runs that stopped and wrote nothing. The plan's estimate was 15–20 h.
+Nothing was pushed.
