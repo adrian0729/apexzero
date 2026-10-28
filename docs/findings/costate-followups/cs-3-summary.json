@@ -1,0 +1,1913 @@
+{
+ "blocks": [
+  0,
+  1,
+  0,
+  1,
+  0,
+  1,
+  0,
+  2,
+  1,
+  0,
+  1,
+  0,
+  1,
+  0,
+  1,
+  0,
+  4,
+  5,
+  3,
+  5,
+  4,
+  3,
+  4,
+  3,
+  4,
+  5,
+  3,
+  5,
+  4,
+  3,
+  4,
+  3,
+  7,
+  6,
+  7,
+  8,
+  6,
+  8,
+  7,
+  6,
+  7,
+  6,
+  6,
+  8,
+  6,
+  6,
+  6,
+  6
+ ],
+ "definitions": "plan Section 4 CS-3 and amendment 2 items 1 and 3",
+ "descriptive_with_specialists": {
+  "s~brake_onset_residual+S": {
+   "cells": 444,
+   "component": "s",
+   "measure": "brake_onset_residual",
+   "n_perm": 10000,
+   "networks": 12,
+   "null_q": [
+    -0.0508222746705257,
+    0.08532583044401826
+   ],
+   "null_sd": 0.03486009760154905,
+   "p": 0.18888111188881113,
+   "r": 0.05124585381637829
+  },
+  "s~entry_speed_ratio_minus_1+S": {
+   "cells": 576,
+   "component": "s",
+   "measure": "entry_speed_ratio_minus_1",
+   "n_perm": 10000,
+   "networks": 12,
+   "null_q": [
+    -0.03607732877457822,
+    0.053956848449057584
+   ],
+   "null_sd": 0.02275819165298075,
+   "p": 0.15748425157484253,
+   "r": 0.03430842884211623
+  },
+  "xi~brake_onset_residual+S": {
+   "cells": 444,
+   "component": "xi",
+   "measure": "brake_onset_residual",
+   "n_perm": 10000,
+   "networks": 12,
+   "null_q": [
+    -0.06958432018407336,
+    0.06854262116709019
+   ],
+   "null_sd": 0.03547367905861177,
+   "p": 0.18288171182881713,
+   "r": -0.047375217519966095
+  },
+  "xi~entry_speed_ratio_minus_1+S": {
+   "cells": 576,
+   "component": "xi",
+   "measure": "entry_speed_ratio_minus_1",
+   "n_perm": 10000,
+   "networks": 12,
+   "null_q": [
+    -0.05772871144014614,
+    0.03209255966059114
+   ],
+   "null_sd": 0.023102915699784704,
+   "p": 0.49455054494550543,
+   "r": -0.018330992930323756
+  }
+ },
+ "expected": {
+  "E3.1": {
+   "all_abs_r_below_0.15": true,
+   "holds": true,
+   "max_abs_r": 0.1088097833785188,
+   "none_holm_at_or_below_0.05": true
+  }
+ },
+ "geometries": [
+  [
+   6.0,
+   90.0
+  ],
+  [
+   6.0,
+   180.0
+  ],
+  [
+   7.5,
+   90.0
+  ],
+  [
+   7.5,
+   180.0
+  ],
+  [
+   8.4,
+   90.0
+  ],
+  [
+   8.4,
+   180.0
+  ],
+  [
+   9.4,
+   90.0
+  ],
+  [
+   9.4,
+   135.0
+  ],
+  [
+   9.4,
+   180.0
+  ],
+  [
+   10.5,
+   90.0
+  ],
+  [
+   10.5,
+   180.0
+  ],
+  [
+   11.7,
+   90.0
+  ],
+  [
+   11.7,
+   180.0
+  ],
+  [
+   13.0,
+   90.0
+  ],
+  [
+   13.0,
+   180.0
+  ],
+  [
+   13.1,
+   90.0
+  ],
+  [
+   13.1,
+   180.0
+  ],
+  [
+   14.6,
+   45.0
+  ],
+  [
+   14.6,
+   90.0
+  ],
+  [
+   14.6,
+   135.0
+  ],
+  [
+   14.6,
+   180.0
+  ],
+  [
+   16.4,
+   90.0
+  ],
+  [
+   16.4,
+   180.0
+  ],
+  [
+   18.3,
+   90.0
+  ],
+  [
+   18.3,
+   180.0
+  ],
+  [
+   22.9,
+   45.0
+  ],
+  [
+   22.9,
+   90.0
+  ],
+  [
+   22.9,
+   135.0
+  ],
+  [
+   22.9,
+   180.0
+  ],
+  [
+   28.6,
+   90.0
+  ],
+  [
+   28.6,
+   180.0
+  ],
+  [
+   35.8,
+   90.0
+  ],
+  [
+   35.8,
+   180.0
+  ],
+  [
+   40.0,
+   90.0
+  ],
+  [
+   40.0,
+   180.0
+  ],
+  [
+   44.7,
+   45.0
+  ],
+  [
+   44.7,
+   90.0
+  ],
+  [
+   44.7,
+   135.0
+  ],
+  [
+   44.7,
+   180.0
+  ],
+  [
+   55.9,
+   90.0
+  ],
+  [
+   55.9,
+   180.0
+  ],
+  [
+   69.8,
+   90.0
+  ],
+  [
+   87.3,
+   90.0
+  ],
+  [
+   100.0,
+   60.0
+  ],
+  [
+   100.0,
+   90.0
+  ],
+  [
+   109.0,
+   90.0
+  ],
+  [
+   171.0,
+   90.0
+  ],
+  [
+   300.0,
+   90.0
+  ]
+ ],
+ "item": "CS-3",
+ "label": "exploratory",
+ "n_perm": 10000,
+ "networks": [
+  "runs/dr-pilot-200M",
+  "runs/dr-pilot-200M-s1",
+  "runs/dr-pilot-200M-s2",
+  "runs/dr-pilot-200M-s3",
+  "runs/dr-pilot-200M-s4",
+  "runs/dr-pilot-v2-tilt30",
+  "runs/dr-pilot-v2-tilt30-s1",
+  "runs/dr-pilot-v2-tilt30-s2",
+  "runs/dr-pilot-v2-tilt30-s3",
+  "runs/dr-pilot-v2-tilt30-s4",
+  "runs/dr-pilot-v3-tilt50a2",
+  "runs/dr-pilot-v3-tilt50a2-s1",
+  "runs/dr-pilot-v3-tilt50a2-s2",
+  "runs/dr-pilot-v3-tilt50a2-s3",
+  "runs/dr-pilot-v3-tilt50a2-s4",
+  "runs/dr-realw-v1-s0",
+  "runs/dr-realw-v1-s1",
+  "runs/dr-realw-v1-s2",
+  "runs/dr-realw-v1-s3",
+  "runs/dr-realw-v3-s0",
+  "runs/dr-realw-v3-s1",
+  "runs/dr-realw-v3-s2",
+  "runs/dr-realw-v3-s3",
+  "runs/dr-realw-loo-f1-s0",
+  "runs/dr-realw-loo-f1-s1",
+  "runs/dr-realw-loo-f1-s2",
+  "runs/dr-realw-loo-f1-s3",
+  "runs/dr-realw-loo-f2-s0",
+  "runs/dr-realw-loo-f2-s1",
+  "runs/dr-realw-loo-f2-s2",
+  "runs/dr-realw-loo-f2-s3",
+  "S1",
+  "S2",
+  "S3"
+ ],
+ "networks_per_measure": {
+  "B": [
+   "runs/dr-pilot-200M",
+   "runs/dr-pilot-200M-s1",
+   "runs/dr-pilot-200M-s2",
+   "runs/dr-pilot-200M-s3",
+   "runs/dr-pilot-200M-s4",
+   "runs/dr-pilot-v2-tilt30",
+   "runs/dr-pilot-v2-tilt30-s1",
+   "runs/dr-pilot-v2-tilt30-s2",
+   "runs/dr-pilot-v3-tilt50a2",
+   "runs/dr-pilot-v3-tilt50a2-s1",
+   "runs/dr-pilot-v3-tilt50a2-s2",
+   "runs/dr-pilot-v3-tilt50a2-s3",
+   "runs/dr-pilot-v3-tilt50a2-s4",
+   "runs/dr-realw-v1-s0",
+   "runs/dr-realw-v1-s1",
+   "runs/dr-realw-v1-s2",
+   "runs/dr-realw-v1-s3",
+   "runs/dr-realw-v3-s0",
+   "runs/dr-realw-v3-s1",
+   "runs/dr-realw-v3-s2",
+   "runs/dr-realw-v3-s3",
+   "runs/dr-realw-loo-f1-s0",
+   "runs/dr-realw-loo-f1-s1",
+   "runs/dr-realw-loo-f1-s2",
+   "runs/dr-realw-loo-f1-s3",
+   "runs/dr-realw-loo-f2-s0",
+   "runs/dr-realw-loo-f2-s1",
+   "runs/dr-realw-loo-f2-s2",
+   "runs/dr-realw-loo-f2-s3"
+  ],
+  "G_minus_1": [
+   "runs/dr-pilot-200M",
+   "runs/dr-pilot-200M-s1",
+   "runs/dr-pilot-200M-s2",
+   "runs/dr-pilot-200M-s3",
+   "runs/dr-pilot-200M-s4",
+   "runs/dr-pilot-v2-tilt30",
+   "runs/dr-pilot-v2-tilt30-s1",
+   "runs/dr-pilot-v2-tilt30-s2",
+   "runs/dr-pilot-v3-tilt50a2",
+   "runs/dr-pilot-v3-tilt50a2-s1",
+   "runs/dr-pilot-v3-tilt50a2-s2",
+   "runs/dr-pilot-v3-tilt50a2-s3",
+   "runs/dr-pilot-v3-tilt50a2-s4",
+   "runs/dr-realw-v1-s0",
+   "runs/dr-realw-v1-s1",
+   "runs/dr-realw-v1-s2",
+   "runs/dr-realw-v1-s3",
+   "runs/dr-realw-v3-s0",
+   "runs/dr-realw-v3-s1",
+   "runs/dr-realw-v3-s2",
+   "runs/dr-realw-v3-s3",
+   "runs/dr-realw-loo-f1-s0",
+   "runs/dr-realw-loo-f1-s1",
+   "runs/dr-realw-loo-f1-s2",
+   "runs/dr-realw-loo-f1-s3",
+   "runs/dr-realw-loo-f2-s0",
+   "runs/dr-realw-loo-f2-s1",
+   "runs/dr-realw-loo-f2-s2",
+   "runs/dr-realw-loo-f2-s3"
+  ],
+  "brake_onset_residual": [
+   "runs/dr-pilot-200M",
+   "runs/dr-pilot-200M-s1",
+   "runs/dr-pilot-200M-s2",
+   "runs/dr-pilot-v2-tilt30",
+   "runs/dr-pilot-v2-tilt30-s1",
+   "runs/dr-pilot-v2-tilt30-s2",
+   "runs/dr-pilot-v3-tilt50a2",
+   "runs/dr-pilot-v3-tilt50a2-s1",
+   "runs/dr-pilot-v3-tilt50a2-s2",
+   "S1",
+   "S2",
+   "S3"
+  ],
+  "entry_speed_ratio_minus_1": [
+   "runs/dr-pilot-200M",
+   "runs/dr-pilot-200M-s1",
+   "runs/dr-pilot-200M-s2",
+   "runs/dr-pilot-v2-tilt30",
+   "runs/dr-pilot-v2-tilt30-s1",
+   "runs/dr-pilot-v2-tilt30-s2",
+   "runs/dr-pilot-v3-tilt50a2",
+   "runs/dr-pilot-v3-tilt50a2-s1",
+   "runs/dr-pilot-v3-tilt50a2-s2",
+   "S1",
+   "S2",
+   "S3"
+  ]
+ },
+ "pairs": {
+  "s~B": {
+   "cells": 1364,
+   "component": "s",
+   "measure": "B",
+   "n_perm": 10000,
+   "networks": 29,
+   "null_q": [
+    -0.04160878925795933,
+    0.004529078208336595
+   ],
+   "null_sd": 0.01177806617242629,
+   "p": 0.23447655234476553,
+   "p_holm": 0.7199280071992801,
+   "r": -0.02714868882202819
+  },
+  "s~G_minus_1": {
+   "cells": 1364,
+   "component": "s",
+   "measure": "G_minus_1",
+   "n_perm": 10000,
+   "networks": 29,
+   "null_q": [
+    0.027796692718971998,
+    0.07945071877229602
+   ],
+   "null_sd": 0.013258471785333034,
+   "p": 0.0178982101789821,
+   "p_holm": 0.13038696130386962,
+   "r": 0.08130464007612974
+  },
+  "s~brake_onset_residual": {
+   "cells": 333,
+   "component": "s",
+   "measure": "brake_onset_residual",
+   "n_perm": 10000,
+   "networks": 9,
+   "null_q": [
+    -0.12688289838647743,
+    0.04815473847697442
+   ],
+   "null_sd": 0.04500883532205225,
+   "p": 0.6185381461853815,
+   "p_holm": 1.0,
+   "r": -0.033718624596907165
+  },
+  "s~entry_speed_ratio_minus_1": {
+   "cells": 432,
+   "component": "s",
+   "measure": "entry_speed_ratio_minus_1",
+   "n_perm": 10000,
+   "networks": 9,
+   "null_q": [
+    -0.02457520589243616,
+    0.10277645202741865
+   ],
+   "null_sd": 0.032279995661233775,
+   "p": 0.016298370162983702,
+   "p_holm": 0.13038696130386962,
+   "r": 0.1088097833785188
+  },
+  "xi~B": {
+   "cells": 1364,
+   "component": "xi",
+   "measure": "B",
+   "n_perm": 10000,
+   "networks": 29,
+   "null_q": [
+    -0.010079780436028663,
+    0.04304403370263723
+   ],
+   "null_sd": 0.013500612624765124,
+   "p": 0.11998800119988001,
+   "p_holm": 0.7199280071992801,
+   "r": 0.03282537188505588
+  },
+  "xi~G_minus_1": {
+   "cells": 1364,
+   "component": "xi",
+   "measure": "G_minus_1",
+   "n_perm": 10000,
+   "networks": 29,
+   "null_q": [
+    -0.09077809885359375,
+    -0.030129521091651228
+   ],
+   "null_sd": 0.015512359069720209,
+   "p": 0.12708729127087293,
+   "p_holm": 0.7199280071992801,
+   "r": -0.07769076113206726
+  },
+  "xi~brake_onset_residual": {
+   "cells": 333,
+   "component": "xi",
+   "measure": "brake_onset_residual",
+   "n_perm": 10000,
+   "networks": 9,
+   "null_q": [
+    -0.04203266548185863,
+    0.11902746318596877
+   ],
+   "null_sd": 0.04097149039702967,
+   "p": 0.9604039596040396,
+   "p_holm": 1.0,
+   "r": 0.002863326165282001
+  },
+  "xi~entry_speed_ratio_minus_1": {
+   "cells": 432,
+   "component": "xi",
+   "measure": "entry_speed_ratio_minus_1",
+   "n_perm": 10000,
+   "networks": 9,
+   "null_q": [
+    -0.10908568652812654,
+    0.015952132391059637
+   ],
+   "null_sd": 0.032056855370158094,
+   "p": 0.16498350164983502,
+   "p_holm": 0.7199280071992801,
+   "r": -0.0776911012362267
+  }
+ },
+ "provenance": {
+  "argv": [
+   "scripts/costate_exploratory.py",
+   "cs-3"
+  ],
+  "changed_vs_head": [],
+  "code_hash": "d22e670cd059063af38c1af74c039a0ae11933b50443ab40f14256bb49dbfff3",
+  "content_sha256": "f8ec2105e4df34c9d1886e13b71627604d1c79dc6246ab50960bdd7b045bd63b",
+  "decisions_sha256": "8119f91f7c1a24186fad011a83ef931e441626d7493355272b762e8aa97b0ee4",
+  "end": "2026-10-25T03:58:07",
+  "environment": {
+   "machine": "arm64",
+   "packages": {
+    "casadi": "3.8.1",
+    "flax": "0.12.10",
+    "jax": "0.11.2",
+    "jaxlib": "0.11.2",
+    "numpy": "2.5.4",
+    "optax": "0.2.8",
+    "scipy": "1.18.1"
+   },
+   "python": "3.12.4",
+   "system": "Darwin",
+   "uv_lock_sha256": "ee7384209ddf07af796eb4c2032aba6365f0a008eea32575af389cfcc16dd679"
+  },
+  "files": {},
+  "head": "b62ead3c0c9e0ef11e1d6ff85759f560e38ead4a",
+  "inputs": {
+   "outputs/costate/inputs/summary.json": "be60ebe934825c2fc8477e11c14f663d79cf7c77447137f01f77d1679c25ed25",
+   "outputs/costate/inputs/world.npz": "b5130c418642eed1c2a90030c972ce7df67d6ceea2eded56320842d039dd294f",
+   "outputs/costate/post/critic/runs_dr-pilot-200M-s1.k3.json": "a00c6e22fddf7ef47d7ccfb450b5a4cc9dfbcf0e1661394c2e9a6b5e50d7e49e",
+   "outputs/costate/post/critic/runs_dr-pilot-200M-s1.npz": "e948850ea00e8c576ec9f267880d4bcdd869b7e191bcb74115a6e08cc3be75b7",
+   "outputs/costate/post/critic/runs_dr-pilot-200M-s2.k3.json": "a6676d9c578d049f384b584272dcd93b62e97f4fff4e273eeaeb465c053ec8b5",
+   "outputs/costate/post/critic/runs_dr-pilot-200M-s2.npz": "5ccfd51fb3e971330bc2c2a53eefa165b4122a66eba4a16166c8b7261c83b778",
+   "outputs/costate/post/critic/runs_dr-pilot-200M-s3.k3.json": "1cb6c8dc2d6a1eaa4410bbbc5b04667b8f59de474eba6debb40cf85f6dea620b",
+   "outputs/costate/post/critic/runs_dr-pilot-200M-s3.npz": "30ef8be682e568d5e8b2a0749a547b56ef2c5905cef198db20f9623ae0346a79",
+   "outputs/costate/post/critic/runs_dr-pilot-200M-s4.k3.json": "b4d77be85de90e473da4b42a3a91a72b991ef1165347191b64f451d7ce20f46f",
+   "outputs/costate/post/critic/runs_dr-pilot-200M-s4.npz": "0f3c9b33f3e841c8f6e572dbc17a48a20096e778036ace3d5a2110bb10a2fc7f",
+   "outputs/costate/post/critic/runs_dr-pilot-200M.k3.json": "18b28d342b35fe62b76160648112488f5ccfd9f43ba0cf64c34ff1201e86146a",
+   "outputs/costate/post/critic/runs_dr-pilot-200M.npz": "da9b4c313487c1a494ddae3a999b700179f278c0c7e7e7f79c54bcdd801ca867",
+   "outputs/costate/post/critic/runs_dr-pilot-v2-tilt30-s1.k3.json": "e5ec4853a23eac344cb8be5e732913d3921d670723249c0bd63af9c473b44bae",
+   "outputs/costate/post/critic/runs_dr-pilot-v2-tilt30-s1.npz": "bd5471f48013ec9792d449990de65eed5b0d9ff3b260776fe960f3bd7f77e07e",
+   "outputs/costate/post/critic/runs_dr-pilot-v2-tilt30-s2.k3.json": "80def364d6cdb6db40a879fa94323a05d5ccdc5f5d2e957d0ca394f1ce9209c2",
+   "outputs/costate/post/critic/runs_dr-pilot-v2-tilt30-s2.npz": "328a1159533130ae658cc5ef9163511d6cbe61ff45fa9a2095450de8a209dcaa",
+   "outputs/costate/post/critic/runs_dr-pilot-v2-tilt30-s3.k3.json": "484c6b95eecbb8dd9f9594058c7947941300b76fe3c8e8ddd3d6485028aa7256",
+   "outputs/costate/post/critic/runs_dr-pilot-v2-tilt30-s3.npz": "57c78dc35cf15badc6e7f58d54c11fa4090774bb4c9015c797f4468a8c7912bc",
+   "outputs/costate/post/critic/runs_dr-pilot-v2-tilt30-s4.k3.json": "ff101679bb6727a41558cc1466859d2880e57c837658a7dc1891561566dc02d5",
+   "outputs/costate/post/critic/runs_dr-pilot-v2-tilt30-s4.npz": "22ca4fd8dbfe386cd90da1dd225db8cacbcee68810beb3999f3bf161f8e88b77",
+   "outputs/costate/post/critic/runs_dr-pilot-v2-tilt30.k3.json": "a3084df425015b632eb701f6c19efeffb201039ec98394173e639749e52e0ed2",
+   "outputs/costate/post/critic/runs_dr-pilot-v2-tilt30.npz": "82752d10b3f8c47ab8b0b4621e25dae821ff30125d7a4e88aeeaf336c0c050fc",
+   "outputs/costate/post/critic/runs_dr-pilot-v3-tilt50a2-s1.k3.json": "095972326a9418ddb4df78e6518f2892a9f4c8119174435dafc2602bc3664278",
+   "outputs/costate/post/critic/runs_dr-pilot-v3-tilt50a2-s1.npz": "ac45044ed5e8de46d3543ec091cd97f6eb48cf26b0688d0e6bf2616659014de9",
+   "outputs/costate/post/critic/runs_dr-pilot-v3-tilt50a2-s2.k3.json": "93cc1391aa7e4d1010de9acb91ea7029713fa0ab1e5e5e35c7790307c4865a43",
+   "outputs/costate/post/critic/runs_dr-pilot-v3-tilt50a2-s2.npz": "e79e40b1af8a70f451232f7a62e7f17a2c0467feb384f915b5301c760a15afdf",
+   "outputs/costate/post/critic/runs_dr-pilot-v3-tilt50a2-s3.k3.json": "70b9f6cd2f6794a1e3d95feebd50abd8c3997a0207bc21a27470829904c24ced",
+   "outputs/costate/post/critic/runs_dr-pilot-v3-tilt50a2-s3.npz": "34c02a0ccb8b8615d0efce36de7c3cdfabd6927e318e1b14a14ba8d0d60d7c1d",
+   "outputs/costate/post/critic/runs_dr-pilot-v3-tilt50a2-s4.k3.json": "89fbfd0ac7c936398d45905bf1c576e338f94b3f932e0f6014ec9205f7a9ecf5",
+   "outputs/costate/post/critic/runs_dr-pilot-v3-tilt50a2-s4.npz": "10a0ccfae59fe833b5fd9e40c700617a5ead1bb08fc46d51b52d800cbb8b122b",
+   "outputs/costate/post/critic/runs_dr-pilot-v3-tilt50a2.k3.json": "e4368a251ceb05c1af65eba154cd750db85692c5c825b3c5da881755330975f8",
+   "outputs/costate/post/critic/runs_dr-pilot-v3-tilt50a2.npz": "8dca6d353ce39948beb8805db2c80a887eef49975ca37ac78db96cae99a2eab6",
+   "outputs/costate/post/critic/runs_dr-realw-loo-f1-s0.k3.json": "e93126fc7857fe8005f2cfa03a1b6c3b016b2d7fb1c1ab9ca05b71e493327ad5",
+   "outputs/costate/post/critic/runs_dr-realw-loo-f1-s0.npz": "dd8dc5aef0f306dcb21c896382fe2718efe04f16ef31de5c97cc08189085a194",
+   "outputs/costate/post/critic/runs_dr-realw-loo-f1-s1.k3.json": "ca4d8d7b2c09b43580d8d56078ff9e905945003ff348a77eaceb2b227709748b",
+   "outputs/costate/post/critic/runs_dr-realw-loo-f1-s1.npz": "564e8d9b8c6c45d36c3d52b008ba1a41d0912c5aac0f294cc1a0edd34a2facb5",
+   "outputs/costate/post/critic/runs_dr-realw-loo-f1-s2.k3.json": "16fe9fda7de22940c15f81f278bdcece04cf4c5fff19918527e8a159da4153b2",
+   "outputs/costate/post/critic/runs_dr-realw-loo-f1-s2.npz": "ab8d5011204e2b9e8c0dc177c2b8aceca354450f9b53b0536176c86804e2d645",
+   "outputs/costate/post/critic/runs_dr-realw-loo-f1-s3.k3.json": "785528b2b22d4888b9ad8e79e5ee4aeeebc74d101053d1f12ed205b019288bdb",
+   "outputs/costate/post/critic/runs_dr-realw-loo-f1-s3.npz": "faf6f9ce6ffd67b89e375db5e2a93703dd045d2cfe68ce63693fc9094a509dd1",
+   "outputs/costate/post/critic/runs_dr-realw-loo-f2-s0.k3.json": "8fd5f167750f9f8fee17c21bcc06a4548ad899fbe340694d3a10093f4dc6be22",
+   "outputs/costate/post/critic/runs_dr-realw-loo-f2-s0.npz": "4fae5aa0a881274051695ce2435a40c1790d7c0809e64fdc0c6ff0a9fe24549a",
+   "outputs/costate/post/critic/runs_dr-realw-loo-f2-s1.k3.json": "5d0064d4602aa3855785ffcc3cf67886de69c16c8aa3cbb6ddd04ebd3c385601",
+   "outputs/costate/post/critic/runs_dr-realw-loo-f2-s1.npz": "85dfb81db32dc8395b1689c3d9e1276b41dc0be4d15b52d89ecb560a94166c5d",
+   "outputs/costate/post/critic/runs_dr-realw-loo-f2-s2.k3.json": "7bcb152cea6f9bcba5dae2981bd97fcee79a2cde5c9bb9817ba528d581d9d4bb",
+   "outputs/costate/post/critic/runs_dr-realw-loo-f2-s2.npz": "ed5b7d1ba915cde17c7a6a7ee16148056e4dfa6e726350339c811b5e07eb3c71",
+   "outputs/costate/post/critic/runs_dr-realw-loo-f2-s3.k3.json": "ff1917909aa38b11312dc7aa3c6abde8fc7ddf16892f46a478a6f38e6036832d",
+   "outputs/costate/post/critic/runs_dr-realw-loo-f2-s3.npz": "f9ce38c1417280b5af074ee8359d1ee3106d45efefdcfdbb70195972348fd10e",
+   "outputs/costate/post/critic/runs_dr-realw-v1-s0.k3.json": "8f9ac301acae18f43c80a5ff1083c228b7b554ebd7e99ab135a2dae6ae6035f5",
+   "outputs/costate/post/critic/runs_dr-realw-v1-s0.npz": "fe0a1998c32b2f3795208a86a6611fdf9b52ffea3b8cc002232689ee27689b3f",
+   "outputs/costate/post/critic/runs_dr-realw-v1-s1.k3.json": "93e073877a26c0810093430d17be997980f034a759c0c90865fe80ef7a870504",
+   "outputs/costate/post/critic/runs_dr-realw-v1-s1.npz": "e98a29b7f5ddb2573fe35287ac1c044fc4b8d72464ae112a2511563fb94e7ad6",
+   "outputs/costate/post/critic/runs_dr-realw-v1-s2.k3.json": "34f189693a55c90934b44898c775035adcc7bbb8ef4af9e1971cd76dae9e50c5",
+   "outputs/costate/post/critic/runs_dr-realw-v1-s2.npz": "56e409f39eeadd90de40d8494007805cac8479fb96ab6affe74f9b28bbb1762b",
+   "outputs/costate/post/critic/runs_dr-realw-v1-s3.k3.json": "0150d3d92d38be0ca8158f8f58aae6364a77b8842bc25b10cf43e666b4b7a63e",
+   "outputs/costate/post/critic/runs_dr-realw-v1-s3.npz": "befc54e6d518bc095a404cef136f3d9e2ef1deebd57ffd644ed21ee138f1164d",
+   "outputs/costate/post/critic/runs_dr-realw-v3-s0.k3.json": "7d47329d3132123ffa4a9db39f45f8e1923512471959c693380b4e2fe79df29f",
+   "outputs/costate/post/critic/runs_dr-realw-v3-s0.npz": "821b126b75a7979c3fab6827bea7563537e2a87dbeaf30dd16566548e3cd36cc",
+   "outputs/costate/post/critic/runs_dr-realw-v3-s1.k3.json": "b161cabebfcefd0e5a4b0c66d0d75f0f877ebb0c81ab1a784c6c3c6ebc3fe8a8",
+   "outputs/costate/post/critic/runs_dr-realw-v3-s1.npz": "4d7fbef4dc3b8c8dd6e90a58411bed8558f98d2286e5b6a916d07be2a5fcd04a",
+   "outputs/costate/post/critic/runs_dr-realw-v3-s2.k3.json": "1b1cf9c91a0b5f80456bfa9f5562ab699379ebf3bfb92ed343f3704d8ba3c045",
+   "outputs/costate/post/critic/runs_dr-realw-v3-s2.npz": "7d2367a72c3608dce2b88e95fa86493956fd6ef771c31463106c20696f5163c5",
+   "outputs/costate/post/critic/runs_dr-realw-v3-s3.k3.json": "5392a6c0fa4417328926c3486baca28ee8f16881d8f540a69985ba71b595132d",
+   "outputs/costate/post/critic/runs_dr-realw-v3-s3.npz": "f6a617c75d76af45ba2082f4ad6607ae060fb74a640890b92c36f3a372306e4c",
+   "outputs/costate/post/critic/runs_hockenheim-specialist-mlp-200M-s2.k3.json": "935c41fdc74239a5137962a785e2e327dbbd4082876e29b9317defe7f868ccea",
+   "outputs/costate/post/critic/runs_hockenheim-specialist-mlp-200M-s2.npz": "6214e77181526124509d3a2e8941e1b83ce53e381a218a2974aa79438a612918",
+   "outputs/costate/post/critic/runs_hockenheim-specialist-mlp-200M-s3.k3.json": "0131ff260499c99a6cc5e532ce563168213d5ee961f040319a2c31392ef74bb9",
+   "outputs/costate/post/critic/runs_hockenheim-specialist-mlp-200M-s3.npz": "4739b2eba1c07b649c40851d20c0b55725fbf316647520de5d338313cea0967d",
+   "outputs/costate/post/critic/runs_hockenheim-specialist-mlp-200M.k3.json": "ff62df63eadb6c42bb9a0a3aa31c581ed684e1fe645f4b5ee1d2c9158938605a",
+   "outputs/costate/post/critic/runs_hockenheim-specialist-mlp-200M.npz": "1fe9b3c557b47cc3e7ecec1c2a5a86f7d7c33bad10b621acf214940cded90a17",
+   "outputs/outputs/fields/fields-a2/G2.jsonl": "0a0e017fcfd5287cbe95ddffa7714cd6978023d6d9806f1b5bb134fe1a42b914",
+   "outputs/outputs/fields/fields-a2/G2s1.jsonl": "2bcaf3954a5a76a19b2d086e5fb1cf66cb8124a42dcf14ae7c25af92e0fbc3ad",
+   "outputs/outputs/fields/fields-a2/G2s2.jsonl": "5cf3f1066ca973e40c31b8598a5b639fd74806e89bc5bc3239e161ea9b08e9a5",
+   "outputs/outputs/fields/fields-a2/runs_dr-pilot-200M-s1.jsonl": "5a3bfe6c4b9bb9a794342c649d895a588b6c8bd49233520a04d60c321cffe74c",
+   "outputs/outputs/fields/fields-a2/runs_dr-pilot-200M-s2.jsonl": "3cf9a164718793e801a1a29f300e98f8cc0b3ea56d5055278dde56829d74c757",
+   "outputs/outputs/fields/fields-a2/runs_dr-pilot-200M-s3.jsonl": "334326d3feee1d5cf1ec57f267797ab6ae05ea1cd6bbedcedaacf04848687efb",
+   "outputs/outputs/fields/fields-a2/runs_dr-pilot-200M-s4.jsonl": "e59d424000b517cb9526ad68a8e616942a732300a41a8d94c1e55160bcd0f1c7",
+   "outputs/outputs/fields/fields-a2/runs_dr-pilot-200M.jsonl": "48896bbbef18c7eb16ed3dee83a583c46e3c86184afb0c792a24278571a2a583",
+   "outputs/outputs/fields/fields-a2/runs_dr-pilot-v3-tilt50a2-s1.jsonl": "f28e543d5c199df7d3f0d58d6a9691891c4d857310ebbe494e3232559f14e543",
+   "outputs/outputs/fields/fields-a2/runs_dr-pilot-v3-tilt50a2-s2.jsonl": "3fb817a436f49a17bfdda4a5e3d3733f7aab79b215608f398e7af54ab1dfc4d6",
+   "outputs/outputs/fields/fields-a2/runs_dr-pilot-v3-tilt50a2-s3.jsonl": "138b178c3e13e0f73f98cd4ec5292a8b80873c0e4625d39d94d4f90823ff1dd1",
+   "outputs/outputs/fields/fields-a2/runs_dr-pilot-v3-tilt50a2-s4.jsonl": "a93aac2996c7e5b1d53dce3170e1f90db81846e6e0b4331e22dea7e39e7180e4",
+   "outputs/outputs/fields/fields-a2/runs_dr-pilot-v3-tilt50a2.jsonl": "be1b92fa5a7733d62e9e2e34075afb719d0ecbdf135e7f8a6806dc7573c0dc6d",
+   "outputs/outputs/fields/fields-a2/runs_dr-realw-loo-f1-s0.jsonl": "6cba886a9b65b50ec83d57a70e36eae806c8309c2ba8cae3a8315f91bd8fe6b0",
+   "outputs/outputs/fields/fields-a2/runs_dr-realw-loo-f1-s1.jsonl": "71b578ee9dd18df5df291125d6ea7873b8a4225f8941ae71c45fb2322cc95acb",
+   "outputs/outputs/fields/fields-a2/runs_dr-realw-loo-f1-s2.jsonl": "859dd8add90120822809e82f6ec87919c583f3bfa60db968fd5c1e4093a6fd02",
+   "outputs/outputs/fields/fields-a2/runs_dr-realw-loo-f1-s3.jsonl": "eed84d0e76638476c9c10b35b108c5e7e2e0fd83dba0e7e918c27a6016e29358",
+   "outputs/outputs/fields/fields-a2/runs_dr-realw-loo-f2-s0.jsonl": "b9f12b967cbee202cebe9d68362695e2fc176e3ae1de965371ab980edc1d5024",
+   "outputs/outputs/fields/fields-a2/runs_dr-realw-loo-f2-s1.jsonl": "3ead676ad8efa39b2e7dded1befc3f2cd3c4529ae9b78dffc8d352f0329c164e",
+   "outputs/outputs/fields/fields-a2/runs_dr-realw-loo-f2-s2.jsonl": "482f9ebb9b7262aef1f89306c49e9a0996623cccd2cb5c710bc69dd9698f8065",
+   "outputs/outputs/fields/fields-a2/runs_dr-realw-loo-f2-s3.jsonl": "480353281c4079355e8caa19e1e4cbf10ecfc8daeb3956aea38aced97466a9a5",
+   "outputs/outputs/fields/fields-a2/runs_dr-realw-v1-s0.jsonl": "816bc8ae2dced05c32b545bc7e3a23f5a5dec390fe2ad6e3a7559b3be5b229c3",
+   "outputs/outputs/fields/fields-a2/runs_dr-realw-v1-s1.jsonl": "02e7282ae7be85e48f31db803b3ef38d9825fe3271e2ff5ce84acd6c5817c5d0",
+   "outputs/outputs/fields/fields-a2/runs_dr-realw-v1-s2.jsonl": "50fc7d8040edbeddd96d9f29dd75bff9ae34ac6225026ac539a8a8bd52495fec",
+   "outputs/outputs/fields/fields-a2/runs_dr-realw-v1-s3.jsonl": "3a80e39f4d4e857fddd1e06346e6c45103faa7609c3599b85ceeea93849636c0",
+   "outputs/outputs/fields/fields-a2/runs_dr-realw-v3-s0.jsonl": "eb01598ce42b6b2192349ea6c63d912edd63e4f9957270a2f4258aa21b0a6b84",
+   "outputs/outputs/fields/fields-a2/runs_dr-realw-v3-s1.jsonl": "3e6d91fa12012ef5f32e416bf44e4dca77148b49f1e536234671c8b94727e0ef",
+   "outputs/outputs/fields/fields-a2/runs_dr-realw-v3-s2.jsonl": "0198cfebcf512bc794d5814c2ce52baa35ed433d2a1501204503b0c979eb4b18",
+   "outputs/outputs/fields/fields-a2/runs_dr-realw-v3-s3.jsonl": "d44fa2dd20577c16759a2dab94108301f336a94f76d9b887175d625a2b93d337",
+   "outputs/outputs/fields/opt-fields/rows.jsonl": "3e1e81011a04161a842cd6f605df1d2092ffcefdeeede44c27d45cbf13f6386a",
+   "outputs/outputs/psychophysics/analysis/runs/G1_000200000000.npz": "9d5e60de12a140d3c9e36dddf16aa47c511a21a3ea8bd5398d2a4e6cf143749e",
+   "outputs/outputs/psychophysics/analysis/runs/G1s1_000199884800.npz": "c8dee3af123e7ec918f63504a07148a9745eb749e67e32e70a733de4a05e1421",
+   "outputs/outputs/psychophysics/analysis/runs/G1s2_000199884800.npz": "91db76d3dca2c7ef44f94c0898e2ae0d8e48dff8b3c616588280045e1ec445b2",
+   "outputs/outputs/psychophysics/analysis/runs/G2_000199884800.npz": "cd9f16c295e26bdcb13f2ffe4f1e0c2c12d6140f4843a695b3c23ca05ec09d38",
+   "outputs/outputs/psychophysics/analysis/runs/G2s1_000199884800.npz": "c215da5f0741923881d04040b36afc6f2867c7453445abc01b99a53f49ab9e6b",
+   "outputs/outputs/psychophysics/analysis/runs/G2s2_000199884800.npz": "95798f5cfd700d117a812196e8ba51f93ff4eabefaa0ae4dabca3c7e80edb6ba",
+   "outputs/outputs/psychophysics/analysis/runs/G3_000199884800.npz": "864eba6f946abbbb96b51f1c4b3e2d52da9e593668956f57aa4ca7e56710d8fa",
+   "outputs/outputs/psychophysics/analysis/runs/G3s1_000199884800.npz": "f529ae475599b1a48781f35ed376bbe2dc0fc75e421ac7edd15776343f0bf7eb",
+   "outputs/outputs/psychophysics/analysis/runs/G3s2_000199884800.npz": "72d84d2456bdae6b713d281f20ed4decba5c8b2f86dbc6d32d34a5c1bb42e13b",
+   "outputs/outputs/psychophysics/analysis/runs/S1_000199884800.npz": "4f8f81fd096219dabdba5aa16595cb90663d040794df951fa650d05e293438fd",
+   "outputs/outputs/psychophysics/analysis/runs/S2_000199884800.npz": "87499d39fffe930efb752d31322fcd206fa5a3525a1e12272859bd79db23860c",
+   "outputs/outputs/psychophysics/analysis/runs/S3_000199884800.npz": "e2bf3122b0bcc60d9e9ffa93277821dd6dfd71f37f574ae6b194281530fc8640",
+   "runs/dr-pilot-200M-s1/ckpt/000199884800.pkl": "3b872a591d0107ba13748273e6ffe806418d3b019494b6595b26bc1d553bbd90",
+   "runs/dr-pilot-200M-s2/ckpt/000199884800.pkl": "e125fd7c7b9a6cd2a0c1e70b818ed34cddab749eebf258a927dc1e7c28ea6987",
+   "runs/dr-pilot-200M-s3/ckpt/000199884800.pkl": "5f599b87f01e808d313d5dba1180a8e18cd887e54d4ccf3d45b4f934db95d220",
+   "runs/dr-pilot-200M-s4/ckpt/000199884800.pkl": "7a3854c2abe0e11d90b0ed4ac137362a4f9bbf985691da38561f7bd6e69b5a06",
+   "runs/dr-pilot-200M/ckpt/000200000000.pkl": "456cf9d14cbf4e15527a99fb60fe86eaa357a4239482c31be13ef7aa2170bd22",
+   "runs/dr-pilot-v2-tilt30-s1/ckpt/000199884800.pkl": "632f98e266b8a1ae3356bf515eb1b17152cc9ac2829f42de5db50e268612ec76",
+   "runs/dr-pilot-v2-tilt30-s2/ckpt/000199884800.pkl": "8b520c083751a86fa46fe47c62039ed9c35a357c772b961841c70b96f8ecd489",
+   "runs/dr-pilot-v2-tilt30-s3/ckpt/000199884800.pkl": "fe5637f2bea18a48febd74b47947bf7ea641b36247d1f7c036eba1fac6b02843",
+   "runs/dr-pilot-v2-tilt30-s4/ckpt/000199884800.pkl": "074d5614e11ec95cb0b48c943880b0f4c5bbda8bb93e23a8bdff634f68864484",
+   "runs/dr-pilot-v2-tilt30/ckpt/000199884800.pkl": "62d06f5746866dd18622a9395371613890e0099cc809677a97ea6985ea77cb2e",
+   "runs/dr-pilot-v3-tilt50a2-s1/ckpt/000199884800.pkl": "b8bdba4a89fd388e1948aea7d0e4f61843370f5bcdea220bd93dcd03f8e27a5f",
+   "runs/dr-pilot-v3-tilt50a2-s2/ckpt/000199884800.pkl": "205305df8eef7d9365982c17c22bf967d9da8dafa583b29179acbace104c68a5",
+   "runs/dr-pilot-v3-tilt50a2-s3/ckpt/000199884800.pkl": "0ad8154036a2924943e423df40771eee3c1506c207823967e3e2f0e65221468c",
+   "runs/dr-pilot-v3-tilt50a2-s4/ckpt/000199884800.pkl": "e72dfbac68c3d0126e99c36e108000f2436be11f8c69d549867af558199d24b5",
+   "runs/dr-pilot-v3-tilt50a2/ckpt/000199884800.pkl": "b88549911562d52df8919921e8e70724e3950f8df70bfb54f03bf76208c2c1c3",
+   "runs/dr-realw-loo-f1-s0/ckpt/000199884800.pkl": "5befaa872821965c82f3b164184cd240db53a02064b6d9314fec6d7bee0d54a5",
+   "runs/dr-realw-loo-f1-s1/ckpt/000199884800.pkl": "2b3e426abdbd9af3f511248cf87746dbead120ae8e488a00a33e73927b13c9b0",
+   "runs/dr-realw-loo-f1-s2/ckpt/000199884800.pkl": "499f15bdd4dd06ab1be281d5d7a4d80f7279826f551f2bcaa42aef1cd3bfc1b7",
+   "runs/dr-realw-loo-f1-s3/ckpt/000199884800.pkl": "3f461ee860db1a42b6424d1fb27e347ea633fc943b35eebefda65ac1e2be9c04",
+   "runs/dr-realw-loo-f2-s0/ckpt/000199884800.pkl": "80a784a48bd6a699246ec9851490adc0fd1ac94f5e6f117c276525e4d168b954",
+   "runs/dr-realw-loo-f2-s1/ckpt/000199884800.pkl": "127bcc66324b5aef5e43822aba962d153de26bdf8c225dfdcbce24308272efaa",
+   "runs/dr-realw-loo-f2-s2/ckpt/000199884800.pkl": "4face26ffbae3cc8b487cc3d5844ab9230e51ba571eff9af126858b4bf149965",
+   "runs/dr-realw-loo-f2-s3/ckpt/000199884800.pkl": "3b4ea07fdafcb65b6f970f47241aad64f7ece59397fbe555792bc3bcea204bbc",
+   "runs/dr-realw-v1-s0/ckpt/000199884800.pkl": "4eb84deed4fe9e9c4b0abec8e30ea4db4e178315d1de0e1eefe5dde8aba77833",
+   "runs/dr-realw-v1-s1/ckpt/000199884800.pkl": "1e9c65c2322078b2dc96a65c58a4bb207dd2203a822ea4a61a1cdfb45204536e",
+   "runs/dr-realw-v1-s2/ckpt/000199884800.pkl": "72efd1f515677109955374499d0d9004daa980c4c8fdaac851d61b2024b17c23",
+   "runs/dr-realw-v1-s3/ckpt/000199884800.pkl": "e340864867ace98cd50374d3367845775e0f108ec124dbb391eb25affae90490",
+   "runs/dr-realw-v3-s0/ckpt/000199884800.pkl": "5c9fc7d4495a09eba1a77a869d5628aeb3d7f918bd2fe4054a74bb57d1b977a2",
+   "runs/dr-realw-v3-s1/ckpt/000199884800.pkl": "7fbc3656ab9379e8adda9da932afba07771afa4e997ade969f70f9432f8e0f5c",
+   "runs/dr-realw-v3-s2/ckpt/000199884800.pkl": "f9e05e2f24175362ae84e2ee535600f89b9c505e1b55b7df5b670b5a373105cd",
+   "runs/dr-realw-v3-s3/ckpt/000199884800.pkl": "c873773838d6d9f809cb4dce24f1f8b9a74ee2a379d1b0be881b0e08e4f09ab7",
+   "runs/hockenheim-specialist-mlp-200M-s2/ckpt/000199884800.pkl": "be554cd26ba3de8cb44fcc63fe6e18bd222759870b2ba9aa3a4b38528454147a",
+   "runs/hockenheim-specialist-mlp-200M-s3/ckpt/000199884800.pkl": "486e8ee258f685cdfab244c1a1e737c2bd1328c5341d69990a9ea260ee6e4697",
+   "runs/hockenheim-specialist-mlp-200M/agent.pkl": "5394cd6e0cf8216948e5bb1e8b0ee81be2faa2f62adb7ddf2f1e313a3c565e6c"
+  },
+  "item": "CS-3",
+  "label": "exploratory",
+  "partial": [],
+  "plan": {
+   "amendments": 2,
+   "first_commit": "eaf1e80e92e065634333a0299c62dbe6d14d5b9f",
+   "path": "docs/findings/costate-followups-plan.md",
+   "sha256": "d9892e20faf503f55a98ad8fc86d56eec78938a90bf857d4f43070af16d78563"
+  },
+  "rows_rule": "plan R5 (decision #8)",
+  "script_sha256": "0dfa20c1745c5a3bf45ece7e450f8257f89cf59cf6c82d66d6e3d5ea22ba9733",
+  "start": "2026-10-25T03:55:16",
+  "tag": {
+   "commit": "11dc9bc685eaad341b8b8997d39d25c6c8bd14a4",
+   "object": "d1f00c9387081812294f8171add6388c1d66808b",
+   "tag": "costate-prereg-v1",
+   "tagger_date": "2026-10-24T17:37:59-04:00",
+   "type": "tag"
+  },
+  "title": "C3-int on s and xi (network x geometry)"
+ },
+ "residual_notes": {
+  "S1": {
+   "decision_rows": {
+    "s": 1643,
+    "xi": 1581
+   },
+   "geometries": [
+    48,
+    48
+   ],
+   "wiring": {
+    "a": 0.0,
+    "b": 0.0,
+    "ci": 0.0,
+    "r2c": 0.0,
+    "stat": 0.0
+   }
+  },
+  "S2": {
+   "decision_rows": {
+    "s": 1643,
+    "xi": 1581
+   },
+   "geometries": [
+    48,
+    48
+   ],
+   "wiring": {
+    "a": 0.0,
+    "b": 0.0,
+    "ci": 0.0,
+    "r2c": 0.0,
+    "stat": 0.0
+   }
+  },
+  "S3": {
+   "decision_rows": {
+    "s": 1643,
+    "xi": 1581
+   },
+   "geometries": [
+    48,
+    48
+   ],
+   "wiring": {
+    "a": 0.0,
+    "b": 0.0,
+    "ci": 0.0,
+    "r2c": 0.0,
+    "stat": 0.0
+   }
+  },
+  "runs/dr-pilot-200M": {
+   "decision_rows": {
+    "s": 1643,
+    "xi": 1581
+   },
+   "geometries": [
+    48,
+    48
+   ],
+   "wiring": {
+    "a": 0.0,
+    "b": 0.0,
+    "ci": 1.0755285551056204e-16,
+    "r2c": 4.440892098500626e-16,
+    "stat": 2.220446049250313e-16
+   }
+  },
+  "runs/dr-pilot-200M-s1": {
+   "decision_rows": {
+    "s": 1643,
+    "xi": 1581
+   },
+   "geometries": [
+    48,
+    48
+   ],
+   "wiring": {
+    "a": 0.0,
+    "b": 0.0,
+    "ci": 2.220446049250313e-16,
+    "r2c": 4.440892098500626e-16,
+    "stat": 2.220446049250313e-16
+   }
+  },
+  "runs/dr-pilot-200M-s2": {
+   "decision_rows": {
+    "s": 1643,
+    "xi": 1581
+   },
+   "geometries": [
+    48,
+    48
+   ],
+   "wiring": {
+    "a": 0.0,
+    "b": 0.0,
+    "ci": 8.881784197001252e-16,
+    "r2c": 4.440892098500626e-16,
+    "stat": 2.220446049250313e-16
+   }
+  },
+  "runs/dr-pilot-200M-s3": {
+   "decision_rows": {
+    "s": 1643,
+    "xi": 1581
+   },
+   "geometries": [
+    48,
+    48
+   ],
+   "wiring": {
+    "a": 0.0,
+    "b": 0.0,
+    "ci": 0.0,
+    "r2c": 0.0,
+    "stat": 0.0
+   }
+  },
+  "runs/dr-pilot-200M-s4": {
+   "decision_rows": {
+    "s": 1643,
+    "xi": 1581
+   },
+   "geometries": [
+    48,
+    48
+   ],
+   "wiring": {
+    "a": 0.0,
+    "b": 0.0,
+    "ci": 0.0,
+    "r2c": 0.0,
+    "stat": 0.0
+   }
+  },
+  "runs/dr-pilot-v2-tilt30": {
+   "decision_rows": {
+    "s": 1643,
+    "xi": 1581
+   },
+   "geometries": [
+    48,
+    48
+   ],
+   "wiring": {
+    "a": 0.0,
+    "b": 0.0,
+    "ci": 1.6306400674181987e-16,
+    "r2c": 3.3306690738754696e-16,
+    "stat": 1.6653345369377348e-16
+   }
+  },
+  "runs/dr-pilot-v2-tilt30-s1": {
+   "decision_rows": {
+    "s": 1643,
+    "xi": 1581
+   },
+   "geometries": [
+    48,
+    48
+   ],
+   "wiring": {
+    "a": 0.0,
+    "b": 0.0,
+    "ci": 8.881784197001252e-16,
+    "r2c": 1.7763568394002505e-15,
+    "stat": 8.881784197001252e-16
+   }
+  },
+  "runs/dr-pilot-v2-tilt30-s2": {
+   "decision_rows": {
+    "s": 1643,
+    "xi": 1581
+   },
+   "geometries": [
+    48,
+    48
+   ],
+   "wiring": {
+    "a": 0.0,
+    "b": 0.0,
+    "ci": 1.1102230246251565e-16,
+    "r2c": 8.881784197001252e-16,
+    "stat": 4.440892098500626e-16
+   }
+  },
+  "runs/dr-pilot-v2-tilt30-s3": {
+   "decision_rows": {
+    "s": 1643,
+    "xi": 1581
+   },
+   "geometries": [
+    48,
+    48
+   ],
+   "wiring": {
+    "a": 0.0,
+    "b": 0.0,
+    "ci": 0.0,
+    "r2c": 0.0,
+    "stat": 0.0
+   }
+  },
+  "runs/dr-pilot-v2-tilt30-s4": {
+   "decision_rows": {
+    "s": 1643,
+    "xi": 1581
+   },
+   "geometries": [
+    48,
+    48
+   ],
+   "wiring": {
+    "a": 0.0,
+    "b": 0.0,
+    "ci": 0.0,
+    "r2c": 0.0,
+    "stat": 0.0
+   }
+  },
+  "runs/dr-pilot-v3-tilt50a2": {
+   "decision_rows": {
+    "s": 1643,
+    "xi": 1581
+   },
+   "geometries": [
+    48,
+    48
+   ],
+   "wiring": {
+    "a": 0.0,
+    "b": 0.0,
+    "ci": 3.3306690738754696e-16,
+    "r2c": 4.440892098500626e-16,
+    "stat": 2.220446049250313e-16
+   }
+  },
+  "runs/dr-pilot-v3-tilt50a2-s1": {
+   "decision_rows": {
+    "s": 1643,
+    "xi": 1581
+   },
+   "geometries": [
+    48,
+    48
+   ],
+   "wiring": {
+    "a": 0.0,
+    "b": 0.0,
+    "ci": 1.7763568394002505e-15,
+    "r2c": 3.552713678800501e-15,
+    "stat": 1.7763568394002505e-15
+   }
+  },
+  "runs/dr-pilot-v3-tilt50a2-s2": {
+   "decision_rows": {
+    "s": 1643,
+    "xi": 1581
+   },
+   "geometries": [
+    48,
+    48
+   ],
+   "wiring": {
+    "a": 0.0,
+    "b": 0.0,
+    "ci": 3.3306690738754696e-16,
+    "r2c": 4.440892098500626e-16,
+    "stat": 2.220446049250313e-16
+   }
+  },
+  "runs/dr-pilot-v3-tilt50a2-s3": {
+   "decision_rows": {
+    "s": 1643,
+    "xi": 1581
+   },
+   "geometries": [
+    48,
+    48
+   ],
+   "wiring": {
+    "a": 0.0,
+    "b": 0.0,
+    "ci": 0.0,
+    "r2c": 0.0,
+    "stat": 0.0
+   }
+  },
+  "runs/dr-pilot-v3-tilt50a2-s4": {
+   "decision_rows": {
+    "s": 1643,
+    "xi": 1581
+   },
+   "geometries": [
+    48,
+    48
+   ],
+   "wiring": {
+    "a": 0.0,
+    "b": 0.0,
+    "ci": 0.0,
+    "r2c": 0.0,
+    "stat": 0.0
+   }
+  },
+  "runs/dr-realw-loo-f1-s0": {
+   "decision_rows": {
+    "s": 1643,
+    "xi": 1581
+   },
+   "geometries": [
+    48,
+    48
+   ],
+   "wiring": {
+    "a": 0.0,
+    "b": 0.0,
+    "ci": 0.0,
+    "r2c": 0.0,
+    "stat": 0.0
+   }
+  },
+  "runs/dr-realw-loo-f1-s1": {
+   "decision_rows": {
+    "s": 1643,
+    "xi": 1581
+   },
+   "geometries": [
+    48,
+    48
+   ],
+   "wiring": {
+    "a": 0.0,
+    "b": 0.0,
+    "ci": 0.0,
+    "r2c": 0.0,
+    "stat": 0.0
+   }
+  },
+  "runs/dr-realw-loo-f1-s2": {
+   "decision_rows": {
+    "s": 1643,
+    "xi": 1581
+   },
+   "geometries": [
+    48,
+    48
+   ],
+   "wiring": {
+    "a": 0.0,
+    "b": 0.0,
+    "ci": 0.0,
+    "r2c": 0.0,
+    "stat": 0.0
+   }
+  },
+  "runs/dr-realw-loo-f1-s3": {
+   "decision_rows": {
+    "s": 1643,
+    "xi": 1581
+   },
+   "geometries": [
+    48,
+    48
+   ],
+   "wiring": {
+    "a": 0.0,
+    "b": 0.0,
+    "ci": 0.0,
+    "r2c": 0.0,
+    "stat": 0.0
+   }
+  },
+  "runs/dr-realw-loo-f2-s0": {
+   "decision_rows": {
+    "s": 1643,
+    "xi": 1581
+   },
+   "geometries": [
+    48,
+    48
+   ],
+   "wiring": {
+    "a": 0.0,
+    "b": 0.0,
+    "ci": 0.0,
+    "r2c": 0.0,
+    "stat": 0.0
+   }
+  },
+  "runs/dr-realw-loo-f2-s1": {
+   "decision_rows": {
+    "s": 1643,
+    "xi": 1581
+   },
+   "geometries": [
+    48,
+    48
+   ],
+   "wiring": {
+    "a": 0.0,
+    "b": 0.0,
+    "ci": 0.0,
+    "r2c": 0.0,
+    "stat": 0.0
+   }
+  },
+  "runs/dr-realw-loo-f2-s2": {
+   "decision_rows": {
+    "s": 1643,
+    "xi": 1581
+   },
+   "geometries": [
+    48,
+    48
+   ],
+   "wiring": {
+    "a": 0.0,
+    "b": 0.0,
+    "ci": 0.0,
+    "r2c": 0.0,
+    "stat": 0.0
+   }
+  },
+  "runs/dr-realw-loo-f2-s3": {
+   "decision_rows": {
+    "s": 1643,
+    "xi": 1581
+   },
+   "geometries": [
+    48,
+    48
+   ],
+   "wiring": {
+    "a": 0.0,
+    "b": 0.0,
+    "ci": 0.0,
+    "r2c": 0.0,
+    "stat": 0.0
+   }
+  },
+  "runs/dr-realw-v1-s0": {
+   "decision_rows": {
+    "s": 1643,
+    "xi": 1581
+   },
+   "geometries": [
+    48,
+    48
+   ],
+   "wiring": {
+    "a": 0.0,
+    "b": 0.0,
+    "ci": 0.0,
+    "r2c": 0.0,
+    "stat": 0.0
+   }
+  },
+  "runs/dr-realw-v1-s1": {
+   "decision_rows": {
+    "s": 1643,
+    "xi": 1581
+   },
+   "geometries": [
+    48,
+    48
+   ],
+   "wiring": {
+    "a": 0.0,
+    "b": 0.0,
+    "ci": 0.0,
+    "r2c": 0.0,
+    "stat": 0.0
+   }
+  },
+  "runs/dr-realw-v1-s2": {
+   "decision_rows": {
+    "s": 1643,
+    "xi": 1581
+   },
+   "geometries": [
+    48,
+    48
+   ],
+   "wiring": {
+    "a": 0.0,
+    "b": 0.0,
+    "ci": 0.0,
+    "r2c": 0.0,
+    "stat": 0.0
+   }
+  },
+  "runs/dr-realw-v1-s3": {
+   "decision_rows": {
+    "s": 1643,
+    "xi": 1581
+   },
+   "geometries": [
+    48,
+    48
+   ],
+   "wiring": {
+    "a": 0.0,
+    "b": 0.0,
+    "ci": 0.0,
+    "r2c": 0.0,
+    "stat": 0.0
+   }
+  },
+  "runs/dr-realw-v3-s0": {
+   "decision_rows": {
+    "s": 1643,
+    "xi": 1581
+   },
+   "geometries": [
+    48,
+    48
+   ],
+   "wiring": {
+    "a": 0.0,
+    "b": 0.0,
+    "ci": 0.0,
+    "r2c": 0.0,
+    "stat": 0.0
+   }
+  },
+  "runs/dr-realw-v3-s1": {
+   "decision_rows": {
+    "s": 1643,
+    "xi": 1581
+   },
+   "geometries": [
+    48,
+    48
+   ],
+   "wiring": {
+    "a": 0.0,
+    "b": 0.0,
+    "ci": 0.0,
+    "r2c": 0.0,
+    "stat": 0.0
+   }
+  },
+  "runs/dr-realw-v3-s2": {
+   "decision_rows": {
+    "s": 1643,
+    "xi": 1581
+   },
+   "geometries": [
+    48,
+    48
+   ],
+   "wiring": {
+    "a": 0.0,
+    "b": 0.0,
+    "ci": 0.0,
+    "r2c": 0.0,
+    "stat": 0.0
+   }
+  },
+  "runs/dr-realw-v3-s3": {
+   "decision_rows": {
+    "s": 1643,
+    "xi": 1581
+   },
+   "geometries": [
+    48,
+    48
+   ],
+   "wiring": {
+    "a": 0.0,
+    "b": 0.0,
+    "ci": 0.0,
+    "r2c": 0.0,
+    "stat": 0.0
+   }
+  }
+ },
+ "seconds": 166.30061388015747,
+ "step1_notes": {
+  "S1": {
+   "brake_onset_residual": {
+    "finite": 445,
+    "geometries": 37
+   },
+   "crashed": 289,
+   "entry_speed_ratio_minus_1": {
+    "finite": 463,
+    "geometries": 48
+   },
+   "keys": 471,
+   "missing": 0
+  },
+  "S2": {
+   "brake_onset_residual": {
+    "finite": 445,
+    "geometries": 37
+   },
+   "crashed": 438,
+   "entry_speed_ratio_minus_1": {
+    "finite": 452,
+    "geometries": 48
+   },
+   "keys": 471,
+   "missing": 0
+  },
+  "S3": {
+   "brake_onset_residual": {
+    "finite": 433,
+    "geometries": 37
+   },
+   "crashed": 367,
+   "entry_speed_ratio_minus_1": {
+    "finite": 452,
+    "geometries": 48
+   },
+   "keys": 471,
+   "missing": 0
+  },
+  "runs/dr-pilot-200M": {
+   "brake_onset_residual": {
+    "finite": 445,
+    "geometries": 37
+   },
+   "crashed": 9,
+   "entry_speed_ratio_minus_1": {
+    "finite": 471,
+    "geometries": 48
+   },
+   "keys": 471,
+   "missing": 0
+  },
+  "runs/dr-pilot-200M-s1": {
+   "brake_onset_residual": {
+    "finite": 445,
+    "geometries": 37
+   },
+   "crashed": 8,
+   "entry_speed_ratio_minus_1": {
+    "finite": 471,
+    "geometries": 48
+   },
+   "keys": 471,
+   "missing": 0
+  },
+  "runs/dr-pilot-200M-s2": {
+   "brake_onset_residual": {
+    "finite": 445,
+    "geometries": 37
+   },
+   "crashed": 24,
+   "entry_speed_ratio_minus_1": {
+    "finite": 471,
+    "geometries": 48
+   },
+   "keys": 471,
+   "missing": 0
+  },
+  "runs/dr-pilot-v2-tilt30": {
+   "brake_onset_residual": {
+    "finite": 445,
+    "geometries": 37
+   },
+   "crashed": 24,
+   "entry_speed_ratio_minus_1": {
+    "finite": 471,
+    "geometries": 48
+   },
+   "keys": 471,
+   "missing": 0
+  },
+  "runs/dr-pilot-v2-tilt30-s1": {
+   "brake_onset_residual": {
+    "finite": 445,
+    "geometries": 37
+   },
+   "crashed": 17,
+   "entry_speed_ratio_minus_1": {
+    "finite": 471,
+    "geometries": 48
+   },
+   "keys": 471,
+   "missing": 0
+  },
+  "runs/dr-pilot-v2-tilt30-s2": {
+   "brake_onset_residual": {
+    "finite": 445,
+    "geometries": 37
+   },
+   "crashed": 20,
+   "entry_speed_ratio_minus_1": {
+    "finite": 471,
+    "geometries": 48
+   },
+   "keys": 471,
+   "missing": 0
+  },
+  "runs/dr-pilot-v3-tilt50a2": {
+   "brake_onset_residual": {
+    "finite": 445,
+    "geometries": 37
+   },
+   "crashed": 1,
+   "entry_speed_ratio_minus_1": {
+    "finite": 471,
+    "geometries": 48
+   },
+   "keys": 471,
+   "missing": 0
+  },
+  "runs/dr-pilot-v3-tilt50a2-s1": {
+   "brake_onset_residual": {
+    "finite": 445,
+    "geometries": 37
+   },
+   "crashed": 8,
+   "entry_speed_ratio_minus_1": {
+    "finite": 471,
+    "geometries": 48
+   },
+   "keys": 471,
+   "missing": 0
+  },
+  "runs/dr-pilot-v3-tilt50a2-s2": {
+   "brake_onset_residual": {
+    "finite": 445,
+    "geometries": 37
+   },
+   "crashed": 12,
+   "entry_speed_ratio_minus_1": {
+    "finite": 471,
+    "geometries": 48
+   },
+   "keys": 471,
+   "missing": 0
+  }
+ },
+ "step2_notes": {
+  "runs/dr-pilot-200M": {
+   "B": {
+    "finite_in_T": 400,
+    "geometries": 46,
+    "keys": 427,
+    "keys_in_T": 423
+   },
+   "G_minus_1": {
+    "finite_in_T": 400,
+    "geometries": 46,
+    "keys": 427,
+    "keys_in_T": 423
+   }
+  },
+  "runs/dr-pilot-200M-s1": {
+   "B": {
+    "finite_in_T": 350,
+    "geometries": 46,
+    "keys": 427,
+    "keys_in_T": 423
+   },
+   "G_minus_1": {
+    "finite_in_T": 350,
+    "geometries": 46,
+    "keys": 427,
+    "keys_in_T": 423
+   }
+  },
+  "runs/dr-pilot-200M-s2": {
+   "B": {
+    "finite_in_T": 384,
+    "geometries": 45,
+    "keys": 427,
+    "keys_in_T": 423
+   },
+   "G_minus_1": {
+    "finite_in_T": 384,
+    "geometries": 45,
+    "keys": 427,
+    "keys_in_T": 423
+   }
+  },
+  "runs/dr-pilot-200M-s3": {
+   "B": {
+    "finite_in_T": 370,
+    "geometries": 46,
+    "keys": 427,
+    "keys_in_T": 423
+   },
+   "G_minus_1": {
+    "finite_in_T": 370,
+    "geometries": 46,
+    "keys": 427,
+    "keys_in_T": 423
+   }
+  },
+  "runs/dr-pilot-200M-s4": {
+   "B": {
+    "finite_in_T": 370,
+    "geometries": 46,
+    "keys": 427,
+    "keys_in_T": 423
+   },
+   "G_minus_1": {
+    "finite_in_T": 370,
+    "geometries": 46,
+    "keys": 427,
+    "keys_in_T": 423
+   }
+  },
+  "runs/dr-pilot-v2-tilt30": {
+   "B": {
+    "finite_in_T": 410,
+    "geometries": 47,
+    "keys": 427,
+    "keys_in_T": 423
+   },
+   "G_minus_1": {
+    "finite_in_T": 410,
+    "geometries": 47,
+    "keys": 427,
+    "keys_in_T": 423
+   }
+  },
+  "runs/dr-pilot-v2-tilt30-s1": {
+   "B": {
+    "finite_in_T": 412,
+    "geometries": 47,
+    "keys": 427,
+    "keys_in_T": 423
+   },
+   "G_minus_1": {
+    "finite_in_T": 412,
+    "geometries": 47,
+    "keys": 427,
+    "keys_in_T": 423
+   }
+  },
+  "runs/dr-pilot-v2-tilt30-s2": {
+   "B": {
+    "finite_in_T": 406,
+    "geometries": 47,
+    "keys": 427,
+    "keys_in_T": 423
+   },
+   "G_minus_1": {
+    "finite_in_T": 406,
+    "geometries": 47,
+    "keys": 427,
+    "keys_in_T": 423
+   }
+  },
+  "runs/dr-pilot-v3-tilt50a2": {
+   "B": {
+    "finite_in_T": 372,
+    "geometries": 48,
+    "keys": 427,
+    "keys_in_T": 423
+   },
+   "G_minus_1": {
+    "finite_in_T": 372,
+    "geometries": 48,
+    "keys": 427,
+    "keys_in_T": 423
+   }
+  },
+  "runs/dr-pilot-v3-tilt50a2-s1": {
+   "B": {
+    "finite_in_T": 419,
+    "geometries": 48,
+    "keys": 427,
+    "keys_in_T": 423
+   },
+   "G_minus_1": {
+    "finite_in_T": 419,
+    "geometries": 48,
+    "keys": 427,
+    "keys_in_T": 423
+   }
+  },
+  "runs/dr-pilot-v3-tilt50a2-s2": {
+   "B": {
+    "finite_in_T": 414,
+    "geometries": 47,
+    "keys": 427,
+    "keys_in_T": 423
+   },
+   "G_minus_1": {
+    "finite_in_T": 414,
+    "geometries": 47,
+    "keys": 427,
+    "keys_in_T": 423
+   }
+  },
+  "runs/dr-pilot-v3-tilt50a2-s3": {
+   "B": {
+    "finite_in_T": 404,
+    "geometries": 47,
+    "keys": 427,
+    "keys_in_T": 423
+   },
+   "G_minus_1": {
+    "finite_in_T": 404,
+    "geometries": 47,
+    "keys": 427,
+    "keys_in_T": 423
+   }
+  },
+  "runs/dr-pilot-v3-tilt50a2-s4": {
+   "B": {
+    "finite_in_T": 413,
+    "geometries": 47,
+    "keys": 427,
+    "keys_in_T": 423
+   },
+   "G_minus_1": {
+    "finite_in_T": 413,
+    "geometries": 47,
+    "keys": 427,
+    "keys_in_T": 423
+   }
+  },
+  "runs/dr-realw-loo-f1-s0": {
+   "B": {
+    "finite_in_T": 418,
+    "geometries": 48,
+    "keys": 427,
+    "keys_in_T": 423
+   },
+   "G_minus_1": {
+    "finite_in_T": 418,
+    "geometries": 48,
+    "keys": 427,
+    "keys_in_T": 423
+   }
+  },
+  "runs/dr-realw-loo-f1-s1": {
+   "B": {
+    "finite_in_T": 406,
+    "geometries": 48,
+    "keys": 427,
+    "keys_in_T": 423
+   },
+   "G_minus_1": {
+    "finite_in_T": 406,
+    "geometries": 48,
+    "keys": 427,
+    "keys_in_T": 423
+   }
+  },
+  "runs/dr-realw-loo-f1-s2": {
+   "B": {
+    "finite_in_T": 418,
+    "geometries": 48,
+    "keys": 427,
+    "keys_in_T": 423
+   },
+   "G_minus_1": {
+    "finite_in_T": 418,
+    "geometries": 48,
+    "keys": 427,
+    "keys_in_T": 423
+   }
+  },
+  "runs/dr-realw-loo-f1-s3": {
+   "B": {
+    "finite_in_T": 327,
+    "geometries": 48,
+    "keys": 427,
+    "keys_in_T": 423
+   },
+   "G_minus_1": {
+    "finite_in_T": 327,
+    "geometries": 48,
+    "keys": 427,
+    "keys_in_T": 423
+   }
+  },
+  "runs/dr-realw-loo-f2-s0": {
+   "B": {
+    "finite_in_T": 411,
+    "geometries": 47,
+    "keys": 427,
+    "keys_in_T": 423
+   },
+   "G_minus_1": {
+    "finite_in_T": 411,
+    "geometries": 47,
+    "keys": 427,
+    "keys_in_T": 423
+   }
+  },
+  "runs/dr-realw-loo-f2-s1": {
+   "B": {
+    "finite_in_T": 419,
+    "geometries": 48,
+    "keys": 427,
+    "keys_in_T": 423
+   },
+   "G_minus_1": {
+    "finite_in_T": 419,
+    "geometries": 48,
+    "keys": 427,
+    "keys_in_T": 423
+   }
+  },
+  "runs/dr-realw-loo-f2-s2": {
+   "B": {
+    "finite_in_T": 410,
+    "geometries": 48,
+    "keys": 427,
+    "keys_in_T": 423
+   },
+   "G_minus_1": {
+    "finite_in_T": 410,
+    "geometries": 48,
+    "keys": 427,
+    "keys_in_T": 423
+   }
+  },
+  "runs/dr-realw-loo-f2-s3": {
+   "B": {
+    "finite_in_T": 413,
+    "geometries": 47,
+    "keys": 427,
+    "keys_in_T": 423
+   },
+   "G_minus_1": {
+    "finite_in_T": 413,
+    "geometries": 47,
+    "keys": 427,
+    "keys_in_T": 423
+   }
+  },
+  "runs/dr-realw-v1-s0": {
+   "B": {
+    "finite_in_T": 395,
+    "geometries": 45,
+    "keys": 427,
+    "keys_in_T": 423
+   },
+   "G_minus_1": {
+    "finite_in_T": 395,
+    "geometries": 45,
+    "keys": 427,
+    "keys_in_T": 423
+   }
+  },
+  "runs/dr-realw-v1-s1": {
+   "B": {
+    "finite_in_T": 363,
+    "geometries": 46,
+    "keys": 427,
+    "keys_in_T": 423
+   },
+   "G_minus_1": {
+    "finite_in_T": 363,
+    "geometries": 46,
+    "keys": 427,
+    "keys_in_T": 423
+   }
+  },
+  "runs/dr-realw-v1-s2": {
+   "B": {
+    "finite_in_T": 381,
+    "geometries": 46,
+    "keys": 427,
+    "keys_in_T": 423
+   },
+   "G_minus_1": {
+    "finite_in_T": 381,
+    "geometries": 46,
+    "keys": 427,
+    "keys_in_T": 423
+   }
+  },
+  "runs/dr-realw-v1-s3": {
+   "B": {
+    "finite_in_T": 403,
+    "geometries": 46,
+    "keys": 427,
+    "keys_in_T": 423
+   },
+   "G_minus_1": {
+    "finite_in_T": 403,
+    "geometries": 46,
+    "keys": 427,
+    "keys_in_T": 423
+   }
+  },
+  "runs/dr-realw-v3-s0": {
+   "B": {
+    "finite_in_T": 417,
+    "geometries": 48,
+    "keys": 427,
+    "keys_in_T": 423
+   },
+   "G_minus_1": {
+    "finite_in_T": 417,
+    "geometries": 48,
+    "keys": 427,
+    "keys_in_T": 423
+   }
+  },
+  "runs/dr-realw-v3-s1": {
+   "B": {
+    "finite_in_T": 419,
+    "geometries": 48,
+    "keys": 427,
+    "keys_in_T": 423
+   },
+   "G_minus_1": {
+    "finite_in_T": 419,
+    "geometries": 48,
+    "keys": 427,
+    "keys_in_T": 423
+   }
+  },
+  "runs/dr-realw-v3-s2": {
+   "B": {
+    "finite_in_T": 419,
+    "geometries": 48,
+    "keys": 427,
+    "keys_in_T": 423
+   },
+   "G_minus_1": {
+    "finite_in_T": 419,
+    "geometries": 48,
+    "keys": 427,
+    "keys_in_T": 423
+   }
+  },
+  "runs/dr-realw-v3-s3": {
+   "B": {
+    "finite_in_T": 417,
+    "geometries": 48,
+    "keys": 427,
+    "keys_in_T": 423
+   },
+   "G_minus_1": {
+    "finite_in_T": 417,
+    "geometries": 48,
+    "keys": 427,
+    "keys_in_T": 423
+   }
+  }
+ },
+ "stream": [
+  "costate_c3",
+  1
+ ]
+}

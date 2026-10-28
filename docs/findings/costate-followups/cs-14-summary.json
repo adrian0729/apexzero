@@ -1,0 +1,125 @@
+{
+ "by_phase": {
+  "approach": {
+   "beyond_W": 0,
+   "pass": 62,
+   "rows": 1581
+  },
+  "exit": {
+   "beyond_W": 0,
+   "pass": 72,
+   "rows": 72
+  }
+ },
+ "decision": "not scorable under #8",
+ "definitions": "plan Section 4 CS-14 (steps 4 and 8) and amendment 10 item 4",
+ "expected": {
+  "E14.1": {
+   "holds": null,
+   "reading": "not read: the item stopped at the window rule (amendment 10 item 4)"
+  },
+  "E14.2": {
+   "holds": null,
+   "reading": "not read: the item stopped at the window rule (amendment 10 item 4)"
+  },
+  "E14.3": {
+   "holds": null,
+   "reading": "not read: the item stopped at the window rule (amendment 10 item 4)"
+  }
+ },
+ "item": "CS-14",
+ "k2b_for_q_c": "not run: it can only remove rows (amendment 10 item 4)",
+ "keys_with_a_passing_row": 110,
+ "label": "exploratory",
+ "networks": "none evaluated",
+ "partial": false,
+ "pool_seconds": 26.689399003982544,
+ "provenance": {
+  "argv": [
+   "scripts/costate_exploratory.py",
+   "cs-14"
+  ],
+  "changed_vs_head": [],
+  "code_hash": "d22e670cd059063af38c1af74c039a0ae11933b50443ab40f14256bb49dbfff3",
+  "content_sha256": "575aa6bf78483460f4ec3430a158b8737cb541d1353cb7184dfde832ea56544b",
+  "decisions_sha256": "8119f91f7c1a24186fad011a83ef931e441626d7493355272b762e8aa97b0ee4",
+  "end": "2026-10-27T05:32:17",
+  "environment": {
+   "machine": "arm64",
+   "packages": {
+    "casadi": "3.8.1",
+    "flax": "0.12.10",
+    "jax": "0.11.2",
+    "jaxlib": "0.11.2",
+    "numpy": "2.5.4",
+    "optax": "0.2.8",
+    "scipy": "1.18.1"
+   },
+   "python": "3.12.4",
+   "system": "Darwin",
+   "uv_lock_sha256": "ee7384209ddf07af796eb4c2032aba6365f0a008eea32575af389cfcc16dd679"
+  },
+  "files": {},
+  "head": "937b712187acba5ef3aeddee701f13954e1980a7",
+  "inputs": {
+   "outputs/costate/gates/k2b.json": "7d52a91c38cebd9b05c822e90ba7a702c78d735d77ce495d1624b4ef4cfd5e94",
+   "outputs/costate/inputs/summary.json": "be60ebe934825c2fc8477e11c14f663d79cf7c77447137f01f77d1679c25ed25",
+   "outputs/costate/inputs/world.npz": "b5130c418642eed1c2a90030c972ce7df67d6ceea2eded56320842d039dd294f"
+  },
+  "item": "CS-14",
+  "label": "exploratory",
+  "partial": [],
+  "plan": {
+   "amendments": 10,
+   "first_commit": "eaf1e80e92e065634333a0299c62dbe6d14d5b9f",
+   "path": "docs/findings/costate-followups-plan.md",
+   "sha256": "b3669eed3278aa2ed7bc4d2b919cac34da1f9fa0c9f9a1f7f795f7fa7f4dc63f"
+  },
+  "rows_rule": "plan R5 (decision #8)",
+  "script_sha256": "5e6d4057541e630c6bb3f326406477fb314d34b921f67256d52987f96596a352",
+  "start": "2026-10-27T05:31:46",
+  "tag": {
+   "commit": "11dc9bc685eaad341b8b8997d39d25c6c8bd14a4",
+   "object": "d1f00c9387081812294f8171add6388c1d66808b",
+   "tag": "costate-prereg-v1",
+   "tagger_date": "2026-10-24T17:37:59-04:00",
+   "type": "tag"
+  },
+  "threads": {
+   "MKL_NUM_THREADS": "1",
+   "OMP_NUM_THREADS": "1",
+   "OPENBLAS_NUM_THREADS": "1",
+   "VECLIB_MAXIMUM_THREADS": "1",
+   "XLA_FLAGS": "--xla_cpu_multi_thread_eigen=false intra_op_parallelism_threads=2"
+  },
+  "title": "q_c, the action-projected critic signal, with K2b for q_c",
+  "workers": 4
+ },
+ "rows_pass": 134,
+ "rows_scored_phases": 1653,
+ "seconds": 28.912425994873047,
+ "stop_rule": {
+  "fires": true,
+  "min_rows": 200
+ },
+ "window": 64,
+ "window_length_m": {
+  "all": {
+   "max": 275.91514056501615,
+   "median": 175.57602839962533,
+   "min": 64.57530057703514
+  },
+  "passing": {
+   "max": 275.91514056501615,
+   "median": 195.92475995002155,
+   "min": 123.77909775199373
+  }
+ },
+ "wiring": {
+  "W": 0,
+  "phase": 0,
+  "s": 0.0,
+  "s_b": 0,
+  "s_tol": 1e-12
+ }
+}
