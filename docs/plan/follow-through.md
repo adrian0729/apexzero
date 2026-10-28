@@ -794,3 +794,13 @@ The user's decisions (28 Oct 2026, sixth round):
 - **Lane A:** #8, #9 and #16 are confirmed as lane A ran them, so its results stand. CS-13 on T is
   dropped (Section 8 allows it).
 
+The lead's notes (28 Oct 2026, E0 and E5's launch):
+- **E0** ran on one A6000 from `e0-train-v1` (`5edb66f`), 2.80 GPU-h, with no retry. **The gate
+  fails:** median 8 of 12 R-dev circuits (counts 4, 10, 8, 8, 6; in-sample for widths;
+  `docs/findings/e0.md`). `generator-v1` stays frozen (#11). #14's open question, whether to go
+  ahead with the lockbox if E0 misses the gate, is now live; it is asked before `protocol-v1`.
+- **E5** launched from `maze-e5-train-v1` (`5edb66f`) on five single-GPU boxes, 20:21–20:35 UTC.
+  Two first boxes failed to create and were replaced. The first rate reading matches the
+  fair-share model (SFL-13 6.68 s per update with 6 runs alive; the model's 6.69).
+- **Phase 4's A6000 time** so far: E0 2.80 GPU-h.
+
