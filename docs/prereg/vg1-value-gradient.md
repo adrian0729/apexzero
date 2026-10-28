@@ -449,7 +449,7 @@ All items are settled in the text before the pilot commit (Section 9). The user 
 4. On the Mac: `vg1_analysis.py manifest --phase pilot2 --tag <second pilot commit, the commit checked out on the box> --box-sums runs/vg1p2-box-sha256.txt`, `vg1_c1.py measure --phase pilot2`, `vg1_analysis.py m0 --phase pilot2`, then `vg1_analysis.py pilot --phase pilot2 --box-gpu-hours H2`. The last binds the committed `outputs/vg1/pilot.json` (and refuses unless its β\* is null), applies Section 4.1's rule to the second grid only, and writes `outputs/vg1/pilot2.json` (write-once), with the cost check's two pilot terms, 1.50 and H2, shown apart.
 5. Record β\* in this section and commit it with `outputs/vg1/pilot2.json` force-added.
 6. Run the freeze check of Section 9, step 4, against the second pilot commit, and the cost check.
-7. Tag `vg1-prereg-v1` on that commit, then run the main run as Section 9, steps 6–8, with β\* from `pilot2.json`.
+7. Tag `vg1-prereg-v1` (annotated) on the commit that records β\* (step 5), as Section 9, step 4 does, and push it. Then run the main run as Section 9, steps 6–8, with β\* from `pilot2.json`.
 
 **After the tag,** the descriptive completion of Sections 4.1 and 5.3 covers all 10 pilot networks (the 6 of the first pilot and the 4 of the second).
 
