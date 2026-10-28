@@ -1,0 +1,297 @@
+{
+ "base_commit": "c5af01a43fc24491c6bf2688c4248020a31fdda9",
+ "braking": [
+  0,
+  1,
+  3,
+  4,
+  7,
+  8,
+  14,
+  16,
+  17
+ ],
+ "buffers_sha256": {
+  "outputs/p4b2/pre/buffers/knn_S4.npz": "8d8c820288fb3b573b2d203c7912dd65575f42a5cc6e7ffcafdb7767782130a1",
+  "outputs/p4b2/pre/buffers/knn_S5.npz": "93d454fa5435f77234f24215d779fba4e9869a4749c7a31576ffadd4ee2e5824",
+  "outputs/p4b2/pre/buffers/knn_S6.npz": "7abc2402f53cfde2087fccb4d94cb4a1546e8b1ae0abda673fe59151e4bd9cb7",
+  "outputs/p4b2/pre/buffers/knn_S7.npz": "9c3940804d2d4081dec3eb0b3022d51e8de4abe80cd5a0eb46e3094d7f16a524",
+  "outputs/p4b2/pre/buffers/knn_S8.npz": "653a414d5bb0c5fcfcd41eb4fd0ba661f706ae495ea8cb764a81becb5852fba0"
+ },
+ "certified_corners": {
+  "P4A/F6s/knoise0.5e-3/x1": [
+   0,
+   1,
+   3,
+   4,
+   7,
+   8,
+   14,
+   16,
+   17
+  ],
+  "P4A/F6s/knoise0.5e-3/x2": [
+   0,
+   1,
+   3,
+   4,
+   7,
+   8,
+   14,
+   16,
+   17
+  ],
+  "P4A/F6s/knoise0.5e-3/x3": [
+   0,
+   1,
+   3,
+   4,
+   7,
+   8,
+   16,
+   17
+  ],
+  "P4A/F6s/knoise1e-3/x1": [
+   0,
+   1,
+   4,
+   7,
+   8,
+   14,
+   17
+  ],
+  "P4A/Kstr/16e-3": [
+   0,
+   1,
+   3,
+   4,
+   7,
+   8,
+   14,
+   16,
+   17
+  ],
+  "P4A/Kstr/1e-3": [
+   0,
+   1,
+   3,
+   4,
+   7,
+   8,
+   14,
+   16,
+   17
+  ],
+  "P4A/Kstr/2e-3": [
+   0,
+   1,
+   3,
+   4,
+   7,
+   8,
+   16,
+   17
+  ],
+  "P4A/Kstr/4e-3": [
+   0,
+   1,
+   3,
+   4,
+   7,
+   8,
+   16,
+   17
+  ],
+  "P4A/Kstr/8e-3": [
+   0,
+   1,
+   3,
+   4,
+   7,
+   8,
+   14,
+   16,
+   17
+  ],
+  "P4A/Wplus/0.5m": [
+   0,
+   1,
+   3,
+   4,
+   7,
+   8,
+   17
+  ],
+  "P4A/Wplus/1m": [
+   0,
+   1,
+   3,
+   4,
+   8,
+   16,
+   17
+  ]
+ },
+ "certified_lists": {
+  "extension": {
+   "path": "outputs/p4/extension/certified.json",
+   "sha256": "5d0d9b3134ddbf5aaa6f97a43f8868d08d66d450a260b642ea25709c4f1db8e8"
+  },
+  "planned": {
+   "path": "outputs/p4/certified.json",
+   "sha256": "f9ab567a508f5886a294e4341704b1ca29453ac107a10161b4e74710c1e40b55"
+  }
+ },
+ "created": "2026-10-27T23:07:33",
+ "design_hash": "944e97e2b1b210e53ffeb7b12e05e94102e880cb0a297f012588bad17b34303c",
+ "draft": "docs/prereg/p4-b2-specialists.md",
+ "f6_set": [
+  "F6/wobble0.3",
+  "F6/wobble0.6",
+  "F6/knoise0.5e-3",
+  "F6/knoise1e-3",
+  "P4A/F6s/knoise0.5e-3/x1",
+  "P4A/F6s/knoise1e-3/x1",
+  "P4A/F6s/knoise0.5e-3/x2",
+  "P4A/F6s/knoise0.5e-3/x3",
+  "P4A/Kstr/1e-3",
+  "P4A/Kstr/2e-3",
+  "P4A/Kstr/4e-3",
+  "P4A/Kstr/8e-3",
+  "P4A/Wplus/0.5m",
+  "P4A/Wplus/1m",
+  "P4A/Kstr/16e-3"
+ ],
+ "frozen": {
+  "scripts/p4_exploratory.py": {
+   "blob": "f29eec606e0c65bc8cefbad29fb5b27ad478c88c",
+   "sha256": "95183edf892cc94f5000420ebf3ba4c747e10f9712e1781b57998fdaca1face8"
+  },
+  "scripts/psychophysics.py": {
+   "blob": "53d34e7966c4546088dd65a8a04a033cf12df798",
+   "sha256": "40ac5e91109bed2a2009779ec72c04a0cafe5f60037ae5bbb5a56ab8090456a6"
+  },
+  "src/apexzero/interp": {
+   "tree": "e4c456fe3d8aacde5d0a1132f54d5fde552c8d7e"
+  }
+ },
+ "inputs_sha256": {
+  "docs/prereg/p4-b2-specialists.md": "613bf9cc77f615595c779968e194d799fefdef3e8df6447b531d57719906c90c",
+  "outputs/p4/build/cells_meta.json": "d39de26d399841438362bbab21c45f6da39af987991ccf56f5baa43cbd545153",
+  "outputs/p4/certified.json": "f9ab567a508f5886a294e4341704b1ca29453ac107a10161b4e74710c1e40b55",
+  "outputs/p4/extension/certified.json": "5d0d9b3134ddbf5aaa6f97a43f8868d08d66d450a260b642ea25709c4f1db8e8",
+  "outputs/p4/generalists/reference/G1_runs.npz": "6590d2e390cd571aaf15171ec04dfd95a22d07b694dba0d221f6024e95c6fcfa",
+  "outputs/p4/generalists/reference/G2_runs.npz": "f3a70859ba185328ba0042dee49fde23d604ffa6aa52e1c4c0488a8a1aa67685",
+  "outputs/p4/generalists/reference/G3_runs.npz": "9e006f13c483914791204bfd840fe4f42fe602c1a4b1bb7413b3157a49fcd2a9",
+  "outputs/p4b2/build/bank.npz": "a10fe7594eecb58619e7254ce63acc2cd0074ac05d9bc6cbf0e4c217d29a4cd2",
+  "outputs/p4b2/build/build.json": "3be8ee283ee30cda82156469f7aad828162db679173f3d9b7230dc07f6bd2f17",
+  "outputs/p4b2/build/cells.json": "cc87166b16143a53fc413bfcef8776019de82d489d8380cb58d6535a5fc4ef14",
+  "outputs/p4b2/build/cells_meta.json": "0924d124ccadf0b5362ce4d569bfde75df128ae8cf9dd7b1bd4d972ca99cfd70",
+  "outputs/p4b2/build/keys.npz": "85b72d8ce91926ee1bcf5c3df84ccb0c02d73152bf27864cdc15dede836c5d8b",
+  "outputs/p4b2/check/cm_dryrun.json": "0ce3fc27f9509b629399b365d80f8b41d71cfc9a324ca04291703591cbac8a8e",
+  "outputs/p4b2/check/reproduce.json": "14b0f335323abdf99445c12d4f4a38b7b0d99137b50bc7903fdb6f33b37beee5",
+  "outputs/p4b2/pre/buffers/buffers.json": "cf19072df5c57aad7e5ea283e4f3be565d6c4b4975d795272ab2694755446252",
+  "outputs/p4b2/pre/buffers/knn_S4.npz": "8d8c820288fb3b573b2d203c7912dd65575f42a5cc6e7ffcafdb7767782130a1",
+  "outputs/p4b2/pre/buffers/knn_S5.npz": "93d454fa5435f77234f24215d779fba4e9869a4749c7a31576ffadd4ee2e5824",
+  "outputs/p4b2/pre/buffers/knn_S6.npz": "7abc2402f53cfde2087fccb4d94cb4a1546e8b1ae0abda673fe59151e4bd9cb7",
+  "outputs/p4b2/pre/buffers/knn_S7.npz": "9c3940804d2d4081dec3eb0b3022d51e8de4abe80cd5a0eb46e3094d7f16a524",
+  "outputs/p4b2/pre/buffers/knn_S8.npz": "653a414d5bb0c5fcfcd41eb4fd0ba661f706ae495ea8cb764a81becb5852fba0",
+  "outputs/p4b2/pre/manifest.json": "ea1ec175512aae1e2dc8c8241b4a05536df5771cbf0346a39ba9ca24ad406f52",
+  "outputs/p4b2/pre/starts/real_laps/S4_Hockenheim.npz": "2ebc3a53370eeedb5db3f1a0aeeab2458d3d537e45764e1d0b67141f7db70298",
+  "outputs/p4b2/pre/starts/real_laps/S5_Hockenheim.npz": "dd7885e4a2c5abfadff2f1e4a3a1930eef507ab5c1957615b2e2f8da944384a2",
+  "outputs/p4b2/pre/starts/real_laps/S6_Hockenheim.npz": "d419189825d305b7d50136013f6eccf5ed18654908ad75c3a21dbea28dcc34e0",
+  "outputs/p4b2/pre/starts/real_laps/S7_Hockenheim.npz": "28a93204bd0f851e9d9038dc69fb78425292b9c5a9c866849662a2f19eb7b492",
+  "outputs/p4b2/pre/starts/real_laps/S8_Hockenheim.npz": "976e7eb088436a4b7fbefe2da08b2582c92e89937937ea67e76e7b3f12f655ab",
+  "outputs/p4b2/pre/starts/real_states.json": "12b69bf3f93e66b477ef8239fec4dba9ea63b45ad6e73da1cea5cbd093296264",
+  "outputs/p4b2/pre/starts/real_states_index.json": "2827d9288c444ea255cde1945b5ceb5b39f247c74b95adfaaeddaa29b881e419",
+  "outputs/p4b2/pre/starts/starts.json": "a675d96103781d6d7d50e8286b2162c8e0bf7ba774956a0af3f34304aa6e20ec",
+  "outputs/psychophysics/analysis/decisions_all.json": "14c674863e78b68cf01986bddcaec34480700ea21811aa0971550711feca4ea1",
+  "outputs/psychophysics/analysis/key_table.npz": "938fb380e2134b01a79ce500e03e8a0e840b5f817222654046bf98e3782f9e4e",
+  "outputs/psychophysics/stimuli/bank.npz": "c124cb39866dbd5dd0937e9e99eef1fe582c7a3f4bf417608dafb87cdc69e1ae",
+  "outputs/psychophysics/stimuli/cells.json": "740fc4abddf4bcd3893c71313bd597317c65d07699ca573937ccc0048b7da5e7",
+  "outputs/psychophysics/stimuli/swap.json": "3901be8f231b557feaf97b9b4ca7b80a036a42c28063dd969e28d639581e6ac9",
+  "outputs/psychophysics/tables/model_tables_d1177829d920.npz": "cf215113b1d8d45655ae7129c4674532cf4981451c94344a897ac836f573768d",
+  "scripts/p4_b2.py": "f3a422b7662f370ad7f70b8115540fe2e480bcc625cfe5f9f0242f07b00fa7cf",
+  "scripts/p4b2_runs.py": "41420ca3c2810d061cb9093e31d25f2b7df728eb99e165085d0eb59ed6266d92",
+  "scripts/round_manifest.py": "1820f24ab4e6f830a19b7f913d1b6650d08d075acd3e8364776d58c54a8ea7b3",
+  "tests/test_p4_b2.py": "1610fc377504568a6f7408c5b2275c8695ba398b339a272d18703198ff8f7d83"
+ },
+ "missing": {},
+ "networks": {
+  "S4": {
+   "forward_pass_ok": true,
+   "log_std": [
+    -3.7540767192840576,
+    -2.991149663925171
+   ],
+   "obs_rms_sha256": "1dcfd451a0ffc97c8f9732b0710e7593fa11e8b5f097052015b91c1d5f794554",
+   "path": "runs/hockenheim-specialist-mlp-200M-s4/agent.pkl",
+   "sha256": "dcb440b09afa30db6ba08db120359ecd378fd511f1ae4f60092054b00718ee7a",
+   "size_bytes": 1515976,
+   "timesteps": 199884800
+  },
+  "S5": {
+   "forward_pass_ok": true,
+   "log_std": [
+    -3.72780442237854,
+    -2.8478260040283203
+   ],
+   "obs_rms_sha256": "fb71de7c981904d6ad573a0f41faa00c6826ae4966707aca951d8971ce17aac6",
+   "path": "runs/hockenheim-specialist-mlp-200M-s5/agent.pkl",
+   "sha256": "140c12ec8e7313c7b2a182240a2efddf11533ec96de99dfa5dce5f7c52d8e3f5",
+   "size_bytes": 1515976,
+   "timesteps": 199884800
+  },
+  "S6": {
+   "forward_pass_ok": true,
+   "log_std": [
+    -3.6927387714385986,
+    -2.9142987728118896
+   ],
+   "obs_rms_sha256": "bdfb068cc9e0552c13ff3822229f441edb9762e2f76ca233c63b79aa68908ef6",
+   "path": "runs/hockenheim-specialist-mlp-200M-s6/agent.pkl",
+   "sha256": "3de10c78b67c1b220d46ba2ac656b8b0f3fae4dc4809776e5cbf6e590064432c",
+   "size_bytes": 1515976,
+   "timesteps": 199884800
+  },
+  "S7": {
+   "forward_pass_ok": true,
+   "log_std": [
+    -3.6896321773529053,
+    -2.906256914138794
+   ],
+   "obs_rms_sha256": "cf43a03d2bab696a8aecfd4b7ade84f23fadf2d964f9c5bccf0311ba4ea60055",
+   "path": "runs/hockenheim-specialist-mlp-200M-s7/agent.pkl",
+   "sha256": "d757ba515e8a2126413fe80cf1a925f680508fc79cee411474e5b64340238893",
+   "size_bytes": 1515976,
+   "timesteps": 199884800
+  },
+  "S8": {
+   "forward_pass_ok": true,
+   "log_std": [
+    -3.8047614097595215,
+    -3.020850658416748
+   ],
+   "obs_rms_sha256": "ecc4076c470fd6a0eec29390d6b17802a6e235dffb3d8e40c7303ec5ce80dda9",
+   "path": "runs/hockenheim-specialist-mlp-200M-s8/agent.pkl",
+   "sha256": "c0b1b8ec4977abf523031a6d50cfb568c696abf5f93a78aa1bf61e114bcc375b",
+   "size_bytes": 1515976,
+   "timesteps": 199884800
+  }
+ },
+ "seconds": 1.2,
+ "streams": {
+  "S1": 132,
+  "S2": 133,
+  "S3": 134,
+  "S4": 135,
+  "S5": 136,
+  "S6": 137,
+  "S7": 138,
+  "S8": 139
+ },
+ "tag": "p4-b2-prereg-v1",
+ "train_commit": "860939a17709ffb676bcb0b228a5b731fecfc468",
+ "train_tag": "p4-b2-train-v1",
+ "version": 1
+}
