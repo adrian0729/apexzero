@@ -1,0 +1,4491 @@
+{
+ "record": "vg1-manifest",
+ "phase": "main",
+ "round": "vg1",
+ "tag": "vg1-prereg-v1",
+ "commit": "6fd82183ba7842a49e09cc1a4bb05ac74ab858fc",
+ "beta_star": "0.03",
+ "runs": [
+  {
+   "name": "vg1-base-s30",
+   "seed": 30,
+   "arm": "base",
+   "beta": null,
+   "status": "done",
+   "failure": null,
+   "box": {
+    "box": "vg1-manifest-0of1.json",
+    "lane": 0,
+    "gpu": 0,
+    "start": "2026-10-28T04:46:21Z",
+    "end": "2026-10-28T05:19:57Z",
+    "gpu_model": "NVIDIA RTX A6000",
+    "gpu_count": 4,
+    "box_type": "massedcompute_A6000_plusx4"
+   },
+   "checkpoints": [
+    {
+     "path": "runs/vg1-base-s30/ckpt/000010000000.pkl",
+     "sha256": "944b9629224032303177e8d38b5f0c8ce3b113ee5aef4f28eca5130ce6a0eb85",
+     "timesteps": 10000000
+    },
+    {
+     "path": "runs/vg1-base-s30/ckpt/000012210553.pkl",
+     "sha256": "e855e476cac523722769ebe6cbaa3bdb613838134b16060dcf542c27f6c9c498",
+     "timesteps": 12210553
+    },
+    {
+     "path": "runs/vg1-base-s30/ckpt/000014909760.pkl",
+     "sha256": "66ccd229852972f9286626091b1ebe2081b48c7aac0bca7509f821b6f55e4c74",
+     "timesteps": 14909760
+    },
+    {
+     "path": "runs/vg1-base-s30/ckpt/000018205642.pkl",
+     "sha256": "ce1c6cdcd4d19671b50edefe5c980b69ada09949fef444df29dd5a386e9c8674",
+     "timesteps": 18205642
+    },
+    {
+     "path": "runs/vg1-base-s30/ckpt/000022230095.pkl",
+     "sha256": "fef0030b3eac4af7a2f4851817b2660410ac0afd38f15242d372ea3d01fc9c09",
+     "timesteps": 22230095
+    },
+    {
+     "path": "runs/vg1-base-s30/ckpt/000027144176.pkl",
+     "sha256": "1d81181b00e06f66e34634d23d18a9310b102c00080beaa0d89a01b121d624ea",
+     "timesteps": 27144176
+    },
+    {
+     "path": "runs/vg1-base-s30/ckpt/000033144540.pkl",
+     "sha256": "03e10fb3140e9a65f94143584db9fa6c2cd0faf7b98ebc8779930711656c2c51",
+     "timesteps": 33144540
+    },
+    {
+     "path": "runs/vg1-base-s30/ckpt/000040471316.pkl",
+     "sha256": "76e7985cd44b32d7ef221ba2d1a01db749875a340a1f4bcca7f056edbb5cae4d",
+     "timesteps": 40471316
+    },
+    {
+     "path": "runs/vg1-base-s30/ckpt/000049417715.pkl",
+     "sha256": "12d01a1eac7d58c5677ae3a926378a0b44c9736eb932a76b8d74995be47f50be",
+     "timesteps": 49417715
+    },
+    {
+     "path": "runs/vg1-base-s30/ckpt/000060341763.pkl",
+     "sha256": "33685c4066d1e618f0577271166f93d968bef8576c1cd463c3a588597c7d8f2e",
+     "timesteps": 60341763
+    },
+    {
+     "path": "runs/vg1-base-s30/ckpt/000073680629.pkl",
+     "sha256": "826509fef7e5d1144c20fafee583129e55a9b50c8339a1d43779af6d8c4bc084",
+     "timesteps": 73680629
+    },
+    {
+     "path": "runs/vg1-base-s30/ckpt/000089968123.pkl",
+     "sha256": "4fdc525feb9a5256ecff490978673b73fb30ca5be7a71d3c0d69cbf7e811e752",
+     "timesteps": 89968123
+    },
+    {
+     "path": "runs/vg1-base-s30/ckpt/000109856054.pkl",
+     "sha256": "9f0ad15f9a965b9d3c71c1e9f8afecc45e456ba049eaa5dd2f9a666df43662b5",
+     "timesteps": 109856054
+    },
+    {
+     "path": "runs/vg1-base-s30/ckpt/000134140317.pkl",
+     "sha256": "d2d2ae56eea58e3bd7739e85b55f91c23210cd6a067a0f9ce2cfe7f87ea1c1bc",
+     "timesteps": 134140317
+    },
+    {
+     "path": "runs/vg1-base-s30/ckpt/000163792745.pkl",
+     "sha256": "aadaf66a86a18d7c796661eab3ba2c816728b198db19011ce78f4a6617d6b1a5",
+     "timesteps": 163792745
+    },
+    {
+     "path": "runs/vg1-base-s30/ckpt/000199884800.pkl",
+     "sha256": "2fdb68da9bdec4a68d61286245437101a2cf41e410f6a66f0336556fc5c53615",
+     "timesteps": 199884800
+    }
+   ],
+   "final": {
+    "path": "runs/vg1-base-s30/ckpt/000199884800.pkl",
+    "sha256": "2fdb68da9bdec4a68d61286245437101a2cf41e410f6a66f0336556fc5c53615",
+    "timesteps": 199884800
+   },
+   "config_sha256": "86b7f7b82161dcd53db38c4839cbddac25d6d5a6164e14c598ef853b6635bd9f",
+   "metrics_sha256": "1d06fb043c24b9bf0c847f0255c1dccefa49b6815fa1c62a55ed8cc951f48f02",
+   "eval_rdev_sha256": "b6f665918fe61844d3d932f12bf2b529e0435951f9753611988b57c55e1da21d",
+   "logs_sha256": {
+    "runs/vg1-base-s30.log": "5ce9608829929240a40a5524b39cf000b2adbbc331e8861e3a76e09bf552de21"
+   }
+  },
+  {
+   "name": "vg1-base-s31",
+   "seed": 31,
+   "arm": "base",
+   "beta": null,
+   "status": "done",
+   "failure": null,
+   "box": {
+    "box": "vg1-manifest-0of1.json",
+    "lane": 1,
+    "gpu": 1,
+    "start": "2026-10-28T04:46:21Z",
+    "end": "2026-10-28T05:19:15Z",
+    "gpu_model": "NVIDIA RTX A6000",
+    "gpu_count": 4,
+    "box_type": "massedcompute_A6000_plusx4"
+   },
+   "checkpoints": [
+    {
+     "path": "runs/vg1-base-s31/ckpt/000010000000.pkl",
+     "sha256": "61714ddb1254855072f5abf9efc76675c11a6a4972d52f5b5f03b99fb613b408",
+     "timesteps": 10000000
+    },
+    {
+     "path": "runs/vg1-base-s31/ckpt/000012210553.pkl",
+     "sha256": "938c1a47cfdd358524e0011298b21d084ed957cf0287de8d20a3faa0c1d072fb",
+     "timesteps": 12210553
+    },
+    {
+     "path": "runs/vg1-base-s31/ckpt/000014909760.pkl",
+     "sha256": "8f1ed739f23154d67fa6876820c8868a01f27108f7b7c8aa32479f30693d4952",
+     "timesteps": 14909760
+    },
+    {
+     "path": "runs/vg1-base-s31/ckpt/000018205642.pkl",
+     "sha256": "e938bf67ada3db85fcd52c63c85e64272cf1e8bfd085f3cc2a4a84cc2f6be5d0",
+     "timesteps": 18205642
+    },
+    {
+     "path": "runs/vg1-base-s31/ckpt/000022230095.pkl",
+     "sha256": "bbba773bdce551ee773336332827bf86ad2bca7ff5eef9f2e78c35609c02f6e3",
+     "timesteps": 22230095
+    },
+    {
+     "path": "runs/vg1-base-s31/ckpt/000027144176.pkl",
+     "sha256": "d2057a800ac743fb22628b7fedc2aa723ff0834078f4fa9547079c315eefef4a",
+     "timesteps": 27144176
+    },
+    {
+     "path": "runs/vg1-base-s31/ckpt/000033144540.pkl",
+     "sha256": "874df771ed6a0e2dd3fe12a9d040b05df8e4f9f44ca439bab8c35aec65790894",
+     "timesteps": 33144540
+    },
+    {
+     "path": "runs/vg1-base-s31/ckpt/000040471316.pkl",
+     "sha256": "2aaf34d78a1cacb6a8bc8bba1f1161fb06e7c0ffcfbbfc3cdb47409ee202df72",
+     "timesteps": 40471316
+    },
+    {
+     "path": "runs/vg1-base-s31/ckpt/000049417715.pkl",
+     "sha256": "f4c2589d58736a025b0d2300f54e69329d30079511914766bd70711b5db90713",
+     "timesteps": 49417715
+    },
+    {
+     "path": "runs/vg1-base-s31/ckpt/000060341763.pkl",
+     "sha256": "d69c950577f3f7bf6f7985038973026efeb42fefac6ce544f8dc670d5504ff66",
+     "timesteps": 60341763
+    },
+    {
+     "path": "runs/vg1-base-s31/ckpt/000073680629.pkl",
+     "sha256": "32bf200f6d346297c5613f12d3443bd6606a0653bd1b6d6520d755668fb7658d",
+     "timesteps": 73680629
+    },
+    {
+     "path": "runs/vg1-base-s31/ckpt/000089968123.pkl",
+     "sha256": "0386188b755173fe2a6fa4aad220cd18d442f66a01ca70c9318720fba0e0ab23",
+     "timesteps": 89968123
+    },
+    {
+     "path": "runs/vg1-base-s31/ckpt/000109856054.pkl",
+     "sha256": "fd61ab42c69711791bd6c4ea88e98d381b30a9cea8e777a58f8a04bda4f39548",
+     "timesteps": 109856054
+    },
+    {
+     "path": "runs/vg1-base-s31/ckpt/000134140317.pkl",
+     "sha256": "30356ce42ab57dbd842033b0aeafd094a03e8bb99fed8f381301eaf9b34534e3",
+     "timesteps": 134140317
+    },
+    {
+     "path": "runs/vg1-base-s31/ckpt/000163792745.pkl",
+     "sha256": "7ece23f90c1d5e23249401aab33b074ca98f91646e2da1c8a151a350c0df08e2",
+     "timesteps": 163792745
+    },
+    {
+     "path": "runs/vg1-base-s31/ckpt/000199884800.pkl",
+     "sha256": "481612b99a8f13ab481b71ebd6eebf9f2746b2d2b26ebf7559e4ea484b0bbb0c",
+     "timesteps": 199884800
+    }
+   ],
+   "final": {
+    "path": "runs/vg1-base-s31/ckpt/000199884800.pkl",
+    "sha256": "481612b99a8f13ab481b71ebd6eebf9f2746b2d2b26ebf7559e4ea484b0bbb0c",
+    "timesteps": 199884800
+   },
+   "config_sha256": "be73ff1b8123199bd06460361279e57a87e0f1b24c9df9f4722e0a5968631f90",
+   "metrics_sha256": "b3274cf333121e0a127a792ef8c76fb56edb80351f19a6cd21cfa411950bc8dd",
+   "eval_rdev_sha256": "7111fba886a843c589532ae303eeb8871506af3116674b1881ba54dd671e8374",
+   "logs_sha256": {
+    "runs/vg1-base-s31.log": "a02ae068cee359b1114b7146e76041e6a0997f0a0ead47863a41461d6a7f4777"
+   }
+  },
+  {
+   "name": "vg1-base-s32",
+   "seed": 32,
+   "arm": "base",
+   "beta": null,
+   "status": "done",
+   "failure": null,
+   "box": {
+    "box": "vg1-manifest-0of1.json",
+    "lane": 2,
+    "gpu": 2,
+    "start": "2026-10-28T04:46:21Z",
+    "end": "2026-10-28T05:20:00Z",
+    "gpu_model": "NVIDIA RTX A6000",
+    "gpu_count": 4,
+    "box_type": "massedcompute_A6000_plusx4"
+   },
+   "checkpoints": [
+    {
+     "path": "runs/vg1-base-s32/ckpt/000010000000.pkl",
+     "sha256": "1ebbe7126c20352002298ca31a31fa02907d4d92afe0a7e7582af52b82b5804d",
+     "timesteps": 10000000
+    },
+    {
+     "path": "runs/vg1-base-s32/ckpt/000012210553.pkl",
+     "sha256": "5ed2850265db61219f1157435327c8f2ceef5611fb6f4a20103725f0c9ae08cd",
+     "timesteps": 12210553
+    },
+    {
+     "path": "runs/vg1-base-s32/ckpt/000014909760.pkl",
+     "sha256": "cdd4dc2f91eb87581998d8e2e74fdbcd8981f935c69e1d543b0b57b0b36a6fd8",
+     "timesteps": 14909760
+    },
+    {
+     "path": "runs/vg1-base-s32/ckpt/000018205642.pkl",
+     "sha256": "fd9bcfc8f5b293c73db0b55d40e1937402409aaa9719b007a720cc8625ac20fe",
+     "timesteps": 18205642
+    },
+    {
+     "path": "runs/vg1-base-s32/ckpt/000022230095.pkl",
+     "sha256": "0d4a1a6466e33cefd1647259dc56ea1a02be12402b5a910e3aa836da2966ea62",
+     "timesteps": 22230095
+    },
+    {
+     "path": "runs/vg1-base-s32/ckpt/000027144176.pkl",
+     "sha256": "9aea5e828a962d1baf4ed83c02770469d048704842344f21ce5bb8e248dfc3bd",
+     "timesteps": 27144176
+    },
+    {
+     "path": "runs/vg1-base-s32/ckpt/000033144540.pkl",
+     "sha256": "1de975341d92f20e3ecd2148369cbf2d238f183abf5fc38a609c728c0868b790",
+     "timesteps": 33144540
+    },
+    {
+     "path": "runs/vg1-base-s32/ckpt/000040471316.pkl",
+     "sha256": "b4e78181b77c98ad10302152ccc85d7c6ea26d657f3236aa2692c8762cb32b6f",
+     "timesteps": 40471316
+    },
+    {
+     "path": "runs/vg1-base-s32/ckpt/000049417715.pkl",
+     "sha256": "e4d6ff0089ae2e398ee204d8a67b72e047a8e212a24131c868b8924906d47461",
+     "timesteps": 49417715
+    },
+    {
+     "path": "runs/vg1-base-s32/ckpt/000060341763.pkl",
+     "sha256": "5192a3a7e975c569ce33b7ed92db745b2fad477d00bba36adb356f4ead8e5f99",
+     "timesteps": 60341763
+    },
+    {
+     "path": "runs/vg1-base-s32/ckpt/000073680629.pkl",
+     "sha256": "753ba316ac10cd4ea4c3dadf3dd71910e9bf9e5c62c998cef47e43baeab931a7",
+     "timesteps": 73680629
+    },
+    {
+     "path": "runs/vg1-base-s32/ckpt/000089968123.pkl",
+     "sha256": "f13485adc8631783d797c9fb56ad800e38c6d8c9a8b67bfbb4e9fca73d3ac8cc",
+     "timesteps": 89968123
+    },
+    {
+     "path": "runs/vg1-base-s32/ckpt/000109856054.pkl",
+     "sha256": "728f161e17df6904bcca7f9be4bdf92b3e74795ec4c4ea4f142a3b7b5d1514ae",
+     "timesteps": 109856054
+    },
+    {
+     "path": "runs/vg1-base-s32/ckpt/000134140317.pkl",
+     "sha256": "46567f7b7c69d2a62f9ef8f31e8aa5f952df64b38810f350ae19cbcafb21efe3",
+     "timesteps": 134140317
+    },
+    {
+     "path": "runs/vg1-base-s32/ckpt/000163792745.pkl",
+     "sha256": "4137f540135ea9379b3495c0071eddf00f1eb8cb07b035920f3ff044b0df3aaf",
+     "timesteps": 163792745
+    },
+    {
+     "path": "runs/vg1-base-s32/ckpt/000199884800.pkl",
+     "sha256": "601b78dc4e4c93099e7c7d8183fdc094fd6d0d3c41a09f939a1e1e04ad8cc3e1",
+     "timesteps": 199884800
+    }
+   ],
+   "final": {
+    "path": "runs/vg1-base-s32/ckpt/000199884800.pkl",
+    "sha256": "601b78dc4e4c93099e7c7d8183fdc094fd6d0d3c41a09f939a1e1e04ad8cc3e1",
+    "timesteps": 199884800
+   },
+   "config_sha256": "de180a42f0548aad0eb1b317fff74c31836bee64b23c44cbdd5e8fb6e3a24520",
+   "metrics_sha256": "f28a76cc5213213fdfeb76f4cc307c60a25f18dcadb8ac375856c66eb0b39477",
+   "eval_rdev_sha256": "011fa6d70abe1bb62dbd5433086f286b3765cac366db43920a5ee35d897bbcfb",
+   "logs_sha256": {
+    "runs/vg1-base-s32.log": "ae0af3d31d686aaf18f69bd2a9fc1f13968504d744d43c4e644730074973f299"
+   }
+  },
+  {
+   "name": "vg1-base-s33",
+   "seed": 33,
+   "arm": "base",
+   "beta": null,
+   "status": "done",
+   "failure": null,
+   "box": {
+    "box": "vg1-manifest-0of1.json",
+    "lane": 3,
+    "gpu": 3,
+    "start": "2026-10-28T04:46:21Z",
+    "end": "2026-10-28T05:19:00Z",
+    "gpu_model": "NVIDIA RTX A6000",
+    "gpu_count": 4,
+    "box_type": "massedcompute_A6000_plusx4"
+   },
+   "checkpoints": [
+    {
+     "path": "runs/vg1-base-s33/ckpt/000010000000.pkl",
+     "sha256": "e60bff6f0e3ded30359032c8ce1776b8c25d8d6a01bc799d60a2347cb1426261",
+     "timesteps": 10000000
+    },
+    {
+     "path": "runs/vg1-base-s33/ckpt/000012210553.pkl",
+     "sha256": "afe05ac3d91261e1f363f3594094a4a855a3ffcfdc118124ffa89d91ab036837",
+     "timesteps": 12210553
+    },
+    {
+     "path": "runs/vg1-base-s33/ckpt/000014909760.pkl",
+     "sha256": "4490dd3b9dc761f4994689384f393a4a70cc846af1b21a445f4b3ac74e6f8bf3",
+     "timesteps": 14909760
+    },
+    {
+     "path": "runs/vg1-base-s33/ckpt/000018205642.pkl",
+     "sha256": "f891f4a75a0a9e227751c6b6db35c24957a301e8129c58533de91e1ef979f03a",
+     "timesteps": 18205642
+    },
+    {
+     "path": "runs/vg1-base-s33/ckpt/000022230095.pkl",
+     "sha256": "f78b66b96c85627c5a1a734fa5d52be10eb586a4682bed125347c0c8e6f44380",
+     "timesteps": 22230095
+    },
+    {
+     "path": "runs/vg1-base-s33/ckpt/000027144176.pkl",
+     "sha256": "3a38f1c0e0a3afef1931364a6dbd703e504c9cebe30e2267e7626f709ac21017",
+     "timesteps": 27144176
+    },
+    {
+     "path": "runs/vg1-base-s33/ckpt/000033144540.pkl",
+     "sha256": "45df47ca677b3752e3d81fa728b09baaed8a9c9d727cdca69929451fec8658b0",
+     "timesteps": 33144540
+    },
+    {
+     "path": "runs/vg1-base-s33/ckpt/000040471316.pkl",
+     "sha256": "d993c094023f0132126082603590dbd78640c2e86d859f06615b4c5cf58172e1",
+     "timesteps": 40471316
+    },
+    {
+     "path": "runs/vg1-base-s33/ckpt/000049417715.pkl",
+     "sha256": "bb2dd36d45c32d66d46496ff540fa5c81d1064bdb68c71c08961e3dd76afb0fd",
+     "timesteps": 49417715
+    },
+    {
+     "path": "runs/vg1-base-s33/ckpt/000060341763.pkl",
+     "sha256": "474b5c748adaca8014421e81f85403541047ebe1a704077edeef6ad0de0632c9",
+     "timesteps": 60341763
+    },
+    {
+     "path": "runs/vg1-base-s33/ckpt/000073680629.pkl",
+     "sha256": "ce2084e023c695b865609c2ed6692f7d75e6661a305ac80b64ba815bb0d74477",
+     "timesteps": 73680629
+    },
+    {
+     "path": "runs/vg1-base-s33/ckpt/000089968123.pkl",
+     "sha256": "2cc8db2259402e4873a2b0368cb03bf3c8df1d14222106bf929399edbc917866",
+     "timesteps": 89968123
+    },
+    {
+     "path": "runs/vg1-base-s33/ckpt/000109856054.pkl",
+     "sha256": "e8b018117e2101aaa3262326597eaf5844c3666b64efe4a0e2dbd7358352003a",
+     "timesteps": 109856054
+    },
+    {
+     "path": "runs/vg1-base-s33/ckpt/000134140317.pkl",
+     "sha256": "1f4133b43a28740b9dfa87e5b2e70a5e798726ab93b94e4df7dbab215a6b2afd",
+     "timesteps": 134140317
+    },
+    {
+     "path": "runs/vg1-base-s33/ckpt/000163792745.pkl",
+     "sha256": "55afdf9331fe079f76d0a2b4f155c77f6f70d51c555f19879850a61c407b5498",
+     "timesteps": 163792745
+    },
+    {
+     "path": "runs/vg1-base-s33/ckpt/000199884800.pkl",
+     "sha256": "bf951dc043af2a3c5e63a93a2e73a7f7383345107cf123b32e615aa84a47d7b8",
+     "timesteps": 199884800
+    }
+   ],
+   "final": {
+    "path": "runs/vg1-base-s33/ckpt/000199884800.pkl",
+    "sha256": "bf951dc043af2a3c5e63a93a2e73a7f7383345107cf123b32e615aa84a47d7b8",
+    "timesteps": 199884800
+   },
+   "config_sha256": "3071ffe8af523949495905f321de66f6a74c137480c1a925c424bf4537746fd5",
+   "metrics_sha256": "8d97cbc2f2ebbdb29615e4e2c09ad882fd6f81af544a3eda1d0e9b00c9b2c109",
+   "eval_rdev_sha256": "f20c787ba938cc3ed0495e2dd416fd4ce4318f9a22d7763700a75815cf44b9f0",
+   "logs_sha256": {
+    "runs/vg1-base-s33.log": "d2a59546b2eafa88f994cae7c38feb7e8f4bb50d5ae3de1c4757311c3bb44639"
+   }
+  },
+  {
+   "name": "vg1-vgl-s30",
+   "seed": 30,
+   "arm": "vgl",
+   "beta": 0.03,
+   "status": "done",
+   "failure": null,
+   "box": {
+    "box": "vg1-manifest-0of1.json",
+    "lane": 4,
+    "gpu": 0,
+    "start": "2026-10-28T04:46:21Z",
+    "end": "2026-10-28T05:52:27Z",
+    "gpu_model": "NVIDIA RTX A6000",
+    "gpu_count": 4,
+    "box_type": "massedcompute_A6000_plusx4"
+   },
+   "checkpoints": [
+    {
+     "path": "runs/vg1-vgl-s30/ckpt/000010000000.pkl",
+     "sha256": "d0cf28c7cd728ef1bb72360975bcd6f993c5b9f91fea0fa914fe8e172347d52c",
+     "timesteps": 10000000
+    },
+    {
+     "path": "runs/vg1-vgl-s30/ckpt/000012210553.pkl",
+     "sha256": "500c1eea99434a5b966024f22f3fcba2c734255f38ea1e1c6277f13a3d2d0f7e",
+     "timesteps": 12210553
+    },
+    {
+     "path": "runs/vg1-vgl-s30/ckpt/000014909760.pkl",
+     "sha256": "d1f8e52a84d35ae3db60123c9bd5d2e9decac867900bfeb30ef47fcd180188aa",
+     "timesteps": 14909760
+    },
+    {
+     "path": "runs/vg1-vgl-s30/ckpt/000018205642.pkl",
+     "sha256": "5a13c882811f37e573965726eb9e33b6a9f45923e72e2e07812f49ebe7fbd654",
+     "timesteps": 18205642
+    },
+    {
+     "path": "runs/vg1-vgl-s30/ckpt/000022230095.pkl",
+     "sha256": "bbad4fa938b5496e9c123e4ac5748c8bab14f442353aa125223849430e76f356",
+     "timesteps": 22230095
+    },
+    {
+     "path": "runs/vg1-vgl-s30/ckpt/000027144176.pkl",
+     "sha256": "f23e814bf21bd79d5a15c0653b8b1c89e21138caeeff78a10c41a7d12741e976",
+     "timesteps": 27144176
+    },
+    {
+     "path": "runs/vg1-vgl-s30/ckpt/000033144540.pkl",
+     "sha256": "cf7eabd69910c7392cf499add8237e4354b01b54544b25813073ecd7356a8c44",
+     "timesteps": 33144540
+    },
+    {
+     "path": "runs/vg1-vgl-s30/ckpt/000040471316.pkl",
+     "sha256": "8cc33164a97b70ef647ef1c127820fe80c8b859d8bb4cea85b2a56efc04f748c",
+     "timesteps": 40471316
+    },
+    {
+     "path": "runs/vg1-vgl-s30/ckpt/000049417715.pkl",
+     "sha256": "b3335165840194f6813e6da8bc96a1b0bff2ee0f4efe6458e6f60d588f4924b4",
+     "timesteps": 49417715
+    },
+    {
+     "path": "runs/vg1-vgl-s30/ckpt/000060341763.pkl",
+     "sha256": "9a98715e9b983f91aff0d1aac0fcef4cf776bf839f1fd1d19b1141a1e3892fd2",
+     "timesteps": 60341763
+    },
+    {
+     "path": "runs/vg1-vgl-s30/ckpt/000073680629.pkl",
+     "sha256": "6ba878cec5ee8b01162c580aff4d94d7bea3b4a30fbffaa1bc4c595349a9d25c",
+     "timesteps": 73680629
+    },
+    {
+     "path": "runs/vg1-vgl-s30/ckpt/000089968123.pkl",
+     "sha256": "9af5ff87d81ee2d76ea24e72afb0c8f6cfbe21fe50a85cf8f18da8fd819b4cdf",
+     "timesteps": 89968123
+    },
+    {
+     "path": "runs/vg1-vgl-s30/ckpt/000109856054.pkl",
+     "sha256": "2b36ed631abd98b2277aacc13576e09c77de79221557456109d4cdc74d403c6d",
+     "timesteps": 109856054
+    },
+    {
+     "path": "runs/vg1-vgl-s30/ckpt/000134140317.pkl",
+     "sha256": "89f6384deab8ca02349296d801fe2ccd0ae22e657294ba0fff3f4f250dfd3385",
+     "timesteps": 134140317
+    },
+    {
+     "path": "runs/vg1-vgl-s30/ckpt/000163792745.pkl",
+     "sha256": "3b8ff1453dac172732a946e5ddba321ef82944891e547b3a4aace216f011cdf8",
+     "timesteps": 163792745
+    },
+    {
+     "path": "runs/vg1-vgl-s30/ckpt/000199884800.pkl",
+     "sha256": "c8f0d510eb4018f0990e67b1cde7bbc06e116100c03a82d0d91eb7210205d037",
+     "timesteps": 199884800
+    }
+   ],
+   "final": {
+    "path": "runs/vg1-vgl-s30/ckpt/000199884800.pkl",
+    "sha256": "c8f0d510eb4018f0990e67b1cde7bbc06e116100c03a82d0d91eb7210205d037",
+    "timesteps": 199884800
+   },
+   "config_sha256": "9561629e20982393a5e335d013013aa4f3cd45bea41fbe596b9f1399f53f3d85",
+   "metrics_sha256": "f740f7f371e69de64275f14aa6a5f4902691afc6d331ddfb3851d1420e8a2594",
+   "eval_rdev_sha256": "65dc0d50e3de649ee3997c53e2b858762029cd061c3c2f45222d771d453e0c5b",
+   "logs_sha256": {
+    "runs/vg1-vgl-s30.log": "2fb6764ada294923e224c22e8d589303b7eada96759900963036bcc6182d0753"
+   }
+  },
+  {
+   "name": "vg1-vgl-s31",
+   "seed": 31,
+   "arm": "vgl",
+   "beta": 0.03,
+   "status": "done",
+   "failure": null,
+   "box": {
+    "box": "vg1-manifest-0of1.json",
+    "lane": 5,
+    "gpu": 1,
+    "start": "2026-10-28T04:46:21Z",
+    "end": "2026-10-28T05:52:43Z",
+    "gpu_model": "NVIDIA RTX A6000",
+    "gpu_count": 4,
+    "box_type": "massedcompute_A6000_plusx4"
+   },
+   "checkpoints": [
+    {
+     "path": "runs/vg1-vgl-s31/ckpt/000010000000.pkl",
+     "sha256": "f0754da671cc437a549a9b64de922338414d45dee150322d17da1e0ded1fc98e",
+     "timesteps": 10000000
+    },
+    {
+     "path": "runs/vg1-vgl-s31/ckpt/000012210553.pkl",
+     "sha256": "5abddba19f178c838cf00e5243d8521a8e9b10c969a408a7ca6285a159e149f9",
+     "timesteps": 12210553
+    },
+    {
+     "path": "runs/vg1-vgl-s31/ckpt/000014909760.pkl",
+     "sha256": "39698831d1a4b9533eebbecec185cfd91b9aebda5d0b6eeb5d7b55790f820eff",
+     "timesteps": 14909760
+    },
+    {
+     "path": "runs/vg1-vgl-s31/ckpt/000018205642.pkl",
+     "sha256": "5dcb3caaf34c0c534a68c12c03de3c1375d9162f0f1f19b3ac284094e8c4f9bf",
+     "timesteps": 18205642
+    },
+    {
+     "path": "runs/vg1-vgl-s31/ckpt/000022230095.pkl",
+     "sha256": "2c2bc38bf941bef51b47315f1c341c318f11d05e8dcf11724065d91a24df9a54",
+     "timesteps": 22230095
+    },
+    {
+     "path": "runs/vg1-vgl-s31/ckpt/000027144176.pkl",
+     "sha256": "9c1be0bb20f48d33f790652d075bfee08b0ee95e9a7908daf5da88b7e909986c",
+     "timesteps": 27144176
+    },
+    {
+     "path": "runs/vg1-vgl-s31/ckpt/000033144540.pkl",
+     "sha256": "bb8b8d77c58cb9ab262f9cf9f07c501e345adbbc91eaf88ef13fbef3fdf17b6c",
+     "timesteps": 33144540
+    },
+    {
+     "path": "runs/vg1-vgl-s31/ckpt/000040471316.pkl",
+     "sha256": "b4eb2d00151893706deb0d915c89316a37a1e281c9a04d122bb05402ae1ec834",
+     "timesteps": 40471316
+    },
+    {
+     "path": "runs/vg1-vgl-s31/ckpt/000049417715.pkl",
+     "sha256": "0136a4a9065cba11a04c099df824cc875e64d5a4a87097e0450967a593794926",
+     "timesteps": 49417715
+    },
+    {
+     "path": "runs/vg1-vgl-s31/ckpt/000060341763.pkl",
+     "sha256": "0b47ddf5cd970e7704cd6c9e657e48c7da80af3bdf8fff27c906cdd4658b850f",
+     "timesteps": 60341763
+    },
+    {
+     "path": "runs/vg1-vgl-s31/ckpt/000073680629.pkl",
+     "sha256": "7004a6c3b2766e74ef0cf82bbede86bf704df5acf1a3fce44d3d561a730429f8",
+     "timesteps": 73680629
+    },
+    {
+     "path": "runs/vg1-vgl-s31/ckpt/000089968123.pkl",
+     "sha256": "c667dae2d4ac3e664bc546d8404fac98609536ccc5c4b8c2d76c1d2a274342b7",
+     "timesteps": 89968123
+    },
+    {
+     "path": "runs/vg1-vgl-s31/ckpt/000109856054.pkl",
+     "sha256": "a8dc43a6ce4070c7779dc45f1771674bddf15b8f14549abff39020b82d33610b",
+     "timesteps": 109856054
+    },
+    {
+     "path": "runs/vg1-vgl-s31/ckpt/000134140317.pkl",
+     "sha256": "b876536bb9ee08b5bbbcbc93c2d07defcd3fdc374bd81b5c23f3bda39e4fe7ec",
+     "timesteps": 134140317
+    },
+    {
+     "path": "runs/vg1-vgl-s31/ckpt/000163792745.pkl",
+     "sha256": "1503d5a4b91b81b092f9fb75e5b50156884050c94d7a20e281d4d625d313acf2",
+     "timesteps": 163792745
+    },
+    {
+     "path": "runs/vg1-vgl-s31/ckpt/000199884800.pkl",
+     "sha256": "d1fe7119fe83c069156a7f3f912e5ad212ded233d6fd45d91ac50eca931aa6af",
+     "timesteps": 199884800
+    }
+   ],
+   "final": {
+    "path": "runs/vg1-vgl-s31/ckpt/000199884800.pkl",
+    "sha256": "d1fe7119fe83c069156a7f3f912e5ad212ded233d6fd45d91ac50eca931aa6af",
+    "timesteps": 199884800
+   },
+   "config_sha256": "419061c4395761d169d178a70ae264a8dc9afba86faaad6b4f75480f940ed8a1",
+   "metrics_sha256": "24bb7226ab3fb2ddc5b240bcd9c9349dbe011ac95e352f300ca8b267fc7f206a",
+   "eval_rdev_sha256": "2c1fd33971ddccdbdbe6f76d394105e2525ed75f1b46ad38fd0e848f6ca99b6a",
+   "logs_sha256": {
+    "runs/vg1-vgl-s31.log": "f13892803ed8e458071ee2b2de2706809d4e65bfab17e12d43aa8ffa29e85f71"
+   }
+  },
+  {
+   "name": "vg1-vgl-s32",
+   "seed": 32,
+   "arm": "vgl",
+   "beta": 0.03,
+   "status": "done",
+   "failure": null,
+   "box": {
+    "box": "vg1-manifest-0of1.json",
+    "lane": 6,
+    "gpu": 2,
+    "start": "2026-10-28T04:46:21Z",
+    "end": "2026-10-28T05:53:00Z",
+    "gpu_model": "NVIDIA RTX A6000",
+    "gpu_count": 4,
+    "box_type": "massedcompute_A6000_plusx4"
+   },
+   "checkpoints": [
+    {
+     "path": "runs/vg1-vgl-s32/ckpt/000010000000.pkl",
+     "sha256": "c051db2a12652be1c8173b19e4095c993431de16737a53c28d63549beda42b52",
+     "timesteps": 10000000
+    },
+    {
+     "path": "runs/vg1-vgl-s32/ckpt/000012210553.pkl",
+     "sha256": "1e41beda797a59a62898ce4f1edc791269780113f968f37f5eb21a7b8e07ba20",
+     "timesteps": 12210553
+    },
+    {
+     "path": "runs/vg1-vgl-s32/ckpt/000014909760.pkl",
+     "sha256": "63fd84181a965b3fdf08f35862fcda6e92e91ae90646bac3f47bb55c305b9deb",
+     "timesteps": 14909760
+    },
+    {
+     "path": "runs/vg1-vgl-s32/ckpt/000018205642.pkl",
+     "sha256": "711047ec8902f38523531251108e56b7161160353f1ddfe3028aa754d36d8926",
+     "timesteps": 18205642
+    },
+    {
+     "path": "runs/vg1-vgl-s32/ckpt/000022230095.pkl",
+     "sha256": "b658758e421868bd47743a4d4a7b2e4c9b14418374382555d0200b606bd3b727",
+     "timesteps": 22230095
+    },
+    {
+     "path": "runs/vg1-vgl-s32/ckpt/000027144176.pkl",
+     "sha256": "be509359b26d9d099115361696d46d72d8f38430ea779a98c09e51a1a3f0f882",
+     "timesteps": 27144176
+    },
+    {
+     "path": "runs/vg1-vgl-s32/ckpt/000033144540.pkl",
+     "sha256": "c61f4f66dbb8d5d4c90bb6f1b1014176f90dd19335124bae4396512ccb3e62ae",
+     "timesteps": 33144540
+    },
+    {
+     "path": "runs/vg1-vgl-s32/ckpt/000040471316.pkl",
+     "sha256": "fd86a7307586fb3fd77efa5e907e391557ba8463931d8ae0b91312f0ae5897a7",
+     "timesteps": 40471316
+    },
+    {
+     "path": "runs/vg1-vgl-s32/ckpt/000049417715.pkl",
+     "sha256": "0fee9d95456aad861be30515a964ae4f4e64fbbdc15ba502f00d6b3169fb9459",
+     "timesteps": 49417715
+    },
+    {
+     "path": "runs/vg1-vgl-s32/ckpt/000060341763.pkl",
+     "sha256": "bb3081e569889601c29c54799a3896cd5f8c0ff312f4cf8ea7ba4ec5a409c3c3",
+     "timesteps": 60341763
+    },
+    {
+     "path": "runs/vg1-vgl-s32/ckpt/000073680629.pkl",
+     "sha256": "4fbd89ba9c658df51c10d7e63dc0f233218f8952c6b619cceeab450310d18664",
+     "timesteps": 73680629
+    },
+    {
+     "path": "runs/vg1-vgl-s32/ckpt/000089968123.pkl",
+     "sha256": "f754e1c4f1507e48afbedfe451bf34d41957deffc3b064c6cd76f8ab8a986f88",
+     "timesteps": 89968123
+    },
+    {
+     "path": "runs/vg1-vgl-s32/ckpt/000109856054.pkl",
+     "sha256": "a465b1b5682d154ae26008e42ced0d82a1a27ca0780d1a7705c6ed4b3bf47ff9",
+     "timesteps": 109856054
+    },
+    {
+     "path": "runs/vg1-vgl-s32/ckpt/000134140317.pkl",
+     "sha256": "cc36bcf699058c32a64e4eec4e988b9eecaa3a745ce885520fd2984d41db9b77",
+     "timesteps": 134140317
+    },
+    {
+     "path": "runs/vg1-vgl-s32/ckpt/000163792745.pkl",
+     "sha256": "7579bf8af44185c83dd3562075a86d68f9b37f260a68982fb40783000d21a65a",
+     "timesteps": 163792745
+    },
+    {
+     "path": "runs/vg1-vgl-s32/ckpt/000199884800.pkl",
+     "sha256": "896416863915227127823cbe2845cae22a10c6d40e849abcde3b872603cbc7e9",
+     "timesteps": 199884800
+    }
+   ],
+   "final": {
+    "path": "runs/vg1-vgl-s32/ckpt/000199884800.pkl",
+    "sha256": "896416863915227127823cbe2845cae22a10c6d40e849abcde3b872603cbc7e9",
+    "timesteps": 199884800
+   },
+   "config_sha256": "861fbbab8e1f3c42cc246a9a40e5528dd9a5705e097729b702fa94eb0c969f6d",
+   "metrics_sha256": "6eae6d4def67a1857c57574a65f62623c59a3a773336aa36f7ac870a24f62c22",
+   "eval_rdev_sha256": "4eff29967618638b0ca54d8819e525f5d2f6914806f1136f09f0a4c85db2ccc8",
+   "logs_sha256": {
+    "runs/vg1-vgl-s32.log": "dc680c85260c8a6a3c1a4f672359a88c8fb7eb540d2f91631e5a80e21ee37602"
+   }
+  },
+  {
+   "name": "vg1-vgl-s33",
+   "seed": 33,
+   "arm": "vgl",
+   "beta": 0.03,
+   "status": "done",
+   "failure": null,
+   "box": {
+    "box": "vg1-manifest-0of1.json",
+    "lane": 7,
+    "gpu": 3,
+    "start": "2026-10-28T04:46:21Z",
+    "end": "2026-10-28T05:52:42Z",
+    "gpu_model": "NVIDIA RTX A6000",
+    "gpu_count": 4,
+    "box_type": "massedcompute_A6000_plusx4"
+   },
+   "checkpoints": [
+    {
+     "path": "runs/vg1-vgl-s33/ckpt/000010000000.pkl",
+     "sha256": "0dba297170ffba10deb89cbcf65edfc0d76ad20a4ef13340335ae1a46e305243",
+     "timesteps": 10000000
+    },
+    {
+     "path": "runs/vg1-vgl-s33/ckpt/000012210553.pkl",
+     "sha256": "ca901f4dcea4e60a7fa2003f33a03e3f7a0dd02af3a42dacba25535fc59958b0",
+     "timesteps": 12210553
+    },
+    {
+     "path": "runs/vg1-vgl-s33/ckpt/000014909760.pkl",
+     "sha256": "f2bc6575338a2f5c6d45cb12517b14281d2732d6e464cc32aab067c9a000846c",
+     "timesteps": 14909760
+    },
+    {
+     "path": "runs/vg1-vgl-s33/ckpt/000018205642.pkl",
+     "sha256": "355146fbddf594a91d8fdd975e653679b5945e0fb4afa866c6b5ed6e8dcaca7d",
+     "timesteps": 18205642
+    },
+    {
+     "path": "runs/vg1-vgl-s33/ckpt/000022230095.pkl",
+     "sha256": "de6ba2228211b8bc7e44d2d1cc4971be0844ca51021dcdf6f4f03819de8a386d",
+     "timesteps": 22230095
+    },
+    {
+     "path": "runs/vg1-vgl-s33/ckpt/000027144176.pkl",
+     "sha256": "248519816a71ff212271e94e6f262ffaadd71e90045696b9989730cdab97fbdd",
+     "timesteps": 27144176
+    },
+    {
+     "path": "runs/vg1-vgl-s33/ckpt/000033144540.pkl",
+     "sha256": "ef7efc55e77024f981665059f779d9f4e65513d275d15556e6098ad3cb3b63e3",
+     "timesteps": 33144540
+    },
+    {
+     "path": "runs/vg1-vgl-s33/ckpt/000040471316.pkl",
+     "sha256": "967521b03613001e9bb8dd7576f0a8cec47c931efff3c494e7a20681bad8cbe8",
+     "timesteps": 40471316
+    },
+    {
+     "path": "runs/vg1-vgl-s33/ckpt/000049417715.pkl",
+     "sha256": "1c931bb29e4fcb4fd9865e7e212d99e903bbafa000177b4e709d6b6e27dbe23d",
+     "timesteps": 49417715
+    },
+    {
+     "path": "runs/vg1-vgl-s33/ckpt/000060341763.pkl",
+     "sha256": "3d1734793df3dcced3eedeffa8f0dfbeacb5c472b07e9df0960aa3bc8be7d40d",
+     "timesteps": 60341763
+    },
+    {
+     "path": "runs/vg1-vgl-s33/ckpt/000073680629.pkl",
+     "sha256": "d9a239ac6319090041d20eabee0ffa3bb5131d6931dab777979d8250861ed668",
+     "timesteps": 73680629
+    },
+    {
+     "path": "runs/vg1-vgl-s33/ckpt/000089968123.pkl",
+     "sha256": "c7403de187ca71d3ca88270126ac305fcc20745b14fd9361209ffe833379981a",
+     "timesteps": 89968123
+    },
+    {
+     "path": "runs/vg1-vgl-s33/ckpt/000109856054.pkl",
+     "sha256": "11b3f2b8892a1bc37170da6f5d151a6001725669150c4f19f04a8baca856ec0a",
+     "timesteps": 109856054
+    },
+    {
+     "path": "runs/vg1-vgl-s33/ckpt/000134140317.pkl",
+     "sha256": "3332982acee1b6095a36a70d61275166b7eddcfe7a0267949a57f8862ec5a3d9",
+     "timesteps": 134140317
+    },
+    {
+     "path": "runs/vg1-vgl-s33/ckpt/000163792745.pkl",
+     "sha256": "9d6ecd5fbf2fc696ac3222427f089a567bed88ebad4e467335a4ec8081237d31",
+     "timesteps": 163792745
+    },
+    {
+     "path": "runs/vg1-vgl-s33/ckpt/000199884800.pkl",
+     "sha256": "d06438e91045c14767bb21c579390a2cf82197ce5d859372ca0af477c919392f",
+     "timesteps": 199884800
+    }
+   ],
+   "final": {
+    "path": "runs/vg1-vgl-s33/ckpt/000199884800.pkl",
+    "sha256": "d06438e91045c14767bb21c579390a2cf82197ce5d859372ca0af477c919392f",
+    "timesteps": 199884800
+   },
+   "config_sha256": "f350528b8e996dfbc76256767f2b76a43770d3fcaa7485e5c42c0fb074dd09d5",
+   "metrics_sha256": "ebf5eb73ca550329e1310a0b62a0b68fd2b4754fedacf40a89d9f66a62deb363",
+   "eval_rdev_sha256": "9c84cf6d53ae404ed2b58175e1968f95426482feae37421e8613d8d64d014047",
+   "logs_sha256": {
+    "runs/vg1-vgl-s33.log": "c25b528baf5ef1280c48daf09a7a1e4945d44f4909e4924f2255ae6dc8f82d6f"
+   }
+  },
+  {
+   "name": "vg1-base-s34",
+   "seed": 34,
+   "arm": "base",
+   "beta": null,
+   "status": "done",
+   "failure": null,
+   "box": {
+    "box": "vg1-manifest-0of1.json",
+    "lane": 8,
+    "gpu": 0,
+    "start": "2026-10-28T04:46:21Z",
+    "end": "2026-10-28T05:19:47Z",
+    "gpu_model": "NVIDIA RTX A6000",
+    "gpu_count": 4,
+    "box_type": "massedcompute_A6000_plusx4"
+   },
+   "checkpoints": [
+    {
+     "path": "runs/vg1-base-s34/ckpt/000010000000.pkl",
+     "sha256": "af99167cc9d10b39daa256e6a23e21b25da0900acee3f0b7f281823de56df2cc",
+     "timesteps": 10000000
+    },
+    {
+     "path": "runs/vg1-base-s34/ckpt/000012210553.pkl",
+     "sha256": "95cf47874461cf5c8f98bcdee2f17924d8b597f0507a64b151b415cd00ddbe66",
+     "timesteps": 12210553
+    },
+    {
+     "path": "runs/vg1-base-s34/ckpt/000014909760.pkl",
+     "sha256": "c64ef39a846fdaa4a74ca37bdfde2308bdc635c25a4a0c2810e9be2d562436f5",
+     "timesteps": 14909760
+    },
+    {
+     "path": "runs/vg1-base-s34/ckpt/000018205642.pkl",
+     "sha256": "0f700c7adf52d5d2645a9368efe8d09f39b65029d152f7f3cbc57a942f1e331a",
+     "timesteps": 18205642
+    },
+    {
+     "path": "runs/vg1-base-s34/ckpt/000022230095.pkl",
+     "sha256": "e462086be26a11a023644a7cfe8e866ee30725c11c92fad684ccdcd0d53c9c78",
+     "timesteps": 22230095
+    },
+    {
+     "path": "runs/vg1-base-s34/ckpt/000027144176.pkl",
+     "sha256": "58193623d49846e465ab71883e71e1f6b16141d7768ff312facee6a550d84322",
+     "timesteps": 27144176
+    },
+    {
+     "path": "runs/vg1-base-s34/ckpt/000033144540.pkl",
+     "sha256": "19abc950ebd8cdd92abb42820bb24eee5c4f13ab83acd18060aef04cd8f396b2",
+     "timesteps": 33144540
+    },
+    {
+     "path": "runs/vg1-base-s34/ckpt/000040471316.pkl",
+     "sha256": "9f3480f903b1a5eb29010b933e5416bd11926de47df73583f54439a25cf27c53",
+     "timesteps": 40471316
+    },
+    {
+     "path": "runs/vg1-base-s34/ckpt/000049417715.pkl",
+     "sha256": "2e3f213725bd90b2b2cd07578d23745d229ee23af51d6fb577edb2a73c71dcb4",
+     "timesteps": 49417715
+    },
+    {
+     "path": "runs/vg1-base-s34/ckpt/000060341763.pkl",
+     "sha256": "d85a15018890b00073e3b7ee8cf8740276511c24396a4b295964fe6783948df2",
+     "timesteps": 60341763
+    },
+    {
+     "path": "runs/vg1-base-s34/ckpt/000073680629.pkl",
+     "sha256": "fd975c7df68b5e44354edf17befe4e02983831905bb5bc7ee9b372474fc2cd4b",
+     "timesteps": 73680629
+    },
+    {
+     "path": "runs/vg1-base-s34/ckpt/000089968123.pkl",
+     "sha256": "df04b4c4006c23a341ad64f72a879c488947d31182286488604242015128a9d3",
+     "timesteps": 89968123
+    },
+    {
+     "path": "runs/vg1-base-s34/ckpt/000109856054.pkl",
+     "sha256": "0f69c8ed802b1956c2cc748810aa9c07290ef03a8fd1b730de22e26207d8d7fc",
+     "timesteps": 109856054
+    },
+    {
+     "path": "runs/vg1-base-s34/ckpt/000134140317.pkl",
+     "sha256": "3e50c635d9aa3d3b65a83a7dfbc646efeea9f8628ff550179652a7ee17be17fb",
+     "timesteps": 134140317
+    },
+    {
+     "path": "runs/vg1-base-s34/ckpt/000163792745.pkl",
+     "sha256": "d4799c94e3f0894e1e6baea105d93bea7a2a4c17c8814619036e2f9164b7eed4",
+     "timesteps": 163792745
+    },
+    {
+     "path": "runs/vg1-base-s34/ckpt/000199884800.pkl",
+     "sha256": "dfdbf097a0beb5f7c6bff2f82455d1ccddf814de6c7a9b8f1606ae841a39b4c6",
+     "timesteps": 199884800
+    }
+   ],
+   "final": {
+    "path": "runs/vg1-base-s34/ckpt/000199884800.pkl",
+    "sha256": "dfdbf097a0beb5f7c6bff2f82455d1ccddf814de6c7a9b8f1606ae841a39b4c6",
+    "timesteps": 199884800
+   },
+   "config_sha256": "559623351455648be3d91d9185bd047e03e8857a1eaf3448212b9a0b613c2ae1",
+   "metrics_sha256": "7e1968466c287bcbd2dc40ee889731df006e4292758c17066ea325c80583e507",
+   "eval_rdev_sha256": "a08f52fc383a497066513963d9729764a79b35232fc3c7a1bea9b930df18e0b7",
+   "logs_sha256": {
+    "runs/vg1-base-s34.log": "b2586b73596a3856713574b258943400cc8f5180fb8938119eef6789ab641b5f"
+   }
+  },
+  {
+   "name": "vg1-base-s35",
+   "seed": 35,
+   "arm": "base",
+   "beta": null,
+   "status": "done",
+   "failure": null,
+   "box": {
+    "box": "vg1-manifest-0of1.json",
+    "lane": 9,
+    "gpu": 1,
+    "start": "2026-10-28T04:46:21Z",
+    "end": "2026-10-28T05:18:31Z",
+    "gpu_model": "NVIDIA RTX A6000",
+    "gpu_count": 4,
+    "box_type": "massedcompute_A6000_plusx4"
+   },
+   "checkpoints": [
+    {
+     "path": "runs/vg1-base-s35/ckpt/000010000000.pkl",
+     "sha256": "0d1636d53675d9d70577afe457770b0842a87c09e75b4b8f8610a8dd36484528",
+     "timesteps": 10000000
+    },
+    {
+     "path": "runs/vg1-base-s35/ckpt/000012210553.pkl",
+     "sha256": "b72a102a12f2c6f4bc7940d64544c8652863352a670c7f2dc91552b17ffae9ae",
+     "timesteps": 12210553
+    },
+    {
+     "path": "runs/vg1-base-s35/ckpt/000014909760.pkl",
+     "sha256": "cebf33bd83917ee7e0387e6e13205007632205de57f87a655c6526b68a91762c",
+     "timesteps": 14909760
+    },
+    {
+     "path": "runs/vg1-base-s35/ckpt/000018205642.pkl",
+     "sha256": "af8bd97efb658c7b9bd78289892d46f92dd83a1b5e4a276877e3986e1007fc2d",
+     "timesteps": 18205642
+    },
+    {
+     "path": "runs/vg1-base-s35/ckpt/000022230095.pkl",
+     "sha256": "4f43961662de87d6cef50712b92d6f7e66b7866f2b4d4a061ddb8fcf697e8217",
+     "timesteps": 22230095
+    },
+    {
+     "path": "runs/vg1-base-s35/ckpt/000027144176.pkl",
+     "sha256": "455028f0d2b1b0c406a03fb7cc7054241558ea33bf64b30643d73fb85588e381",
+     "timesteps": 27144176
+    },
+    {
+     "path": "runs/vg1-base-s35/ckpt/000033144540.pkl",
+     "sha256": "85f3183e7eba8ce5d4393605594a39ab5721681f3fbea38bf35ae877f4c99b5d",
+     "timesteps": 33144540
+    },
+    {
+     "path": "runs/vg1-base-s35/ckpt/000040471316.pkl",
+     "sha256": "75472728cccd8174bbcb1cc185f19955695377f0e6961d3dc15df2f522c06391",
+     "timesteps": 40471316
+    },
+    {
+     "path": "runs/vg1-base-s35/ckpt/000049417715.pkl",
+     "sha256": "c389173856cd600c29e87a04f67ffb5632df657fa4b5fde712840febae380d0f",
+     "timesteps": 49417715
+    },
+    {
+     "path": "runs/vg1-base-s35/ckpt/000060341763.pkl",
+     "sha256": "80a2e6ae98e4d812942555e1dead552af56b40f8ceb5449cfbd5ba71bc6a477a",
+     "timesteps": 60341763
+    },
+    {
+     "path": "runs/vg1-base-s35/ckpt/000073680629.pkl",
+     "sha256": "d4e6e0cfb18d58dc988abd017c4f54dffc66eb888889109d3e41890abba3983e",
+     "timesteps": 73680629
+    },
+    {
+     "path": "runs/vg1-base-s35/ckpt/000089968123.pkl",
+     "sha256": "5a5fb1c72c679880a50034a4f3ca786ba6e0c1c957c1f782ab3311cb8af7166d",
+     "timesteps": 89968123
+    },
+    {
+     "path": "runs/vg1-base-s35/ckpt/000109856054.pkl",
+     "sha256": "39790a51c1d2c4b35b1df0da81a8004e96f00a0d4d80b149832d7996f069d011",
+     "timesteps": 109856054
+    },
+    {
+     "path": "runs/vg1-base-s35/ckpt/000134140317.pkl",
+     "sha256": "c884af1a01f3782b6fdc601d0f3c434216787e9e3291268ab76315f492f05c40",
+     "timesteps": 134140317
+    },
+    {
+     "path": "runs/vg1-base-s35/ckpt/000163792745.pkl",
+     "sha256": "658c462d4d0e844678a38e1f06989649cc9e870f715ac6b256a6cb1dc00c98c2",
+     "timesteps": 163792745
+    },
+    {
+     "path": "runs/vg1-base-s35/ckpt/000199884800.pkl",
+     "sha256": "39edc802103661276ad38087a535a4cb3f707e3ea26a8d22dd3fbb7790f84a8e",
+     "timesteps": 199884800
+    }
+   ],
+   "final": {
+    "path": "runs/vg1-base-s35/ckpt/000199884800.pkl",
+    "sha256": "39edc802103661276ad38087a535a4cb3f707e3ea26a8d22dd3fbb7790f84a8e",
+    "timesteps": 199884800
+   },
+   "config_sha256": "fc11c864b61f5a9db6a49aa030f3be919c19e748ab71ffb516d0c69995255e91",
+   "metrics_sha256": "09c0fa51f33d85a7c5bcdbc57959b8256a7ae8fb0c5360bd0c199ef083d1bf21",
+   "eval_rdev_sha256": "e09e22a043d5d7997837035a9c4d5724c042d4776a29658de8caec7da11b0d8d",
+   "logs_sha256": {
+    "runs/vg1-base-s35.log": "cd0a6cfff9d5e2b3e3f277ecf15b9c9e686c43ddbc8a5d076123f284c3186833"
+   }
+  },
+  {
+   "name": "vg1-base-s36",
+   "seed": 36,
+   "arm": "base",
+   "beta": null,
+   "status": "done",
+   "failure": null,
+   "box": {
+    "box": "vg1-manifest-0of1.json",
+    "lane": 10,
+    "gpu": 2,
+    "start": "2026-10-28T04:46:21Z",
+    "end": "2026-10-28T05:18:59Z",
+    "gpu_model": "NVIDIA RTX A6000",
+    "gpu_count": 4,
+    "box_type": "massedcompute_A6000_plusx4"
+   },
+   "checkpoints": [
+    {
+     "path": "runs/vg1-base-s36/ckpt/000010000000.pkl",
+     "sha256": "1c139e1bb41a3bbf3961eda450ba33bcc23f3ee7cd7c6010dfdd369b0ea0a744",
+     "timesteps": 10000000
+    },
+    {
+     "path": "runs/vg1-base-s36/ckpt/000012210553.pkl",
+     "sha256": "efd2071669b549dc1634ac0c6f2eeb9651a1c7bc87a1eef763a7d3d5ab3a8319",
+     "timesteps": 12210553
+    },
+    {
+     "path": "runs/vg1-base-s36/ckpt/000014909760.pkl",
+     "sha256": "6e6090e32127f9a0595b16b5e31a001ad03b2c2abaa8fdb43148defefd62db7c",
+     "timesteps": 14909760
+    },
+    {
+     "path": "runs/vg1-base-s36/ckpt/000018205642.pkl",
+     "sha256": "f7c6046a8d9b27f858ca072b1a43fcc22aa1a4b26979249bce50ddc2efd8a344",
+     "timesteps": 18205642
+    },
+    {
+     "path": "runs/vg1-base-s36/ckpt/000022230095.pkl",
+     "sha256": "55ef7a3c69a482b2242ff58afdc8cf1e22f7bc9f5bd4246af9fb171df0208e28",
+     "timesteps": 22230095
+    },
+    {
+     "path": "runs/vg1-base-s36/ckpt/000027144176.pkl",
+     "sha256": "7edda9109a2f27092a631210f6d849f52e1814a675561bdb9980716931c2615f",
+     "timesteps": 27144176
+    },
+    {
+     "path": "runs/vg1-base-s36/ckpt/000033144540.pkl",
+     "sha256": "f0d7555bf662ac3fd82f449ee895468f4731a04d20932464c65886054e9e314a",
+     "timesteps": 33144540
+    },
+    {
+     "path": "runs/vg1-base-s36/ckpt/000040471316.pkl",
+     "sha256": "19906da260529b1cb575097d3d8c93a3849066df65fbe904a0e8a39f0a6dac86",
+     "timesteps": 40471316
+    },
+    {
+     "path": "runs/vg1-base-s36/ckpt/000049417715.pkl",
+     "sha256": "809f478b4f4f90b2a42b5dc0ef60241e04496a95681c273e3520c7daed6f0e8e",
+     "timesteps": 49417715
+    },
+    {
+     "path": "runs/vg1-base-s36/ckpt/000060341763.pkl",
+     "sha256": "09eb47793c7f9f88942ba3a768b6f61d41cd68d7402b2869524b44ce48c38335",
+     "timesteps": 60341763
+    },
+    {
+     "path": "runs/vg1-base-s36/ckpt/000073680629.pkl",
+     "sha256": "ad635df3836fa2a24a11a1867d72c6008f8b4e3dd5246eaf4589c0b8f46eab4b",
+     "timesteps": 73680629
+    },
+    {
+     "path": "runs/vg1-base-s36/ckpt/000089968123.pkl",
+     "sha256": "2a320d97f5b60dc9c6f171f10bd8579407871af7f1664df9a615f0f2424ca243",
+     "timesteps": 89968123
+    },
+    {
+     "path": "runs/vg1-base-s36/ckpt/000109856054.pkl",
+     "sha256": "18c4a74bbf48ab63b2fdbdf7a9a79ca187970d52f4701dd4a5a2cb895e8c9a2b",
+     "timesteps": 109856054
+    },
+    {
+     "path": "runs/vg1-base-s36/ckpt/000134140317.pkl",
+     "sha256": "4f8ceb3fc8a4e6bb00011aeaa16390f5058f925af17ab373fcf8c5540bf9b34e",
+     "timesteps": 134140317
+    },
+    {
+     "path": "runs/vg1-base-s36/ckpt/000163792745.pkl",
+     "sha256": "815ff5187fdc13dc3f29a8e48e5b9881996af5e5cf608c8f2cabee232a55a348",
+     "timesteps": 163792745
+    },
+    {
+     "path": "runs/vg1-base-s36/ckpt/000199884800.pkl",
+     "sha256": "4aa9725e7cfbba6b42997d2f30b7170d458f5138f2dd6c3b926351f71cf50e1c",
+     "timesteps": 199884800
+    }
+   ],
+   "final": {
+    "path": "runs/vg1-base-s36/ckpt/000199884800.pkl",
+    "sha256": "4aa9725e7cfbba6b42997d2f30b7170d458f5138f2dd6c3b926351f71cf50e1c",
+    "timesteps": 199884800
+   },
+   "config_sha256": "540ead3ffdbe7aa4e8f1498fa6d56addc117b364cf1078c59f7c73acb47c818c",
+   "metrics_sha256": "9b08e89ff85fe1c7264b0529620d1067ebc2dceacb16623230cca7bcb785eca6",
+   "eval_rdev_sha256": "740470eaf62f5a332f91a6cca87d07bfb6b85018f95d19c661b273ab2287cd74",
+   "logs_sha256": {
+    "runs/vg1-base-s36.log": "30f5d73d79b750b55cd017a5aaa95175a5d774d948291380ad951aa937a4d8bb"
+   }
+  },
+  {
+   "name": "vg1-base-s37",
+   "seed": 37,
+   "arm": "base",
+   "beta": null,
+   "status": "done",
+   "failure": null,
+   "box": {
+    "box": "vg1-manifest-0of1.json",
+    "lane": 11,
+    "gpu": 3,
+    "start": "2026-10-28T04:46:21Z",
+    "end": "2026-10-28T05:19:55Z",
+    "gpu_model": "NVIDIA RTX A6000",
+    "gpu_count": 4,
+    "box_type": "massedcompute_A6000_plusx4"
+   },
+   "checkpoints": [
+    {
+     "path": "runs/vg1-base-s37/ckpt/000010000000.pkl",
+     "sha256": "e28676502adcc9f60c1dea390f2ed2b2a6387a92cd7f20ae9429e6358f9bdb52",
+     "timesteps": 10000000
+    },
+    {
+     "path": "runs/vg1-base-s37/ckpt/000012210553.pkl",
+     "sha256": "efc36f2b4eab3be4b2b51500f729ebb57e98f782df8cd8d1fa4e5543ab460c6e",
+     "timesteps": 12210553
+    },
+    {
+     "path": "runs/vg1-base-s37/ckpt/000014909760.pkl",
+     "sha256": "8a4f652a556aa69401f8c2c469fd854c1d12b70dffc18de5a34fa6c286b0990d",
+     "timesteps": 14909760
+    },
+    {
+     "path": "runs/vg1-base-s37/ckpt/000018205642.pkl",
+     "sha256": "487970a26decc74e351d2cd4e29a4cbdc237f0f3909380bb41a3c4634053aeb8",
+     "timesteps": 18205642
+    },
+    {
+     "path": "runs/vg1-base-s37/ckpt/000022230095.pkl",
+     "sha256": "e67de26b54cbf887403ac70d25f3b1c3c26967345b899d6b24d8c30f7497b978",
+     "timesteps": 22230095
+    },
+    {
+     "path": "runs/vg1-base-s37/ckpt/000027144176.pkl",
+     "sha256": "fb2cf07746d13623c32f927600541924376129cda3168f49d7a45e94cf882057",
+     "timesteps": 27144176
+    },
+    {
+     "path": "runs/vg1-base-s37/ckpt/000033144540.pkl",
+     "sha256": "612a30895cc2f8936f7db474ce3fbbf3efc0d4b668c97c33d3411f630428a17d",
+     "timesteps": 33144540
+    },
+    {
+     "path": "runs/vg1-base-s37/ckpt/000040471316.pkl",
+     "sha256": "680ecb4f81f91250d295bb6e579efe715fce2fd53535b55eb8cae142b754cdab",
+     "timesteps": 40471316
+    },
+    {
+     "path": "runs/vg1-base-s37/ckpt/000049417715.pkl",
+     "sha256": "5b6043212152c71dff95620a8fa7f18ab08b7520d184d1a9f9f2525501e1bd0f",
+     "timesteps": 49417715
+    },
+    {
+     "path": "runs/vg1-base-s37/ckpt/000060341763.pkl",
+     "sha256": "ad69fb09662220fb396b880ce2828b14a3679049aa077dad497e23904ead869f",
+     "timesteps": 60341763
+    },
+    {
+     "path": "runs/vg1-base-s37/ckpt/000073680629.pkl",
+     "sha256": "76d2f2a2fcad2a54289159281f9e4b8342a77bd7eeb63f7d26a6ce627d0c6391",
+     "timesteps": 73680629
+    },
+    {
+     "path": "runs/vg1-base-s37/ckpt/000089968123.pkl",
+     "sha256": "4f96a6b87559464cb43b004b753c67da95e915e90243df0f3428e156ab3148e0",
+     "timesteps": 89968123
+    },
+    {
+     "path": "runs/vg1-base-s37/ckpt/000109856054.pkl",
+     "sha256": "e5d6fac00d7274890013483d77e1bcb46435ab16a60970375657538734ef3462",
+     "timesteps": 109856054
+    },
+    {
+     "path": "runs/vg1-base-s37/ckpt/000134140317.pkl",
+     "sha256": "d73af31b7f966410cd17523aa573cdb8dc6ba427e3f358404bc17dd37b8127b4",
+     "timesteps": 134140317
+    },
+    {
+     "path": "runs/vg1-base-s37/ckpt/000163792745.pkl",
+     "sha256": "f5719a32a825e78e9620d3212edeef400b0d2c0827e21c79c456502c4593ec52",
+     "timesteps": 163792745
+    },
+    {
+     "path": "runs/vg1-base-s37/ckpt/000199884800.pkl",
+     "sha256": "d0daa1c3945e6a4735469c3eed0a9cf4e78e7112c018865b493efec59eab60f6",
+     "timesteps": 199884800
+    }
+   ],
+   "final": {
+    "path": "runs/vg1-base-s37/ckpt/000199884800.pkl",
+    "sha256": "d0daa1c3945e6a4735469c3eed0a9cf4e78e7112c018865b493efec59eab60f6",
+    "timesteps": 199884800
+   },
+   "config_sha256": "33cfda977cf2a5cd3d3bb0352ef9d03005c4e00f27e04a02bba1854af19eb3f7",
+   "metrics_sha256": "a99aac4a1b4eb5c729badae8e6d8b5d795304b8a61caa4d072f1438bf59a71be",
+   "eval_rdev_sha256": "f1e8de6c97eecf8f232bda804bc74bd20867b8321da27c1deca57c2cc0823f04",
+   "logs_sha256": {
+    "runs/vg1-base-s37.log": "ef123a896071e70b3d890e4067e93a4f126318da7da95024466559f8d9d7e8f5"
+   }
+  },
+  {
+   "name": "vg1-vgl-s34",
+   "seed": 34,
+   "arm": "vgl",
+   "beta": 0.03,
+   "status": "done",
+   "failure": null,
+   "box": {
+    "box": "vg1-manifest-0of1.json",
+    "lane": 12,
+    "gpu": 0,
+    "start": "2026-10-28T04:46:21Z",
+    "end": "2026-10-28T05:52:10Z",
+    "gpu_model": "NVIDIA RTX A6000",
+    "gpu_count": 4,
+    "box_type": "massedcompute_A6000_plusx4"
+   },
+   "checkpoints": [
+    {
+     "path": "runs/vg1-vgl-s34/ckpt/000010000000.pkl",
+     "sha256": "370505ee8a3dbd6dea0614a879e7ca84507dd3990344bbdd1127da2d6a832e99",
+     "timesteps": 10000000
+    },
+    {
+     "path": "runs/vg1-vgl-s34/ckpt/000012210553.pkl",
+     "sha256": "c5ebc5b3159cfd97d4358667d75c2c61d4f96f5aa383602493244ef2138659e5",
+     "timesteps": 12210553
+    },
+    {
+     "path": "runs/vg1-vgl-s34/ckpt/000014909760.pkl",
+     "sha256": "38ae82715b078fec8e734ada6b5e5f49b2bb6064a6d6b032ba238ad32683e6da",
+     "timesteps": 14909760
+    },
+    {
+     "path": "runs/vg1-vgl-s34/ckpt/000018205642.pkl",
+     "sha256": "403e7c2efcb0e9caaf1c14829738df0c1df50f3008c3de8a00061305fd8520fa",
+     "timesteps": 18205642
+    },
+    {
+     "path": "runs/vg1-vgl-s34/ckpt/000022230095.pkl",
+     "sha256": "5a22a243ce67ae63bc96ad802faf23937b7d36ce5ab18e67d662dafa5e8a1cd4",
+     "timesteps": 22230095
+    },
+    {
+     "path": "runs/vg1-vgl-s34/ckpt/000027144176.pkl",
+     "sha256": "5ac24970fe880cf88b6df1191048f6c650bd7dbe95629b4197d3b34637434db2",
+     "timesteps": 27144176
+    },
+    {
+     "path": "runs/vg1-vgl-s34/ckpt/000033144540.pkl",
+     "sha256": "e537588efe6ea7bafb6a03f8426a962976dcd4c9996a2c20a70adf9ee7dc061a",
+     "timesteps": 33144540
+    },
+    {
+     "path": "runs/vg1-vgl-s34/ckpt/000040471316.pkl",
+     "sha256": "ae99f70db6d9ca0f84a4f6b56365707a04c33515f06f4b33ea8eaef0eda2216d",
+     "timesteps": 40471316
+    },
+    {
+     "path": "runs/vg1-vgl-s34/ckpt/000049417715.pkl",
+     "sha256": "c2ec38ede938d32e97a5576cb2bcdb4bcb443cee3d7537976a0eaa2c10722a87",
+     "timesteps": 49417715
+    },
+    {
+     "path": "runs/vg1-vgl-s34/ckpt/000060341763.pkl",
+     "sha256": "4759c3b2bf3ea762d48e0879d819a22942e0b3b3f65d9ba187366a3f3ea9feef",
+     "timesteps": 60341763
+    },
+    {
+     "path": "runs/vg1-vgl-s34/ckpt/000073680629.pkl",
+     "sha256": "9d37002e8437c552e318bd69b785e915416b5b65ff78d03f4501c6a58303350d",
+     "timesteps": 73680629
+    },
+    {
+     "path": "runs/vg1-vgl-s34/ckpt/000089968123.pkl",
+     "sha256": "de32b7184dc33dd0213ce23ec86f8acfb24e674e92b342a82665ceddf49127c0",
+     "timesteps": 89968123
+    },
+    {
+     "path": "runs/vg1-vgl-s34/ckpt/000109856054.pkl",
+     "sha256": "2593ca01161b265c44f2c7ecc27d65598970c3cfdbead511a73e29d4989af455",
+     "timesteps": 109856054
+    },
+    {
+     "path": "runs/vg1-vgl-s34/ckpt/000134140317.pkl",
+     "sha256": "82c5dd448832cf1e5b13ca8be6839cdace6e34dd8adf3c048e79927c5a500206",
+     "timesteps": 134140317
+    },
+    {
+     "path": "runs/vg1-vgl-s34/ckpt/000163792745.pkl",
+     "sha256": "529d7908d7f13908e356a28fbdae2a169c5a17ccab21c8b6233ba7c676d01440",
+     "timesteps": 163792745
+    },
+    {
+     "path": "runs/vg1-vgl-s34/ckpt/000199884800.pkl",
+     "sha256": "36fadf8176e0b440cb9c652d123055cc402deda9dabc0eb6baa47c20ef6adcce",
+     "timesteps": 199884800
+    }
+   ],
+   "final": {
+    "path": "runs/vg1-vgl-s34/ckpt/000199884800.pkl",
+    "sha256": "36fadf8176e0b440cb9c652d123055cc402deda9dabc0eb6baa47c20ef6adcce",
+    "timesteps": 199884800
+   },
+   "config_sha256": "ed0b64cf243cf00e73417b2a6b30ee4a7f51a80785219cdb963b20846d78a76d",
+   "metrics_sha256": "cfc27abc327cca7e3d394a66c90137dea7690c1ed17eadce998929abaa6fe168",
+   "eval_rdev_sha256": "08c3a4e2a040f2dd456f9fb3b34d5e4704551e3b5a8816d6e3e784280ac21e78",
+   "logs_sha256": {
+    "runs/vg1-vgl-s34.log": "d666083bc63f126fc5ba4e5f969cc7bdf427f37c2a6eb519e036cc5940eda658"
+   }
+  },
+  {
+   "name": "vg1-vgl-s35",
+   "seed": 35,
+   "arm": "vgl",
+   "beta": 0.03,
+   "status": "done",
+   "failure": null,
+   "box": {
+    "box": "vg1-manifest-0of1.json",
+    "lane": 13,
+    "gpu": 1,
+    "start": "2026-10-28T04:46:21Z",
+    "end": "2026-10-28T05:52:16Z",
+    "gpu_model": "NVIDIA RTX A6000",
+    "gpu_count": 4,
+    "box_type": "massedcompute_A6000_plusx4"
+   },
+   "checkpoints": [
+    {
+     "path": "runs/vg1-vgl-s35/ckpt/000010000000.pkl",
+     "sha256": "1d10a93ff9e31687b6f5d81bab07134111ed20b965aa467b79b9ff834dc22808",
+     "timesteps": 10000000
+    },
+    {
+     "path": "runs/vg1-vgl-s35/ckpt/000012210553.pkl",
+     "sha256": "017822efcf7aaa1e077d84c00b4b9a20572b88874213e080bd627d785ee2ad06",
+     "timesteps": 12210553
+    },
+    {
+     "path": "runs/vg1-vgl-s35/ckpt/000014909760.pkl",
+     "sha256": "682d4fc20e746b91421c945ac7d3b7badc1e505030b4370bb61c845abb3c77ff",
+     "timesteps": 14909760
+    },
+    {
+     "path": "runs/vg1-vgl-s35/ckpt/000018205642.pkl",
+     "sha256": "39cd5d6fd48913fed201bacf7c2003b276834757d33054a9d6fbe37663678ebb",
+     "timesteps": 18205642
+    },
+    {
+     "path": "runs/vg1-vgl-s35/ckpt/000022230095.pkl",
+     "sha256": "f7358b845084afd69d16116da89a29843015b4000a4ce959969c7a5666aa0e17",
+     "timesteps": 22230095
+    },
+    {
+     "path": "runs/vg1-vgl-s35/ckpt/000027144176.pkl",
+     "sha256": "3b205f52baefb7034a36817fc8311f47a268144c379b8557af3dc94f261cdbaa",
+     "timesteps": 27144176
+    },
+    {
+     "path": "runs/vg1-vgl-s35/ckpt/000033144540.pkl",
+     "sha256": "3f9f28c07fe4f56eef3ecf8ba84d20afa09c5aac01f5d82d473b2b02e73c5967",
+     "timesteps": 33144540
+    },
+    {
+     "path": "runs/vg1-vgl-s35/ckpt/000040471316.pkl",
+     "sha256": "27c3f3308243dfdfc6c229c724f25a1e0c25bdeb8cbc3982129276b6feb3fa0a",
+     "timesteps": 40471316
+    },
+    {
+     "path": "runs/vg1-vgl-s35/ckpt/000049417715.pkl",
+     "sha256": "eea3ca760a87f430afd030c1856022d3f544acfe090423f82f9119b2998a8751",
+     "timesteps": 49417715
+    },
+    {
+     "path": "runs/vg1-vgl-s35/ckpt/000060341763.pkl",
+     "sha256": "c83d26716eb9be4008139d917ddf123f271d30da1d30c2f0efe3229ce808cb49",
+     "timesteps": 60341763
+    },
+    {
+     "path": "runs/vg1-vgl-s35/ckpt/000073680629.pkl",
+     "sha256": "11d3f017c9cc353f9561fca7ef79f90b68cf105538153d3a2a14169a5d2f2e65",
+     "timesteps": 73680629
+    },
+    {
+     "path": "runs/vg1-vgl-s35/ckpt/000089968123.pkl",
+     "sha256": "28fbb43fc7427f3f164b3a0cd76341322e662500ef4df821db2d74532806653b",
+     "timesteps": 89968123
+    },
+    {
+     "path": "runs/vg1-vgl-s35/ckpt/000109856054.pkl",
+     "sha256": "dfb0ef2a28843cf2d3c37cb6587c7bfaad41871c9ec971f652decd6f9a27e0db",
+     "timesteps": 109856054
+    },
+    {
+     "path": "runs/vg1-vgl-s35/ckpt/000134140317.pkl",
+     "sha256": "337d89561af117759240e06f5abaefef88254e6498738f684418317362931173",
+     "timesteps": 134140317
+    },
+    {
+     "path": "runs/vg1-vgl-s35/ckpt/000163792745.pkl",
+     "sha256": "98e55c283c2a918446e1066645db05d509325686b583139be022a8faec7332bf",
+     "timesteps": 163792745
+    },
+    {
+     "path": "runs/vg1-vgl-s35/ckpt/000199884800.pkl",
+     "sha256": "3f99a0ca04a9819c184dcb6f91d02d1b824c2f04f171ddacc89893b644735eb4",
+     "timesteps": 199884800
+    }
+   ],
+   "final": {
+    "path": "runs/vg1-vgl-s35/ckpt/000199884800.pkl",
+    "sha256": "3f99a0ca04a9819c184dcb6f91d02d1b824c2f04f171ddacc89893b644735eb4",
+    "timesteps": 199884800
+   },
+   "config_sha256": "09f92521307c613ee204db704164b20e8f8398440f8458c31cd378d649237f35",
+   "metrics_sha256": "108f4540e255d837e6ae7443ccca50310dc2707d88cdccefe04337ba40d63390",
+   "eval_rdev_sha256": "a10b4578df89e41d8308c26995a41cd957cef74257d4f4c8f49d2fb3d9ce71f9",
+   "logs_sha256": {
+    "runs/vg1-vgl-s35.log": "8fe84013b482b7f4425d7871f284648fda92c7be71ba0fb2c30396d804fbd5e8"
+   }
+  },
+  {
+   "name": "vg1-vgl-s36",
+   "seed": 36,
+   "arm": "vgl",
+   "beta": 0.03,
+   "status": "done",
+   "failure": null,
+   "box": {
+    "box": "vg1-manifest-0of1.json",
+    "lane": 14,
+    "gpu": 2,
+    "start": "2026-10-28T04:46:21Z",
+    "end": "2026-10-28T05:52:48Z",
+    "gpu_model": "NVIDIA RTX A6000",
+    "gpu_count": 4,
+    "box_type": "massedcompute_A6000_plusx4"
+   },
+   "checkpoints": [
+    {
+     "path": "runs/vg1-vgl-s36/ckpt/000010000000.pkl",
+     "sha256": "28180fa143136a813986e856201d059095775fa8ae2b46f15315c278573c284d",
+     "timesteps": 10000000
+    },
+    {
+     "path": "runs/vg1-vgl-s36/ckpt/000012210553.pkl",
+     "sha256": "24c1b325f76e131ec702bc31c75700cf6cd9252897be1adc3f2fbb2bd614efb5",
+     "timesteps": 12210553
+    },
+    {
+     "path": "runs/vg1-vgl-s36/ckpt/000014909760.pkl",
+     "sha256": "32860dcbaac3691abc2bff005e1aa613034cf73305a6ea42a48c6f108adb810e",
+     "timesteps": 14909760
+    },
+    {
+     "path": "runs/vg1-vgl-s36/ckpt/000018205642.pkl",
+     "sha256": "62b5c1804f48490bd05d5f230540a2598e30a01d68e0dd79e436c27a215dd7b1",
+     "timesteps": 18205642
+    },
+    {
+     "path": "runs/vg1-vgl-s36/ckpt/000022230095.pkl",
+     "sha256": "e8566bad3f964e5db28eb00165e0ad4aa46986377f14d3d30a6e3f3135427aeb",
+     "timesteps": 22230095
+    },
+    {
+     "path": "runs/vg1-vgl-s36/ckpt/000027144176.pkl",
+     "sha256": "dd3dcfb1969b8fb5ffb3c39f9493b1e5a41eb30ca901611ca4a8d66b3edd0970",
+     "timesteps": 27144176
+    },
+    {
+     "path": "runs/vg1-vgl-s36/ckpt/000033144540.pkl",
+     "sha256": "909545778add474ed35e94456b1075c7bf2a306f09e6e1712eae948bdbd3d70d",
+     "timesteps": 33144540
+    },
+    {
+     "path": "runs/vg1-vgl-s36/ckpt/000040471316.pkl",
+     "sha256": "d02ed1bc1a7ecb35b2f74796213908e024e3c00cef30edf39d7dbc7d7ca50def",
+     "timesteps": 40471316
+    },
+    {
+     "path": "runs/vg1-vgl-s36/ckpt/000049417715.pkl",
+     "sha256": "55efd9a3a96bc06cb1295adb6fde2fc3393adb234524bb553f375ee06d2f3adc",
+     "timesteps": 49417715
+    },
+    {
+     "path": "runs/vg1-vgl-s36/ckpt/000060341763.pkl",
+     "sha256": "5ba0a8cea3e7e39b8ddcb9869b5c03e38e395e18963d95a6d7d1eb8fefa8c0fe",
+     "timesteps": 60341763
+    },
+    {
+     "path": "runs/vg1-vgl-s36/ckpt/000073680629.pkl",
+     "sha256": "506f41f022078ab7461e7cab350a98dac0c77017f1ddb4c44455b16050829409",
+     "timesteps": 73680629
+    },
+    {
+     "path": "runs/vg1-vgl-s36/ckpt/000089968123.pkl",
+     "sha256": "5d8fc0a1fee72e6eaf45fc12d3fe282103b37995edbafc9f102d5c2323ffe649",
+     "timesteps": 89968123
+    },
+    {
+     "path": "runs/vg1-vgl-s36/ckpt/000109856054.pkl",
+     "sha256": "81e866397a6722539c25bb19cf5be073f31d2c2cdb36896737ba5ddf2d01469f",
+     "timesteps": 109856054
+    },
+    {
+     "path": "runs/vg1-vgl-s36/ckpt/000134140317.pkl",
+     "sha256": "0facbf4f2a81e4a931515b3578c15ee09f557d10c724037e1d580b4c99a253df",
+     "timesteps": 134140317
+    },
+    {
+     "path": "runs/vg1-vgl-s36/ckpt/000163792745.pkl",
+     "sha256": "7541d91f765daeef5b3949fdba2db8324973780c624dc0b5ded67df63af4c198",
+     "timesteps": 163792745
+    },
+    {
+     "path": "runs/vg1-vgl-s36/ckpt/000199884800.pkl",
+     "sha256": "f11b69669c70039c92ab353033ba4da9143cdac2c347c6b3b4eb09666e83fe5c",
+     "timesteps": 199884800
+    }
+   ],
+   "final": {
+    "path": "runs/vg1-vgl-s36/ckpt/000199884800.pkl",
+    "sha256": "f11b69669c70039c92ab353033ba4da9143cdac2c347c6b3b4eb09666e83fe5c",
+    "timesteps": 199884800
+   },
+   "config_sha256": "b4f5d7bf2b2357a6ffbc90d269c5a6fc79536440d2598b31af94c12f69821c5c",
+   "metrics_sha256": "9baf19cc428061585d896a862de3be18d3b1438c89ca76b21512ed75c557742c",
+   "eval_rdev_sha256": "9250316859e3d5c00202d2a34fc0c3ce2e30b99b9a68b0eadc4302121a4a7fe7",
+   "logs_sha256": {
+    "runs/vg1-vgl-s36.log": "08004a7faa732475ec496462bb0f7b40a8921fe71dc3ba758bce58d143d80c80"
+   }
+  },
+  {
+   "name": "vg1-vgl-s37",
+   "seed": 37,
+   "arm": "vgl",
+   "beta": 0.03,
+   "status": "done",
+   "failure": null,
+   "box": {
+    "box": "vg1-manifest-0of1.json",
+    "lane": 15,
+    "gpu": 3,
+    "start": "2026-10-28T04:46:21Z",
+    "end": "2026-10-28T05:53:03Z",
+    "gpu_model": "NVIDIA RTX A6000",
+    "gpu_count": 4,
+    "box_type": "massedcompute_A6000_plusx4"
+   },
+   "checkpoints": [
+    {
+     "path": "runs/vg1-vgl-s37/ckpt/000010000000.pkl",
+     "sha256": "f7127b02308977f3422fe1297e62bceed3659f1eda8f0948c24953708d186244",
+     "timesteps": 10000000
+    },
+    {
+     "path": "runs/vg1-vgl-s37/ckpt/000012210553.pkl",
+     "sha256": "6c2fb1df47e3f3b0067ba2c98ba09d9ca74c3977c283d855337d96e2e80a9bd0",
+     "timesteps": 12210553
+    },
+    {
+     "path": "runs/vg1-vgl-s37/ckpt/000014909760.pkl",
+     "sha256": "1196af5a59005ffa0de8fa9093972b15fb9c0c696b11c25dceb69a65b49b8a47",
+     "timesteps": 14909760
+    },
+    {
+     "path": "runs/vg1-vgl-s37/ckpt/000018205642.pkl",
+     "sha256": "e7cef702c25969965a4093a54668e219ca3352448fdca56ff77fb498d88852bb",
+     "timesteps": 18205642
+    },
+    {
+     "path": "runs/vg1-vgl-s37/ckpt/000022230095.pkl",
+     "sha256": "9922cfb71b03fb15a3845eb1edcc2d99a8bb595f5cd5f41abdacac5f6c3f1af8",
+     "timesteps": 22230095
+    },
+    {
+     "path": "runs/vg1-vgl-s37/ckpt/000027144176.pkl",
+     "sha256": "03a92cbfc77b8fa475d0e91813152246d45649ab701c4fcd293db45951458743",
+     "timesteps": 27144176
+    },
+    {
+     "path": "runs/vg1-vgl-s37/ckpt/000033144540.pkl",
+     "sha256": "4b126f73ac7ecf3bd2f0ee9bde7f44292496c679ac716858e174df8e34d0f5d4",
+     "timesteps": 33144540
+    },
+    {
+     "path": "runs/vg1-vgl-s37/ckpt/000040471316.pkl",
+     "sha256": "89a02360064092fba7dab672ad8b054ef2073b4831ae4c469b506cfdcedfa27f",
+     "timesteps": 40471316
+    },
+    {
+     "path": "runs/vg1-vgl-s37/ckpt/000049417715.pkl",
+     "sha256": "6c1e2627c0849e6465d1f142a6592bda73e8a66c61bbe5a23c46151053902f51",
+     "timesteps": 49417715
+    },
+    {
+     "path": "runs/vg1-vgl-s37/ckpt/000060341763.pkl",
+     "sha256": "e9f6cb1e6b0569ba654c204dd687f5f2e90ba01bbf2390122c3ecdfcc73057eb",
+     "timesteps": 60341763
+    },
+    {
+     "path": "runs/vg1-vgl-s37/ckpt/000073680629.pkl",
+     "sha256": "685df8e5333cd31ef70a211241407223ea6481e09d0fee00bf6414b52aeb4bd3",
+     "timesteps": 73680629
+    },
+    {
+     "path": "runs/vg1-vgl-s37/ckpt/000089968123.pkl",
+     "sha256": "025bf37a433b0a3127a11a61e6737c1830547aed51332864dc1f52556a88cced",
+     "timesteps": 89968123
+    },
+    {
+     "path": "runs/vg1-vgl-s37/ckpt/000109856054.pkl",
+     "sha256": "53ad5d37c49432259e15248dc9ffd26c8d90c0e40179c8cf44458aed72f207a8",
+     "timesteps": 109856054
+    },
+    {
+     "path": "runs/vg1-vgl-s37/ckpt/000134140317.pkl",
+     "sha256": "5cf0c4931ee65dfa9959c9a6e9727d6034ab014deae5db1fc11f30240333587c",
+     "timesteps": 134140317
+    },
+    {
+     "path": "runs/vg1-vgl-s37/ckpt/000163792745.pkl",
+     "sha256": "1500982e920ab582ccfce4e1efc51da6efc78d2d91b65279f0c0d83154deb843",
+     "timesteps": 163792745
+    },
+    {
+     "path": "runs/vg1-vgl-s37/ckpt/000199884800.pkl",
+     "sha256": "c0b09a4e4452f5873f6019ab3ad99ccc564604149b5d999a0e86891f71148671",
+     "timesteps": 199884800
+    }
+   ],
+   "final": {
+    "path": "runs/vg1-vgl-s37/ckpt/000199884800.pkl",
+    "sha256": "c0b09a4e4452f5873f6019ab3ad99ccc564604149b5d999a0e86891f71148671",
+    "timesteps": 199884800
+   },
+   "config_sha256": "58f60001a58b8f5561c960c119c252b349507d02d95948ce8e88f4bc21a035fc",
+   "metrics_sha256": "d42b07c1ef927dac193a6de83510c5bfe6db6ca65995e64e11dbea17e1bd57a4",
+   "eval_rdev_sha256": "7a9b89883b42a8716695076f94f3b6a86c59b91397a054caf43ccf71dcfb7a9f",
+   "logs_sha256": {
+    "runs/vg1-vgl-s37.log": "cc171eab048d9bfae2caba525c1cd4d63b264f905b498748432c4cebba29bc03"
+   }
+  },
+  {
+   "name": "vg1-base-s38",
+   "seed": 38,
+   "arm": "base",
+   "beta": null,
+   "status": "done",
+   "failure": null,
+   "box": {
+    "box": "vg1-manifest-0of1.json",
+    "lane": 16,
+    "gpu": 0,
+    "start": "2026-10-28T04:46:21Z",
+    "end": "2026-10-28T05:19:51Z",
+    "gpu_model": "NVIDIA RTX A6000",
+    "gpu_count": 4,
+    "box_type": "massedcompute_A6000_plusx4"
+   },
+   "checkpoints": [
+    {
+     "path": "runs/vg1-base-s38/ckpt/000010000000.pkl",
+     "sha256": "4da9302ce7c005a6824557272586e648944c19398f0b2bdc2ad761c258afa740",
+     "timesteps": 10000000
+    },
+    {
+     "path": "runs/vg1-base-s38/ckpt/000012210553.pkl",
+     "sha256": "50b6d439c5db944c9a1f58b85efbd5847690cf97b1cbe8d29f552676b0f3cecd",
+     "timesteps": 12210553
+    },
+    {
+     "path": "runs/vg1-base-s38/ckpt/000014909760.pkl",
+     "sha256": "93fd9855a8fa173e54736419aef3b90b90076577171fefda5e5aad0935df9714",
+     "timesteps": 14909760
+    },
+    {
+     "path": "runs/vg1-base-s38/ckpt/000018205642.pkl",
+     "sha256": "4b92b1ffd6f16a57ba2b5e7115d8ea6b0c152ec8e3f4ef830220b7f989386c53",
+     "timesteps": 18205642
+    },
+    {
+     "path": "runs/vg1-base-s38/ckpt/000022230095.pkl",
+     "sha256": "cea22ac07a54a08ce51dab8c64d26866c4a11bb3233844ba07ab089417382b24",
+     "timesteps": 22230095
+    },
+    {
+     "path": "runs/vg1-base-s38/ckpt/000027144176.pkl",
+     "sha256": "f878ee3dd40966841b17b92c55df8ad9645030467bb7eb84e315d9658e87f21f",
+     "timesteps": 27144176
+    },
+    {
+     "path": "runs/vg1-base-s38/ckpt/000033144540.pkl",
+     "sha256": "34033a12a39ddb474993be71a9766f4bc4eccb72b266e506070ccd0ecaa6b217",
+     "timesteps": 33144540
+    },
+    {
+     "path": "runs/vg1-base-s38/ckpt/000040471316.pkl",
+     "sha256": "49c96b9fff0632ce8b671005259cfb6878d9e93398cb7e811cf8486913c6ade0",
+     "timesteps": 40471316
+    },
+    {
+     "path": "runs/vg1-base-s38/ckpt/000049417715.pkl",
+     "sha256": "747af3d2076c5be20a2dcad45a2c0d81143afe420dc458534c04395c5cd3c20e",
+     "timesteps": 49417715
+    },
+    {
+     "path": "runs/vg1-base-s38/ckpt/000060341763.pkl",
+     "sha256": "edcdd88effef2847964c565fd8b28b0a60a700dba2153627996e2920d12fec5c",
+     "timesteps": 60341763
+    },
+    {
+     "path": "runs/vg1-base-s38/ckpt/000073680629.pkl",
+     "sha256": "9660f4715355de8df8133b438b2e0a38853f2ae93bfb2af1b4cbb3046307b2fd",
+     "timesteps": 73680629
+    },
+    {
+     "path": "runs/vg1-base-s38/ckpt/000089968123.pkl",
+     "sha256": "b6cffa7abb2a20f7cc6aa39e9d36b0259e155242fd0e65e28444ad20af19f6df",
+     "timesteps": 89968123
+    },
+    {
+     "path": "runs/vg1-base-s38/ckpt/000109856054.pkl",
+     "sha256": "5ea893619bc5cf31e72703078a71cc38d6f5393f3da696fc654185f8faac9ace",
+     "timesteps": 109856054
+    },
+    {
+     "path": "runs/vg1-base-s38/ckpt/000134140317.pkl",
+     "sha256": "5ad582300e59aeb37a2ef522366c63d09d5071b23521aaf3caf54eb3c4b96425",
+     "timesteps": 134140317
+    },
+    {
+     "path": "runs/vg1-base-s38/ckpt/000163792745.pkl",
+     "sha256": "79db6b5cfba6ec63ffc02af07d5abbb48c121f314be061e1ab0a1bc2da4a4be7",
+     "timesteps": 163792745
+    },
+    {
+     "path": "runs/vg1-base-s38/ckpt/000199884800.pkl",
+     "sha256": "90e7cb18a852e22c21ebd775a39992dfbdd87d9f512e714332d3851227994851",
+     "timesteps": 199884800
+    }
+   ],
+   "final": {
+    "path": "runs/vg1-base-s38/ckpt/000199884800.pkl",
+    "sha256": "90e7cb18a852e22c21ebd775a39992dfbdd87d9f512e714332d3851227994851",
+    "timesteps": 199884800
+   },
+   "config_sha256": "d06f52f1845611f56a240377e84027598e6b52a4d8629e57e2ae81acfaddd207",
+   "metrics_sha256": "1f9f4a566d958550af6af33ae5521497357e534a360ebeabf16482240802ee8d",
+   "eval_rdev_sha256": "238be58a3414bf6738e384ee30779ff7de3a136c408bbfb18ad31b59eb390109",
+   "logs_sha256": {
+    "runs/vg1-base-s38.log": "1e725802a897e9b52300e57181351ba84342d82d2989a655ee00b1bf9995d7ac"
+   }
+  },
+  {
+   "name": "vg1-base-s39",
+   "seed": 39,
+   "arm": "base",
+   "beta": null,
+   "status": "done",
+   "failure": null,
+   "box": {
+    "box": "vg1-manifest-0of1.json",
+    "lane": 17,
+    "gpu": 1,
+    "start": "2026-10-28T04:46:21Z",
+    "end": "2026-10-28T05:19:30Z",
+    "gpu_model": "NVIDIA RTX A6000",
+    "gpu_count": 4,
+    "box_type": "massedcompute_A6000_plusx4"
+   },
+   "checkpoints": [
+    {
+     "path": "runs/vg1-base-s39/ckpt/000010000000.pkl",
+     "sha256": "d8b6a165cd880a6d7ccc44a0869ed23b9b4f92fb8e67cd3e6233463f181eb943",
+     "timesteps": 10000000
+    },
+    {
+     "path": "runs/vg1-base-s39/ckpt/000012210553.pkl",
+     "sha256": "822041a18100f47310a1aa71fb09161241a22bd1fcd605d30d45b7f0f7b1f6d6",
+     "timesteps": 12210553
+    },
+    {
+     "path": "runs/vg1-base-s39/ckpt/000014909760.pkl",
+     "sha256": "7555a49fc0391f95fa0483f2488b1d6b737218186a17641c1a520e0388bcfd58",
+     "timesteps": 14909760
+    },
+    {
+     "path": "runs/vg1-base-s39/ckpt/000018205642.pkl",
+     "sha256": "453b31defc0538f1812333d111f942ec93020774195e2f36b27562e6faf573d3",
+     "timesteps": 18205642
+    },
+    {
+     "path": "runs/vg1-base-s39/ckpt/000022230095.pkl",
+     "sha256": "ae0901456aac6d4fc6187bb17cec4eb816269b459b782e3400a0d0612b098be7",
+     "timesteps": 22230095
+    },
+    {
+     "path": "runs/vg1-base-s39/ckpt/000027144176.pkl",
+     "sha256": "4fc70ccbf160918a2fe58c68978e24a83bcc80ee9825484b5cfabea7ef0d06f6",
+     "timesteps": 27144176
+    },
+    {
+     "path": "runs/vg1-base-s39/ckpt/000033144540.pkl",
+     "sha256": "bfc98a696a79497e34fcc74836b61eeae050412e8c15580e757f19052a0ec673",
+     "timesteps": 33144540
+    },
+    {
+     "path": "runs/vg1-base-s39/ckpt/000040471316.pkl",
+     "sha256": "c1e2c0350d46588facc4b32939f8f9cf07551db179d632ec8b0c904a400b8167",
+     "timesteps": 40471316
+    },
+    {
+     "path": "runs/vg1-base-s39/ckpt/000049417715.pkl",
+     "sha256": "fcc6087dbd6040ac8989825af5ef20113d3b462800d6406097526ccbe86bfe79",
+     "timesteps": 49417715
+    },
+    {
+     "path": "runs/vg1-base-s39/ckpt/000060341763.pkl",
+     "sha256": "d109728fdbdc47dab33a08ae66c6bd9f8788d724313a45cd1b6b0a00c244fdf6",
+     "timesteps": 60341763
+    },
+    {
+     "path": "runs/vg1-base-s39/ckpt/000073680629.pkl",
+     "sha256": "bc7f2face151a6e12351fdce5fcdecf71f05ccf223046dd3471cd75f8d13c91e",
+     "timesteps": 73680629
+    },
+    {
+     "path": "runs/vg1-base-s39/ckpt/000089968123.pkl",
+     "sha256": "1b6920803160ea6c7d879faf32553ee2025665f07d57a77ba1561177e3a94ad1",
+     "timesteps": 89968123
+    },
+    {
+     "path": "runs/vg1-base-s39/ckpt/000109856054.pkl",
+     "sha256": "fed52fd252512102c1f542178fc775df437191f27bf14fedf20ee633c67d8fa4",
+     "timesteps": 109856054
+    },
+    {
+     "path": "runs/vg1-base-s39/ckpt/000134140317.pkl",
+     "sha256": "d130ee0aaa17b8ba24307bd3b36b32ff3ab0fddfef4c21dbd557cb2cb941f22a",
+     "timesteps": 134140317
+    },
+    {
+     "path": "runs/vg1-base-s39/ckpt/000163792745.pkl",
+     "sha256": "ed98b79541fa63c553e34145a497527c16d1510cb09fd6d51f1c0d59914d2a09",
+     "timesteps": 163792745
+    },
+    {
+     "path": "runs/vg1-base-s39/ckpt/000199884800.pkl",
+     "sha256": "4f70cf2803995cc96851807a6c5251444db64be5cf39324eb757dc570d5935a1",
+     "timesteps": 199884800
+    }
+   ],
+   "final": {
+    "path": "runs/vg1-base-s39/ckpt/000199884800.pkl",
+    "sha256": "4f70cf2803995cc96851807a6c5251444db64be5cf39324eb757dc570d5935a1",
+    "timesteps": 199884800
+   },
+   "config_sha256": "9a3e6ca072bb9bf4669b5a002a278932522dcd949645dc9ad213c715e7eb8929",
+   "metrics_sha256": "82f9691d48d3cc53f23deee46ed922abc1b2d52f2ed96c32d9e897fa4d71350f",
+   "eval_rdev_sha256": "267891ccce0c9a04ad6e39eeba1bf553e007dee3f95c351cc391a2cdc53bc013",
+   "logs_sha256": {
+    "runs/vg1-base-s39.log": "27321b12403516d7716ecdf03504924c34b584bf802f581b7e3f17b554cccc95"
+   }
+  },
+  {
+   "name": "vg1-base-s40",
+   "seed": 40,
+   "arm": "base",
+   "beta": null,
+   "status": "done",
+   "failure": null,
+   "box": {
+    "box": "vg1-manifest-0of1.json",
+    "lane": 18,
+    "gpu": 2,
+    "start": "2026-10-28T04:46:21Z",
+    "end": "2026-10-28T05:20:10Z",
+    "gpu_model": "NVIDIA RTX A6000",
+    "gpu_count": 4,
+    "box_type": "massedcompute_A6000_plusx4"
+   },
+   "checkpoints": [
+    {
+     "path": "runs/vg1-base-s40/ckpt/000010000000.pkl",
+     "sha256": "cc6e9821c2864427336348530d3142abc490223c90b66821454bcc4c0c766ece",
+     "timesteps": 10000000
+    },
+    {
+     "path": "runs/vg1-base-s40/ckpt/000012210553.pkl",
+     "sha256": "db7245ec6b7acde7adb291f8e56534ffeb22e5f5985332b16c83ffd7df566846",
+     "timesteps": 12210553
+    },
+    {
+     "path": "runs/vg1-base-s40/ckpt/000014909760.pkl",
+     "sha256": "d8585e62149adf727ec8cf86b9c4a9f6dae8259fefba56addfeeb9e2dfd6488c",
+     "timesteps": 14909760
+    },
+    {
+     "path": "runs/vg1-base-s40/ckpt/000018205642.pkl",
+     "sha256": "6b4b2741664dfcd6a92a00a8d7fbf0026f9e536c03263504588124f3a561e2c1",
+     "timesteps": 18205642
+    },
+    {
+     "path": "runs/vg1-base-s40/ckpt/000022230095.pkl",
+     "sha256": "13af4df918ab12f075edd565ed5f754957e0242fc7c1b292ad7eef166ed80468",
+     "timesteps": 22230095
+    },
+    {
+     "path": "runs/vg1-base-s40/ckpt/000027144176.pkl",
+     "sha256": "c385a1b3794ebcb0f6149e998031dd34e0a9a3ae51af64e4cbd02a72a3e04647",
+     "timesteps": 27144176
+    },
+    {
+     "path": "runs/vg1-base-s40/ckpt/000033144540.pkl",
+     "sha256": "8363902f70f26c0d0652ee8c6f1cba59baed704808f36806a768a442805f4b3b",
+     "timesteps": 33144540
+    },
+    {
+     "path": "runs/vg1-base-s40/ckpt/000040471316.pkl",
+     "sha256": "d79d7a923a8962df08e171473dc429b2f2700c689d055311a5664a304a8d4460",
+     "timesteps": 40471316
+    },
+    {
+     "path": "runs/vg1-base-s40/ckpt/000049417715.pkl",
+     "sha256": "33641164c016531f87bbabae972680def289145b594d6565e9dda0b0f689825b",
+     "timesteps": 49417715
+    },
+    {
+     "path": "runs/vg1-base-s40/ckpt/000060341763.pkl",
+     "sha256": "dc9812d6cf6f7804b4b2743ebbbff40b33ac591cc715b8a780e2c517ac6ace59",
+     "timesteps": 60341763
+    },
+    {
+     "path": "runs/vg1-base-s40/ckpt/000073680629.pkl",
+     "sha256": "cad34e65cb07c44786b65fe8fadaa1441839fff9af3a4d77f2b7bce594725b3f",
+     "timesteps": 73680629
+    },
+    {
+     "path": "runs/vg1-base-s40/ckpt/000089968123.pkl",
+     "sha256": "1f52cee8d6f3f73b7241fb6cde00f17fe30d19d7cdc9f62803a9cc95891fdac4",
+     "timesteps": 89968123
+    },
+    {
+     "path": "runs/vg1-base-s40/ckpt/000109856054.pkl",
+     "sha256": "c4692cb5b63c29937cb734ba4a3c50e19f908e566ab4e035e710e0a7d31264fe",
+     "timesteps": 109856054
+    },
+    {
+     "path": "runs/vg1-base-s40/ckpt/000134140317.pkl",
+     "sha256": "2860101c171e04721e41d20928db31ebe4f7e6fcf160bd9739bd8729df9a6752",
+     "timesteps": 134140317
+    },
+    {
+     "path": "runs/vg1-base-s40/ckpt/000163792745.pkl",
+     "sha256": "62291899192cd1f954df277017b631ea0caa2daff8efd6c7d804481d760af582",
+     "timesteps": 163792745
+    },
+    {
+     "path": "runs/vg1-base-s40/ckpt/000199884800.pkl",
+     "sha256": "046817f94b435e5e1e554811139ebba3d29ab5fa81d210739128ba567bcd0589",
+     "timesteps": 199884800
+    }
+   ],
+   "final": {
+    "path": "runs/vg1-base-s40/ckpt/000199884800.pkl",
+    "sha256": "046817f94b435e5e1e554811139ebba3d29ab5fa81d210739128ba567bcd0589",
+    "timesteps": 199884800
+   },
+   "config_sha256": "17b27e5ba1d4ef6f6d191b2d1f601a0b0a19bde54c7cb6b2e27bc28c7717c65e",
+   "metrics_sha256": "379edac28b2b3eab9a16a2885fa2e8e4c8c1020dd62043725447a09162da77d2",
+   "eval_rdev_sha256": "11519e16a58cad44a7ead626e684d7d0a8ec9c03ae9ff3b57643f07dc75f15b4",
+   "logs_sha256": {
+    "runs/vg1-base-s40.log": "30039dc8677fff5d217eb876e28e6947a467ce1602dc9cdee3ab39464af278e5"
+   }
+  },
+  {
+   "name": "vg1-base-s41",
+   "seed": 41,
+   "arm": "base",
+   "beta": null,
+   "status": "done",
+   "failure": null,
+   "box": {
+    "box": "vg1-manifest-0of1.json",
+    "lane": 19,
+    "gpu": 3,
+    "start": "2026-10-28T04:46:21Z",
+    "end": "2026-10-28T05:20:05Z",
+    "gpu_model": "NVIDIA RTX A6000",
+    "gpu_count": 4,
+    "box_type": "massedcompute_A6000_plusx4"
+   },
+   "checkpoints": [
+    {
+     "path": "runs/vg1-base-s41/ckpt/000010000000.pkl",
+     "sha256": "c55b4daca3c4b0d900e43e38e6402466fa09a0599b64dd9433a7a810bf866b4b",
+     "timesteps": 10000000
+    },
+    {
+     "path": "runs/vg1-base-s41/ckpt/000012210553.pkl",
+     "sha256": "d03f96f88e341e84f4a6e69bf718bf54cefc80332415ed7894876458c3fc2ba9",
+     "timesteps": 12210553
+    },
+    {
+     "path": "runs/vg1-base-s41/ckpt/000014909760.pkl",
+     "sha256": "b94729f6399df19c8570db8703c54f0fad78dd1d74aee7549b5129f1b061d69c",
+     "timesteps": 14909760
+    },
+    {
+     "path": "runs/vg1-base-s41/ckpt/000018205642.pkl",
+     "sha256": "7cdcbfbd0fc9dd2d06430d244b64f8f6c829e72bf5ebbd06262b80d3c394e98d",
+     "timesteps": 18205642
+    },
+    {
+     "path": "runs/vg1-base-s41/ckpt/000022230095.pkl",
+     "sha256": "fdf489ffd5a1f3450c1307c2546fc955cf3fbb1eb5dd2ac58677678e98f3ccd5",
+     "timesteps": 22230095
+    },
+    {
+     "path": "runs/vg1-base-s41/ckpt/000027144176.pkl",
+     "sha256": "bdd2ed2e7c4c4423d3298476ad7a37656274de7558fddf241be442cdc7c4531b",
+     "timesteps": 27144176
+    },
+    {
+     "path": "runs/vg1-base-s41/ckpt/000033144540.pkl",
+     "sha256": "3a042d537f6d9cfe248bc571c102f7af38dc8b51bcc043132cb5df021c1e4e6a",
+     "timesteps": 33144540
+    },
+    {
+     "path": "runs/vg1-base-s41/ckpt/000040471316.pkl",
+     "sha256": "53f5320c55cc76e69b34985e623341215d8b40ccb4d0651a03d38efe3589d70a",
+     "timesteps": 40471316
+    },
+    {
+     "path": "runs/vg1-base-s41/ckpt/000049417715.pkl",
+     "sha256": "062c53a816c601a003bbf87b1aa7292f903ae7b1b7624dec41d4f8d29b8b2eda",
+     "timesteps": 49417715
+    },
+    {
+     "path": "runs/vg1-base-s41/ckpt/000060341763.pkl",
+     "sha256": "d343c638bcfd86a11bbeeb7658adbd94a16f860cb6d69b4f0032e132e2f432c1",
+     "timesteps": 60341763
+    },
+    {
+     "path": "runs/vg1-base-s41/ckpt/000073680629.pkl",
+     "sha256": "b1414990ec26df4918cfe778fe70924c0388ff6c382b2e46fb05507b15a0962a",
+     "timesteps": 73680629
+    },
+    {
+     "path": "runs/vg1-base-s41/ckpt/000089968123.pkl",
+     "sha256": "d8cb4c4a3df0f89128c7ead887b0376540b34bcb4ed6bd511226582e9247a6da",
+     "timesteps": 89968123
+    },
+    {
+     "path": "runs/vg1-base-s41/ckpt/000109856054.pkl",
+     "sha256": "50f2945a1a01331a682cbe064cf946c7da275dc127772106d50802b19debeede",
+     "timesteps": 109856054
+    },
+    {
+     "path": "runs/vg1-base-s41/ckpt/000134140317.pkl",
+     "sha256": "2b75ea0f75a23a5b1400ffb96ad1d48ae217fbd71c6dfe10c5670190a176a45f",
+     "timesteps": 134140317
+    },
+    {
+     "path": "runs/vg1-base-s41/ckpt/000163792745.pkl",
+     "sha256": "27780f597a01da69d9981ca7720d3d9c5a39937e61bc7cfaf698c12f42dd79fb",
+     "timesteps": 163792745
+    },
+    {
+     "path": "runs/vg1-base-s41/ckpt/000199884800.pkl",
+     "sha256": "d9a5af372069fd6968f84536079e479b930df57280453418ea0426c591a27542",
+     "timesteps": 199884800
+    }
+   ],
+   "final": {
+    "path": "runs/vg1-base-s41/ckpt/000199884800.pkl",
+    "sha256": "d9a5af372069fd6968f84536079e479b930df57280453418ea0426c591a27542",
+    "timesteps": 199884800
+   },
+   "config_sha256": "53bf4f3c84a5cf52a3b91b415317ccb064d25c7978a95e3f9d421f44a16b0b2a",
+   "metrics_sha256": "eb1bb45c41412e67012249b68f32e6a41032d62aedd1e51db8bf2cf459ccda0e",
+   "eval_rdev_sha256": "00a493124309e2479ab5fde6a569c5461a6bb78bed155f9c862c227482475705",
+   "logs_sha256": {
+    "runs/vg1-base-s41.log": "d3f2d99d2d3910071cb1c2dcc72f06994404a2b8dffab84bd69602551280f316"
+   }
+  },
+  {
+   "name": "vg1-vgl-s38",
+   "seed": 38,
+   "arm": "vgl",
+   "beta": 0.03,
+   "status": "done",
+   "failure": null,
+   "box": {
+    "box": "vg1-manifest-0of1.json",
+    "lane": 0,
+    "gpu": 0,
+    "start": "2026-10-28T05:19:57Z",
+    "end": "2026-10-28T06:26:16Z",
+    "gpu_model": "NVIDIA RTX A6000",
+    "gpu_count": 4,
+    "box_type": "massedcompute_A6000_plusx4"
+   },
+   "checkpoints": [
+    {
+     "path": "runs/vg1-vgl-s38/ckpt/000010000000.pkl",
+     "sha256": "f5cc9663ed5c71a0ff908cb980e19a54aa73a8dda78594955f74c568cb9fed2e",
+     "timesteps": 10000000
+    },
+    {
+     "path": "runs/vg1-vgl-s38/ckpt/000012210553.pkl",
+     "sha256": "92368eb6116abb47e311c0aa42c823e91229f056ee6fee2d08d20a1fcb0e5fcb",
+     "timesteps": 12210553
+    },
+    {
+     "path": "runs/vg1-vgl-s38/ckpt/000014909760.pkl",
+     "sha256": "077fe2659857d6b08ff4a70d6b3b358371beb2c55f463e41db11902277cd698b",
+     "timesteps": 14909760
+    },
+    {
+     "path": "runs/vg1-vgl-s38/ckpt/000018205642.pkl",
+     "sha256": "afc23c723d6271afc674d59e9ce46c2470bad7bf68f5298c6434740f9475fb33",
+     "timesteps": 18205642
+    },
+    {
+     "path": "runs/vg1-vgl-s38/ckpt/000022230095.pkl",
+     "sha256": "867970435e91e8defd946ca18cf69b2d70c11c43411de829fc47a98d65f29bdc",
+     "timesteps": 22230095
+    },
+    {
+     "path": "runs/vg1-vgl-s38/ckpt/000027144176.pkl",
+     "sha256": "310975d309bdb001294764fc8b5634909bc5db018e0194d228835d972e70097a",
+     "timesteps": 27144176
+    },
+    {
+     "path": "runs/vg1-vgl-s38/ckpt/000033144540.pkl",
+     "sha256": "006f2dc24533c3bd697343fe6c98ab03891257364046bf4f784fa68796ad1219",
+     "timesteps": 33144540
+    },
+    {
+     "path": "runs/vg1-vgl-s38/ckpt/000040471316.pkl",
+     "sha256": "700e14e4169ac802fa0ade31647bf1150862a5da9bc3ab9e2eb95d67fab01266",
+     "timesteps": 40471316
+    },
+    {
+     "path": "runs/vg1-vgl-s38/ckpt/000049417715.pkl",
+     "sha256": "344a72b54e59b131d2c6a5c7df18b07eba721f6d056acc7852cc617486249fe3",
+     "timesteps": 49417715
+    },
+    {
+     "path": "runs/vg1-vgl-s38/ckpt/000060341763.pkl",
+     "sha256": "b869176b4f2fb838e9594880598eca84e824161653438231581d0fda994076be",
+     "timesteps": 60341763
+    },
+    {
+     "path": "runs/vg1-vgl-s38/ckpt/000073680629.pkl",
+     "sha256": "8cc8555c29f4f140180a577296eac95aeabf294848c26f4588d5ad2eadd29fae",
+     "timesteps": 73680629
+    },
+    {
+     "path": "runs/vg1-vgl-s38/ckpt/000089968123.pkl",
+     "sha256": "5a46388106530fa9ab4cec0331ae7ebbe9c06ab349554ee549bcf0b8e6a3d6b8",
+     "timesteps": 89968123
+    },
+    {
+     "path": "runs/vg1-vgl-s38/ckpt/000109856054.pkl",
+     "sha256": "6f56aca0c157e7f02905b276a763db4f69676c492eb064f49101803b041a1bf6",
+     "timesteps": 109856054
+    },
+    {
+     "path": "runs/vg1-vgl-s38/ckpt/000134140317.pkl",
+     "sha256": "ec0a5cba2008c73941de679ef536e3f8ab9f5f567aae090f9db00e2133256ad8",
+     "timesteps": 134140317
+    },
+    {
+     "path": "runs/vg1-vgl-s38/ckpt/000163792745.pkl",
+     "sha256": "940abc41a07fac915b1cdf0a202f4fa221464bde9fe9e980a5bc051059d7a0c4",
+     "timesteps": 163792745
+    },
+    {
+     "path": "runs/vg1-vgl-s38/ckpt/000199884800.pkl",
+     "sha256": "84b3df7283df7e2f1d477cf674b02f18d8a068da0fc1c49afe4a2dbf8bd0895e",
+     "timesteps": 199884800
+    }
+   ],
+   "final": {
+    "path": "runs/vg1-vgl-s38/ckpt/000199884800.pkl",
+    "sha256": "84b3df7283df7e2f1d477cf674b02f18d8a068da0fc1c49afe4a2dbf8bd0895e",
+    "timesteps": 199884800
+   },
+   "config_sha256": "6659d8b12bfaef056278e550307d6cbad6c0c36359b1878fc8fe15075506cc31",
+   "metrics_sha256": "fb0d7af611011154876f1f07c967f91b6c7a3be0cf70ee9fd2fd7afa40357c10",
+   "eval_rdev_sha256": "02ca40a48522cabc83fcf8b9268d9c875cff01945bd7a8d3756a15ab249b59a4",
+   "logs_sha256": {
+    "runs/vg1-vgl-s38.log": "e85d38f09905e16c6e0063522f17705cbb30bcce828ea6c9f5e19ba0aa4e55a7"
+   }
+  },
+  {
+   "name": "vg1-vgl-s39",
+   "seed": 39,
+   "arm": "vgl",
+   "beta": 0.03,
+   "status": "done",
+   "failure": null,
+   "box": {
+    "box": "vg1-manifest-0of1.json",
+    "lane": 1,
+    "gpu": 1,
+    "start": "2026-10-28T05:19:15Z",
+    "end": "2026-10-28T06:25:10Z",
+    "gpu_model": "NVIDIA RTX A6000",
+    "gpu_count": 4,
+    "box_type": "massedcompute_A6000_plusx4"
+   },
+   "checkpoints": [
+    {
+     "path": "runs/vg1-vgl-s39/ckpt/000010000000.pkl",
+     "sha256": "98d2040e879e3664e514c94d9eccfbd4ae13709494a0f151a65f66fbce95c62d",
+     "timesteps": 10000000
+    },
+    {
+     "path": "runs/vg1-vgl-s39/ckpt/000012210553.pkl",
+     "sha256": "52604091a1d6c28497aae42f501b9c743da1c966f569bbc673451248fec5bed0",
+     "timesteps": 12210553
+    },
+    {
+     "path": "runs/vg1-vgl-s39/ckpt/000014909760.pkl",
+     "sha256": "7f038d70f4ff5e0e76b6c046fad7a9d77b8bdd1838bb7ea580ae3019b4e4bfec",
+     "timesteps": 14909760
+    },
+    {
+     "path": "runs/vg1-vgl-s39/ckpt/000018205642.pkl",
+     "sha256": "ff98b2975140ede86e1fa50ad9ce0bc2860bfdd5fbcc8d636feeebe7f7372ad9",
+     "timesteps": 18205642
+    },
+    {
+     "path": "runs/vg1-vgl-s39/ckpt/000022230095.pkl",
+     "sha256": "11776cd371bc41666a69a4a4862e28bd1a30d952785123fe6211c6449ccb840c",
+     "timesteps": 22230095
+    },
+    {
+     "path": "runs/vg1-vgl-s39/ckpt/000027144176.pkl",
+     "sha256": "9f54870b182902c3a415da171f2cedf2c0944a1cda3713eda187815606efd586",
+     "timesteps": 27144176
+    },
+    {
+     "path": "runs/vg1-vgl-s39/ckpt/000033144540.pkl",
+     "sha256": "193fb8577b7b4c6c3f2c9b6886e0e8980121fc2699d66c639936f2ae54da0218",
+     "timesteps": 33144540
+    },
+    {
+     "path": "runs/vg1-vgl-s39/ckpt/000040471316.pkl",
+     "sha256": "d6629a0ca0fb4531fef2653f9378f423451ec58bf9c08dca1771cfe28d2d28db",
+     "timesteps": 40471316
+    },
+    {
+     "path": "runs/vg1-vgl-s39/ckpt/000049417715.pkl",
+     "sha256": "cc8a6099c328bf996c1cc9a78a954961ad9f7ba78024fd3193510b449af2e4d5",
+     "timesteps": 49417715
+    },
+    {
+     "path": "runs/vg1-vgl-s39/ckpt/000060341763.pkl",
+     "sha256": "8bf948bbcb2f89d08382d9b5f2ebebe098b0abeb3a4ccbc33188b67b007c66af",
+     "timesteps": 60341763
+    },
+    {
+     "path": "runs/vg1-vgl-s39/ckpt/000073680629.pkl",
+     "sha256": "d5d7129cbfeba1ef0d62c432496b9225ebbbded462d8ab85c92c2d72c4df28ab",
+     "timesteps": 73680629
+    },
+    {
+     "path": "runs/vg1-vgl-s39/ckpt/000089968123.pkl",
+     "sha256": "01c7779cff43072c81adf4e6b17d960bd1483e17da7d27c82a3530cb04d80281",
+     "timesteps": 89968123
+    },
+    {
+     "path": "runs/vg1-vgl-s39/ckpt/000109856054.pkl",
+     "sha256": "fc6ac205de5cd64d00f8114d2b16bbcca4269ad2fbd2ed47b9d8dc0cb7a9dea6",
+     "timesteps": 109856054
+    },
+    {
+     "path": "runs/vg1-vgl-s39/ckpt/000134140317.pkl",
+     "sha256": "364f6546173806fd0112dfc0a2a5ce1425678d576f0914876b8e8904cdab4ef9",
+     "timesteps": 134140317
+    },
+    {
+     "path": "runs/vg1-vgl-s39/ckpt/000163792745.pkl",
+     "sha256": "9552174ee89c703dd40779a96cc10ef767939ece0e8783e61305971022077380",
+     "timesteps": 163792745
+    },
+    {
+     "path": "runs/vg1-vgl-s39/ckpt/000199884800.pkl",
+     "sha256": "487b8f77d916e9dc1fbe25c1dfb8070ccc099525246223605aa9bff454f7d43a",
+     "timesteps": 199884800
+    }
+   ],
+   "final": {
+    "path": "runs/vg1-vgl-s39/ckpt/000199884800.pkl",
+    "sha256": "487b8f77d916e9dc1fbe25c1dfb8070ccc099525246223605aa9bff454f7d43a",
+    "timesteps": 199884800
+   },
+   "config_sha256": "13c8ccc69248b7a5f4cb390f79686eab94b6f20cca600a44d559aad94b390fee",
+   "metrics_sha256": "32193598692b2437119e606cace550b056f1e6671134dd2a0ad773c2327e91e1",
+   "eval_rdev_sha256": "95910458194e65746aa9a4b1e2d267bc89671e0947381749d851b03630ff318d",
+   "logs_sha256": {
+    "runs/vg1-vgl-s39.log": "bb3ccf9b186b6ba6d8df251f4ec5d56c880c278d114f31dc135f3093aa4d770b"
+   }
+  },
+  {
+   "name": "vg1-vgl-s40",
+   "seed": 40,
+   "arm": "vgl",
+   "beta": 0.03,
+   "status": "done",
+   "failure": null,
+   "box": {
+    "box": "vg1-manifest-0of1.json",
+    "lane": 2,
+    "gpu": 2,
+    "start": "2026-10-28T05:20:00Z",
+    "end": "2026-10-28T06:26:09Z",
+    "gpu_model": "NVIDIA RTX A6000",
+    "gpu_count": 4,
+    "box_type": "massedcompute_A6000_plusx4"
+   },
+   "checkpoints": [
+    {
+     "path": "runs/vg1-vgl-s40/ckpt/000010000000.pkl",
+     "sha256": "fc6e10ebf7932b5ee4cb36e702f02f2fafba8ac6edc222fd6d0108b241ff3d51",
+     "timesteps": 10000000
+    },
+    {
+     "path": "runs/vg1-vgl-s40/ckpt/000012210553.pkl",
+     "sha256": "5eacf828c3d992cb1fc3eb24dc27cfe9f1d33faafc0605f5d6ae38c1b825fddf",
+     "timesteps": 12210553
+    },
+    {
+     "path": "runs/vg1-vgl-s40/ckpt/000014909760.pkl",
+     "sha256": "9988e05a6a1611d1c14c6c8db4442fa539d7352aebba4214c7e1e296e3d59d89",
+     "timesteps": 14909760
+    },
+    {
+     "path": "runs/vg1-vgl-s40/ckpt/000018205642.pkl",
+     "sha256": "1ff1a37c4cdda1557239d965bc6fd69c4d45a0e51e01d510057e4741775c0c83",
+     "timesteps": 18205642
+    },
+    {
+     "path": "runs/vg1-vgl-s40/ckpt/000022230095.pkl",
+     "sha256": "2004a30cfa10ccaf4266746c734ea881abb0931d778d4dab5c90e7788c0ba7b9",
+     "timesteps": 22230095
+    },
+    {
+     "path": "runs/vg1-vgl-s40/ckpt/000027144176.pkl",
+     "sha256": "7952a33edb920482dec8ffaf948733d0cfcba357cbb1904626abad572bd16887",
+     "timesteps": 27144176
+    },
+    {
+     "path": "runs/vg1-vgl-s40/ckpt/000033144540.pkl",
+     "sha256": "7a552a6ccea9dc88edd385c62fc560ccc9715259951296c87412548ec7fbd866",
+     "timesteps": 33144540
+    },
+    {
+     "path": "runs/vg1-vgl-s40/ckpt/000040471316.pkl",
+     "sha256": "38c8c62451d41b4575388a92a79ab2050a2fff104555e5f9f374d0a243699fe5",
+     "timesteps": 40471316
+    },
+    {
+     "path": "runs/vg1-vgl-s40/ckpt/000049417715.pkl",
+     "sha256": "1808ecc1ab516c549b4151b7a6bf38a32672b5c2c473a8d4d13b0f16a72fc443",
+     "timesteps": 49417715
+    },
+    {
+     "path": "runs/vg1-vgl-s40/ckpt/000060341763.pkl",
+     "sha256": "b04f576ee4cc6c6612505118dfd55fd58013d1708d4b6091b10e7da98f50d765",
+     "timesteps": 60341763
+    },
+    {
+     "path": "runs/vg1-vgl-s40/ckpt/000073680629.pkl",
+     "sha256": "4d27175ed3d3dc94deac1a8178ef39ceb53cd8c3aa88fed87d3284c1f896e16f",
+     "timesteps": 73680629
+    },
+    {
+     "path": "runs/vg1-vgl-s40/ckpt/000089968123.pkl",
+     "sha256": "c435665f38da18c2ba4a642620d15e267903d7f855f1c37c84f1435c9e603c46",
+     "timesteps": 89968123
+    },
+    {
+     "path": "runs/vg1-vgl-s40/ckpt/000109856054.pkl",
+     "sha256": "df525706ba5c54741d588ae265aca6fdfda44be33101fea481c1eac747f617ce",
+     "timesteps": 109856054
+    },
+    {
+     "path": "runs/vg1-vgl-s40/ckpt/000134140317.pkl",
+     "sha256": "bf9777d70836b852bb747044fc16b9e1642eaf28f0b66510f059b56873f99fbd",
+     "timesteps": 134140317
+    },
+    {
+     "path": "runs/vg1-vgl-s40/ckpt/000163792745.pkl",
+     "sha256": "1f33b2847d0f5c4c26519907a4ec3fb77a227e2ca694810c2c35861d5c1e6f89",
+     "timesteps": 163792745
+    },
+    {
+     "path": "runs/vg1-vgl-s40/ckpt/000199884800.pkl",
+     "sha256": "33e46d5882b7e171a31460f5a0b8212dfbb6320ddef046454b1df5a2311d0f36",
+     "timesteps": 199884800
+    }
+   ],
+   "final": {
+    "path": "runs/vg1-vgl-s40/ckpt/000199884800.pkl",
+    "sha256": "33e46d5882b7e171a31460f5a0b8212dfbb6320ddef046454b1df5a2311d0f36",
+    "timesteps": 199884800
+   },
+   "config_sha256": "568dfbc15579969b67634cc44a8ac3e749374257e363e1190335a4d4e13a7f9a",
+   "metrics_sha256": "43734522d55ffca7e8c20dbd3f06add8fc2a1da83e197c4c3890ce4c5b1b52cb",
+   "eval_rdev_sha256": "24ed42daa1a3b8f5a444944221f614ac565bcfac0074fa6b6dd7dc9557e62a2c",
+   "logs_sha256": {
+    "runs/vg1-vgl-s40.log": "530b0ef5d921c3ab93d77264382d19a1e0daa8a18a35936b49a89a914396060d"
+   }
+  },
+  {
+   "name": "vg1-vgl-s41",
+   "seed": 41,
+   "arm": "vgl",
+   "beta": 0.03,
+   "status": "done",
+   "failure": null,
+   "box": {
+    "box": "vg1-manifest-0of1.json",
+    "lane": 3,
+    "gpu": 3,
+    "start": "2026-10-28T05:19:00Z",
+    "end": "2026-10-28T06:24:57Z",
+    "gpu_model": "NVIDIA RTX A6000",
+    "gpu_count": 4,
+    "box_type": "massedcompute_A6000_plusx4"
+   },
+   "checkpoints": [
+    {
+     "path": "runs/vg1-vgl-s41/ckpt/000010000000.pkl",
+     "sha256": "ea42647dfa3402004262b73b45494b8dcc448d661197650fc8e5497e83747e33",
+     "timesteps": 10000000
+    },
+    {
+     "path": "runs/vg1-vgl-s41/ckpt/000012210553.pkl",
+     "sha256": "af5079b3f19841c8dca397bd5996bf2085a25c76a9756b7ea40cfac3ca9af29a",
+     "timesteps": 12210553
+    },
+    {
+     "path": "runs/vg1-vgl-s41/ckpt/000014909760.pkl",
+     "sha256": "af598dd53e7bc2f279ab9475cb219e26edde90c6e565b006fa9026017d4972a0",
+     "timesteps": 14909760
+    },
+    {
+     "path": "runs/vg1-vgl-s41/ckpt/000018205642.pkl",
+     "sha256": "a9562609281db5181b476866c4de36952b345bc4dabe9f65cf07156406ef7e5f",
+     "timesteps": 18205642
+    },
+    {
+     "path": "runs/vg1-vgl-s41/ckpt/000022230095.pkl",
+     "sha256": "a7528fd5cf282f3d2ec03e712216f026f7ddf1e04981bd2323bcc8f328ed71cf",
+     "timesteps": 22230095
+    },
+    {
+     "path": "runs/vg1-vgl-s41/ckpt/000027144176.pkl",
+     "sha256": "f4f1d0eb73d1f64ce8b0f9d06aefdfd3d398da728820ee98a220aebf35dd6aa1",
+     "timesteps": 27144176
+    },
+    {
+     "path": "runs/vg1-vgl-s41/ckpt/000033144540.pkl",
+     "sha256": "abb47417e55e128ea454dd5d6d80ea92435848c7ac6cf063dd5aa08b3c466baa",
+     "timesteps": 33144540
+    },
+    {
+     "path": "runs/vg1-vgl-s41/ckpt/000040471316.pkl",
+     "sha256": "3c2c4bd79f698dba3c8f4dc0cfeb4946a92e9bd82a35c69e103bee957bff23fb",
+     "timesteps": 40471316
+    },
+    {
+     "path": "runs/vg1-vgl-s41/ckpt/000049417715.pkl",
+     "sha256": "a29b6cf49a181047a0c70a9588129400e70bc563efc32a42cc67e6b4ede6e73a",
+     "timesteps": 49417715
+    },
+    {
+     "path": "runs/vg1-vgl-s41/ckpt/000060341763.pkl",
+     "sha256": "d17e0f236b6df1ba0cb370b3f113cfc8ae73d09ec6845030f72ea0c9205efa15",
+     "timesteps": 60341763
+    },
+    {
+     "path": "runs/vg1-vgl-s41/ckpt/000073680629.pkl",
+     "sha256": "7273dda18118b3ddc2ec77785c2936fc645b5f1ab985183c57a15e9d0ddddc45",
+     "timesteps": 73680629
+    },
+    {
+     "path": "runs/vg1-vgl-s41/ckpt/000089968123.pkl",
+     "sha256": "0ec7c426a26f1631af9f4a84ca6d9ceddd7e80164cc9471246c9afc64024c6b0",
+     "timesteps": 89968123
+    },
+    {
+     "path": "runs/vg1-vgl-s41/ckpt/000109856054.pkl",
+     "sha256": "26145e75e7a32aed0da8b4c8063788dc32bb638bbf041f732734335b11d13a2e",
+     "timesteps": 109856054
+    },
+    {
+     "path": "runs/vg1-vgl-s41/ckpt/000134140317.pkl",
+     "sha256": "61a66f83fd85f9b6963cda402c7ab7345f2b78475b09123b8e2a269c302ce8ce",
+     "timesteps": 134140317
+    },
+    {
+     "path": "runs/vg1-vgl-s41/ckpt/000163792745.pkl",
+     "sha256": "ecb9011fc3176ce3c1b206b057944e91113a31104546a51745adbb030b90e457",
+     "timesteps": 163792745
+    },
+    {
+     "path": "runs/vg1-vgl-s41/ckpt/000199884800.pkl",
+     "sha256": "a831d485f58c8c0b4cfccfbb2ea9085e8a538cb0150187b6ef454f7481674e9b",
+     "timesteps": 199884800
+    }
+   ],
+   "final": {
+    "path": "runs/vg1-vgl-s41/ckpt/000199884800.pkl",
+    "sha256": "a831d485f58c8c0b4cfccfbb2ea9085e8a538cb0150187b6ef454f7481674e9b",
+    "timesteps": 199884800
+   },
+   "config_sha256": "b257c562805a1775c71dca78be1a538de1b59118c353d701ffd02940f52bc001",
+   "metrics_sha256": "35c7c9448e197e123b117b28982d5b390e3b8ddb698a2c7d6bc15f8a5556300e",
+   "eval_rdev_sha256": "1702ffc4fccac96d1f101a7f34c991702441a1a584d966bbf96c2c6fb2e51b63",
+   "logs_sha256": {
+    "runs/vg1-vgl-s41.log": "69e9a00161d753e2ba5a058d72056559ad2818f0c0676c9ee9ca8391ac2d4de1"
+   }
+  },
+  {
+   "name": "vg1-base-s42",
+   "seed": 42,
+   "arm": "base",
+   "beta": null,
+   "status": "done",
+   "failure": null,
+   "box": {
+    "box": "vg1-manifest-0of1.json",
+    "lane": 4,
+    "gpu": 0,
+    "start": "2026-10-28T05:52:27Z",
+    "end": "2026-10-28T06:25:04Z",
+    "gpu_model": "NVIDIA RTX A6000",
+    "gpu_count": 4,
+    "box_type": "massedcompute_A6000_plusx4"
+   },
+   "checkpoints": [
+    {
+     "path": "runs/vg1-base-s42/ckpt/000010000000.pkl",
+     "sha256": "efa3eb0f8ddfec6cfd6e4516c1bca2ae6266218fee6a25d775d19cdf68300720",
+     "timesteps": 10000000
+    },
+    {
+     "path": "runs/vg1-base-s42/ckpt/000012210553.pkl",
+     "sha256": "dcdfd1aeff745cf004419ab3bd9f154838a5a911559d5bc16d8c668c22306627",
+     "timesteps": 12210553
+    },
+    {
+     "path": "runs/vg1-base-s42/ckpt/000014909760.pkl",
+     "sha256": "0d4fce1860991e7bd57dd16af3fe7565c8ec6ce60fec506355749bb26fb2ccc2",
+     "timesteps": 14909760
+    },
+    {
+     "path": "runs/vg1-base-s42/ckpt/000018205642.pkl",
+     "sha256": "e38a836992b954f7f684a96f9f82780b83c30ecc283785300f8f1ec6d96284d8",
+     "timesteps": 18205642
+    },
+    {
+     "path": "runs/vg1-base-s42/ckpt/000022230095.pkl",
+     "sha256": "e60937ac031fc737d99767a5e72006be3685b4cf61c73cff8929a61f79a34e1d",
+     "timesteps": 22230095
+    },
+    {
+     "path": "runs/vg1-base-s42/ckpt/000027144176.pkl",
+     "sha256": "03c5e80c0eb719ec6e79491656d446582f61baf96d63e80b72ac99296090870b",
+     "timesteps": 27144176
+    },
+    {
+     "path": "runs/vg1-base-s42/ckpt/000033144540.pkl",
+     "sha256": "0f0bd116a26ea1701966bc9339b457ce66a1ee70d7b5d89a05134bc8e4b1de0f",
+     "timesteps": 33144540
+    },
+    {
+     "path": "runs/vg1-base-s42/ckpt/000040471316.pkl",
+     "sha256": "e46b219faf1bef7d068886fb85550b10783d5853c5338775d08323c87e7598fe",
+     "timesteps": 40471316
+    },
+    {
+     "path": "runs/vg1-base-s42/ckpt/000049417715.pkl",
+     "sha256": "1a439e9144a75e312ed2a3b20dcbfc4e0ed2637ced9bac406660e2fa5bc00104",
+     "timesteps": 49417715
+    },
+    {
+     "path": "runs/vg1-base-s42/ckpt/000060341763.pkl",
+     "sha256": "3cd3b5fdde1c20efd32ca60658e6e008b0660c45732516c0c88abbd0d602b755",
+     "timesteps": 60341763
+    },
+    {
+     "path": "runs/vg1-base-s42/ckpt/000073680629.pkl",
+     "sha256": "c82680e2b3cdca4d257a283d3580d97b6cce3db7a952c795a07fbcd549d5aa43",
+     "timesteps": 73680629
+    },
+    {
+     "path": "runs/vg1-base-s42/ckpt/000089968123.pkl",
+     "sha256": "097759df182ab4614bd24a0cd83efcc2776f87b53f5806fc36e6f9f8a60fc934",
+     "timesteps": 89968123
+    },
+    {
+     "path": "runs/vg1-base-s42/ckpt/000109856054.pkl",
+     "sha256": "253209e48e8908f0957af0e4e1554fc8036f08968bcba8b9b1752d41110ff6eb",
+     "timesteps": 109856054
+    },
+    {
+     "path": "runs/vg1-base-s42/ckpt/000134140317.pkl",
+     "sha256": "adbf99dc533e950d0c892336701d788c3604df04600438e39591e1db0406a2e9",
+     "timesteps": 134140317
+    },
+    {
+     "path": "runs/vg1-base-s42/ckpt/000163792745.pkl",
+     "sha256": "85643bbed25b080019c5a9bec217183abd1ee49927246998d32ff2e893a0baff",
+     "timesteps": 163792745
+    },
+    {
+     "path": "runs/vg1-base-s42/ckpt/000199884800.pkl",
+     "sha256": "22054033d3f51ab5c556714eef8ff966aacc1347ffe12bce54637b1b42fb0aaa",
+     "timesteps": 199884800
+    }
+   ],
+   "final": {
+    "path": "runs/vg1-base-s42/ckpt/000199884800.pkl",
+    "sha256": "22054033d3f51ab5c556714eef8ff966aacc1347ffe12bce54637b1b42fb0aaa",
+    "timesteps": 199884800
+   },
+   "config_sha256": "8f4809df86a9c2af66b052e22960763962c223f61cb66763444ba479ba1347ee",
+   "metrics_sha256": "ea74257dd7194e4cd1e771931b486bdb49b9d5ebf5e6eb0c093497d344b7b526",
+   "eval_rdev_sha256": "51177d9098d9d9970359124a6703c0c5ed5c376bffb62fa9041181a8ad502063",
+   "logs_sha256": {
+    "runs/vg1-base-s42.log": "f9257bf0586dd1b4e1bb86fc781e7ecd0bb160edafe40adfe71d7208fdeb5f4a"
+   }
+  },
+  {
+   "name": "vg1-base-s43",
+   "seed": 43,
+   "arm": "base",
+   "beta": null,
+   "status": "done",
+   "failure": null,
+   "box": {
+    "box": "vg1-manifest-0of1.json",
+    "lane": 5,
+    "gpu": 1,
+    "start": "2026-10-28T05:52:43Z",
+    "end": "2026-10-28T06:24:35Z",
+    "gpu_model": "NVIDIA RTX A6000",
+    "gpu_count": 4,
+    "box_type": "massedcompute_A6000_plusx4"
+   },
+   "checkpoints": [
+    {
+     "path": "runs/vg1-base-s43/ckpt/000010000000.pkl",
+     "sha256": "d774d177e09e5bbb62df0438709c190c65cbfd620e80f1d5977a6151534e4aff",
+     "timesteps": 10000000
+    },
+    {
+     "path": "runs/vg1-base-s43/ckpt/000012210553.pkl",
+     "sha256": "05a7e5ae3917b91f432faab8eb3b565c176579acbc3cf10502d90bcc1daf1f6e",
+     "timesteps": 12210553
+    },
+    {
+     "path": "runs/vg1-base-s43/ckpt/000014909760.pkl",
+     "sha256": "6e6d4f814297394087750c23bb7383fb0fc1646af3ed4b16ab7761ff5345daeb",
+     "timesteps": 14909760
+    },
+    {
+     "path": "runs/vg1-base-s43/ckpt/000018205642.pkl",
+     "sha256": "3a633091f7b6e4288f1869fd0ce3982930b09cfa31b5d51e453822554ee3f584",
+     "timesteps": 18205642
+    },
+    {
+     "path": "runs/vg1-base-s43/ckpt/000022230095.pkl",
+     "sha256": "93fcf09bb4dbe7c2f74c48535f86c07e84cde4b17548aa1fe6705c2425ac8770",
+     "timesteps": 22230095
+    },
+    {
+     "path": "runs/vg1-base-s43/ckpt/000027144176.pkl",
+     "sha256": "5b7d604e9cabc9453ad2d4a4a4c73d1b40a83f492eed3a322689882a55d551c5",
+     "timesteps": 27144176
+    },
+    {
+     "path": "runs/vg1-base-s43/ckpt/000033144540.pkl",
+     "sha256": "a735b7d4cf3a008fd68f3f21b1c16e65cf7aed349568c68597ddfddbda887cf6",
+     "timesteps": 33144540
+    },
+    {
+     "path": "runs/vg1-base-s43/ckpt/000040471316.pkl",
+     "sha256": "d2aedb627062604571ee35c4841685f8840b4eb067be8d6d6f59761205910a86",
+     "timesteps": 40471316
+    },
+    {
+     "path": "runs/vg1-base-s43/ckpt/000049417715.pkl",
+     "sha256": "df5ff2ff9ecae0cee202412c26880fef3dea96a106460152bbaa233626282bbc",
+     "timesteps": 49417715
+    },
+    {
+     "path": "runs/vg1-base-s43/ckpt/000060341763.pkl",
+     "sha256": "89043c1c44f336c9464d480bc5d6e87826d2c5ab7ad1a325dd611c49fc40dbd6",
+     "timesteps": 60341763
+    },
+    {
+     "path": "runs/vg1-base-s43/ckpt/000073680629.pkl",
+     "sha256": "46545ff3a99460d530da67396bbedb1f54f4f5aa5640f76de18e8bd71f052184",
+     "timesteps": 73680629
+    },
+    {
+     "path": "runs/vg1-base-s43/ckpt/000089968123.pkl",
+     "sha256": "403af5ba1d88ddbec3a6a0df390493d1787c107a2a84cbfabe08e035a8fa21fd",
+     "timesteps": 89968123
+    },
+    {
+     "path": "runs/vg1-base-s43/ckpt/000109856054.pkl",
+     "sha256": "4f1c28c12b9ae7d5de6e969837b86e8b6c937244a920f53e9d0f589c3dc247a2",
+     "timesteps": 109856054
+    },
+    {
+     "path": "runs/vg1-base-s43/ckpt/000134140317.pkl",
+     "sha256": "8cea1090cecd8d68acb2bf4f4252519e407de3f4bbc8c671aadafb389ea2afcc",
+     "timesteps": 134140317
+    },
+    {
+     "path": "runs/vg1-base-s43/ckpt/000163792745.pkl",
+     "sha256": "fc03aa4a96385e34a8f47b9efbea6ec6c93ca55d62abd0f066815a8ac86a57a3",
+     "timesteps": 163792745
+    },
+    {
+     "path": "runs/vg1-base-s43/ckpt/000199884800.pkl",
+     "sha256": "4d4a0393f2a459eacf464e14b5daaff035d4d541561f9b6baa549695e232064b",
+     "timesteps": 199884800
+    }
+   ],
+   "final": {
+    "path": "runs/vg1-base-s43/ckpt/000199884800.pkl",
+    "sha256": "4d4a0393f2a459eacf464e14b5daaff035d4d541561f9b6baa549695e232064b",
+    "timesteps": 199884800
+   },
+   "config_sha256": "4af5e08598bcf0a336994680a4b4fe5eded1f0d37f5999b8a3517c3f3f643aee",
+   "metrics_sha256": "8612ec47b8c368874f781c48350d1d8ac170d9020c05d135b655955be5e26248",
+   "eval_rdev_sha256": "f7c56e031b2208b2c084573fd9b6609e2c069c9bc1ab87151cb468c0be9e667e",
+   "logs_sha256": {
+    "runs/vg1-base-s43.log": "7a690b68943336621809bbee6b10db0340395697355382449efe706137281e31"
+   }
+  },
+  {
+   "name": "vg1-base-s44",
+   "seed": 44,
+   "arm": "base",
+   "beta": null,
+   "status": "done",
+   "failure": null,
+   "box": {
+    "box": "vg1-manifest-0of1.json",
+    "lane": 6,
+    "gpu": 2,
+    "start": "2026-10-28T05:53:00Z",
+    "end": "2026-10-28T06:25:34Z",
+    "gpu_model": "NVIDIA RTX A6000",
+    "gpu_count": 4,
+    "box_type": "massedcompute_A6000_plusx4"
+   },
+   "checkpoints": [
+    {
+     "path": "runs/vg1-base-s44/ckpt/000010000000.pkl",
+     "sha256": "468e908ded9c28159e22954abf9a6fa80125def77c0c50ff8b9a231c16d5d0e3",
+     "timesteps": 10000000
+    },
+    {
+     "path": "runs/vg1-base-s44/ckpt/000012210553.pkl",
+     "sha256": "114bac7f9010578510f6ae0cc51654b087cc14c6081d6e6c1b877f31e1876fdb",
+     "timesteps": 12210553
+    },
+    {
+     "path": "runs/vg1-base-s44/ckpt/000014909760.pkl",
+     "sha256": "61390acde85874a9e49b6ccd5d66100c384d79446d63ee19dda48759f83b2d4d",
+     "timesteps": 14909760
+    },
+    {
+     "path": "runs/vg1-base-s44/ckpt/000018205642.pkl",
+     "sha256": "955f90b8a48d2aa09a8d6087b51d4fb9976235a048f996499cc9599c55949960",
+     "timesteps": 18205642
+    },
+    {
+     "path": "runs/vg1-base-s44/ckpt/000022230095.pkl",
+     "sha256": "7cdb5693472b25d062edccdf823e264dc024db8e438aec429749c00ef1514fc7",
+     "timesteps": 22230095
+    },
+    {
+     "path": "runs/vg1-base-s44/ckpt/000027144176.pkl",
+     "sha256": "be88d11c70b5d3ea7cc2b5ca6c2f001ba171c5eb564034f6e271bf72251ae073",
+     "timesteps": 27144176
+    },
+    {
+     "path": "runs/vg1-base-s44/ckpt/000033144540.pkl",
+     "sha256": "424a2c03cac10898b8e5a41d8e7730af840525b7b233bc3247916740844e40c8",
+     "timesteps": 33144540
+    },
+    {
+     "path": "runs/vg1-base-s44/ckpt/000040471316.pkl",
+     "sha256": "6eb522d1ddf09e27b5bfb7f906ed72f8b7795935427fd6fd492a7a5066af7a0a",
+     "timesteps": 40471316
+    },
+    {
+     "path": "runs/vg1-base-s44/ckpt/000049417715.pkl",
+     "sha256": "443f428a05998cf983d329b6f1c5fcf6b443f8204269e7c7e229e6fcd070c6b7",
+     "timesteps": 49417715
+    },
+    {
+     "path": "runs/vg1-base-s44/ckpt/000060341763.pkl",
+     "sha256": "f8899c207a93fd5f20b3238e05d869b1e39fe40bff4f3759091e47bc6829ca20",
+     "timesteps": 60341763
+    },
+    {
+     "path": "runs/vg1-base-s44/ckpt/000073680629.pkl",
+     "sha256": "628374aeb30ce9ec2c410b6c2408dfc65cad7f9c8fab1eebf2975f251d4f2b96",
+     "timesteps": 73680629
+    },
+    {
+     "path": "runs/vg1-base-s44/ckpt/000089968123.pkl",
+     "sha256": "1b20b2c17a4ff5c0e6559a13dcbb2bc6b58019f4efee089f517c4ac7e7e4a50c",
+     "timesteps": 89968123
+    },
+    {
+     "path": "runs/vg1-base-s44/ckpt/000109856054.pkl",
+     "sha256": "637fad142fd0b82b0c556c8726c59565ac61b3622c8cbdb52ace5ebfddb057c9",
+     "timesteps": 109856054
+    },
+    {
+     "path": "runs/vg1-base-s44/ckpt/000134140317.pkl",
+     "sha256": "fe5be02d1abe1959c38d1879d8c4e2dc1a85020b68a258daa42c024ef9fdfce5",
+     "timesteps": 134140317
+    },
+    {
+     "path": "runs/vg1-base-s44/ckpt/000163792745.pkl",
+     "sha256": "ebec2f1144773dca6d3e3cbb4af0a28d2ff9960b942c64fa77454a63b0a8320b",
+     "timesteps": 163792745
+    },
+    {
+     "path": "runs/vg1-base-s44/ckpt/000199884800.pkl",
+     "sha256": "a25e1d4795f34f6770793f0a1b967a6466f777e68b47904bc50d5d6bcf983a2e",
+     "timesteps": 199884800
+    }
+   ],
+   "final": {
+    "path": "runs/vg1-base-s44/ckpt/000199884800.pkl",
+    "sha256": "a25e1d4795f34f6770793f0a1b967a6466f777e68b47904bc50d5d6bcf983a2e",
+    "timesteps": 199884800
+   },
+   "config_sha256": "d453586d3a89cee74e47f49ffa90ebd942ab2d2b301a1cf9b1ca9f55becd94fb",
+   "metrics_sha256": "fbd4eb6ed3b4ac501e28a5a25b8d30c06d6405a9e5e2717d5090a5a42b0b6b08",
+   "eval_rdev_sha256": "92dbf7d19dcd7befb7eb6972c2c10ca7892ec4e1058ca0e9174d97497a0922a0",
+   "logs_sha256": {
+    "runs/vg1-base-s44.log": "c2b992e0b111e23ced6e6227bc2d3be3411f185a901bfe65cead6a0b90b35161"
+   }
+  },
+  {
+   "name": "vg1-base-s45",
+   "seed": 45,
+   "arm": "base",
+   "beta": null,
+   "status": "done",
+   "failure": null,
+   "box": {
+    "box": "vg1-manifest-0of1.json",
+    "lane": 7,
+    "gpu": 3,
+    "start": "2026-10-28T05:52:42Z",
+    "end": "2026-10-28T06:25:01Z",
+    "gpu_model": "NVIDIA RTX A6000",
+    "gpu_count": 4,
+    "box_type": "massedcompute_A6000_plusx4"
+   },
+   "checkpoints": [
+    {
+     "path": "runs/vg1-base-s45/ckpt/000010000000.pkl",
+     "sha256": "d2244e42c6a3e7e4c6c6156762b1aa998623b0f15a0b224986b2a075b5fc5806",
+     "timesteps": 10000000
+    },
+    {
+     "path": "runs/vg1-base-s45/ckpt/000012210553.pkl",
+     "sha256": "43c60b477d3fac509a0540c17e91b6b3150400f16b11294a31fcca0a8417b54f",
+     "timesteps": 12210553
+    },
+    {
+     "path": "runs/vg1-base-s45/ckpt/000014909760.pkl",
+     "sha256": "d9d7bdd87c565b34803bbbde1ba0cf92ff721717c73cda8378d3741843fb520b",
+     "timesteps": 14909760
+    },
+    {
+     "path": "runs/vg1-base-s45/ckpt/000018205642.pkl",
+     "sha256": "d77bdcfab12027780feb59038d0b8766e2f1e3075b5915f4a2a4442f46b65934",
+     "timesteps": 18205642
+    },
+    {
+     "path": "runs/vg1-base-s45/ckpt/000022230095.pkl",
+     "sha256": "c6cd18be9920d5f9d36e92d208065ed547362dbfbd354b22f45390c0a86b45df",
+     "timesteps": 22230095
+    },
+    {
+     "path": "runs/vg1-base-s45/ckpt/000027144176.pkl",
+     "sha256": "47310d1850b141559ab0eac18b69b4345ea54d5200b8a74bf81aa415ee3dcf22",
+     "timesteps": 27144176
+    },
+    {
+     "path": "runs/vg1-base-s45/ckpt/000033144540.pkl",
+     "sha256": "28f15efaa5df792c49186f674ea5f2d728aafa9d52f541bda948339152a5fc72",
+     "timesteps": 33144540
+    },
+    {
+     "path": "runs/vg1-base-s45/ckpt/000040471316.pkl",
+     "sha256": "07ee8963953bf3f7c2d498e72d744b07ce06350de8d1fe2c4bbcafb35eb0f995",
+     "timesteps": 40471316
+    },
+    {
+     "path": "runs/vg1-base-s45/ckpt/000049417715.pkl",
+     "sha256": "ef9a2ac349120b8ec16716a7e50d3d4c7c5be3f17636e4016742689079bc52ff",
+     "timesteps": 49417715
+    },
+    {
+     "path": "runs/vg1-base-s45/ckpt/000060341763.pkl",
+     "sha256": "1928ad9732b38cdd7b3c37716921522a7ddc00211281337d94c3ccb32ad7522e",
+     "timesteps": 60341763
+    },
+    {
+     "path": "runs/vg1-base-s45/ckpt/000073680629.pkl",
+     "sha256": "9dad2939abafbd210ac2d7b5e564388ae3532dcb3598c4bfbef71498a50e9d33",
+     "timesteps": 73680629
+    },
+    {
+     "path": "runs/vg1-base-s45/ckpt/000089968123.pkl",
+     "sha256": "215bb4fce99ecc7483d28590cb49dc8260263286b983f70e7a250ba2a9341cf8",
+     "timesteps": 89968123
+    },
+    {
+     "path": "runs/vg1-base-s45/ckpt/000109856054.pkl",
+     "sha256": "2ea1444eeebae3301b684e53f90f9498c53469f431765d5a81ee48639516d905",
+     "timesteps": 109856054
+    },
+    {
+     "path": "runs/vg1-base-s45/ckpt/000134140317.pkl",
+     "sha256": "3f3bc659be204a17545a3b5ba93ff8b08d63d02a657c32cb2180a9b8dd225e31",
+     "timesteps": 134140317
+    },
+    {
+     "path": "runs/vg1-base-s45/ckpt/000163792745.pkl",
+     "sha256": "6aaac525a799df09fcc654c9d1c8cd461da6c1bba1d0697176e7dff5c0af5569",
+     "timesteps": 163792745
+    },
+    {
+     "path": "runs/vg1-base-s45/ckpt/000199884800.pkl",
+     "sha256": "2e120b561a174093cb2a64587f59c64b94b0a749ee2423e32d8711b1aeef14ad",
+     "timesteps": 199884800
+    }
+   ],
+   "final": {
+    "path": "runs/vg1-base-s45/ckpt/000199884800.pkl",
+    "sha256": "2e120b561a174093cb2a64587f59c64b94b0a749ee2423e32d8711b1aeef14ad",
+    "timesteps": 199884800
+   },
+   "config_sha256": "df4f7b3370dbb7000fa5c4e4dc5cf9d00d9d433ab9c17b2a10d4fab0aff685e3",
+   "metrics_sha256": "3835b5474f95c3826c81f49ab400c3f45f9dcd7c4045822ad4bb49c9744a3e67",
+   "eval_rdev_sha256": "c7f16a8d32923ffd1c8e33bc1cecfec7d1c1c6b19fe888701e3511e507fceff3",
+   "logs_sha256": {
+    "runs/vg1-base-s45.log": "db6b875c78b5bec89e5a296ff91f423dbcf190921b48675bdcf9b0d479e669eb"
+   }
+  },
+  {
+   "name": "vg1-vgl-s42",
+   "seed": 42,
+   "arm": "vgl",
+   "beta": 0.03,
+   "status": "done",
+   "failure": null,
+   "box": {
+    "box": "vg1-manifest-0of1.json",
+    "lane": 8,
+    "gpu": 0,
+    "start": "2026-10-28T05:19:47Z",
+    "end": "2026-10-28T06:26:06Z",
+    "gpu_model": "NVIDIA RTX A6000",
+    "gpu_count": 4,
+    "box_type": "massedcompute_A6000_plusx4"
+   },
+   "checkpoints": [
+    {
+     "path": "runs/vg1-vgl-s42/ckpt/000010000000.pkl",
+     "sha256": "74f56f519d7dcbec57c1390a2ce37658e5d68e322d561de75844fe4f82a1b9e0",
+     "timesteps": 10000000
+    },
+    {
+     "path": "runs/vg1-vgl-s42/ckpt/000012210553.pkl",
+     "sha256": "3225e90948411a734543bdcbae5b3abae872a80023531a53c9e42d517b8f564d",
+     "timesteps": 12210553
+    },
+    {
+     "path": "runs/vg1-vgl-s42/ckpt/000014909760.pkl",
+     "sha256": "33880c971ec2768f63d29afa6904a28f0d1aa02525daefca944edcebfcb1a8bc",
+     "timesteps": 14909760
+    },
+    {
+     "path": "runs/vg1-vgl-s42/ckpt/000018205642.pkl",
+     "sha256": "d2f2ea8b41abf86ec3c9fde3f6385ebb330b854d180a6429ea58087c56713bdf",
+     "timesteps": 18205642
+    },
+    {
+     "path": "runs/vg1-vgl-s42/ckpt/000022230095.pkl",
+     "sha256": "de6dc5fb1abd16ee844448c9043c387408453df08e5b05a9bf0061f9ea59d569",
+     "timesteps": 22230095
+    },
+    {
+     "path": "runs/vg1-vgl-s42/ckpt/000027144176.pkl",
+     "sha256": "9f3bf8507d75f7fcb4774a05d197fbe3c0cb2d9d809c5325f3f4b4a004ab1870",
+     "timesteps": 27144176
+    },
+    {
+     "path": "runs/vg1-vgl-s42/ckpt/000033144540.pkl",
+     "sha256": "ef89ec116a0e0defd5337041ca5f7a023d74d2110b8707a369503cc2bcfd4f4d",
+     "timesteps": 33144540
+    },
+    {
+     "path": "runs/vg1-vgl-s42/ckpt/000040471316.pkl",
+     "sha256": "e0ccadf672a2f8251d4022289cb51d4407d41967c85150227262e92638d9ee82",
+     "timesteps": 40471316
+    },
+    {
+     "path": "runs/vg1-vgl-s42/ckpt/000049417715.pkl",
+     "sha256": "7afe046bc9512afc813bfe6df9a8ef7650ec38ef0a8467a67327c4f533c153b4",
+     "timesteps": 49417715
+    },
+    {
+     "path": "runs/vg1-vgl-s42/ckpt/000060341763.pkl",
+     "sha256": "f3a2749475734279d7f210f5416557f9a8f8626b6559ac0743f294011efc782e",
+     "timesteps": 60341763
+    },
+    {
+     "path": "runs/vg1-vgl-s42/ckpt/000073680629.pkl",
+     "sha256": "44b784d1ff75df2b76933bdfe77eba6afac43ec480c129d123a76343aa64995f",
+     "timesteps": 73680629
+    },
+    {
+     "path": "runs/vg1-vgl-s42/ckpt/000089968123.pkl",
+     "sha256": "2822cc9454637e80acb44f716b661966048523943bcdcaf74968fc5c7be096cb",
+     "timesteps": 89968123
+    },
+    {
+     "path": "runs/vg1-vgl-s42/ckpt/000109856054.pkl",
+     "sha256": "ef66f6d07dc8c557685ec98454f3da30da158faf67e36881bd3cfcd760f6f835",
+     "timesteps": 109856054
+    },
+    {
+     "path": "runs/vg1-vgl-s42/ckpt/000134140317.pkl",
+     "sha256": "8a1946efe88aaab1f967c99bb07482b04f97228568a43909cd3f3f1f7074760a",
+     "timesteps": 134140317
+    },
+    {
+     "path": "runs/vg1-vgl-s42/ckpt/000163792745.pkl",
+     "sha256": "b51bd20c06d8e6ffbba98aa605baf8d0aeca766b9dc5c267f7533e5e68f63378",
+     "timesteps": 163792745
+    },
+    {
+     "path": "runs/vg1-vgl-s42/ckpt/000199884800.pkl",
+     "sha256": "b8792fd36ebc92f03e168066284d320e8dece04a0ac1daec2a57749d1e30b1a0",
+     "timesteps": 199884800
+    }
+   ],
+   "final": {
+    "path": "runs/vg1-vgl-s42/ckpt/000199884800.pkl",
+    "sha256": "b8792fd36ebc92f03e168066284d320e8dece04a0ac1daec2a57749d1e30b1a0",
+    "timesteps": 199884800
+   },
+   "config_sha256": "eba52e7186f7cb5c426f26fa6c83569570480690e2d2e0a078530c7ecb01cacc",
+   "metrics_sha256": "ce5837a7aff45374d11c69a308472601d513540088dadb1920da068082752406",
+   "eval_rdev_sha256": "172fdbb649c2fbc1c54f72fea443501ddd57fbc18b349aece38fd97d02abbeb9",
+   "logs_sha256": {
+    "runs/vg1-vgl-s42.log": "b1b5c1a3d6cd8df56c7a65ee2ad9dc85a8c5cd245d922b8cb5afbe435edc505b"
+   }
+  },
+  {
+   "name": "vg1-vgl-s43",
+   "seed": 43,
+   "arm": "vgl",
+   "beta": 0.03,
+   "status": "done",
+   "failure": null,
+   "box": {
+    "box": "vg1-manifest-0of1.json",
+    "lane": 9,
+    "gpu": 1,
+    "start": "2026-10-28T05:18:31Z",
+    "end": "2026-10-28T06:23:49Z",
+    "gpu_model": "NVIDIA RTX A6000",
+    "gpu_count": 4,
+    "box_type": "massedcompute_A6000_plusx4"
+   },
+   "checkpoints": [
+    {
+     "path": "runs/vg1-vgl-s43/ckpt/000010000000.pkl",
+     "sha256": "2a6d8e421fe554d8e3ba0472ed870de0251662411c0131537f02c27c136b7346",
+     "timesteps": 10000000
+    },
+    {
+     "path": "runs/vg1-vgl-s43/ckpt/000012210553.pkl",
+     "sha256": "3800d7394d035be7803e5200f365812174ac91f0b04da6ff4ba691d0c8e70397",
+     "timesteps": 12210553
+    },
+    {
+     "path": "runs/vg1-vgl-s43/ckpt/000014909760.pkl",
+     "sha256": "fbe6fa27f54d0e74a9bc4b0f8e351d137b86f9c27e10c12d7c93d1d53c806dbe",
+     "timesteps": 14909760
+    },
+    {
+     "path": "runs/vg1-vgl-s43/ckpt/000018205642.pkl",
+     "sha256": "16afd89f979301d139429c0a0a892749cc60c4c846f17cc0c114988dbb937f20",
+     "timesteps": 18205642
+    },
+    {
+     "path": "runs/vg1-vgl-s43/ckpt/000022230095.pkl",
+     "sha256": "bbb44a4b9d6ac43ccbcb2ad8164114b36a7fcc79b629afa01fd9cacf0a2221f1",
+     "timesteps": 22230095
+    },
+    {
+     "path": "runs/vg1-vgl-s43/ckpt/000027144176.pkl",
+     "sha256": "81cda98e55eef58630617f136352ddd301339895229bcd5d6714f7f50a9e9136",
+     "timesteps": 27144176
+    },
+    {
+     "path": "runs/vg1-vgl-s43/ckpt/000033144540.pkl",
+     "sha256": "aa8e475a69c7f1652c1656b559bbd3ca90273686d196af7ecc06cbd44b973d5b",
+     "timesteps": 33144540
+    },
+    {
+     "path": "runs/vg1-vgl-s43/ckpt/000040471316.pkl",
+     "sha256": "5b1828e45911f61f8d73329d4e6cc7b76ff1970913d7d82f86bf56ab6a8cb276",
+     "timesteps": 40471316
+    },
+    {
+     "path": "runs/vg1-vgl-s43/ckpt/000049417715.pkl",
+     "sha256": "86eccd5845361f9563945e7aab46d0d82e5eda7f43ddfa9d3f5eca716f846f03",
+     "timesteps": 49417715
+    },
+    {
+     "path": "runs/vg1-vgl-s43/ckpt/000060341763.pkl",
+     "sha256": "f55395e89b3f1a8827f460e90ddcf2d60558fbd7745902982271fa362a203834",
+     "timesteps": 60341763
+    },
+    {
+     "path": "runs/vg1-vgl-s43/ckpt/000073680629.pkl",
+     "sha256": "0402dd1cf2cc831dc36a36090bc430df949da9c76af968878d4c34349232370f",
+     "timesteps": 73680629
+    },
+    {
+     "path": "runs/vg1-vgl-s43/ckpt/000089968123.pkl",
+     "sha256": "4ea5a81e7f50dfa0d83e99c80e7cfe78fb3852bf7b265ee5c01648edff506277",
+     "timesteps": 89968123
+    },
+    {
+     "path": "runs/vg1-vgl-s43/ckpt/000109856054.pkl",
+     "sha256": "3ec3c4a082196a6a9e16212910704adb9ab822d1e275f4f4a71bf7cfa3b57d16",
+     "timesteps": 109856054
+    },
+    {
+     "path": "runs/vg1-vgl-s43/ckpt/000134140317.pkl",
+     "sha256": "7e7b9d206b4687197c40765fcfece44ebbb04222d686319ed700d1f7e0fb56d6",
+     "timesteps": 134140317
+    },
+    {
+     "path": "runs/vg1-vgl-s43/ckpt/000163792745.pkl",
+     "sha256": "0f89e4a9bf69dd3a8479a3671c8cdf4595230b6d5ec2674f8513f170c617c0ca",
+     "timesteps": 163792745
+    },
+    {
+     "path": "runs/vg1-vgl-s43/ckpt/000199884800.pkl",
+     "sha256": "fd576a66e42d0801fe623aafdecc3d7b8942b0f006064e40e118f73b66fa74e2",
+     "timesteps": 199884800
+    }
+   ],
+   "final": {
+    "path": "runs/vg1-vgl-s43/ckpt/000199884800.pkl",
+    "sha256": "fd576a66e42d0801fe623aafdecc3d7b8942b0f006064e40e118f73b66fa74e2",
+    "timesteps": 199884800
+   },
+   "config_sha256": "d1c953d94f8aabf346ba6a64881931072a2797935c98776b9000eb32d02cb3a0",
+   "metrics_sha256": "c975ad559e733abfadf0195ba70dcd1682924a25c4eab6f11a6266032f6ec6f5",
+   "eval_rdev_sha256": "630b175e288c82f2197dc1e1d4c46715cabc1caaabab78941353bfb7de357736",
+   "logs_sha256": {
+    "runs/vg1-vgl-s43.log": "3257b673e12a5316be9085989fbbe457957f91f7c47b7e570325f5fb2999e4d3"
+   }
+  },
+  {
+   "name": "vg1-vgl-s44",
+   "seed": 44,
+   "arm": "vgl",
+   "beta": 0.03,
+   "status": "done",
+   "failure": null,
+   "box": {
+    "box": "vg1-manifest-0of1.json",
+    "lane": 10,
+    "gpu": 2,
+    "start": "2026-10-28T05:18:59Z",
+    "end": "2026-10-28T06:25:01Z",
+    "gpu_model": "NVIDIA RTX A6000",
+    "gpu_count": 4,
+    "box_type": "massedcompute_A6000_plusx4"
+   },
+   "checkpoints": [
+    {
+     "path": "runs/vg1-vgl-s44/ckpt/000010000000.pkl",
+     "sha256": "309f229cb613241a02b196a1e55aa107e275137463a9a4be5f5442bf09e02d91",
+     "timesteps": 10000000
+    },
+    {
+     "path": "runs/vg1-vgl-s44/ckpt/000012210553.pkl",
+     "sha256": "2578ce1290448687dc7aa633c22afeece7b9d5c064cb4f319e2e2ace62440c7b",
+     "timesteps": 12210553
+    },
+    {
+     "path": "runs/vg1-vgl-s44/ckpt/000014909760.pkl",
+     "sha256": "73e99907333c37e52c04ae2a8e3b6d8331d5106dbbc71d8143f890221cd12328",
+     "timesteps": 14909760
+    },
+    {
+     "path": "runs/vg1-vgl-s44/ckpt/000018205642.pkl",
+     "sha256": "c6d6b395f2f466aa3123d60368bfa4b74424d69337b4d77699be89a71852f476",
+     "timesteps": 18205642
+    },
+    {
+     "path": "runs/vg1-vgl-s44/ckpt/000022230095.pkl",
+     "sha256": "59f71dcdea91ae9741478d86d06590ace478d56dc316755954251bc8238554de",
+     "timesteps": 22230095
+    },
+    {
+     "path": "runs/vg1-vgl-s44/ckpt/000027144176.pkl",
+     "sha256": "f1e0b2764a3c88770e6b37d8e0796f3e31bd0099ece820f15c800e2e7229023b",
+     "timesteps": 27144176
+    },
+    {
+     "path": "runs/vg1-vgl-s44/ckpt/000033144540.pkl",
+     "sha256": "3cb9716b8132ea8a6516eb394454f660ecac53c47a5e2304b1de61d300b6a375",
+     "timesteps": 33144540
+    },
+    {
+     "path": "runs/vg1-vgl-s44/ckpt/000040471316.pkl",
+     "sha256": "41652effcaa33a20bba0c4f9777200b20589ccca17aed103d7bb28686c8818fa",
+     "timesteps": 40471316
+    },
+    {
+     "path": "runs/vg1-vgl-s44/ckpt/000049417715.pkl",
+     "sha256": "4e11754ed265b8d6d6660d50e305a3ad8dd70506fbc42dedf3414ac992576fe6",
+     "timesteps": 49417715
+    },
+    {
+     "path": "runs/vg1-vgl-s44/ckpt/000060341763.pkl",
+     "sha256": "cd39e11d14cffabe018aac8c58e8b8bd613378132442bdd482fff3031184d5a3",
+     "timesteps": 60341763
+    },
+    {
+     "path": "runs/vg1-vgl-s44/ckpt/000073680629.pkl",
+     "sha256": "8d3f75ad75d2f753094b7165e00c3b912c3c50da59899d559fae3a17cddc71a6",
+     "timesteps": 73680629
+    },
+    {
+     "path": "runs/vg1-vgl-s44/ckpt/000089968123.pkl",
+     "sha256": "404182a131df30b326a735beb9a874db2fc6797a30948eb6bb558d1abf75521c",
+     "timesteps": 89968123
+    },
+    {
+     "path": "runs/vg1-vgl-s44/ckpt/000109856054.pkl",
+     "sha256": "26582c387d87676e9ce2156eea63ef5b8bb77f98ff204f1e0c680f5968246601",
+     "timesteps": 109856054
+    },
+    {
+     "path": "runs/vg1-vgl-s44/ckpt/000134140317.pkl",
+     "sha256": "932a0b08952268b670490444c31110ac86c4ccae353c037c1a666a9eac282197",
+     "timesteps": 134140317
+    },
+    {
+     "path": "runs/vg1-vgl-s44/ckpt/000163792745.pkl",
+     "sha256": "f1294d9529f2fa62ca3b074ce3ad488cf8b06dae9751f858c6babeeb0c80df58",
+     "timesteps": 163792745
+    },
+    {
+     "path": "runs/vg1-vgl-s44/ckpt/000199884800.pkl",
+     "sha256": "38470b61ea7b3752d98e2f5cd8295f8bb3e374dadc3f1ca1052af51261271b3e",
+     "timesteps": 199884800
+    }
+   ],
+   "final": {
+    "path": "runs/vg1-vgl-s44/ckpt/000199884800.pkl",
+    "sha256": "38470b61ea7b3752d98e2f5cd8295f8bb3e374dadc3f1ca1052af51261271b3e",
+    "timesteps": 199884800
+   },
+   "config_sha256": "20ecc2a0fa4069dd3020cdbed07bd62e35ec45273c8fb8831d79ee583b5cf86e",
+   "metrics_sha256": "5f75308d3a08dcbc6ddd168dd53d49d19de51b7bc9a12f714cae339f6b89d2dc",
+   "eval_rdev_sha256": "9e889db0880cc783d4b3d3d309b019706738663f6a99deb08b43444515cfa056",
+   "logs_sha256": {
+    "runs/vg1-vgl-s44.log": "1ed734425814f71f6e20b967ef4fa93173e6ae3b1eeb26bbc925f723eed6fc7a"
+   }
+  },
+  {
+   "name": "vg1-vgl-s45",
+   "seed": 45,
+   "arm": "vgl",
+   "beta": 0.03,
+   "status": "done",
+   "failure": null,
+   "box": {
+    "box": "vg1-manifest-0of1.json",
+    "lane": 11,
+    "gpu": 3,
+    "start": "2026-10-28T05:19:55Z",
+    "end": "2026-10-28T06:25:55Z",
+    "gpu_model": "NVIDIA RTX A6000",
+    "gpu_count": 4,
+    "box_type": "massedcompute_A6000_plusx4"
+   },
+   "checkpoints": [
+    {
+     "path": "runs/vg1-vgl-s45/ckpt/000010000000.pkl",
+     "sha256": "4d56892a7a362136e80f3fd9172f1b62226b6c5c8abdb17dc93515f72efddde2",
+     "timesteps": 10000000
+    },
+    {
+     "path": "runs/vg1-vgl-s45/ckpt/000012210553.pkl",
+     "sha256": "98d532be8df43a038d39c279f3b3826a9620ba78638b4c1e0b392217d29dc604",
+     "timesteps": 12210553
+    },
+    {
+     "path": "runs/vg1-vgl-s45/ckpt/000014909760.pkl",
+     "sha256": "8bbfb16c65700146ac36a1f93fca1799930e2edbf5024ba3c7e23a67ad34fc4a",
+     "timesteps": 14909760
+    },
+    {
+     "path": "runs/vg1-vgl-s45/ckpt/000018205642.pkl",
+     "sha256": "cc4986362f518774047485729fb7172ce8d817e476963320c70098f9f506e3d1",
+     "timesteps": 18205642
+    },
+    {
+     "path": "runs/vg1-vgl-s45/ckpt/000022230095.pkl",
+     "sha256": "5d9abd4b6c285cb88ae2345afe37c968684106d40d8e8dbfe27e2274b49b005f",
+     "timesteps": 22230095
+    },
+    {
+     "path": "runs/vg1-vgl-s45/ckpt/000027144176.pkl",
+     "sha256": "cca4f071d6bda05b23a212af7e0c387cfd51336798e316b222f5fa46aac5e67a",
+     "timesteps": 27144176
+    },
+    {
+     "path": "runs/vg1-vgl-s45/ckpt/000033144540.pkl",
+     "sha256": "da862190e8079780cf902ea026ef4b5a8100b0797c941f0db66175c6a43ea489",
+     "timesteps": 33144540
+    },
+    {
+     "path": "runs/vg1-vgl-s45/ckpt/000040471316.pkl",
+     "sha256": "39677c9ddb35edb50e097a773e7a1aa0124a11c29c00c858a0a300354494bdd9",
+     "timesteps": 40471316
+    },
+    {
+     "path": "runs/vg1-vgl-s45/ckpt/000049417715.pkl",
+     "sha256": "803d286a827b724ab1de409710314de564fc65754f9e676e0fdc0439c75da0a1",
+     "timesteps": 49417715
+    },
+    {
+     "path": "runs/vg1-vgl-s45/ckpt/000060341763.pkl",
+     "sha256": "df7a5ef26978bb6aec48cba5d4af902dd26feb6ac640bec502c470fffc1cdbb3",
+     "timesteps": 60341763
+    },
+    {
+     "path": "runs/vg1-vgl-s45/ckpt/000073680629.pkl",
+     "sha256": "1254c435ce66a8bb30c4cafa6a7039c939323fcc77fa20e00d6e44ad37869dfc",
+     "timesteps": 73680629
+    },
+    {
+     "path": "runs/vg1-vgl-s45/ckpt/000089968123.pkl",
+     "sha256": "443e48f2dccbd817a6945bc95676e87ff0be66dad931f0979e4209c329de8048",
+     "timesteps": 89968123
+    },
+    {
+     "path": "runs/vg1-vgl-s45/ckpt/000109856054.pkl",
+     "sha256": "da06a5561dbfa56769387fca1b32eca1f513724f1fae4dc775c29c7bee6de740",
+     "timesteps": 109856054
+    },
+    {
+     "path": "runs/vg1-vgl-s45/ckpt/000134140317.pkl",
+     "sha256": "cccef06123afed07d1854b09ef60cf709e428b64fc2d2c4ed12fed478c7b52e6",
+     "timesteps": 134140317
+    },
+    {
+     "path": "runs/vg1-vgl-s45/ckpt/000163792745.pkl",
+     "sha256": "c1d2b1bc213e8383bd0e67b255b46c93a74f30f6332438f2c64ea1d026a23076",
+     "timesteps": 163792745
+    },
+    {
+     "path": "runs/vg1-vgl-s45/ckpt/000199884800.pkl",
+     "sha256": "63bf315107eb9abfd495cb8a6ed861cccbd5bc9e86a47c9bb57eb2501ca2bd2b",
+     "timesteps": 199884800
+    }
+   ],
+   "final": {
+    "path": "runs/vg1-vgl-s45/ckpt/000199884800.pkl",
+    "sha256": "63bf315107eb9abfd495cb8a6ed861cccbd5bc9e86a47c9bb57eb2501ca2bd2b",
+    "timesteps": 199884800
+   },
+   "config_sha256": "c3b85002c3ebf3d190f657f4ccb821c7fc3c2a3dd2782897b036f790046c648e",
+   "metrics_sha256": "4495cf73c434116c8f69869a7e7364f1690524d7f0989214b8d40ab986914547",
+   "eval_rdev_sha256": "9e77496654ad731f6cdd1510f1f2555391b26fe1bf424dca22495f5bb26ca58e",
+   "logs_sha256": {
+    "runs/vg1-vgl-s45.log": "0ec9b6cfb619d418c695dc2c24001e3e316eb66965353828708d51e798de2a7b"
+   }
+  },
+  {
+   "name": "vg1-base-s46",
+   "seed": 46,
+   "arm": "base",
+   "beta": null,
+   "status": "done",
+   "failure": null,
+   "box": {
+    "box": "vg1-manifest-0of1.json",
+    "lane": 12,
+    "gpu": 0,
+    "start": "2026-10-28T05:52:10Z",
+    "end": "2026-10-28T06:24:38Z",
+    "gpu_model": "NVIDIA RTX A6000",
+    "gpu_count": 4,
+    "box_type": "massedcompute_A6000_plusx4"
+   },
+   "checkpoints": [
+    {
+     "path": "runs/vg1-base-s46/ckpt/000010000000.pkl",
+     "sha256": "8d63339b8907f22e730a5066256c5bb282b270fc55d39a83f0d77cf0c5d92245",
+     "timesteps": 10000000
+    },
+    {
+     "path": "runs/vg1-base-s46/ckpt/000012210553.pkl",
+     "sha256": "2418ccab17573134edd886a8ab1f5f35bff459c0cc482b2b8a2877400856d1bf",
+     "timesteps": 12210553
+    },
+    {
+     "path": "runs/vg1-base-s46/ckpt/000014909760.pkl",
+     "sha256": "669e57af9719dbb8ed4afa1863e4a15a6706f47c82e007f0045646ba9aa15799",
+     "timesteps": 14909760
+    },
+    {
+     "path": "runs/vg1-base-s46/ckpt/000018205642.pkl",
+     "sha256": "37a1a558c837f621f08aa496d5ef0d4eda15d62198d694d128a7a9f5e615c089",
+     "timesteps": 18205642
+    },
+    {
+     "path": "runs/vg1-base-s46/ckpt/000022230095.pkl",
+     "sha256": "dbe5da91eeee321e8cb4cc9e400a7b4ef47a41fbd537005132b6c2422c31a1ee",
+     "timesteps": 22230095
+    },
+    {
+     "path": "runs/vg1-base-s46/ckpt/000027144176.pkl",
+     "sha256": "09f7207b37d65d15653735b2f5a37778ee678c81c432bc70978d999db052d557",
+     "timesteps": 27144176
+    },
+    {
+     "path": "runs/vg1-base-s46/ckpt/000033144540.pkl",
+     "sha256": "bed8107bf5e6f59b9eca83e8cbadb8763fcfb115cb0962bf0e1d705f0e7de2e1",
+     "timesteps": 33144540
+    },
+    {
+     "path": "runs/vg1-base-s46/ckpt/000040471316.pkl",
+     "sha256": "206e33bb9ddde9db5a244ae69be76c3a97b74c4f1a95bc1eda4f3c66ba493fef",
+     "timesteps": 40471316
+    },
+    {
+     "path": "runs/vg1-base-s46/ckpt/000049417715.pkl",
+     "sha256": "7fc36dca9e35b69aa6de7ce2e26681b401490613e97fe187a86a74ec3ec7677f",
+     "timesteps": 49417715
+    },
+    {
+     "path": "runs/vg1-base-s46/ckpt/000060341763.pkl",
+     "sha256": "a30c4b68739fb8a267ba91960b3fcecd32921fc260810e9196620e6b355c12f8",
+     "timesteps": 60341763
+    },
+    {
+     "path": "runs/vg1-base-s46/ckpt/000073680629.pkl",
+     "sha256": "caf64f20e65989ddf0fb2f7530a45ae3a9ae1f9fc16fbe2bc9fe7ac8958e6a28",
+     "timesteps": 73680629
+    },
+    {
+     "path": "runs/vg1-base-s46/ckpt/000089968123.pkl",
+     "sha256": "0d1dbaa28f6ebaf0677436ea869150045bb869d9c19cbcc1359cfbf62f42fadc",
+     "timesteps": 89968123
+    },
+    {
+     "path": "runs/vg1-base-s46/ckpt/000109856054.pkl",
+     "sha256": "41e665d6cb091ccf1d8590ecf169d5f9b9995c4d673380a8a6874f80f9902ce4",
+     "timesteps": 109856054
+    },
+    {
+     "path": "runs/vg1-base-s46/ckpt/000134140317.pkl",
+     "sha256": "5d673b0d4f737f127766b5e8dc11c45cc1ed4683d1aaef7893251c8fc85e9b0c",
+     "timesteps": 134140317
+    },
+    {
+     "path": "runs/vg1-base-s46/ckpt/000163792745.pkl",
+     "sha256": "98bde94ad0c076c81071496ae2770f4b8b8f0f13b269a929c1eca58c415c518c",
+     "timesteps": 163792745
+    },
+    {
+     "path": "runs/vg1-base-s46/ckpt/000199884800.pkl",
+     "sha256": "5321a4ad757b046fc3f36f9453e6f6ce6f046adb422179fa55fab42f3559b1b4",
+     "timesteps": 199884800
+    }
+   ],
+   "final": {
+    "path": "runs/vg1-base-s46/ckpt/000199884800.pkl",
+    "sha256": "5321a4ad757b046fc3f36f9453e6f6ce6f046adb422179fa55fab42f3559b1b4",
+    "timesteps": 199884800
+   },
+   "config_sha256": "a8156a97596ddaac30672776f01fdb9ba39a2b61619f1d7c57317fbfacfd09fd",
+   "metrics_sha256": "11df71d43d0ee5a0f5c7b4fc71b4314133724e65f5b945bba8b14a5587a0a65f",
+   "eval_rdev_sha256": "3b69d8c76c5ea7176f635652b12392b6d501ec171835f2b7ecb888e0ad14c3db",
+   "logs_sha256": {
+    "runs/vg1-base-s46.log": "cd2173ef121c9cc7a597655603a157de1b1148fe0d44b981af6a0dbcc24d5ec4"
+   }
+  },
+  {
+   "name": "vg1-base-s47",
+   "seed": 47,
+   "arm": "base",
+   "beta": null,
+   "status": "done",
+   "failure": null,
+   "box": {
+    "box": "vg1-manifest-0of1.json",
+    "lane": 13,
+    "gpu": 1,
+    "start": "2026-10-28T05:52:16Z",
+    "end": "2026-10-28T06:24:20Z",
+    "gpu_model": "NVIDIA RTX A6000",
+    "gpu_count": 4,
+    "box_type": "massedcompute_A6000_plusx4"
+   },
+   "checkpoints": [
+    {
+     "path": "runs/vg1-base-s47/ckpt/000010000000.pkl",
+     "sha256": "0513d9393af5a6e8920a2d92772692c822cd1fe9a88f8bc4e0405483a118c50a",
+     "timesteps": 10000000
+    },
+    {
+     "path": "runs/vg1-base-s47/ckpt/000012210553.pkl",
+     "sha256": "1e856d5c7e93b473053ea38f1536e51571433492e0f00e1d7f46bb043ce57731",
+     "timesteps": 12210553
+    },
+    {
+     "path": "runs/vg1-base-s47/ckpt/000014909760.pkl",
+     "sha256": "4a57af5855a338bfdb56aac056dcfeb059f850a98b3a84a53eedb9c85222ff1d",
+     "timesteps": 14909760
+    },
+    {
+     "path": "runs/vg1-base-s47/ckpt/000018205642.pkl",
+     "sha256": "3bcf2ea52a58a596d96d0e593df96486d2799104aa7774f95c5164fe8d1ed860",
+     "timesteps": 18205642
+    },
+    {
+     "path": "runs/vg1-base-s47/ckpt/000022230095.pkl",
+     "sha256": "2db02eebd08b0c2a1bd7c1c3860e8dda73a36564e512e81f6083dcd052fdf7a5",
+     "timesteps": 22230095
+    },
+    {
+     "path": "runs/vg1-base-s47/ckpt/000027144176.pkl",
+     "sha256": "b617490a32b6c1f8a63159e5977d079152679690340ffd0d61f5343a5faa2d85",
+     "timesteps": 27144176
+    },
+    {
+     "path": "runs/vg1-base-s47/ckpt/000033144540.pkl",
+     "sha256": "8d8c2935e6f46b5ed7d88353ed8e437d1a974f8336e7fcf588c1e6f910a6c8d0",
+     "timesteps": 33144540
+    },
+    {
+     "path": "runs/vg1-base-s47/ckpt/000040471316.pkl",
+     "sha256": "90ed9d2e2b1d07f4d4917c5479362615ffa0c122e83360fa1e58a9439e0ef7a0",
+     "timesteps": 40471316
+    },
+    {
+     "path": "runs/vg1-base-s47/ckpt/000049417715.pkl",
+     "sha256": "1a542ab3a5ee8075b22e2c8907f1b837f73907cf3259b4f7ae217b8dc31b8921",
+     "timesteps": 49417715
+    },
+    {
+     "path": "runs/vg1-base-s47/ckpt/000060341763.pkl",
+     "sha256": "d55b6775ea672fc6550c510b843bc8279f0d9649067dea2b69c43ff804cbecab",
+     "timesteps": 60341763
+    },
+    {
+     "path": "runs/vg1-base-s47/ckpt/000073680629.pkl",
+     "sha256": "3fc35d2d0b4de0e196ef5f4ceb2508621ab0ee446b8ec2c5b955b2c138a303a5",
+     "timesteps": 73680629
+    },
+    {
+     "path": "runs/vg1-base-s47/ckpt/000089968123.pkl",
+     "sha256": "a0b3554eaf4a6675f7faf13ad0c9bb99f8c49e4811659ce169b88069a798371c",
+     "timesteps": 89968123
+    },
+    {
+     "path": "runs/vg1-base-s47/ckpt/000109856054.pkl",
+     "sha256": "520ef89eaacd72493c1fa9f3ed64509de3a1cedb192b23c787e8782c46621134",
+     "timesteps": 109856054
+    },
+    {
+     "path": "runs/vg1-base-s47/ckpt/000134140317.pkl",
+     "sha256": "0ed387fa958905043a0bc23eeb15185026d6af0f5088bb5b84709f2c0e59cf60",
+     "timesteps": 134140317
+    },
+    {
+     "path": "runs/vg1-base-s47/ckpt/000163792745.pkl",
+     "sha256": "373cede14f7f6a0044377f3bdcdec01c90823cbc9e90419b450a706ab1e7b520",
+     "timesteps": 163792745
+    },
+    {
+     "path": "runs/vg1-base-s47/ckpt/000199884800.pkl",
+     "sha256": "67137b79f05062b8414f429864fbcb0db4554cc29710639571a76c9eae3caf71",
+     "timesteps": 199884800
+    }
+   ],
+   "final": {
+    "path": "runs/vg1-base-s47/ckpt/000199884800.pkl",
+    "sha256": "67137b79f05062b8414f429864fbcb0db4554cc29710639571a76c9eae3caf71",
+    "timesteps": 199884800
+   },
+   "config_sha256": "e895465f2b0fa49d594681450852671347bafd28fe932dcf5f80879d876f4c4b",
+   "metrics_sha256": "1c91034d59bf7ff566a4ac5e4d6e88a1d148ece983c00f6843f8732a33cc3395",
+   "eval_rdev_sha256": "d13eeec7457fce528c62d26401a19504b0cd8333d3b871dd83c9c87b7dff3e82",
+   "logs_sha256": {
+    "runs/vg1-base-s47.log": "1c1705a0db95f99ece2d4c2a4108e85c03c248a44bbac0e048ebda86e0328e00"
+   }
+  },
+  {
+   "name": "vg1-base-s48",
+   "seed": 48,
+   "arm": "base",
+   "beta": null,
+   "status": "done",
+   "failure": null,
+   "box": {
+    "box": "vg1-manifest-0of1.json",
+    "lane": 14,
+    "gpu": 2,
+    "start": "2026-10-28T05:52:48Z",
+    "end": "2026-10-28T06:25:23Z",
+    "gpu_model": "NVIDIA RTX A6000",
+    "gpu_count": 4,
+    "box_type": "massedcompute_A6000_plusx4"
+   },
+   "checkpoints": [
+    {
+     "path": "runs/vg1-base-s48/ckpt/000010000000.pkl",
+     "sha256": "147aacd7dad50f163d422b263a45ea4f5d2e4d9398b08d390ece6bd08a0878cc",
+     "timesteps": 10000000
+    },
+    {
+     "path": "runs/vg1-base-s48/ckpt/000012210553.pkl",
+     "sha256": "67156466a8eb79bd1ca8ecba952d4ffc4f8b1a8c374eb8cd6d7fb481650d6b10",
+     "timesteps": 12210553
+    },
+    {
+     "path": "runs/vg1-base-s48/ckpt/000014909760.pkl",
+     "sha256": "962d7ed477fa6a361918501a88eab159bc29959a4540567f3ca658b07fb1f44c",
+     "timesteps": 14909760
+    },
+    {
+     "path": "runs/vg1-base-s48/ckpt/000018205642.pkl",
+     "sha256": "7e09408e9e7c2a71fc3087f466e1c9ec7b90b3fee75048d5aa8c831162c3c9fd",
+     "timesteps": 18205642
+    },
+    {
+     "path": "runs/vg1-base-s48/ckpt/000022230095.pkl",
+     "sha256": "10ff96e75a274399f9e192cfa9f6f2f7bc2582ec911301917076496b3bdd0137",
+     "timesteps": 22230095
+    },
+    {
+     "path": "runs/vg1-base-s48/ckpt/000027144176.pkl",
+     "sha256": "359bc09d9db896fab31ba5bfc132af90b6b94a8d92ab8e435b21d1bb55f69b58",
+     "timesteps": 27144176
+    },
+    {
+     "path": "runs/vg1-base-s48/ckpt/000033144540.pkl",
+     "sha256": "6f635c7299153b8d59afa9d2cd44017e2ba52c2707b83f62103fcb4e844494c5",
+     "timesteps": 33144540
+    },
+    {
+     "path": "runs/vg1-base-s48/ckpt/000040471316.pkl",
+     "sha256": "e9e0ebe27f71de3058457c03030b6f3b52d0a7de0318b314142abb75e63c5e9d",
+     "timesteps": 40471316
+    },
+    {
+     "path": "runs/vg1-base-s48/ckpt/000049417715.pkl",
+     "sha256": "0df3c5775282d9d1d72039e1c6cbeb9e2508c6b22af7437699ef728db3c99b8e",
+     "timesteps": 49417715
+    },
+    {
+     "path": "runs/vg1-base-s48/ckpt/000060341763.pkl",
+     "sha256": "824728aa2083ef278b443900c80fd6c162e91ad91b5f7a2b4411a5778287f94c",
+     "timesteps": 60341763
+    },
+    {
+     "path": "runs/vg1-base-s48/ckpt/000073680629.pkl",
+     "sha256": "621503d5d4c14ad47d213725b830de9d2025f5e89fa9d2e070baad0ac0e36fac",
+     "timesteps": 73680629
+    },
+    {
+     "path": "runs/vg1-base-s48/ckpt/000089968123.pkl",
+     "sha256": "0c6226987b2ad24c264febdc13eecebb1d266602c0948d907713ab6b207c88e7",
+     "timesteps": 89968123
+    },
+    {
+     "path": "runs/vg1-base-s48/ckpt/000109856054.pkl",
+     "sha256": "824afee9ad6c9b4c6da7a71e8ce6dfd315aab4dd9abdae5b219b96b6585ed444",
+     "timesteps": 109856054
+    },
+    {
+     "path": "runs/vg1-base-s48/ckpt/000134140317.pkl",
+     "sha256": "ec57965013c529b71e96bc2a41fc7dc50df72f47cd67f2b0e0d5d3bc05ac1d9c",
+     "timesteps": 134140317
+    },
+    {
+     "path": "runs/vg1-base-s48/ckpt/000163792745.pkl",
+     "sha256": "4fb9f5a1f0829825f92fa7cabe2da97ffd3eb5af1e1b87ed19e8c4c1e82a878b",
+     "timesteps": 163792745
+    },
+    {
+     "path": "runs/vg1-base-s48/ckpt/000199884800.pkl",
+     "sha256": "dc3663baf2df45ecf222bbf26f1b31cb879f0d23594033ad50d941c2da3aeec6",
+     "timesteps": 199884800
+    }
+   ],
+   "final": {
+    "path": "runs/vg1-base-s48/ckpt/000199884800.pkl",
+    "sha256": "dc3663baf2df45ecf222bbf26f1b31cb879f0d23594033ad50d941c2da3aeec6",
+    "timesteps": 199884800
+   },
+   "config_sha256": "f3400ef3cfa031c306cf0214e6c180533ad34dabbb9e23664943650082d54022",
+   "metrics_sha256": "5cfa8c7de87309a81daf5b9d58fcc7b5744f68ad043d934d03ad81f452077ab2",
+   "eval_rdev_sha256": "c5d11eaafe46052744093a7d26688b1a9a7d6b6d8a4fc1eb8f73fb3d166eab8a",
+   "logs_sha256": {
+    "runs/vg1-base-s48.log": "7a54f047a2545e26734b5d99f91d364b5b14d4b2b89f9fa32ddd3bd15cba425e"
+   }
+  },
+  {
+   "name": "vg1-base-s49",
+   "seed": 49,
+   "arm": "base",
+   "beta": null,
+   "status": "done",
+   "failure": null,
+   "box": {
+    "box": "vg1-manifest-0of1.json",
+    "lane": 15,
+    "gpu": 3,
+    "start": "2026-10-28T05:53:03Z",
+    "end": "2026-10-28T06:25:36Z",
+    "gpu_model": "NVIDIA RTX A6000",
+    "gpu_count": 4,
+    "box_type": "massedcompute_A6000_plusx4"
+   },
+   "checkpoints": [
+    {
+     "path": "runs/vg1-base-s49/ckpt/000010000000.pkl",
+     "sha256": "b160a7fe1a0a37f9182205b8097cac2bfaad0a93d4352598c1622be8b455f48a",
+     "timesteps": 10000000
+    },
+    {
+     "path": "runs/vg1-base-s49/ckpt/000012210553.pkl",
+     "sha256": "b550299fe2bff9e172118488dfa5b333e20bd10fdca91db45b0817ff3f619c4c",
+     "timesteps": 12210553
+    },
+    {
+     "path": "runs/vg1-base-s49/ckpt/000014909760.pkl",
+     "sha256": "098d53872a86302b8fa568830b1c4c6f2593e26d43b3948e2afeb066d76ba7f1",
+     "timesteps": 14909760
+    },
+    {
+     "path": "runs/vg1-base-s49/ckpt/000018205642.pkl",
+     "sha256": "cce694c81818c66b9cad6ff7df055fae1e89c8353c57c70539ec070eb1c90927",
+     "timesteps": 18205642
+    },
+    {
+     "path": "runs/vg1-base-s49/ckpt/000022230095.pkl",
+     "sha256": "ea8b3a5acb5dcef9a399847fc3a47c7fb66a0e64e57147132890993dfe55bf86",
+     "timesteps": 22230095
+    },
+    {
+     "path": "runs/vg1-base-s49/ckpt/000027144176.pkl",
+     "sha256": "6dc3329279995542ae419aad20d52abb7f3665ed274b336d974252cca11d3376",
+     "timesteps": 27144176
+    },
+    {
+     "path": "runs/vg1-base-s49/ckpt/000033144540.pkl",
+     "sha256": "e1668f2f5a4cf392875e8656113ec4cb6efab564f4a42587acac67012a1ed765",
+     "timesteps": 33144540
+    },
+    {
+     "path": "runs/vg1-base-s49/ckpt/000040471316.pkl",
+     "sha256": "bf9abb926e590f945f2726eca38310f370c28155057945de5199042f60a03d31",
+     "timesteps": 40471316
+    },
+    {
+     "path": "runs/vg1-base-s49/ckpt/000049417715.pkl",
+     "sha256": "7b99bdf0ffab64fd5e97e7ce5d34a88e6580e71f29e9ae5c76087fcdb2703d78",
+     "timesteps": 49417715
+    },
+    {
+     "path": "runs/vg1-base-s49/ckpt/000060341763.pkl",
+     "sha256": "bc8014ddb1a529447d56619391af4f780d1644f99ee2dd90eda7c4b1687c0d80",
+     "timesteps": 60341763
+    },
+    {
+     "path": "runs/vg1-base-s49/ckpt/000073680629.pkl",
+     "sha256": "5f474193839bf9470466b00acb81c10d6638e9d092cfe77ccbeb6dd857999134",
+     "timesteps": 73680629
+    },
+    {
+     "path": "runs/vg1-base-s49/ckpt/000089968123.pkl",
+     "sha256": "616c0e162a31df79354f0adea217f017891e37407a13b5f5e8650ebdb9c4b9d4",
+     "timesteps": 89968123
+    },
+    {
+     "path": "runs/vg1-base-s49/ckpt/000109856054.pkl",
+     "sha256": "1ff40f7025dab61e4350e60b6efb1d15a75d171846c9da3cd279f6bab3f662f9",
+     "timesteps": 109856054
+    },
+    {
+     "path": "runs/vg1-base-s49/ckpt/000134140317.pkl",
+     "sha256": "6ba52bc28b173fb4f5fa7f610f58137ba9bb255784032d575b492b85c991ece3",
+     "timesteps": 134140317
+    },
+    {
+     "path": "runs/vg1-base-s49/ckpt/000163792745.pkl",
+     "sha256": "11e74b1387f9be9adb59810500729b15ac647c24367c8e6bda829b3fd3908f8d",
+     "timesteps": 163792745
+    },
+    {
+     "path": "runs/vg1-base-s49/ckpt/000199884800.pkl",
+     "sha256": "0859c4d06fe1941c2a09f3118e9620deb0271a69959a1efceefe8a4f6a049612",
+     "timesteps": 199884800
+    }
+   ],
+   "final": {
+    "path": "runs/vg1-base-s49/ckpt/000199884800.pkl",
+    "sha256": "0859c4d06fe1941c2a09f3118e9620deb0271a69959a1efceefe8a4f6a049612",
+    "timesteps": 199884800
+   },
+   "config_sha256": "1fc6166039b0e400088108f9864ac035c97c677b21aeb0a04c0fa6601dde0990",
+   "metrics_sha256": "cff02c7ca7b5bdb083574f7bd6cbc4e8246c9a3e621c4bf543e4de298956bfd6",
+   "eval_rdev_sha256": "a486282c3357cd7445c725b621313f0ab7eedc3c74abadab1ca08455f420e969",
+   "logs_sha256": {
+    "runs/vg1-base-s49.log": "ec802dd8a75fb7353202ed0f04ca31c04e3f4d6c0cc48bbd882a50f59ec9a7a5"
+   }
+  },
+  {
+   "name": "vg1-vgl-s46",
+   "seed": 46,
+   "arm": "vgl",
+   "beta": 0.03,
+   "status": "done",
+   "failure": null,
+   "box": {
+    "box": "vg1-manifest-0of1.json",
+    "lane": 16,
+    "gpu": 0,
+    "start": "2026-10-28T05:19:51Z",
+    "end": "2026-10-28T06:26:09Z",
+    "gpu_model": "NVIDIA RTX A6000",
+    "gpu_count": 4,
+    "box_type": "massedcompute_A6000_plusx4"
+   },
+   "checkpoints": [
+    {
+     "path": "runs/vg1-vgl-s46/ckpt/000010000000.pkl",
+     "sha256": "9ba357784460a6defb75852c5ff402a4764c93a03d2cbfef2f8813feabb24237",
+     "timesteps": 10000000
+    },
+    {
+     "path": "runs/vg1-vgl-s46/ckpt/000012210553.pkl",
+     "sha256": "381e1304f4fde7c44564b927c0c8ea90fc8499f069a86e59768dbe9b837245a5",
+     "timesteps": 12210553
+    },
+    {
+     "path": "runs/vg1-vgl-s46/ckpt/000014909760.pkl",
+     "sha256": "97f2114d7df8b172998a600983bc916a1b430caa3edaf96dc8f07c89e1757640",
+     "timesteps": 14909760
+    },
+    {
+     "path": "runs/vg1-vgl-s46/ckpt/000018205642.pkl",
+     "sha256": "32fe8026f03dd0bbf45114390c8bd06aec47bbd96e593370c041150e53b2bef9",
+     "timesteps": 18205642
+    },
+    {
+     "path": "runs/vg1-vgl-s46/ckpt/000022230095.pkl",
+     "sha256": "59c1a58c713e3393ea699d16b09464c2e3a2c3907907b29f270d8b156cf934b9",
+     "timesteps": 22230095
+    },
+    {
+     "path": "runs/vg1-vgl-s46/ckpt/000027144176.pkl",
+     "sha256": "d5fd178fcc319301760b254391085a3449bf1b943bc63d863beb077d81b74832",
+     "timesteps": 27144176
+    },
+    {
+     "path": "runs/vg1-vgl-s46/ckpt/000033144540.pkl",
+     "sha256": "14000b435808e14cd48b09e48942e01b1760b0f0bc80f65d5ad8c7bd32c47d58",
+     "timesteps": 33144540
+    },
+    {
+     "path": "runs/vg1-vgl-s46/ckpt/000040471316.pkl",
+     "sha256": "36f292c1d548df31bd6a9a32cf8e44ff9ca112e74fd83e05632709c490e84b1d",
+     "timesteps": 40471316
+    },
+    {
+     "path": "runs/vg1-vgl-s46/ckpt/000049417715.pkl",
+     "sha256": "f86fd48c2b7612021df46678433bc8bcc71b1111679ffef7f88f8800653462fc",
+     "timesteps": 49417715
+    },
+    {
+     "path": "runs/vg1-vgl-s46/ckpt/000060341763.pkl",
+     "sha256": "de86a4d0dfe8844d133b951b8e67c60a9ad8dd334c5ceb693071f34d170940ce",
+     "timesteps": 60341763
+    },
+    {
+     "path": "runs/vg1-vgl-s46/ckpt/000073680629.pkl",
+     "sha256": "15730568ee464d0d1415f747ff930e2b8f7ef3b6b6bdef0f10ccfd644477f2cc",
+     "timesteps": 73680629
+    },
+    {
+     "path": "runs/vg1-vgl-s46/ckpt/000089968123.pkl",
+     "sha256": "1af8d9a34f61105ab388f5901f7bd6780d7acfe93ef3135def30609c79bf71b5",
+     "timesteps": 89968123
+    },
+    {
+     "path": "runs/vg1-vgl-s46/ckpt/000109856054.pkl",
+     "sha256": "431d61fa7e2fd28b083f6b7fbc6fb4adafe2478b7615604922ed6d59576cffce",
+     "timesteps": 109856054
+    },
+    {
+     "path": "runs/vg1-vgl-s46/ckpt/000134140317.pkl",
+     "sha256": "30f5420359f65f694d16076334dd82c2d33064cf1166923af230a482b1c7f71a",
+     "timesteps": 134140317
+    },
+    {
+     "path": "runs/vg1-vgl-s46/ckpt/000163792745.pkl",
+     "sha256": "3b3edf1a1fde77804a29c0fb89006a80817b8ea24787c98e10540673b0cdc996",
+     "timesteps": 163792745
+    },
+    {
+     "path": "runs/vg1-vgl-s46/ckpt/000199884800.pkl",
+     "sha256": "b57094ad3eb2e8d881c76b776e3da647a2532b1e3394257ee4274834c33c46d9",
+     "timesteps": 199884800
+    }
+   ],
+   "final": {
+    "path": "runs/vg1-vgl-s46/ckpt/000199884800.pkl",
+    "sha256": "b57094ad3eb2e8d881c76b776e3da647a2532b1e3394257ee4274834c33c46d9",
+    "timesteps": 199884800
+   },
+   "config_sha256": "aae5de153ec342a8783ae30950df778a719ab8fa62318980ebf3a98c9edaf5a4",
+   "metrics_sha256": "143fdbec1e566e8d8fa5e255fee30ca80dc1f476f2511c02604588af7857a13a",
+   "eval_rdev_sha256": "f98ee9e0cbfb6de7fa0b044262b4d42650bdaa03e3a54412eb858522f497afe3",
+   "logs_sha256": {
+    "runs/vg1-vgl-s46.log": "029768eca8f563b389fb516e40b61f8746108d50b5ef8369e01fbb9bc451e9d3"
+   }
+  },
+  {
+   "name": "vg1-vgl-s47",
+   "seed": 47,
+   "arm": "vgl",
+   "beta": 0.03,
+   "status": "done",
+   "failure": null,
+   "box": {
+    "box": "vg1-manifest-0of1.json",
+    "lane": 17,
+    "gpu": 1,
+    "start": "2026-10-28T05:19:30Z",
+    "end": "2026-10-28T06:25:13Z",
+    "gpu_model": "NVIDIA RTX A6000",
+    "gpu_count": 4,
+    "box_type": "massedcompute_A6000_plusx4"
+   },
+   "checkpoints": [
+    {
+     "path": "runs/vg1-vgl-s47/ckpt/000010000000.pkl",
+     "sha256": "c1807c80111fd2e7b9f041bcb581e69105557c717ccfab7d3d7dc74b70110c91",
+     "timesteps": 10000000
+    },
+    {
+     "path": "runs/vg1-vgl-s47/ckpt/000012210553.pkl",
+     "sha256": "ade76f11555c743569843b8d4ea18cf142f95eca164abfee093fd9417e868630",
+     "timesteps": 12210553
+    },
+    {
+     "path": "runs/vg1-vgl-s47/ckpt/000014909760.pkl",
+     "sha256": "b52099dd817a6cd344e812d11f9da92deb2d8b029fcc73dac0cc4291ec418c1a",
+     "timesteps": 14909760
+    },
+    {
+     "path": "runs/vg1-vgl-s47/ckpt/000018205642.pkl",
+     "sha256": "7ae05fae9239f383804ba3cf30816cc8bd74632d43458d7191dd47bfb16a017a",
+     "timesteps": 18205642
+    },
+    {
+     "path": "runs/vg1-vgl-s47/ckpt/000022230095.pkl",
+     "sha256": "a107766381e82ae28e9f95d6e2e979a213ee4208375ff878a0439cc9123eb256",
+     "timesteps": 22230095
+    },
+    {
+     "path": "runs/vg1-vgl-s47/ckpt/000027144176.pkl",
+     "sha256": "b2162327a0c294ec466e8cb0cbf5adc038cc696fcef11c662cff7deba3826abd",
+     "timesteps": 27144176
+    },
+    {
+     "path": "runs/vg1-vgl-s47/ckpt/000033144540.pkl",
+     "sha256": "c800c810f3657f948ccdb3d3f124c5af6c6b944b6e253780d3d6a91ff66ff558",
+     "timesteps": 33144540
+    },
+    {
+     "path": "runs/vg1-vgl-s47/ckpt/000040471316.pkl",
+     "sha256": "5609ac10bad75cd1be938202f96465de0fd28aa47d9f307c318d33f31e7db69b",
+     "timesteps": 40471316
+    },
+    {
+     "path": "runs/vg1-vgl-s47/ckpt/000049417715.pkl",
+     "sha256": "aed8889a4e0142705977fa203f7b37f90b2fdd2fbd2ca1be188d2492d88ed660",
+     "timesteps": 49417715
+    },
+    {
+     "path": "runs/vg1-vgl-s47/ckpt/000060341763.pkl",
+     "sha256": "7a985bf0142a127f50efe3a1e583b95fb3c23623f138998b76f6fc397fc20740",
+     "timesteps": 60341763
+    },
+    {
+     "path": "runs/vg1-vgl-s47/ckpt/000073680629.pkl",
+     "sha256": "66b4d1bb81dd1a0d8711d50740e7ffab13b1573d86591258c605dd60037e8ae1",
+     "timesteps": 73680629
+    },
+    {
+     "path": "runs/vg1-vgl-s47/ckpt/000089968123.pkl",
+     "sha256": "4b31ede96faab462a5dfbb4b6dbc116f67c72bc85cbdc0dc910d0bd2b6658722",
+     "timesteps": 89968123
+    },
+    {
+     "path": "runs/vg1-vgl-s47/ckpt/000109856054.pkl",
+     "sha256": "bb73b293d0523d1853818fa6695893ea0998aa2645d5fa20eb205411e42d0aa7",
+     "timesteps": 109856054
+    },
+    {
+     "path": "runs/vg1-vgl-s47/ckpt/000134140317.pkl",
+     "sha256": "90de9577557b39b6bdd51b43f8b0dcc5dc5b98c116828776fe9cb6d1dc60536a",
+     "timesteps": 134140317
+    },
+    {
+     "path": "runs/vg1-vgl-s47/ckpt/000163792745.pkl",
+     "sha256": "bfaabc6053411e0ffa1837567e1999fb8d02cffe2a22683f48e048b1e101926a",
+     "timesteps": 163792745
+    },
+    {
+     "path": "runs/vg1-vgl-s47/ckpt/000199884800.pkl",
+     "sha256": "153a4a9f9334889fd6d2a981b35f1193b8fb915a5a214ffd3702b949d240997b",
+     "timesteps": 199884800
+    }
+   ],
+   "final": {
+    "path": "runs/vg1-vgl-s47/ckpt/000199884800.pkl",
+    "sha256": "153a4a9f9334889fd6d2a981b35f1193b8fb915a5a214ffd3702b949d240997b",
+    "timesteps": 199884800
+   },
+   "config_sha256": "4fb333eecde82b4ee7511bbd71b3d52945e3d214a5b6d9809b8bfb9523ef1e01",
+   "metrics_sha256": "28ccdaa75b291b25cd3396fb09369a4c9b95bb70f28728d2f1ca8777f0ba87b0",
+   "eval_rdev_sha256": "58a37bf2c7c1b6d4561cae77d504c040463c45a799f02b3d5b99dce76c1e90e8",
+   "logs_sha256": {
+    "runs/vg1-vgl-s47.log": "f1cb21ec8f170f4cdd353d3603713fc920e017d26602c5fdea561a3de252f9b3"
+   }
+  },
+  {
+   "name": "vg1-vgl-s48",
+   "seed": 48,
+   "arm": "vgl",
+   "beta": 0.03,
+   "status": "done",
+   "failure": null,
+   "box": {
+    "box": "vg1-manifest-0of1.json",
+    "lane": 18,
+    "gpu": 2,
+    "start": "2026-10-28T05:20:10Z",
+    "end": "2026-10-28T06:26:15Z",
+    "gpu_model": "NVIDIA RTX A6000",
+    "gpu_count": 4,
+    "box_type": "massedcompute_A6000_plusx4"
+   },
+   "checkpoints": [
+    {
+     "path": "runs/vg1-vgl-s48/ckpt/000010000000.pkl",
+     "sha256": "da093985535a7947f1920a7d0e5b2ef655998b243bb383c7b959740b345385ec",
+     "timesteps": 10000000
+    },
+    {
+     "path": "runs/vg1-vgl-s48/ckpt/000012210553.pkl",
+     "sha256": "a6296d8fd1b01ac0b02f9abb3c8bec51b842dac947e243092ea80bcca6f350a5",
+     "timesteps": 12210553
+    },
+    {
+     "path": "runs/vg1-vgl-s48/ckpt/000014909760.pkl",
+     "sha256": "f951b7d1026f7c84ea2c91ff20352ecbdddcafdbd217ce5d3cfa1c4aeaae544d",
+     "timesteps": 14909760
+    },
+    {
+     "path": "runs/vg1-vgl-s48/ckpt/000018205642.pkl",
+     "sha256": "b000a45081e86844849fdc4b527c2a13a51b73350cfe5ddd6a3a253c970f4c8c",
+     "timesteps": 18205642
+    },
+    {
+     "path": "runs/vg1-vgl-s48/ckpt/000022230095.pkl",
+     "sha256": "709d0085f56e03709e65ab787db2e5d10ee8cb332a2984474369f26c2dc2da72",
+     "timesteps": 22230095
+    },
+    {
+     "path": "runs/vg1-vgl-s48/ckpt/000027144176.pkl",
+     "sha256": "8d6d541037b19fbb7c899e634f050768a6bbec7c26d5f8c9a4dbbc8b1d44ffd9",
+     "timesteps": 27144176
+    },
+    {
+     "path": "runs/vg1-vgl-s48/ckpt/000033144540.pkl",
+     "sha256": "0a73a186927b0bdaa2926fef04bd380fbd8b7f8361257acbcdbdb76373cf8ee5",
+     "timesteps": 33144540
+    },
+    {
+     "path": "runs/vg1-vgl-s48/ckpt/000040471316.pkl",
+     "sha256": "5ce9cb0e546a02fa7e1c6a39dc8af14fe93d864699220a021d81d6bd91ba2539",
+     "timesteps": 40471316
+    },
+    {
+     "path": "runs/vg1-vgl-s48/ckpt/000049417715.pkl",
+     "sha256": "df20a8bd4ddc4baff56384d736e14b597fcac5a91ba6ae5086c7bffa6fb9b2ae",
+     "timesteps": 49417715
+    },
+    {
+     "path": "runs/vg1-vgl-s48/ckpt/000060341763.pkl",
+     "sha256": "cdee910c239421142a91e20dbb499edf575c9cf08b13fa591bd1784ab9d69288",
+     "timesteps": 60341763
+    },
+    {
+     "path": "runs/vg1-vgl-s48/ckpt/000073680629.pkl",
+     "sha256": "dce432fdd6edbcfac13314cb0f0752e9b411fe62a7d694550cd3cd0d3e2cdf80",
+     "timesteps": 73680629
+    },
+    {
+     "path": "runs/vg1-vgl-s48/ckpt/000089968123.pkl",
+     "sha256": "663c6768d7de02c8f57bd1769532f2cc91cbec485242908738ae59cf16949225",
+     "timesteps": 89968123
+    },
+    {
+     "path": "runs/vg1-vgl-s48/ckpt/000109856054.pkl",
+     "sha256": "82208aa97dbeeee73f8e48174139ce584af3e729f1b5b665c5e4a88efc42a353",
+     "timesteps": 109856054
+    },
+    {
+     "path": "runs/vg1-vgl-s48/ckpt/000134140317.pkl",
+     "sha256": "d998e224c20ce613d855edd3ab1558054c8310de41139d2f433a9bad0ee56993",
+     "timesteps": 134140317
+    },
+    {
+     "path": "runs/vg1-vgl-s48/ckpt/000163792745.pkl",
+     "sha256": "2bd0c62e3201f429e50f0b9f968c9616359b6074de92e520e0dfc060e2f1910c",
+     "timesteps": 163792745
+    },
+    {
+     "path": "runs/vg1-vgl-s48/ckpt/000199884800.pkl",
+     "sha256": "6b91602a6d3916a8d6359a6106b4c1064de9f2d0090b7782fe59fb55b1e40fa6",
+     "timesteps": 199884800
+    }
+   ],
+   "final": {
+    "path": "runs/vg1-vgl-s48/ckpt/000199884800.pkl",
+    "sha256": "6b91602a6d3916a8d6359a6106b4c1064de9f2d0090b7782fe59fb55b1e40fa6",
+    "timesteps": 199884800
+   },
+   "config_sha256": "92797aa726a50f048823e9fe9d11ff94bdf169a53d794dd0ef7b2e7281e7abfd",
+   "metrics_sha256": "e0b7741705a63c527ca6db3f7b940e3ffb296af855f57b364303bfdb9063b28a",
+   "eval_rdev_sha256": "6a6b92eaf3b009238abaf5fbee3254a9ffdc8f218422ed6b26ecb4c7b32b418c",
+   "logs_sha256": {
+    "runs/vg1-vgl-s48.log": "d7a8183799e24866a9660fc1f56618e913d766b157aac3d2540653a890c5311f"
+   }
+  },
+  {
+   "name": "vg1-vgl-s49",
+   "seed": 49,
+   "arm": "vgl",
+   "beta": 0.03,
+   "status": "done",
+   "failure": null,
+   "box": {
+    "box": "vg1-manifest-0of1.json",
+    "lane": 19,
+    "gpu": 3,
+    "start": "2026-10-28T05:20:05Z",
+    "end": "2026-10-28T06:25:59Z",
+    "gpu_model": "NVIDIA RTX A6000",
+    "gpu_count": 4,
+    "box_type": "massedcompute_A6000_plusx4"
+   },
+   "checkpoints": [
+    {
+     "path": "runs/vg1-vgl-s49/ckpt/000010000000.pkl",
+     "sha256": "fcbe1bd48a3df23678be858e9e73c1a5c06f4f8adb7f4cfcc048d75a606d1cc2",
+     "timesteps": 10000000
+    },
+    {
+     "path": "runs/vg1-vgl-s49/ckpt/000012210553.pkl",
+     "sha256": "1d0f3823ff2e7e3bd9f4056cb7e2c16c58c0cfda61edd88da325ea601c6a6f75",
+     "timesteps": 12210553
+    },
+    {
+     "path": "runs/vg1-vgl-s49/ckpt/000014909760.pkl",
+     "sha256": "532bda19f2805b46619482199dbaa2d13860c381626f95711c5dc9bd53781786",
+     "timesteps": 14909760
+    },
+    {
+     "path": "runs/vg1-vgl-s49/ckpt/000018205642.pkl",
+     "sha256": "f1e359098782d6322bf242d6ef15c70ea006c9ba0c33ab61119d93285cf82dc5",
+     "timesteps": 18205642
+    },
+    {
+     "path": "runs/vg1-vgl-s49/ckpt/000022230095.pkl",
+     "sha256": "3ac2ff68d23b761980b048a9fe53e9883cc1e490237e13a3c0366da51d2f8048",
+     "timesteps": 22230095
+    },
+    {
+     "path": "runs/vg1-vgl-s49/ckpt/000027144176.pkl",
+     "sha256": "897970573ecaeb5182802fb4d79c1e4dd2dfd52866933cb97a76b063edf5af2a",
+     "timesteps": 27144176
+    },
+    {
+     "path": "runs/vg1-vgl-s49/ckpt/000033144540.pkl",
+     "sha256": "3404e4f2533303de789ef9a2b8821f69594be206e3abcf500d8446d6105cc872",
+     "timesteps": 33144540
+    },
+    {
+     "path": "runs/vg1-vgl-s49/ckpt/000040471316.pkl",
+     "sha256": "aa24465ad8a41d98d87961e8c648357f1adf23e174a66e62adb23bc1580f41df",
+     "timesteps": 40471316
+    },
+    {
+     "path": "runs/vg1-vgl-s49/ckpt/000049417715.pkl",
+     "sha256": "b6b2ac9974e812487cb0b9ba3ef36a4748d6cde77a4dcc333e324dfe433bbcd6",
+     "timesteps": 49417715
+    },
+    {
+     "path": "runs/vg1-vgl-s49/ckpt/000060341763.pkl",
+     "sha256": "263f49b3a037ccd4665e525d187380746429a0ba4d7b1ed8dc8aae5b110306d4",
+     "timesteps": 60341763
+    },
+    {
+     "path": "runs/vg1-vgl-s49/ckpt/000073680629.pkl",
+     "sha256": "f20e6332bfc0cfb4f4433925879b3299f78585e31280112cc4f20e35ac73b05c",
+     "timesteps": 73680629
+    },
+    {
+     "path": "runs/vg1-vgl-s49/ckpt/000089968123.pkl",
+     "sha256": "09d44a04e268081379769e451ee408b883b7ad3599cc791b421cde7b2455fc8a",
+     "timesteps": 89968123
+    },
+    {
+     "path": "runs/vg1-vgl-s49/ckpt/000109856054.pkl",
+     "sha256": "5ca2d1944c5dd7f2d50ade2c5cff1fe75735095128aca9caab096ebc8f278136",
+     "timesteps": 109856054
+    },
+    {
+     "path": "runs/vg1-vgl-s49/ckpt/000134140317.pkl",
+     "sha256": "95620742cc47a9e670a48b452e1afbacae5a0fb97b267de3bd67a7a15aec5aff",
+     "timesteps": 134140317
+    },
+    {
+     "path": "runs/vg1-vgl-s49/ckpt/000163792745.pkl",
+     "sha256": "1187c355653639c56cb3522c58de929bb7a7da5d904de34ce499626d12b75e99",
+     "timesteps": 163792745
+    },
+    {
+     "path": "runs/vg1-vgl-s49/ckpt/000199884800.pkl",
+     "sha256": "c68fd93972b970b9331f51007778857452ac2d5ef591cc9767e9820380d892b0",
+     "timesteps": 199884800
+    }
+   ],
+   "final": {
+    "path": "runs/vg1-vgl-s49/ckpt/000199884800.pkl",
+    "sha256": "c68fd93972b970b9331f51007778857452ac2d5ef591cc9767e9820380d892b0",
+    "timesteps": 199884800
+   },
+   "config_sha256": "b3ceb4d7524cdf7942d8db784541fb6176b68b239bbd63462f7c73ef6af5238f",
+   "metrics_sha256": "45ecb36ad6b4b480cfab3e94c62b80a367a87368c4279b09733d8e8a60fad226",
+   "eval_rdev_sha256": "9d0aae40e20da4fb1d30929e866c7786aae37d51d0bb95ecd80d2adc37731ddd",
+   "logs_sha256": {
+    "runs/vg1-vgl-s49.log": "ed5170a2b7a084d026a2e0c6bc4d14af3c31ce51ea338bafd084fdf61e282d75"
+   }
+  }
+ ],
+ "round_files": {
+  "runs/vg1-manifest-0of1.json": "0de216444a9ebd31a151f26b457a952776cf1062a45f728370578be8bcf38468",
+  "runs/vg1-queue-0of1.log": "408243985a082774397c66467322d3f7626fe0f8dc76d85005617bf4abc36ebc",
+  "runs/vg1-status-0of1.tsv": "6f4302b129bc3984e06712001a3c93aa399fef011259a6dd83ab1784ca667a10"
+ },
+ "round_check": {
+  "returncode": 0,
+  "tolerated": [],
+  "report_sha256": "51d626c17301fc17718ead190606d569850eb38a3580a43c5a2e76c4d4739f8d",
+  "report": "round vg1: scripts/vg1_runs.py --phase main: 40 runs, 20 seeds\ntag vg1-prereg-v1: 6fd82183ba78\n  runs/vg1-manifest-0of1.json: shard 0/1, 40 runs, massedcompute_A6000_plusx4, 4 x NVIDIA RTX A6000 (4 used, 5 lanes per GPU), HEAD 6fd82183ba78, clean; queue 1.67 h x 4 GPUs = 6.7 GPU-h (idle included; setup and pull-back not)\nruns: 40 done; 40 configs compared\nnote: scripts/train_dr.py: --vg-lambda has a computed default: compared only where a cmd sets it\nnote: scripts/train_dr.py: --vg-winsor has a computed default: compared only where a cmd sets it\nOK: every run of vg1 is done, once, at vg1-prereg-v1, with the arguments of its cmd\n"
+ },
+ "box_sums_used": 680,
+ "provenance": {
+  "script": "scripts/vg1_analysis.py",
+  "script_sha256": "1d88120a058492b9dabe921827272765d161d68530856185b459c284210da159",
+  "head": "6fd82183ba7842a49e09cc1a4bb05ac74ab858fc",
+  "changed": [],
+  "inputs": {
+   "outputs/vg1/pilot.json": "75da9836ee21c85236ec6d09dae9c52477875734598e11a563c56824721473a8",
+   "outputs/vg1/pilot2.json": "8a8f46dbdf206cd9ec98ac9372fd49c893a96a7a0321680f0d2d6efbf1aa34cf",
+   "runs/vg1-box-sha256-0.txt": "170cf1091c75de71740201c5917bdfdf492f0a757a905829513a7787f3d96564"
+  },
+  "argv": [
+   "scripts/vg1_analysis.py",
+   "manifest",
+   "--phase",
+   "main",
+   "--tag",
+   "vg1-prereg-v1",
+   "--box-sums",
+   "runs/vg1-box-sha256-0.txt"
+  ],
+  "start": "2026-10-28T02:36:33",
+  "end": "2026-10-28T02:36:38",
+  "environment": {
+   "python": "3.12.4",
+   "numpy": "2.5.4",
+   "machine": "arm64",
+   "system": "Darwin"
+  }
+ }
+}
