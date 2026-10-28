@@ -1,0 +1,3053 @@
+{
+ "expected": {
+  "EB1": {
+   "C_a": {
+    "S4": 1.0,
+    "S5": 1.0,
+    "S6": 1.0,
+    "S7": 1.0,
+    "S8": 1.0
+   },
+   "holds": true,
+   "k4": {
+    "S4": {
+     "completion": 1.0,
+     "gap": 0.03854879311109216,
+     "passes": true
+    },
+    "S5": {
+     "completion": 1.0,
+     "gap": 0.05506121323371205,
+     "passes": true
+    },
+    "S6": {
+     "completion": 1.0,
+     "gap": 0.06990483591344532,
+     "passes": true
+    },
+    "S7": {
+     "completion": 1.0,
+     "gap": 0.04780127648801247,
+     "passes": true
+    },
+    "S8": {
+     "completion": 1.0,
+     "gap": 0.04003611744359281,
+     "passes": true
+    }
+   }
+  },
+  "EB2": {
+   "failing": {
+    "S5": [
+     "F1/real/real/const"
+    ],
+    "S6": [
+     "F1/real/real/const"
+    ],
+    "S7": [
+     "F1/real/straight/real",
+     "F1/real/real/const"
+    ],
+    "S8": [
+     "F1/real/straight/real",
+     "F1/real/real/const"
+    ]
+   },
+   "holds": true
+  },
+  "EB3": {
+   "holds": false
+  },
+  "EB4": {
+   "holds": true
+  },
+  "EB5": {
+   "cm": {
+    "S5": "not testable",
+    "S6": "not testable",
+    "S7": "CM-1",
+    "S8": "CM-1"
+   },
+   "holds": false
+  },
+  "EB6": {
+   "claimed": null,
+   "holds": true
+  },
+  "EB7": {
+   "MI": {
+    "S4": 0.48148148148148145,
+    "S5": 0.7037037037037038,
+    "S6": 0.7037037037037038,
+    "S7": 0.5925925925925927,
+    "S8": 0.7037037037037038
+   },
+   "holds_mi": null,
+   "holds_tier_g": true,
+   "tier_g_crash": {
+    "S4": false,
+    "S5": false,
+    "S6": true,
+    "S7": false,
+    "S8": true
+   }
+  }
+ },
+ "f6_set": [
+  "F6/wobble0.3",
+  "F6/wobble0.6",
+  "F6/knoise0.5e-3",
+  "F6/knoise1e-3",
+  "P4A/F6s/knoise0.5e-3/x1",
+  "P4A/F6s/knoise1e-3/x1",
+  "P4A/F6s/knoise0.5e-3/x2",
+  "P4A/F6s/knoise0.5e-3/x3",
+  "P4A/Kstr/1e-3",
+  "P4A/Kstr/2e-3",
+  "P4A/Kstr/4e-3",
+  "P4A/Kstr/8e-3",
+  "P4A/Wplus/0.5m",
+  "P4A/Wplus/1m",
+  "P4A/Kstr/16e-3"
+ ],
+ "k4_gate": {
+  "per_network": {
+   "S4": {
+    "completion": 1.0,
+    "gap": 0.03854879311109216,
+    "passes": true
+   },
+   "S5": {
+    "completion": 1.0,
+    "gap": 0.05506121323371205,
+    "passes": true
+   },
+   "S6": {
+    "completion": 1.0,
+    "gap": 0.06990483591344532,
+    "passes": true
+   },
+   "S7": {
+    "completion": 1.0,
+    "gap": 0.04780127648801247,
+    "passes": true
+   },
+   "S8": {
+    "completion": 1.0,
+    "gap": 0.04003611744359281,
+    "passes": true
+   }
+  },
+  "rule": "completion 100% and gap <= 8% (reported, decides nothing)"
+ },
+ "provenance": {
+  "argv": [
+   "classify"
+  ],
+  "changed_paths": [],
+  "draft": {
+   "path": "docs/prereg/p4-b2-specialists.md",
+   "sha256": "613bf9cc77f615595c779968e194d799fefdef3e8df6447b531d57719906c90c"
+  },
+  "end": "2026-10-27T23:12:49",
+  "environment": {
+   "XLA_FLAGS": "--xla_cpu_multi_thread_eigen=false intra_op_parallelism_threads=2",
+   "machine": "arm64",
+   "numpy": "2.5.4",
+   "python": "3.12.4",
+   "system": "Darwin"
+  },
+  "frozen_clean": true,
+  "git_head": "ab252fdf996d969aa3a85590664d2d8ce1345717",
+  "inputs_sha256": {
+   "scripts/p4b2_prereg.json": "08bba85c4472c23f30964936939fbccd0a53a494c3e2cbef2416ea2773968b92"
+  },
+  "script": "scripts/p4_b2.py",
+  "script_sha256": "f3a422b7662f370ad7f70b8115540fe2e480bcc625cfe5f9f0242f07b00fa7cf",
+  "seconds": 3.0,
+  "stage": "classify",
+  "tag_gate": {
+   "commit": "6bf93b332a09378db767543b06702bf106a01cd5",
+   "head": "ab252fdf996d969aa3a85590664d2d8ce1345717",
+   "tag": "p4-b2-prereg-v1",
+   "tag_object": "fadd4d6dadeeee22ad26234cf7b9e8fa998995fe"
+  }
+ },
+ "readings": {
+  "S4": {
+   "class4": false,
+   "cls": 6,
+   "keys": [],
+   "label": "mixed",
+   "reading": "mixed",
+   "via": "P4"
+  },
+  "S5": {
+   "class4": false,
+   "cls": 2,
+   "cm": "not testable",
+   "keys": [],
+   "label": "undecided",
+   "reading": "undecided",
+   "via": "CM"
+  },
+  "S6": {
+   "class4": false,
+   "cls": 2,
+   "cm": "not testable",
+   "keys": [],
+   "label": "undecided",
+   "reading": "undecided",
+   "via": "CM"
+  },
+  "S7": {
+   "class4": false,
+   "cls": 2,
+   "cm": "CM-1",
+   "keys": [],
+   "label": "fragile (CM)",
+   "reading": "fragile",
+   "via": "CM"
+  },
+  "S8": {
+   "class4": false,
+   "cls": 2,
+   "keys": [],
+   "label": "context-keyed",
+   "reading": "context-keyed",
+   "via": "P4"
+  }
+ },
+ "recipe": {
+  "claimed": null,
+  "class4": 0,
+  "counts": {
+   "context-keyed": 1,
+   "corner-keyed": 0,
+   "fragile": 1,
+   "mixed": 1,
+   "not competent": 0,
+   "reads the road": 0,
+   "undecided": 2
+  },
+  "keys": [],
+  "members": [],
+  "missing": [],
+  "n_total": 5,
+  "n_via_cm": 0,
+  "wording": {
+   "key": "none",
+   "note": "Each specialist's reading is reported.",
+   "text": "No recipe-level description."
+  }
+ },
+ "recipe_registered": {
+  "claimed": "context-keyed",
+  "classes": {
+   "S4": 6,
+   "S5": 2,
+   "S6": 2,
+   "S7": 2,
+   "S8": 2
+  },
+  "counts": {
+   "context-keyed": 4,
+   "mixed": 1
+  },
+  "members": [
+   "S5",
+   "S6",
+   "S7",
+   "S8"
+  ],
+  "n_total": 5,
+  "n_vacuous": 3
+ },
+ "specialists": {
+  "S4": {
+   "cm": null,
+   "cm_decides": false,
+   "p4": {
+    "C": {
+     "F1/real/real/const": 0.5555555555555556,
+     "F1/real/real/real": 1.0,
+     "F1/real/straight/const": 0.5555555555555556,
+     "F1/real/straight/real": 0.7777777777777778,
+     "F1/straight/real/const": 0.5555555555555556,
+     "F1/straight/real/real": 0.7777777777777778,
+     "F1/straight/straight/const": 0.5555555555555556,
+     "F1/straight/straight/real": 0.5555555555555556,
+     "F2/lambda0.8": 0.6666666666666666,
+     "F2/lambda0.9": 0.8888888888888888,
+     "F2/lambda0.95": 0.8888888888888888,
+     "F2/lambda1.05": 1.0,
+     "F2/lambda1.1": 0.8888888888888888,
+     "F2/lambda1.25": 0.8888888888888888,
+     "F2/width+0.5": 1.0,
+     "F2/width-0.5": 0.8888888888888888,
+     "F4/mirror": 0.0,
+     "F5/swapA": 0.3333333333333333,
+     "F5/swapB": 0.6666666666666666,
+     "F6/knoise0.5e-3": 1.0,
+     "F6/knoise1e-3": 1.0,
+     "F6/wobble0.3": 1.0,
+     "F6/wobble0.6": 0.7777777777777778,
+     "P4A/F6s/knoise0.5e-3/x1": 1.0,
+     "P4A/F6s/knoise0.5e-3/x2": 1.0,
+     "P4A/F6s/knoise0.5e-3/x3": 0.875,
+     "P4A/F6s/knoise1e-3/x1": 1.0,
+     "P4A/Kstr/16e-3": 0.6666666666666666,
+     "P4A/Kstr/1e-3": 1.0,
+     "P4A/Kstr/2e-3": 1.0,
+     "P4A/Kstr/4e-3": 1.0,
+     "P4A/Kstr/8e-3": 1.0,
+     "P4A/Wplus/0.5m": 1.0,
+     "P4A/Wplus/1m": 0.8571428571428571
+    },
+    "MI": 0.48148148148148145,
+    "S_spec": 0.7318739469772934,
+    "cls": 6,
+    "details": {
+     "d_ood": {
+      "F1/real/real/const": 2.341397639159804,
+      "F1/real/real/real": 0.7094542119007852,
+      "F1/real/straight/const": 6.570499749240844,
+      "F1/real/straight/real": 3.667877759868483,
+      "F1/straight/real/const": 9.020842904269022,
+      "F1/straight/real/real": 6.055747379862695,
+      "F1/straight/straight/const": 12.593231454773516,
+      "F1/straight/straight/real": 12.216110587938385,
+      "F2/lambda0.8": 7.613665520946574,
+      "F2/lambda0.9": 3.6822064592423,
+      "F2/lambda0.95": 1.821643458444451,
+      "F2/lambda1.05": 1.7560192571965112,
+      "F2/lambda1.1": 3.2511449387918647,
+      "F2/lambda1.25": 6.6446199442596905,
+      "F2/width+0.5": 1.1562225696150605,
+      "F2/width-0.5": 1.1556959215940752,
+      "F4/mirror": 24.321480768547993,
+      "F5/swapA": 15.059510073632357,
+      "F5/swapB": 11.902795515015347,
+      "F6/knoise0.5e-3": 0.7330329884696898,
+      "F6/knoise1e-3": 0.7747522264385145,
+      "F6/wobble0.3": 0.818868738840526,
+      "F6/wobble0.6": 1.06142515734503,
+      "P4A/F6s/knoise0.5e-3/x1": 0.7831537340366783,
+      "P4A/F6s/knoise0.5e-3/x2": 0.9630448401635168,
+      "P4A/F6s/knoise0.5e-3/x3": 1.0953521102731638,
+      "P4A/F6s/knoise1e-3/x1": 0.9669875533391544,
+      "P4A/Kstr/16e-3": 1.010898378680292,
+      "P4A/Kstr/1e-3": 0.8331533267355677,
+      "P4A/Kstr/2e-3": 0.831310135511385,
+      "P4A/Kstr/4e-3": 0.8951625577157202,
+      "P4A/Kstr/8e-3": 0.9794976148293262,
+      "P4A/Wplus/0.5m": 1.0084827756971266,
+      "P4A/Wplus/1m": 1.3840463690028177
+     },
+     "main_effects": {
+      "after": 0.11111111111111116,
+      "before": 0.11111111111111116,
+      "width": 0.2222222222222221
+     },
+     "n_braking": 9,
+     "n_m": 9,
+     "n_phi": 9,
+     "n_slopes": 9,
+     "tier_g_crash": false
+    },
+    "failing": [],
+    "key_factors": [],
+    "label": "mixed",
+    "m": 0.49511216459909757,
+    "phi": 0.027189563323493548,
+    "vacuous": null,
+    "verdict": "class 6"
+   },
+   "per_family": {
+    "family:F6s": 6,
+    "family:Kstr": 6,
+    "family:Wplus": 6,
+    "registered": 6
+   },
+   "tier_a_completion": 0.5370370370370371,
+   "tier_g_rule": null
+  },
+  "S5": {
+   "cm": {
+    "cells": [
+     {
+      "comparators": [
+       {
+        "condition": "P4A/F6s/knoise0.5e-3/x1",
+        "d": 0.7862544833775444,
+        "done": true
+       },
+       {
+        "condition": "P4A/F6s/knoise1e-3/x1",
+        "d": 1.0021601078149798,
+        "done": true
+       },
+       {
+        "condition": "P4A/F6s/knoise0.5e-3/x2",
+        "d": 1.016320383630509,
+        "done": true
+       },
+       {
+        "condition": "P4A/F6s/knoise0.5e-3/x3",
+        "d": 1.2517869060340172,
+        "done": true
+       },
+       {
+        "condition": "P4A/Kstr/1e-3",
+        "d": 0.696055505375665,
+        "done": true
+       },
+       {
+        "condition": "P4A/Kstr/2e-3",
+        "d": 0.696055505375665,
+        "done": true
+       },
+       {
+        "condition": "P4A/Kstr/4e-3",
+        "d": 0.696055505375665,
+        "done": true
+       },
+       {
+        "condition": "P4A/Kstr/8e-3",
+        "d": 0.696055505375665,
+        "done": true
+       },
+       {
+        "condition": "P4A/Wplus/0.5m",
+        "d": 1.0713961198298398,
+        "done": true
+       },
+       {
+        "condition": "P4A/Wplus/1m",
+        "d": 1.7502260445829894,
+        "done": true
+       },
+       {
+        "condition": "P4A/Kstr/16e-3",
+        "d": 0.696055505375665,
+        "done": true
+       }
+      ],
+      "condition": "F1/real/real/const",
+      "corner": 0,
+      "d": 8.67924690932664,
+      "type": "unmatched",
+      "unused": []
+     },
+     {
+      "comparators": [
+       {
+        "condition": "P4A/F6s/knoise0.5e-3/x1",
+        "d": 0.6767694497268933,
+        "done": true
+       },
+       {
+        "condition": "P4A/F6s/knoise1e-3/x1",
+        "d": 0.9561590263114406,
+        "done": true
+       },
+       {
+        "condition": "P4A/F6s/knoise0.5e-3/x2",
+        "d": 0.7894345049778391,
+        "done": true
+       },
+       {
+        "condition": "P4A/F6s/knoise0.5e-3/x3",
+        "d": 1.0054702828262614,
+        "done": true
+       },
+       {
+        "condition": "P4A/Kstr/1e-3",
+        "d": 0.641480793203939,
+        "done": true
+       },
+       {
+        "condition": "P4A/Kstr/2e-3",
+        "d": 0.641480793203939,
+        "done": true
+       },
+       {
+        "condition": "P4A/Kstr/4e-3",
+        "d": 0.641480793203939,
+        "done": true
+       },
+       {
+        "condition": "P4A/Kstr/8e-3",
+        "d": 0.641480793203939,
+        "done": true
+       },
+       {
+        "condition": "P4A/Wplus/0.5m",
+        "d": 0.8167401969445998,
+        "done": true
+       },
+       {
+        "condition": "P4A/Wplus/1m",
+        "d": 1.1317502389737297,
+        "done": true
+       },
+       {
+        "condition": "P4A/Kstr/16e-3",
+        "d": 0.641480793203939,
+        "done": true
+       }
+      ],
+      "condition": "F1/real/real/const",
+      "corner": 1,
+      "d": 7.448879211444285,
+      "type": "unmatched",
+      "unused": []
+     },
+     {
+      "comparators": [
+       {
+        "condition": "P4A/F6s/knoise0.5e-3/x1",
+        "d": 0.7419042972017487,
+        "done": true
+       },
+       {
+        "condition": "P4A/F6s/knoise0.5e-3/x2",
+        "d": 0.8009751397581999,
+        "done": true
+       },
+       {
+        "condition": "P4A/F6s/knoise0.5e-3/x3",
+        "d": 0.8879170697883216,
+        "done": true
+       },
+       {
+        "condition": "P4A/Kstr/1e-3",
+        "d": 0.7017158074804596,
+        "done": true
+       },
+       {
+        "condition": "P4A/Kstr/2e-3",
+        "d": 0.7020163905536363,
+        "done": true
+       },
+       {
+        "condition": "P4A/Kstr/4e-3",
+        "d": 0.7017158074804596,
+        "done": true
+       },
+       {
+        "condition": "P4A/Kstr/8e-3",
+        "d": 0.7017158074804596,
+        "done": true
+       },
+       {
+        "condition": "P4A/Wplus/0.5m",
+        "d": 0.9024112702040447,
+        "done": true
+       },
+       {
+        "condition": "P4A/Wplus/1m",
+        "d": 1.2578865640541668,
+        "done": true
+       },
+       {
+        "condition": "P4A/Kstr/16e-3",
+        "d": 0.7020163905536363,
+        "done": true
+       }
+      ],
+      "condition": "F1/real/real/const",
+      "corner": 3,
+      "d": 1.8275320774090742,
+      "type": "unmatched",
+      "unused": []
+     },
+     {
+      "comparators": [
+       {
+        "condition": "P4A/F6s/knoise0.5e-3/x1",
+        "d": 0.9015924634201135,
+        "done": true
+       },
+       {
+        "condition": "P4A/F6s/knoise1e-3/x1",
+        "d": 1.091006618704495,
+        "done": true
+       },
+       {
+        "condition": "P4A/F6s/knoise0.5e-3/x2",
+        "d": 1.0315399875394369,
+        "done": true
+       },
+       {
+        "condition": "P4A/F6s/knoise0.5e-3/x3",
+        "d": 1.2171417292287185,
+        "done": true
+       },
+       {
+        "condition": "P4A/Kstr/1e-3",
+        "d": 1.0710444078580061,
+        "done": true
+       },
+       {
+        "condition": "P4A/Kstr/2e-3",
+        "d": 1.3769496663614083,
+        "done": true
+       },
+       {
+        "condition": "P4A/Kstr/4e-3",
+        "d": 3.0039357106403664,
+        "done": false
+       },
+       {
+        "condition": "P4A/Kstr/8e-3",
+        "d": 4.770580282831746,
+        "done": false
+       },
+       {
+        "condition": "P4A/Wplus/0.5m",
+        "d": 1.2090552139605322,
+        "done": true
+       },
+       {
+        "condition": "P4A/Kstr/16e-3",
+        "d": 16.543850376704405,
+        "done": false
+       }
+      ],
+      "condition": "F1/real/real/const",
+      "corner": 7,
+      "d": 3.670213353645937,
+      "type": "fragile",
+      "unused": []
+     },
+     {
+      "comparators": [
+       {
+        "condition": "P4A/F6s/knoise0.5e-3/x1",
+        "d": 0.79760987874576,
+        "done": true
+       },
+       {
+        "condition": "P4A/F6s/knoise1e-3/x1",
+        "d": 0.8516551227669502,
+        "done": true
+       },
+       {
+        "condition": "P4A/F6s/knoise0.5e-3/x2",
+        "d": 0.8258738555648184,
+        "done": true
+       },
+       {
+        "condition": "P4A/F6s/knoise0.5e-3/x3",
+        "d": 0.9701233276050684,
+        "done": true
+       },
+       {
+        "condition": "P4A/Kstr/1e-3",
+        "d": 0.760856780863421,
+        "done": true
+       },
+       {
+        "condition": "P4A/Kstr/2e-3",
+        "d": 0.760856780863421,
+        "done": true
+       },
+       {
+        "condition": "P4A/Kstr/4e-3",
+        "d": 0.760856780863421,
+        "done": true
+       },
+       {
+        "condition": "P4A/Kstr/8e-3",
+        "d": 0.760856780863421,
+        "done": true
+       },
+       {
+        "condition": "P4A/Wplus/0.5m",
+        "d": 0.9900347621659941,
+        "done": true
+       },
+       {
+        "condition": "P4A/Wplus/1m",
+        "d": 1.2210357531655056,
+        "done": true
+       },
+       {
+        "condition": "P4A/Kstr/16e-3",
+        "d": 0.760856780863421,
+        "done": true
+       }
+      ],
+      "condition": "F1/real/real/const",
+      "corner": 8,
+      "d": 1.3609998790928879,
+      "type": "unmatched",
+      "unused": []
+     },
+     {
+      "comparators": [
+       {
+        "condition": "P4A/F6s/knoise0.5e-3/x1",
+        "d": 0.891828881096749,
+        "done": true
+       },
+       {
+        "condition": "P4A/F6s/knoise0.5e-3/x2",
+        "d": 0.9477933590103577,
+        "done": true
+       },
+       {
+        "condition": "P4A/F6s/knoise0.5e-3/x3",
+        "d": 1.0832441156906323,
+        "done": true
+       },
+       {
+        "condition": "P4A/Kstr/1e-3",
+        "d": 0.9181710381940317,
+        "done": true
+       },
+       {
+        "condition": "P4A/Kstr/2e-3",
+        "d": 0.9066096384203466,
+        "done": true
+       },
+       {
+        "condition": "P4A/Kstr/4e-3",
+        "d": 1.0079850410555262,
+        "done": true
+       },
+       {
+        "condition": "P4A/Kstr/8e-3",
+        "d": 1.024386251443069,
+        "done": true
+       },
+       {
+        "condition": "P4A/Wplus/1m",
+        "d": 1.839441310410557,
+        "done": true
+       },
+       {
+        "condition": "P4A/Kstr/16e-3",
+        "d": 1.0309555117462081,
+        "done": true
+       }
+      ],
+      "condition": "F1/real/real/const",
+      "corner": 16,
+      "d": 2.013247438873149,
+      "type": "unmatched",
+      "unused": []
+     },
+     {
+      "comparators": [
+       {
+        "condition": "P4A/F6s/knoise0.5e-3/x1",
+        "d": 0.7825891878011855,
+        "done": true
+       },
+       {
+        "condition": "P4A/F6s/knoise1e-3/x1",
+        "d": 0.7905491149685591,
+        "done": true
+       },
+       {
+        "condition": "P4A/F6s/knoise0.5e-3/x2",
+        "d": 0.876907979657829,
+        "done": true
+       },
+       {
+        "condition": "P4A/F6s/knoise0.5e-3/x3",
+        "d": 1.0177740507009045,
+        "done": true
+       },
+       {
+        "condition": "P4A/Kstr/1e-3",
+        "d": 0.8532001166287398,
+        "done": true
+       },
+       {
+        "condition": "P4A/Kstr/2e-3",
+        "d": 1.0116900251945973,
+        "done": true
+       },
+       {
+        "condition": "P4A/Kstr/4e-3",
+        "d": 1.1484152823141889,
+        "done": true
+       },
+       {
+        "condition": "P4A/Kstr/8e-3",
+        "d": 1.1590316789954571,
+        "done": true
+       },
+       {
+        "condition": "P4A/Wplus/0.5m",
+        "d": 1.0346091710904592,
+        "done": true
+       },
+       {
+        "condition": "P4A/Wplus/1m",
+        "d": 1.1904098171246629,
+        "done": true
+       },
+       {
+        "condition": "P4A/Kstr/16e-3",
+        "d": 1.1623486711932263,
+        "done": true
+       }
+      ],
+      "condition": "F1/real/real/const",
+      "corner": 17,
+      "d": 1.8666277016137847,
+      "type": "unmatched",
+      "unused": []
+     }
+    ],
+    "cm": "not testable",
+    "counts": {
+     "fragile": 1,
+     "keyed": 0,
+     "mixed": 0,
+     "unmatched": 6
+    },
+    "label": "CM not testable",
+    "n": 1
+   },
+   "cm_decides": true,
+   "p4": {
+    "C": {
+     "F1/real/real/const": 0.2222222222222222,
+     "F1/real/real/real": 1.0,
+     "F1/real/straight/const": 0.3333333333333333,
+     "F1/real/straight/real": 0.6666666666666666,
+     "F1/straight/real/const": 0.2222222222222222,
+     "F1/straight/real/real": 0.6666666666666666,
+     "F1/straight/straight/const": 0.3333333333333333,
+     "F1/straight/straight/real": 0.5555555555555556,
+     "F2/lambda0.8": 0.4444444444444444,
+     "F2/lambda0.9": 0.7777777777777778,
+     "F2/lambda0.95": 1.0,
+     "F2/lambda1.05": 1.0,
+     "F2/lambda1.1": 1.0,
+     "F2/lambda1.25": 0.8888888888888888,
+     "F2/width+0.5": 1.0,
+     "F2/width-0.5": 1.0,
+     "F4/mirror": 0.2222222222222222,
+     "F5/swapA": 0.1111111111111111,
+     "F5/swapB": 0.7777777777777778,
+     "F6/knoise0.5e-3": 1.0,
+     "F6/knoise1e-3": 1.0,
+     "F6/wobble0.3": 1.0,
+     "F6/wobble0.6": 1.0,
+     "P4A/F6s/knoise0.5e-3/x1": 1.0,
+     "P4A/F6s/knoise0.5e-3/x2": 1.0,
+     "P4A/F6s/knoise0.5e-3/x3": 1.0,
+     "P4A/F6s/knoise1e-3/x1": 1.0,
+     "P4A/Kstr/16e-3": 0.8888888888888888,
+     "P4A/Kstr/1e-3": 1.0,
+     "P4A/Kstr/2e-3": 1.0,
+     "P4A/Kstr/4e-3": 0.875,
+     "P4A/Kstr/8e-3": 0.8888888888888888,
+     "P4A/Wplus/0.5m": 1.0,
+     "P4A/Wplus/1m": 1.0
+    },
+    "MI": 0.7037037037037038,
+    "S_spec": 0.7212922302097545,
+    "cls": 2,
+    "details": {
+     "d_ood": {
+      "F1/real/real/const": 2.013247438873149,
+      "F1/real/real/real": 0.7459413645170772,
+      "F1/real/straight/const": 7.048940111643574,
+      "F1/real/straight/real": 2.4912415217119945,
+      "F1/straight/real/const": 8.679550940172293,
+      "F1/straight/real/real": 5.949648574036565,
+      "F1/straight/straight/const": 12.278312657015672,
+      "F1/straight/straight/real": 10.676078249703824,
+      "F2/lambda0.8": 6.695682284005086,
+      "F2/lambda0.9": 3.4743930412040935,
+      "F2/lambda0.95": 1.8463100567683575,
+      "F2/lambda1.05": 1.7522740997924833,
+      "F2/lambda1.1": 3.1267864260884166,
+      "F2/lambda1.25": 6.642591289375227,
+      "F2/width+0.5": 1.1388328647627701,
+      "F2/width-0.5": 1.1694468119584107,
+      "F4/mirror": 19.566664208822804,
+      "F5/swapA": 17.811514196634143,
+      "F5/swapB": 12.9586659878734,
+      "F6/knoise0.5e-3": 0.7484850761992978,
+      "F6/knoise1e-3": 0.8042608669282847,
+      "F6/wobble0.3": 0.8067489049208567,
+      "F6/wobble0.6": 1.0480894913227012,
+      "P4A/F6s/knoise0.5e-3/x1": 0.7947726362522463,
+      "P4A/F6s/knoise0.5e-3/x2": 0.9477933590103577,
+      "P4A/F6s/knoise0.5e-3/x3": 1.0505090831957684,
+      "P4A/F6s/knoise1e-3/x1": 0.9561590263114406,
+      "P4A/Kstr/16e-3": 1.0309555117462081,
+      "P4A/Kstr/1e-3": 0.7857333995828039,
+      "P4A/Kstr/2e-3": 0.825688498614975,
+      "P4A/Kstr/4e-3": 0.8807959895823988,
+      "P4A/Kstr/8e-3": 1.024386251443069,
+      "P4A/Wplus/0.5m": 1.0203551785503417,
+      "P4A/Wplus/1m": 1.2578865640541668
+     },
+     "failing_condition": "F1/real/real/const",
+     "main_effects": {
+      "after": 0.05555555555555558,
+      "before": 0.11111111111111116,
+      "width": 0.4444444444444443
+     },
+     "n_braking": 9,
+     "n_f6_at_or_above": 0,
+     "n_m": 9,
+     "n_phi": 9,
+     "n_slopes": 9,
+     "tier_g_crash": false,
+     "vacuous": true
+    },
+    "failing": [
+     "F1/real/real/const"
+    ],
+    "key_factors": [
+     "width"
+    ],
+    "label": "context-keyed memorisation (width-keyed)",
+    "m": -0.18237191923325577,
+    "phi": 0.04599524717650571,
+    "vacuous": true,
+    "verdict": "class 2"
+   },
+   "per_family": {
+    "family:F6s": 2,
+    "family:Kstr": 2,
+    "family:Wplus": 2,
+    "registered": 2
+   },
+   "tier_a_completion": 0.39351851851851855,
+   "tier_g_rule": null
+  },
+  "S6": {
+   "cm": {
+    "cells": [
+     {
+      "comparators": [
+       {
+        "condition": "P4A/F6s/knoise0.5e-3/x1",
+        "d": 0.6378567246194198,
+        "done": true
+       },
+       {
+        "condition": "P4A/F6s/knoise1e-3/x1",
+        "d": 0.9212798080439076,
+        "done": true
+       },
+       {
+        "condition": "P4A/F6s/knoise0.5e-3/x2",
+        "d": 0.7636702092126633,
+        "done": true
+       },
+       {
+        "condition": "P4A/F6s/knoise0.5e-3/x3",
+        "d": 0.9574877369980239,
+        "done": true
+       },
+       {
+        "condition": "P4A/Kstr/1e-3",
+        "d": 0.5945257102232118,
+        "done": true
+       },
+       {
+        "condition": "P4A/Kstr/2e-3",
+        "d": 0.5945257102232118,
+        "done": true
+       },
+       {
+        "condition": "P4A/Kstr/4e-3",
+        "d": 0.5945257102232118,
+        "done": true
+       },
+       {
+        "condition": "P4A/Kstr/8e-3",
+        "d": 0.5945257102232118,
+        "done": true
+       },
+       {
+        "condition": "P4A/Wplus/0.5m",
+        "d": 0.8820588768107547,
+        "done": true
+       },
+       {
+        "condition": "P4A/Wplus/1m",
+        "d": 1.095349452156451,
+        "done": true
+       },
+       {
+        "condition": "P4A/Kstr/16e-3",
+        "d": 0.5945257102232118,
+        "done": true
+       }
+      ],
+      "condition": "F1/real/real/const",
+      "corner": 1,
+      "d": 7.011079353063596,
+      "type": "unmatched",
+      "unused": []
+     },
+     {
+      "comparators": [
+       {
+        "condition": "P4A/F6s/knoise0.5e-3/x1",
+        "d": 0.6514445721151066,
+        "done": true
+       },
+       {
+        "condition": "P4A/F6s/knoise0.5e-3/x2",
+        "d": 0.6783668903117311,
+        "done": true
+       },
+       {
+        "condition": "P4A/F6s/knoise0.5e-3/x3",
+        "d": 0.7245507641548975,
+        "done": true
+       },
+       {
+        "condition": "P4A/Kstr/1e-3",
+        "d": 0.6537193310881136,
+        "done": true
+       },
+       {
+        "condition": "P4A/Kstr/2e-3",
+        "d": 0.6537193310881136,
+        "done": true
+       },
+       {
+        "condition": "P4A/Kstr/4e-3",
+        "d": 0.6537193310881136,
+        "done": true
+       },
+       {
+        "condition": "P4A/Kstr/8e-3",
+        "d": 0.6537193310881136,
+        "done": true
+       },
+       {
+        "condition": "P4A/Wplus/0.5m",
+        "d": 0.8124941138374743,
+        "done": true
+       },
+       {
+        "condition": "P4A/Wplus/1m",
+        "d": 1.0203996837138964,
+        "done": true
+       },
+       {
+        "condition": "P4A/Kstr/16e-3",
+        "d": 0.6537193310881136,
+        "done": true
+       }
+      ],
+      "condition": "F1/real/real/const",
+      "corner": 3,
+      "d": 1.8424687882778799,
+      "type": "unmatched",
+      "unused": []
+     },
+     {
+      "comparators": [
+       {
+        "condition": "P4A/F6s/knoise0.5e-3/x1",
+        "d": 0.8040659133281683,
+        "done": true
+       },
+       {
+        "condition": "P4A/F6s/knoise1e-3/x1",
+        "d": 0.9786402078744859,
+        "done": true
+       },
+       {
+        "condition": "P4A/F6s/knoise0.5e-3/x2",
+        "d": 0.9396639556395265,
+        "done": true
+       },
+       {
+        "condition": "P4A/F6s/knoise0.5e-3/x3",
+        "d": 1.1518483780142232,
+        "done": true
+       },
+       {
+        "condition": "P4A/Kstr/1e-3",
+        "d": 0.9487578584057181,
+        "done": true
+       },
+       {
+        "condition": "P4A/Kstr/2e-3",
+        "d": 1.3063695461340041,
+        "done": true
+       },
+       {
+        "condition": "P4A/Kstr/4e-3",
+        "d": 2.5901154104921518,
+        "done": true
+       },
+       {
+        "condition": "P4A/Kstr/8e-3",
+        "d": 4.376721816162659,
+        "done": true
+       },
+       {
+        "condition": "P4A/Wplus/0.5m",
+        "d": 1.1686318102232047,
+        "done": true
+       },
+       {
+        "condition": "P4A/Kstr/16e-3",
+        "d": 13.382672748755377,
+        "done": false
+       }
+      ],
+      "condition": "F1/real/real/const",
+      "corner": 7,
+      "d": 3.370978632579479,
+      "type": "mixed",
+      "unused": []
+     },
+     {
+      "comparators": [
+       {
+        "condition": "P4A/F6s/knoise0.5e-3/x1",
+        "d": 0.6586430681662714,
+        "done": true
+       },
+       {
+        "condition": "P4A/F6s/knoise1e-3/x1",
+        "d": 0.7350204159386123,
+        "done": true
+       },
+       {
+        "condition": "P4A/F6s/knoise0.5e-3/x2",
+        "d": 0.7206838806516874,
+        "done": true
+       },
+       {
+        "condition": "P4A/F6s/knoise0.5e-3/x3",
+        "d": 0.843861790301686,
+        "done": true
+       },
+       {
+        "condition": "P4A/Kstr/1e-3",
+        "d": 0.6820255970449165,
+        "done": true
+       },
+       {
+        "condition": "P4A/Kstr/2e-3",
+        "d": 0.6820255970449165,
+        "done": true
+       },
+       {
+        "condition": "P4A/Kstr/4e-3",
+        "d": 0.6820255970449165,
+        "done": true
+       },
+       {
+        "condition": "P4A/Kstr/8e-3",
+        "d": 0.6820255970449165,
+        "done": true
+       },
+       {
+        "condition": "P4A/Wplus/0.5m",
+        "d": 0.9175778262081863,
+        "done": true
+       },
+       {
+        "condition": "P4A/Wplus/1m",
+        "d": 1.1710204960724102,
+        "done": true
+       },
+       {
+        "condition": "P4A/Kstr/16e-3",
+        "d": 0.6820255970449165,
+        "done": true
+       }
+      ],
+      "condition": "F1/real/real/const",
+      "corner": 8,
+      "d": 1.291240655839526,
+      "type": "unmatched",
+      "unused": []
+     },
+     {
+      "comparators": [
+       {
+        "condition": "P4A/F6s/knoise0.5e-3/x1",
+        "d": 1.1578220532061327,
+        "done": true
+       },
+       {
+        "condition": "P4A/F6s/knoise1e-3/x1",
+        "d": 1.243776067100221,
+        "done": true
+       },
+       {
+        "condition": "P4A/F6s/knoise0.5e-3/x2",
+        "d": 1.3736811520388383,
+        "done": true
+       },
+       {
+        "condition": "P4A/Kstr/1e-3",
+        "d": 1.1921562486431974,
+        "done": true
+       },
+       {
+        "condition": "P4A/Kstr/8e-3",
+        "d": 5.430184391148181,
+        "done": true
+       },
+       {
+        "condition": "P4A/Kstr/16e-3",
+        "d": 7.552910443137763,
+        "done": false
+       }
+      ],
+      "condition": "F1/real/real/const",
+      "corner": 14,
+      "d": 2.8866706339075328,
+      "type": "mixed",
+      "unused": []
+     }
+    ],
+    "cm": "not testable",
+    "counts": {
+     "fragile": 0,
+     "keyed": 0,
+     "mixed": 2,
+     "unmatched": 3
+    },
+    "label": "CM not testable",
+    "n": 2
+   },
+   "cm_decides": true,
+   "p4": {
+    "C": {
+     "F1/real/real/const": 0.4444444444444444,
+     "F1/real/real/real": 1.0,
+     "F1/real/straight/const": 0.4444444444444444,
+     "F1/real/straight/real": 0.6666666666666666,
+     "F1/straight/real/const": 0.3333333333333333,
+     "F1/straight/real/real": 0.8888888888888888,
+     "F1/straight/straight/const": 0.3333333333333333,
+     "F1/straight/straight/real": 0.6666666666666666,
+     "F2/lambda0.8": 0.4444444444444444,
+     "F2/lambda0.9": 0.6666666666666666,
+     "F2/lambda0.95": 0.8888888888888888,
+     "F2/lambda1.05": 1.0,
+     "F2/lambda1.1": 1.0,
+     "F2/lambda1.25": 0.7777777777777778,
+     "F2/width+0.5": 1.0,
+     "F2/width-0.5": 1.0,
+     "F4/mirror": 0.0,
+     "F5/swapA": 0.2222222222222222,
+     "F5/swapB": 0.0,
+     "F6/knoise0.5e-3": 1.0,
+     "F6/knoise1e-3": 1.0,
+     "F6/wobble0.3": 1.0,
+     "F6/wobble0.6": 0.7777777777777778,
+     "P4A/F6s/knoise0.5e-3/x1": 1.0,
+     "P4A/F6s/knoise0.5e-3/x2": 1.0,
+     "P4A/F6s/knoise0.5e-3/x3": 1.0,
+     "P4A/F6s/knoise1e-3/x1": 1.0,
+     "P4A/Kstr/16e-3": 0.7777777777777778,
+     "P4A/Kstr/1e-3": 1.0,
+     "P4A/Kstr/2e-3": 1.0,
+     "P4A/Kstr/4e-3": 1.0,
+     "P4A/Kstr/8e-3": 1.0,
+     "P4A/Wplus/0.5m": 1.0,
+     "P4A/Wplus/1m": 1.0
+    },
+    "MI": 0.7037037037037038,
+    "S_spec": 0.7944684259957844,
+    "cls": 2,
+    "details": {
+     "d_ood": {
+      "F1/real/real/const": 1.869941705513854,
+      "F1/real/real/real": 0.6733280143693302,
+      "F1/real/straight/const": 6.292748012500017,
+      "F1/real/straight/real": 1.6562838977906242,
+      "F1/straight/real/const": 7.354313226618023,
+      "F1/straight/real/real": 5.786877320645196,
+      "F1/straight/straight/const": 10.377160841008486,
+      "F1/straight/straight/real": 7.750169339682534,
+      "F2/lambda0.8": 6.228546866971693,
+      "F2/lambda0.9": 3.185821507954099,
+      "F2/lambda0.95": 1.615178539028261,
+      "F2/lambda1.05": 1.619605717475178,
+      "F2/lambda1.1": 2.8414871492551157,
+      "F2/lambda1.25": 5.9895918744329055,
+      "F2/width+0.5": 1.029091349036088,
+      "F2/width-0.5": 1.0567217534244544,
+      "F4/mirror": 22.279993905838936,
+      "F5/swapA": 16.200558640936492,
+      "F5/swapB": 11.858296924380715,
+      "F6/knoise0.5e-3": 0.6717699680912065,
+      "F6/knoise1e-3": 0.7040127712170805,
+      "F6/wobble0.3": 0.7568525269344737,
+      "F6/wobble0.6": 0.9306178907543919,
+      "P4A/F6s/knoise0.5e-3/x1": 0.7276774794298894,
+      "P4A/F6s/knoise0.5e-3/x2": 0.8484540842963351,
+      "P4A/F6s/knoise0.5e-3/x3": 1.0003684800122854,
+      "P4A/F6s/knoise1e-3/x1": 0.9212798080439076,
+      "P4A/Kstr/16e-3": 0.8136755170073648,
+      "P4A/Kstr/1e-3": 0.7106789906363943,
+      "P4A/Kstr/2e-3": 0.7225414305636721,
+      "P4A/Kstr/4e-3": 0.7344846815761634,
+      "P4A/Kstr/8e-3": 0.8081837852967456,
+      "P4A/Wplus/0.5m": 0.8820588768107547,
+      "P4A/Wplus/1m": 1.1710204960724102
+     },
+     "failing_condition": "F1/real/real/const",
+     "main_effects": {
+      "after": 0.13888888888888884,
+      "before": 0.08333333333333326,
+      "width": 0.41666666666666663
+     },
+     "n_braking": 9,
+     "n_f6_at_or_above": 0,
+     "n_m": 9,
+     "n_phi": 9,
+     "n_slopes": 9,
+     "tier_g_crash": true,
+     "vacuous": true
+    },
+    "failing": [
+     "F1/real/real/const"
+    ],
+    "key_factors": [
+     "width"
+    ],
+    "label": "context-keyed memorisation (width-keyed)",
+    "m": 0.24216961740112544,
+    "phi": 1.040109037991372,
+    "vacuous": true,
+    "verdict": "class 2"
+   },
+   "per_family": {
+    "family:F6s": 2,
+    "family:Kstr": 2,
+    "family:Wplus": 2,
+    "registered": 2
+   },
+   "tier_a_completion": 0.5648148148148148,
+   "tier_g_rule": "crashes on a null straight: evidence for class 1 on synthetic stimuli (reported; the class is unchanged)"
+  },
+  "S7": {
+   "cm": {
+    "cells": [
+     {
+      "comparators": [
+       {
+        "condition": "P4A/F6s/knoise0.5e-3/x1",
+        "d": 0.6974206923585626,
+        "done": true
+       },
+       {
+        "condition": "P4A/F6s/knoise1e-3/x1",
+        "d": 0.9639170682696261,
+        "done": true
+       },
+       {
+        "condition": "P4A/F6s/knoise0.5e-3/x2",
+        "d": 0.8389390089517983,
+        "done": true
+       },
+       {
+        "condition": "P4A/F6s/knoise0.5e-3/x3",
+        "d": 0.9552476153972947,
+        "done": true
+       },
+       {
+        "condition": "P4A/Kstr/1e-3",
+        "d": 0.6359482094493802,
+        "done": true
+       },
+       {
+        "condition": "P4A/Kstr/2e-3",
+        "d": 0.6359482094493802,
+        "done": true
+       },
+       {
+        "condition": "P4A/Kstr/4e-3",
+        "d": 0.6359482094493802,
+        "done": true
+       },
+       {
+        "condition": "P4A/Kstr/8e-3",
+        "d": 0.6359482094493802,
+        "done": true
+       },
+       {
+        "condition": "P4A/Wplus/0.5m",
+        "d": 0.8450694532389641,
+        "done": true
+       },
+       {
+        "condition": "P4A/Wplus/1m",
+        "d": 1.1850833455671572,
+        "done": true
+       },
+       {
+        "condition": "P4A/Kstr/16e-3",
+        "d": 0.6359482094493802,
+        "done": true
+       }
+      ],
+      "condition": "F1/real/straight/real",
+      "corner": 1,
+      "d": 1.3313439429739329,
+      "type": "unmatched",
+      "unused": []
+     },
+     {
+      "comparators": [
+       {
+        "condition": "P4A/F6s/knoise0.5e-3/x1",
+        "d": 0.6770926598736736,
+        "done": true
+       },
+       {
+        "condition": "P4A/F6s/knoise0.5e-3/x2",
+        "d": 0.7304979988722986,
+        "done": true
+       },
+       {
+        "condition": "P4A/F6s/knoise0.5e-3/x3",
+        "d": 0.7975355095332932,
+        "done": true
+       },
+       {
+        "condition": "P4A/Kstr/1e-3",
+        "d": 0.6478931063713297,
+        "done": true
+       },
+       {
+        "condition": "P4A/Kstr/2e-3",
+        "d": 0.6509797727151558,
+        "done": true
+       },
+       {
+        "condition": "P4A/Kstr/4e-3",
+        "d": 0.6509797727151558,
+        "done": true
+       },
+       {
+        "condition": "P4A/Kstr/8e-3",
+        "d": 0.6800468037333608,
+        "done": true
+       },
+       {
+        "condition": "P4A/Wplus/0.5m",
+        "d": 0.9208421433415128,
+        "done": true
+       },
+       {
+        "condition": "P4A/Wplus/1m",
+        "d": 1.2671594466227696,
+        "done": true
+       },
+       {
+        "condition": "P4A/Kstr/16e-3",
+        "d": 0.6509797727151558,
+        "done": true
+       }
+      ],
+      "condition": "F1/real/straight/real",
+      "corner": 3,
+      "d": 9.16104239207132,
+      "type": "unmatched",
+      "unused": []
+     },
+     {
+      "comparators": [
+       {
+        "condition": "P4A/F6s/knoise0.5e-3/x1",
+        "d": 0.9535677115039751,
+        "done": true
+       },
+       {
+        "condition": "P4A/F6s/knoise1e-3/x1",
+        "d": 1.1186053318492852,
+        "done": true
+       },
+       {
+        "condition": "P4A/F6s/knoise0.5e-3/x2",
+        "d": 1.0827263396189983,
+        "done": true
+       },
+       {
+        "condition": "P4A/F6s/knoise0.5e-3/x3",
+        "d": 1.2388421796992664,
+        "done": true
+       },
+       {
+        "condition": "P4A/Kstr/1e-3",
+        "d": 1.0873450728140397,
+        "done": true
+       },
+       {
+        "condition": "P4A/Kstr/2e-3",
+        "d": 1.3712493272669861,
+        "done": true
+       },
+       {
+        "condition": "P4A/Kstr/4e-3",
+        "d": 2.8270447913775296,
+        "done": true
+       },
+       {
+        "condition": "P4A/Kstr/8e-3",
+        "d": 4.5993972862145,
+        "done": true
+       },
+       {
+        "condition": "P4A/Wplus/0.5m",
+        "d": 1.2839749840323773,
+        "done": true
+       },
+       {
+        "condition": "P4A/Kstr/16e-3",
+        "d": 14.050625574868787,
+        "done": false
+       }
+      ],
+      "condition": "F1/real/straight/real",
+      "corner": 7,
+      "d": 6.668972277823954,
+      "type": "mixed",
+      "unused": []
+     },
+     {
+      "comparators": [
+       {
+        "condition": "P4A/F6s/knoise0.5e-3/x1",
+        "d": 0.9468167029964135,
+        "done": true
+       },
+       {
+        "condition": "P4A/F6s/knoise0.5e-3/x2",
+        "d": 0.9991476551005727,
+        "done": true
+       },
+       {
+        "condition": "P4A/F6s/knoise0.5e-3/x3",
+        "d": 1.0780877471467947,
+        "done": true
+       },
+       {
+        "condition": "P4A/Kstr/1e-3",
+        "d": 0.9050325547019971,
+        "done": true
+       },
+       {
+        "condition": "P4A/Kstr/2e-3",
+        "d": 0.9079074142167066,
+        "done": true
+       },
+       {
+        "condition": "P4A/Kstr/4e-3",
+        "d": 0.9514631627976466,
+        "done": true
+       },
+       {
+        "condition": "P4A/Kstr/8e-3",
+        "d": 0.9594358987598492,
+        "done": true
+       },
+       {
+        "condition": "P4A/Wplus/1m",
+        "d": 1.949549034006568,
+        "done": true
+       },
+       {
+        "condition": "P4A/Kstr/16e-3",
+        "d": 0.9880512839862885,
+        "done": false
+       }
+      ],
+      "condition": "F1/real/straight/real",
+      "corner": 16,
+      "d": 8.947013462603987,
+      "type": "fragile",
+      "unused": []
+     },
+     {
+      "comparators": [
+       {
+        "condition": "P4A/F6s/knoise0.5e-3/x1",
+        "d": 0.661296399864407,
+        "done": true
+       },
+       {
+        "condition": "P4A/F6s/knoise1e-3/x1",
+        "d": 0.7093343873008171,
+        "done": true
+       },
+       {
+        "condition": "P4A/F6s/knoise0.5e-3/x2",
+        "d": 0.7590929901487291,
+        "done": true
+       },
+       {
+        "condition": "P4A/F6s/knoise0.5e-3/x3",
+        "d": 0.9001461795562795,
+        "done": true
+       },
+       {
+        "condition": "P4A/Kstr/1e-3",
+        "d": 0.7335101929267671,
+        "done": true
+       },
+       {
+        "condition": "P4A/Kstr/2e-3",
+        "d": 0.9064646377308851,
+        "done": true
+       },
+       {
+        "condition": "P4A/Kstr/4e-3",
+        "d": 1.0167140641414933,
+        "done": true
+       },
+       {
+        "condition": "P4A/Kstr/8e-3",
+        "d": 1.043818081994067,
+        "done": true
+       },
+       {
+        "condition": "P4A/Wplus/0.5m",
+        "d": 0.9575502985842321,
+        "done": true
+       },
+       {
+        "condition": "P4A/Wplus/1m",
+        "d": 1.1697415956684778,
+        "done": true
+       },
+       {
+        "condition": "P4A/Kstr/16e-3",
+        "d": 1.0841528849648316,
+        "done": false
+       }
+      ],
+      "condition": "F1/real/straight/real",
+      "corner": 17,
+      "d": 0.647968418860875,
+      "type": "mixed",
+      "unused": []
+     },
+     {
+      "comparators": [
+       {
+        "condition": "P4A/F6s/knoise0.5e-3/x1",
+        "d": 0.8288425906335399,
+        "done": true
+       },
+       {
+        "condition": "P4A/F6s/knoise1e-3/x1",
+        "d": 1.0419060537034572,
+        "done": true
+       },
+       {
+        "condition": "P4A/F6s/knoise0.5e-3/x2",
+        "d": 1.066215107440981,
+        "done": true
+       },
+       {
+        "condition": "P4A/F6s/knoise0.5e-3/x3",
+        "d": 1.3050352891716985,
+        "done": true
+       },
+       {
+        "condition": "P4A/Kstr/1e-3",
+        "d": 0.7494610879614743,
+        "done": true
+       },
+       {
+        "condition": "P4A/Kstr/2e-3",
+        "d": 0.7494610879614743,
+        "done": true
+       },
+       {
+        "condition": "P4A/Kstr/4e-3",
+        "d": 0.7494610879614743,
+        "done": true
+       },
+       {
+        "condition": "P4A/Kstr/8e-3",
+        "d": 0.7494610879614743,
+        "done": true
+       },
+       {
+        "condition": "P4A/Wplus/0.5m",
+        "d": 1.1363257648609646,
+        "done": true
+       },
+       {
+        "condition": "P4A/Wplus/1m",
+        "d": 1.8525369233610636,
+        "done": true
+       },
+       {
+        "condition": "P4A/Kstr/16e-3",
+        "d": 0.7494610879614743,
+        "done": true
+       }
+      ],
+      "condition": "F1/real/real/const",
+      "corner": 0,
+      "d": 8.651790947805388,
+      "type": "unmatched",
+      "unused": []
+     },
+     {
+      "comparators": [
+       {
+        "condition": "P4A/F6s/knoise0.5e-3/x1",
+        "d": 0.6974206923585626,
+        "done": true
+       },
+       {
+        "condition": "P4A/F6s/knoise1e-3/x1",
+        "d": 0.9639170682696261,
+        "done": true
+       },
+       {
+        "condition": "P4A/F6s/knoise0.5e-3/x2",
+        "d": 0.8389390089517983,
+        "done": true
+       },
+       {
+        "condition": "P4A/F6s/knoise0.5e-3/x3",
+        "d": 0.9552476153972947,
+        "done": true
+       },
+       {
+        "condition": "P4A/Kstr/1e-3",
+        "d": 0.6359482094493802,
+        "done": true
+       },
+       {
+        "condition": "P4A/Kstr/2e-3",
+        "d": 0.6359482094493802,
+        "done": true
+       },
+       {
+        "condition": "P4A/Kstr/4e-3",
+        "d": 0.6359482094493802,
+        "done": true
+       },
+       {
+        "condition": "P4A/Kstr/8e-3",
+        "d": 0.6359482094493802,
+        "done": true
+       },
+       {
+        "condition": "P4A/Wplus/0.5m",
+        "d": 0.8450694532389641,
+        "done": true
+       },
+       {
+        "condition": "P4A/Wplus/1m",
+        "d": 1.1850833455671572,
+        "done": true
+       },
+       {
+        "condition": "P4A/Kstr/16e-3",
+        "d": 0.6359482094493802,
+        "done": true
+       }
+      ],
+      "condition": "F1/real/real/const",
+      "corner": 1,
+      "d": 6.380566994584069,
+      "type": "unmatched",
+      "unused": []
+     },
+     {
+      "comparators": [
+       {
+        "condition": "P4A/F6s/knoise0.5e-3/x1",
+        "d": 0.6770926598736736,
+        "done": true
+       },
+       {
+        "condition": "P4A/F6s/knoise0.5e-3/x2",
+        "d": 0.7304979988722986,
+        "done": true
+       },
+       {
+        "condition": "P4A/F6s/knoise0.5e-3/x3",
+        "d": 0.7975355095332932,
+        "done": true
+       },
+       {
+        "condition": "P4A/Kstr/1e-3",
+        "d": 0.6478931063713297,
+        "done": true
+       },
+       {
+        "condition": "P4A/Kstr/2e-3",
+        "d": 0.6509797727151558,
+        "done": true
+       },
+       {
+        "condition": "P4A/Kstr/4e-3",
+        "d": 0.6509797727151558,
+        "done": true
+       },
+       {
+        "condition": "P4A/Kstr/8e-3",
+        "d": 0.6800468037333608,
+        "done": true
+       },
+       {
+        "condition": "P4A/Wplus/0.5m",
+        "d": 0.9208421433415128,
+        "done": true
+       },
+       {
+        "condition": "P4A/Wplus/1m",
+        "d": 1.2671594466227696,
+        "done": true
+       },
+       {
+        "condition": "P4A/Kstr/16e-3",
+        "d": 0.6509797727151558,
+        "done": true
+       }
+      ],
+      "condition": "F1/real/real/const",
+      "corner": 3,
+      "d": 2.140124615436555,
+      "type": "unmatched",
+      "unused": []
+     },
+     {
+      "comparators": [
+       {
+        "condition": "P4A/F6s/knoise0.5e-3/x1",
+        "d": 0.9535677115039751,
+        "done": true
+       },
+       {
+        "condition": "P4A/F6s/knoise1e-3/x1",
+        "d": 1.1186053318492852,
+        "done": true
+       },
+       {
+        "condition": "P4A/F6s/knoise0.5e-3/x2",
+        "d": 1.0827263396189983,
+        "done": true
+       },
+       {
+        "condition": "P4A/F6s/knoise0.5e-3/x3",
+        "d": 1.2388421796992664,
+        "done": true
+       },
+       {
+        "condition": "P4A/Kstr/1e-3",
+        "d": 1.0873450728140397,
+        "done": true
+       },
+       {
+        "condition": "P4A/Kstr/2e-3",
+        "d": 1.3712493272669861,
+        "done": true
+       },
+       {
+        "condition": "P4A/Kstr/4e-3",
+        "d": 2.8270447913775296,
+        "done": true
+       },
+       {
+        "condition": "P4A/Kstr/8e-3",
+        "d": 4.5993972862145,
+        "done": true
+       },
+       {
+        "condition": "P4A/Wplus/0.5m",
+        "d": 1.2839749840323773,
+        "done": true
+       },
+       {
+        "condition": "P4A/Kstr/16e-3",
+        "d": 14.050625574868787,
+        "done": false
+       }
+      ],
+      "condition": "F1/real/real/const",
+      "corner": 7,
+      "d": 2.856868078946432,
+      "type": "mixed",
+      "unused": []
+     },
+     {
+      "comparators": [
+       {
+        "condition": "P4A/F6s/knoise0.5e-3/x1",
+        "d": 0.8123532800422361,
+        "done": true
+       },
+       {
+        "condition": "P4A/F6s/knoise1e-3/x1",
+        "d": 0.8974700655768608,
+        "done": true
+       },
+       {
+        "condition": "P4A/F6s/knoise0.5e-3/x2",
+        "d": 0.8564385838868852,
+        "done": true
+       },
+       {
+        "condition": "P4A/F6s/knoise0.5e-3/x3",
+        "d": 0.9662024127799642,
+        "done": true
+       },
+       {
+        "condition": "P4A/Kstr/1e-3",
+        "d": 0.7802564871474578,
+        "done": true
+       },
+       {
+        "condition": "P4A/Kstr/2e-3",
+        "d": 0.7802564871474578,
+        "done": true
+       },
+       {
+        "condition": "P4A/Kstr/4e-3",
+        "d": 0.7802564871474578,
+        "done": true
+       },
+       {
+        "condition": "P4A/Kstr/8e-3",
+        "d": 0.7802564871474578,
+        "done": true
+       },
+       {
+        "condition": "P4A/Wplus/0.5m",
+        "d": 1.0051485939860916,
+        "done": true
+       },
+       {
+        "condition": "P4A/Wplus/1m",
+        "d": 1.2597818015389106,
+        "done": true
+       },
+       {
+        "condition": "P4A/Kstr/16e-3",
+        "d": 0.7802564871474578,
+        "done": true
+       }
+      ],
+      "condition": "F1/real/real/const",
+      "corner": 8,
+      "d": 1.3372033463187545,
+      "type": "unmatched",
+      "unused": []
+     },
+     {
+      "comparators": [
+       {
+        "condition": "P4A/F6s/knoise0.5e-3/x1",
+        "d": 0.9468167029964135,
+        "done": true
+       },
+       {
+        "condition": "P4A/F6s/knoise0.5e-3/x2",
+        "d": 0.9991476551005727,
+        "done": true
+       },
+       {
+        "condition": "P4A/F6s/knoise0.5e-3/x3",
+        "d": 1.0780877471467947,
+        "done": true
+       },
+       {
+        "condition": "P4A/Kstr/1e-3",
+        "d": 0.9050325547019971,
+        "done": true
+       },
+       {
+        "condition": "P4A/Kstr/2e-3",
+        "d": 0.9079074142167066,
+        "done": true
+       },
+       {
+        "condition": "P4A/Kstr/4e-3",
+        "d": 0.9514631627976466,
+        "done": true
+       },
+       {
+        "condition": "P4A/Kstr/8e-3",
+        "d": 0.9594358987598492,
+        "done": true
+       },
+       {
+        "condition": "P4A/Wplus/1m",
+        "d": 1.949549034006568,
+        "done": true
+       },
+       {
+        "condition": "P4A/Kstr/16e-3",
+        "d": 0.9880512839862885,
+        "done": false
+       }
+      ],
+      "condition": "F1/real/real/const",
+      "corner": 16,
+      "d": 1.999799574064334,
+      "type": "fragile",
+      "unused": []
+     },
+     {
+      "comparators": [
+       {
+        "condition": "P4A/F6s/knoise0.5e-3/x1",
+        "d": 0.661296399864407,
+        "done": true
+       },
+       {
+        "condition": "P4A/F6s/knoise1e-3/x1",
+        "d": 0.7093343873008171,
+        "done": true
+       },
+       {
+        "condition": "P4A/F6s/knoise0.5e-3/x2",
+        "d": 0.7590929901487291,
+        "done": true
+       },
+       {
+        "condition": "P4A/F6s/knoise0.5e-3/x3",
+        "d": 0.9001461795562795,
+        "done": true
+       },
+       {
+        "condition": "P4A/Kstr/1e-3",
+        "d": 0.7335101929267671,
+        "done": true
+       },
+       {
+        "condition": "P4A/Kstr/2e-3",
+        "d": 0.9064646377308851,
+        "done": true
+       },
+       {
+        "condition": "P4A/Kstr/4e-3",
+        "d": 1.0167140641414933,
+        "done": true
+       },
+       {
+        "condition": "P4A/Kstr/8e-3",
+        "d": 1.043818081994067,
+        "done": true
+       },
+       {
+        "condition": "P4A/Wplus/0.5m",
+        "d": 0.9575502985842321,
+        "done": true
+       },
+       {
+        "condition": "P4A/Wplus/1m",
+        "d": 1.1697415956684778,
+        "done": true
+       },
+       {
+        "condition": "P4A/Kstr/16e-3",
+        "d": 1.0841528849648316,
+        "done": false
+       }
+      ],
+      "condition": "F1/real/real/const",
+      "corner": 17,
+      "d": 1.1372663307800923,
+      "type": "fragile",
+      "unused": []
+     }
+    ],
+    "cm": "CM-1",
+    "counts": {
+     "fragile": 3,
+     "keyed": 0,
+     "mixed": 3,
+     "unmatched": 6
+    },
+    "label": "fragile (CM)",
+    "n": 6
+   },
+   "cm_decides": true,
+   "p4": {
+    "C": {
+     "F1/real/real/const": 0.2222222222222222,
+     "F1/real/real/real": 1.0,
+     "F1/real/straight/const": 0.5555555555555556,
+     "F1/real/straight/real": 0.4444444444444444,
+     "F1/straight/real/const": 0.2222222222222222,
+     "F1/straight/real/real": 0.8888888888888888,
+     "F1/straight/straight/const": 0.4444444444444444,
+     "F1/straight/straight/real": 0.2222222222222222,
+     "F2/lambda0.8": 0.3333333333333333,
+     "F2/lambda0.9": 0.8888888888888888,
+     "F2/lambda0.95": 1.0,
+     "F2/lambda1.05": 0.8888888888888888,
+     "F2/lambda1.1": 0.7777777777777778,
+     "F2/lambda1.25": 0.6666666666666666,
+     "F2/width+0.5": 1.0,
+     "F2/width-0.5": 1.0,
+     "F4/mirror": 0.1111111111111111,
+     "F5/swapA": 0.0,
+     "F5/swapB": 0.5555555555555556,
+     "F6/knoise0.5e-3": 1.0,
+     "F6/knoise1e-3": 1.0,
+     "F6/wobble0.3": 1.0,
+     "F6/wobble0.6": 0.7777777777777778,
+     "P4A/F6s/knoise0.5e-3/x1": 1.0,
+     "P4A/F6s/knoise0.5e-3/x2": 1.0,
+     "P4A/F6s/knoise0.5e-3/x3": 1.0,
+     "P4A/F6s/knoise1e-3/x1": 1.0,
+     "P4A/Kstr/16e-3": 0.5555555555555556,
+     "P4A/Kstr/1e-3": 1.0,
+     "P4A/Kstr/2e-3": 1.0,
+     "P4A/Kstr/4e-3": 1.0,
+     "P4A/Kstr/8e-3": 1.0,
+     "P4A/Wplus/0.5m": 1.0,
+     "P4A/Wplus/1m": 1.0
+    },
+    "MI": 0.5925925925925927,
+    "S_spec": 0.9492082774857533,
+    "cls": 2,
+    "details": {
+     "d_ood": {
+      "F1/real/real/const": 2.140124615436555,
+      "F1/real/real/real": 0.7494610879614743,
+      "F1/real/straight/const": 6.111916192628267,
+      "F1/real/straight/real": 1.3313439429739329,
+      "F1/straight/real/const": 8.668392692458164,
+      "F1/straight/real/real": 5.659604045731943,
+      "F1/straight/straight/const": 11.221283523414623,
+      "F1/straight/straight/real": 9.267271804302405,
+      "F2/lambda0.8": 7.068587068952479,
+      "F2/lambda0.9": 3.524774677405138,
+      "F2/lambda0.95": 1.7989267282803287,
+      "F2/lambda1.05": 1.6908801921889185,
+      "F2/lambda1.1": 3.1681675951897166,
+      "F2/lambda1.25": 6.346930573036387,
+      "F2/width+0.5": 1.13999491908032,
+      "F2/width-0.5": 1.1064428230787409,
+      "F4/mirror": 19.277529884774946,
+      "F5/swapA": 17.66923212882744,
+      "F5/swapB": 13.322087075597699,
+      "F6/knoise0.5e-3": 0.7656030903479483,
+      "F6/knoise1e-3": 0.8232611407871515,
+      "F6/wobble0.3": 0.8259959160160335,
+      "F6/wobble0.6": 1.0026903973826085,
+      "P4A/F6s/knoise0.5e-3/x1": 0.8123532800422361,
+      "P4A/F6s/knoise0.5e-3/x2": 0.9208408830412314,
+      "P4A/F6s/knoise0.5e-3/x3": 1.0221450799633796,
+      "P4A/F6s/knoise1e-3/x1": 0.9639170682696261,
+      "P4A/Kstr/16e-3": 0.9880512839862885,
+      "P4A/Kstr/1e-3": 0.7494610879614743,
+      "P4A/Kstr/2e-3": 0.8095380365499303,
+      "P4A/Kstr/4e-3": 0.8658598249725522,
+      "P4A/Kstr/8e-3": 0.9594358987598492,
+      "P4A/Wplus/0.5m": 0.9990126502067884,
+      "P4A/Wplus/1m": 1.2671594466227696
+     },
+     "failing_condition": "F1/real/straight/real",
+     "main_effects": {
+      "after": 0.16666666666666669,
+      "before": 0.1111111111111111,
+      "width": 0.27777777777777773
+     },
+     "n_braking": 9,
+     "n_f6_at_or_above": 0,
+     "n_m": 9,
+     "n_phi": 9,
+     "n_slopes": 9,
+     "tier_g_crash": false,
+     "vacuous": true
+    },
+    "failing": [
+     "F1/real/straight/real",
+     "F1/real/real/const"
+    ],
+    "key_factors": [],
+    "label": "context-keyed memorisation",
+    "m": 1.340979279576988,
+    "phi": 0.015744947563804457,
+    "vacuous": true,
+    "verdict": "class 2"
+   },
+   "per_family": {
+    "family:F6s": 2,
+    "family:Kstr": 2,
+    "family:Wplus": 2,
+    "registered": 2
+   },
+   "tier_a_completion": 0.48148148148148145,
+   "tier_g_rule": null
+  },
+  "S8": {
+   "cm": {
+    "cells": [
+     {
+      "comparators": [
+       {
+        "condition": "P4A/F6s/knoise0.5e-3/x1",
+        "d": 0.8213558722156897,
+        "done": true
+       },
+       {
+        "condition": "P4A/F6s/knoise1e-3/x1",
+        "d": 1.0280476758737873,
+        "done": true
+       },
+       {
+        "condition": "P4A/F6s/knoise0.5e-3/x2",
+        "d": 1.0531298063518417,
+        "done": true
+       },
+       {
+        "condition": "P4A/F6s/knoise0.5e-3/x3",
+        "d": 1.2828090645701309,
+        "done": true
+       },
+       {
+        "condition": "P4A/Kstr/1e-3",
+        "d": 0.7185998769507898,
+        "done": true
+       },
+       {
+        "condition": "P4A/Kstr/2e-3",
+        "d": 0.7185998769507898,
+        "done": true
+       },
+       {
+        "condition": "P4A/Kstr/4e-3",
+        "d": 0.7185998769507898,
+        "done": true
+       },
+       {
+        "condition": "P4A/Kstr/8e-3",
+        "d": 0.7185998769507898,
+        "done": true
+       },
+       {
+        "condition": "P4A/Wplus/0.5m",
+        "d": 1.185311136712889,
+        "done": true
+       },
+       {
+        "condition": "P4A/Wplus/1m",
+        "d": 1.7588725760551915,
+        "done": false
+       },
+       {
+        "condition": "P4A/Kstr/16e-3",
+        "d": 0.7185998769507898,
+        "done": true
+       }
+      ],
+      "condition": "F1/real/straight/real",
+      "corner": 0,
+      "d": 9.804102817899551,
+      "type": "fragile",
+      "unused": []
+     },
+     {
+      "comparators": [
+       {
+        "condition": "P4A/F6s/knoise0.5e-3/x1",
+        "d": 0.6661983126047524,
+        "done": true
+       },
+       {
+        "condition": "P4A/F6s/knoise1e-3/x1",
+        "d": 1.041395065056451,
+        "done": true
+       },
+       {
+        "condition": "P4A/F6s/knoise0.5e-3/x2",
+        "d": 0.7987258117261242,
+        "done": true
+       },
+       {
+        "condition": "P4A/F6s/knoise0.5e-3/x3",
+        "d": 1.0008189524177253,
+        "done": true
+       },
+       {
+        "condition": "P4A/Kstr/1e-3",
+        "d": 0.6305465207398337,
+        "done": true
+       },
+       {
+        "condition": "P4A/Kstr/2e-3",
+        "d": 0.6305465207398337,
+        "done": true
+       },
+       {
+        "condition": "P4A/Kstr/4e-3",
+        "d": 0.6305465207398337,
+        "done": true
+       },
+       {
+        "condition": "P4A/Kstr/8e-3",
+        "d": 0.6305465207398337,
+        "done": true
+       },
+       {
+        "condition": "P4A/Wplus/0.5m",
+        "d": 0.959868855360061,
+        "done": true
+       },
+       {
+        "condition": "P4A/Wplus/1m",
+        "d": 1.397060850591285,
+        "done": true
+       },
+       {
+        "condition": "P4A/Kstr/16e-3",
+        "d": 0.6305465207398337,
+        "done": true
+       }
+      ],
+      "condition": "F1/real/straight/real",
+      "corner": 1,
+      "d": 1.3269191277471677,
+      "type": "keyed",
+      "unused": []
+     },
+     {
+      "comparators": [
+       {
+        "condition": "P4A/F6s/knoise0.5e-3/x1",
+        "d": 0.7696396708408864,
+        "done": true
+       },
+       {
+        "condition": "P4A/F6s/knoise0.5e-3/x2",
+        "d": 0.8328884341170856,
+        "done": true
+       },
+       {
+        "condition": "P4A/F6s/knoise0.5e-3/x3",
+        "d": 0.8789369680667984,
+        "done": true
+       },
+       {
+        "condition": "P4A/Kstr/1e-3",
+        "d": 0.7610750066980436,
+        "done": true
+       },
+       {
+        "condition": "P4A/Kstr/2e-3",
+        "d": 0.7593055346227362,
+        "done": true
+       },
+       {
+        "condition": "P4A/Kstr/4e-3",
+        "d": 0.7624588976184019,
+        "done": true
+       },
+       {
+        "condition": "P4A/Kstr/8e-3",
+        "d": 0.7695632396839811,
+        "done": true
+       },
+       {
+        "condition": "P4A/Wplus/0.5m",
+        "d": 1.0385187443698052,
+        "done": true
+       },
+       {
+        "condition": "P4A/Wplus/1m",
+        "d": 1.5676026979703153,
+        "done": true
+       },
+       {
+        "condition": "P4A/Kstr/16e-3",
+        "d": 0.7711928080757524,
+        "done": true
+       }
+      ],
+      "condition": "F1/real/straight/real",
+      "corner": 3,
+      "d": 9.828980086464604,
+      "type": "unmatched",
+      "unused": []
+     },
+     {
+      "comparators": [
+       {
+        "condition": "P4A/F6s/knoise0.5e-3/x1",
+        "d": 0.9801393721320777,
+        "done": true
+       },
+       {
+        "condition": "P4A/F6s/knoise1e-3/x1",
+        "d": 1.115391650251026,
+        "done": true
+       },
+       {
+        "condition": "P4A/F6s/knoise0.5e-3/x2",
+        "d": 1.1394458394460374,
+        "done": true
+       },
+       {
+        "condition": "P4A/F6s/knoise0.5e-3/x3",
+        "d": 1.3411085390110071,
+        "done": true
+       },
+       {
+        "condition": "P4A/Kstr/1e-3",
+        "d": 1.1137856054874598,
+        "done": true
+       },
+       {
+        "condition": "P4A/Kstr/2e-3",
+        "d": 1.4834837717504832,
+        "done": true
+       },
+       {
+        "condition": "P4A/Kstr/4e-3",
+        "d": 2.9766341864514136,
+        "done": true
+       },
+       {
+        "condition": "P4A/Kstr/8e-3",
+        "d": 5.348424057226632,
+        "done": false
+       },
+       {
+        "condition": "P4A/Wplus/0.5m",
+        "d": 1.2958788336704503,
+        "done": true
+       },
+       {
+        "condition": "P4A/Kstr/16e-3",
+        "d": 17.097684796258143,
+        "done": false
+       }
+      ],
+      "condition": "F1/real/straight/real",
+      "corner": 7,
+      "d": 8.52587475294,
+      "type": "fragile",
+      "unused": []
+     },
+     {
+      "comparators": [
+       {
+        "condition": "P4A/F6s/knoise0.5e-3/x1",
+        "d": 0.8847427645859288,
+        "done": true
+       },
+       {
+        "condition": "P4A/F6s/knoise0.5e-3/x2",
+        "d": 0.9576710469038036,
+        "done": true
+       },
+       {
+        "condition": "P4A/F6s/knoise0.5e-3/x3",
+        "d": 1.0877685965011037,
+        "done": true
+       },
+       {
+        "condition": "P4A/Kstr/1e-3",
+        "d": 0.8554189112472492,
+        "done": true
+       },
+       {
+        "condition": "P4A/Kstr/2e-3",
+        "d": 0.8805003814129331,
+        "done": true
+       },
+       {
+        "condition": "P4A/Kstr/4e-3",
+        "d": 0.9889368789246284,
+        "done": true
+       },
+       {
+        "condition": "P4A/Kstr/8e-3",
+        "d": 0.9269921913109825,
+        "done": true
+       },
+       {
+        "condition": "P4A/Wplus/1m",
+        "d": 2.060076209952261,
+        "done": true
+       },
+       {
+        "condition": "P4A/Kstr/16e-3",
+        "d": 0.9992975101766517,
+        "done": false
+       }
+      ],
+      "condition": "F1/real/straight/real",
+      "corner": 16,
+      "d": 11.499289751506296,
+      "type": "fragile",
+      "unused": []
+     },
+     {
+      "comparators": [
+       {
+        "condition": "P4A/F6s/knoise0.5e-3/x1",
+        "d": 0.8213558722156897,
+        "done": true
+       },
+       {
+        "condition": "P4A/F6s/knoise1e-3/x1",
+        "d": 1.0280476758737873,
+        "done": true
+       },
+       {
+        "condition": "P4A/F6s/knoise0.5e-3/x2",
+        "d": 1.0531298063518417,
+        "done": true
+       },
+       {
+        "condition": "P4A/F6s/knoise0.5e-3/x3",
+        "d": 1.2828090645701309,
+        "done": true
+       },
+       {
+        "condition": "P4A/Kstr/1e-3",
+        "d": 0.7185998769507898,
+        "done": true
+       },
+       {
+        "condition": "P4A/Kstr/2e-3",
+        "d": 0.7185998769507898,
+        "done": true
+       },
+       {
+        "condition": "P4A/Kstr/4e-3",
+        "d": 0.7185998769507898,
+        "done": true
+       },
+       {
+        "condition": "P4A/Kstr/8e-3",
+        "d": 0.7185998769507898,
+        "done": true
+       },
+       {
+        "condition": "P4A/Wplus/0.5m",
+        "d": 1.185311136712889,
+        "done": true
+       },
+       {
+        "condition": "P4A/Wplus/1m",
+        "d": 1.7588725760551915,
+        "done": false
+       },
+       {
+        "condition": "P4A/Kstr/16e-3",
+        "d": 0.7185998769507898,
+        "done": true
+       }
+      ],
+      "condition": "F1/real/real/const",
+      "corner": 0,
+      "d": 8.771842431639923,
+      "type": "fragile",
+      "unused": []
+     },
+     {
+      "comparators": [
+       {
+        "condition": "P4A/F6s/knoise0.5e-3/x1",
+        "d": 0.6661983126047524,
+        "done": true
+       },
+       {
+        "condition": "P4A/F6s/knoise1e-3/x1",
+        "d": 1.041395065056451,
+        "done": true
+       },
+       {
+        "condition": "P4A/F6s/knoise0.5e-3/x2",
+        "d": 0.7987258117261242,
+        "done": true
+       },
+       {
+        "condition": "P4A/F6s/knoise0.5e-3/x3",
+        "d": 1.0008189524177253,
+        "done": true
+       },
+       {
+        "condition": "P4A/Kstr/1e-3",
+        "d": 0.6305465207398337,
+        "done": true
+       },
+       {
+        "condition": "P4A/Kstr/2e-3",
+        "d": 0.6305465207398337,
+        "done": true
+       },
+       {
+        "condition": "P4A/Kstr/4e-3",
+        "d": 0.6305465207398337,
+        "done": true
+       },
+       {
+        "condition": "P4A/Kstr/8e-3",
+        "d": 0.6305465207398337,
+        "done": true
+       },
+       {
+        "condition": "P4A/Wplus/0.5m",
+        "d": 0.959868855360061,
+        "done": true
+       },
+       {
+        "condition": "P4A/Wplus/1m",
+        "d": 1.397060850591285,
+        "done": true
+       },
+       {
+        "condition": "P4A/Kstr/16e-3",
+        "d": 0.6305465207398337,
+        "done": true
+       }
+      ],
+      "condition": "F1/real/real/const",
+      "corner": 1,
+      "d": 7.963678857738836,
+      "type": "unmatched",
+      "unused": []
+     },
+     {
+      "comparators": [
+       {
+        "condition": "P4A/F6s/knoise0.5e-3/x1",
+        "d": 0.7696396708408864,
+        "done": true
+       },
+       {
+        "condition": "P4A/F6s/knoise0.5e-3/x2",
+        "d": 0.8328884341170856,
+        "done": true
+       },
+       {
+        "condition": "P4A/F6s/knoise0.5e-3/x3",
+        "d": 0.8789369680667984,
+        "done": true
+       },
+       {
+        "condition": "P4A/Kstr/1e-3",
+        "d": 0.7610750066980436,
+        "done": true
+       },
+       {
+        "condition": "P4A/Kstr/2e-3",
+        "d": 0.7593055346227362,
+        "done": true
+       },
+       {
+        "condition": "P4A/Kstr/4e-3",
+        "d": 0.7624588976184019,
+        "done": true
+       },
+       {
+        "condition": "P4A/Kstr/8e-3",
+        "d": 0.7695632396839811,
+        "done": true
+       },
+       {
+        "condition": "P4A/Wplus/0.5m",
+        "d": 1.0385187443698052,
+        "done": true
+       },
+       {
+        "condition": "P4A/Wplus/1m",
+        "d": 1.5676026979703153,
+        "done": true
+       },
+       {
+        "condition": "P4A/Kstr/16e-3",
+        "d": 0.7711928080757524,
+        "done": true
+       }
+      ],
+      "condition": "F1/real/real/const",
+      "corner": 3,
+      "d": 1.8230491607512307,
+      "type": "unmatched",
+      "unused": []
+     },
+     {
+      "comparators": [
+       {
+        "condition": "P4A/F6s/knoise0.5e-3/x1",
+        "d": 0.9801393721320777,
+        "done": true
+       },
+       {
+        "condition": "P4A/F6s/knoise1e-3/x1",
+        "d": 1.115391650251026,
+        "done": true
+       },
+       {
+        "condition": "P4A/F6s/knoise0.5e-3/x2",
+        "d": 1.1394458394460374,
+        "done": true
+       },
+       {
+        "condition": "P4A/F6s/knoise0.5e-3/x3",
+        "d": 1.3411085390110071,
+        "done": true
+       },
+       {
+        "condition": "P4A/Kstr/1e-3",
+        "d": 1.1137856054874598,
+        "done": true
+       },
+       {
+        "condition": "P4A/Kstr/2e-3",
+        "d": 1.4834837717504832,
+        "done": true
+       },
+       {
+        "condition": "P4A/Kstr/4e-3",
+        "d": 2.9766341864514136,
+        "done": true
+       },
+       {
+        "condition": "P4A/Kstr/8e-3",
+        "d": 5.348424057226632,
+        "done": false
+       },
+       {
+        "condition": "P4A/Wplus/0.5m",
+        "d": 1.2958788336704503,
+        "done": true
+       },
+       {
+        "condition": "P4A/Kstr/16e-3",
+        "d": 17.097684796258143,
+        "done": false
+       }
+      ],
+      "condition": "F1/real/real/const",
+      "corner": 7,
+      "d": 3.74477787834702,
+      "type": "mixed",
+      "unused": []
+     },
+     {
+      "comparators": [
+       {
+        "condition": "P4A/F6s/knoise0.5e-3/x1",
+        "d": 0.8262219616923079,
+        "done": true
+       },
+       {
+        "condition": "P4A/F6s/knoise1e-3/x1",
+        "d": 0.9209128603923015,
+        "done": true
+       },
+       {
+        "condition": "P4A/F6s/knoise0.5e-3/x2",
+        "d": 0.8792995620973436,
+        "done": true
+       },
+       {
+        "condition": "P4A/F6s/knoise0.5e-3/x3",
+        "d": 1.026623505898818,
+        "done": true
+       },
+       {
+        "condition": "P4A/Kstr/1e-3",
+        "d": 0.8136605505783594,
+        "done": true
+       },
+       {
+        "condition": "P4A/Kstr/2e-3",
+        "d": 0.8136605505783594,
+        "done": true
+       },
+       {
+        "condition": "P4A/Kstr/4e-3",
+        "d": 0.8136605505783594,
+        "done": true
+       },
+       {
+        "condition": "P4A/Kstr/8e-3",
+        "d": 0.8136605505783594,
+        "done": true
+       },
+       {
+        "condition": "P4A/Wplus/0.5m",
+        "d": 1.0394764449244183,
+        "done": true
+       },
+       {
+        "condition": "P4A/Wplus/1m",
+        "d": 1.3427166059812086,
+        "done": true
+       },
+       {
+        "condition": "P4A/Kstr/16e-3",
+        "d": 0.8136605505783594,
+        "done": true
+       }
+      ],
+      "condition": "F1/real/real/const",
+      "corner": 8,
+      "d": 1.3068531014624434,
+      "type": "keyed",
+      "unused": []
+     },
+     {
+      "comparators": [
+       {
+        "condition": "P4A/F6s/knoise0.5e-3/x1",
+        "d": 0.8847427645859288,
+        "done": true
+       },
+       {
+        "condition": "P4A/F6s/knoise0.5e-3/x2",
+        "d": 0.9576710469038036,
+        "done": true
+       },
+       {
+        "condition": "P4A/F6s/knoise0.5e-3/x3",
+        "d": 1.0877685965011037,
+        "done": true
+       },
+       {
+        "condition": "P4A/Kstr/1e-3",
+        "d": 0.8554189112472492,
+        "done": true
+       },
+       {
+        "condition": "P4A/Kstr/2e-3",
+        "d": 0.8805003814129331,
+        "done": true
+       },
+       {
+        "condition": "P4A/Kstr/4e-3",
+        "d": 0.9889368789246284,
+        "done": true
+       },
+       {
+        "condition": "P4A/Kstr/8e-3",
+        "d": 0.9269921913109825,
+        "done": true
+       },
+       {
+        "condition": "P4A/Wplus/1m",
+        "d": 2.060076209952261,
+        "done": true
+       },
+       {
+        "condition": "P4A/Kstr/16e-3",
+        "d": 0.9992975101766517,
+        "done": false
+       }
+      ],
+      "condition": "F1/real/real/const",
+      "corner": 16,
+      "d": 2.034349119366153,
+      "type": "fragile",
+      "unused": []
+     },
+     {
+      "comparators": [
+       {
+        "condition": "P4A/F6s/knoise0.5e-3/x1",
+        "d": 0.7522463001459786,
+        "done": true
+       },
+       {
+        "condition": "P4A/F6s/knoise1e-3/x1",
+        "d": 0.8206430650115497,
+        "done": true
+       },
+       {
+        "condition": "P4A/F6s/knoise0.5e-3/x2",
+        "d": 0.8323964601314121,
+        "done": true
+       },
+       {
+        "condition": "P4A/F6s/knoise0.5e-3/x3",
+        "d": 0.9938952470550481,
+        "done": true
+       },
+       {
+        "condition": "P4A/Kstr/1e-3",
+        "d": 0.8354728141968479,
+        "done": true
+       },
+       {
+        "condition": "P4A/Kstr/2e-3",
+        "d": 0.9226264948027638,
+        "done": true
+       },
+       {
+        "condition": "P4A/Kstr/4e-3",
+        "d": 0.9916548897204056,
+        "done": true
+       },
+       {
+        "condition": "P4A/Kstr/8e-3",
+        "d": 1.006997990504378,
+        "done": true
+       },
+       {
+        "condition": "P4A/Wplus/0.5m",
+        "d": 0.9964823096538163,
+        "done": true
+       },
+       {
+        "condition": "P4A/Wplus/1m",
+        "d": 1.2312638428298084,
+        "done": true
+       },
+       {
+        "condition": "P4A/Kstr/16e-3",
+        "d": 1.0093198138777522,
+        "done": true
+       }
+      ],
+      "condition": "F1/real/real/const",
+      "corner": 17,
+      "d": 1.7591357105349044,
+      "type": "unmatched",
+      "unused": []
+     }
+    ],
+    "cm": "CM-1",
+    "counts": {
+     "fragile": 5,
+     "keyed": 2,
+     "mixed": 1,
+     "unmatched": 4
+    },
+    "label": "fragile (CM)",
+    "n": 8
+   },
+   "cm_decides": false,
+   "p4": {
+    "C": {
+     "F1/real/real/const": 0.2222222222222222,
+     "F1/real/real/real": 1.0,
+     "F1/real/straight/const": 0.4444444444444444,
+     "F1/real/straight/real": 0.4444444444444444,
+     "F1/straight/real/const": 0.1111111111111111,
+     "F1/straight/real/real": 0.5555555555555556,
+     "F1/straight/straight/const": 0.3333333333333333,
+     "F1/straight/straight/real": 0.1111111111111111,
+     "F2/lambda0.8": 0.4444444444444444,
+     "F2/lambda0.9": 0.7777777777777778,
+     "F2/lambda0.95": 1.0,
+     "F2/lambda1.05": 1.0,
+     "F2/lambda1.1": 1.0,
+     "F2/lambda1.25": 0.7777777777777778,
+     "F2/width+0.5": 1.0,
+     "F2/width-0.5": 0.5555555555555556,
+     "F4/mirror": 0.0,
+     "F5/swapA": 0.2222222222222222,
+     "F5/swapB": 0.2222222222222222,
+     "F6/knoise0.5e-3": 1.0,
+     "F6/knoise1e-3": 1.0,
+     "F6/wobble0.3": 1.0,
+     "F6/wobble0.6": 0.7777777777777778,
+     "P4A/F6s/knoise0.5e-3/x1": 1.0,
+     "P4A/F6s/knoise0.5e-3/x2": 1.0,
+     "P4A/F6s/knoise0.5e-3/x3": 1.0,
+     "P4A/F6s/knoise1e-3/x1": 1.0,
+     "P4A/Kstr/16e-3": 0.6666666666666666,
+     "P4A/Kstr/1e-3": 1.0,
+     "P4A/Kstr/2e-3": 1.0,
+     "P4A/Kstr/4e-3": 1.0,
+     "P4A/Kstr/8e-3": 0.8888888888888888,
+     "P4A/Wplus/0.5m": 1.0,
+     "P4A/Wplus/1m": 0.8571428571428571
+    },
+    "MI": 0.7037037037037038,
+    "S_spec": 0.9550691647213086,
+    "cls": 2,
+    "details": {
+     "d_ood": {
+      "F1/real/real/const": 2.034349119366153,
+      "F1/real/real/real": 0.7575929319503532,
+      "F1/real/straight/const": 7.553902536903621,
+      "F1/real/straight/real": 1.3269191277471677,
+      "F1/straight/real/const": 8.782723719196222,
+      "F1/straight/real/real": 6.29440852436858,
+      "F1/straight/straight/const": 12.22070742895988,
+      "F1/straight/straight/real": 11.623602799658421,
+      "F2/lambda0.8": 8.184370439201821,
+      "F2/lambda0.9": 3.8812461216965604,
+      "F2/lambda0.95": 1.9437308210208462,
+      "F2/lambda1.05": 1.8648130928057483,
+      "F2/lambda1.1": 3.2617905789602357,
+      "F2/lambda1.25": 7.15984231080276,
+      "F2/width+0.5": 1.1789250081589848,
+      "F2/width-0.5": 1.193092876731731,
+      "F4/mirror": 22.30267629556176,
+      "F5/swapA": 17.237993251277416,
+      "F5/swapB": 13.08032980621978,
+      "F6/knoise0.5e-3": 0.7529589010025027,
+      "F6/knoise1e-3": 0.8438819747763976,
+      "F6/wobble0.3": 0.8239168112062933,
+      "F6/wobble0.6": 1.0251975200648296,
+      "P4A/F6s/knoise0.5e-3/x1": 0.8213558722156897,
+      "P4A/F6s/knoise0.5e-3/x2": 0.9576710469038036,
+      "P4A/F6s/knoise0.5e-3/x3": 1.057196051199961,
+      "P4A/F6s/knoise1e-3/x1": 1.0280476758737873,
+      "P4A/Kstr/16e-3": 0.9992975101766517,
+      "P4A/Kstr/1e-3": 0.8136605505783594,
+      "P4A/Kstr/2e-3": 0.829723825176357,
+      "P4A/Kstr/4e-3": 0.8798870956639102,
+      "P4A/Kstr/8e-3": 0.9269921913109825,
+      "P4A/Wplus/0.5m": 1.0385187443698052,
+      "P4A/Wplus/1m": 1.5676026979703153
+     },
+     "failing_condition": "F1/real/straight/real",
+     "main_effects": {
+      "after": 0.13888888888888895,
+      "before": 0.25,
+      "width": 0.25000000000000006
+     },
+     "n_braking": 9,
+     "n_f6_at_or_above": 1,
+     "n_m": 9,
+     "n_phi": 9,
+     "n_slopes": 9,
+     "tier_g_crash": true,
+     "vacuous": false
+    },
+    "failing": [
+     "F1/real/straight/real",
+     "F1/real/real/const"
+    ],
+    "key_factors": [],
+    "label": "context-keyed memorisation",
+    "m": 0.29089497510985535,
+    "phi": 0.007418440157384849,
+    "vacuous": false,
+    "verdict": "class 2"
+   },
+   "per_family": {
+    "family:F6s": 2,
+    "family:Kstr": 2,
+    "family:Wplus": 2,
+    "registered": 2
+   },
+   "tier_a_completion": 0.3888888888888889,
+   "tier_g_rule": "crashes on a null straight: evidence for class 1 on synthetic stimuli (reported; the class is unchanged)"
+  }
+ },
+ "status": "P4-B2 confirmatory classification (docs/prereg/p4-b2-specialists.md at p4-b2-prereg-v1)"
+}
