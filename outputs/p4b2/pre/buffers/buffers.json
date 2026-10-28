@@ -1,0 +1,93 @@
+{
+ "buffers": {
+  "S4": {
+   "lolo_median_nn": 0.3878023028373718,
+   "n_obs": 40000,
+   "n_steps": 74693,
+   "path": "outputs/p4b2/pre/buffers/knn_S4.npz",
+   "sha256": "8d8c820288fb3b573b2d203c7912dd65575f42a5cc6e7ffcafdb7767782130a1",
+   "snapshot": "runs/hockenheim-specialist-mlp-200M-s4/agent.pkl",
+   "snapshot_sha256": "dcb440b09afa30db6ba08db120359ecd378fd511f1ae4f60092054b00718ee7a",
+   "stream": 135
+  },
+  "S5": {
+   "lolo_median_nn": 0.38033315539360046,
+   "n_obs": 40000,
+   "n_steps": 75911,
+   "path": "outputs/p4b2/pre/buffers/knn_S5.npz",
+   "sha256": "93d454fa5435f77234f24215d779fba4e9869a4749c7a31576ffadd4ee2e5824",
+   "snapshot": "runs/hockenheim-specialist-mlp-200M-s5/agent.pkl",
+   "snapshot_sha256": "140c12ec8e7313c7b2a182240a2efddf11533ec96de99dfa5dce5f7c52d8e3f5",
+   "stream": 136
+  },
+  "S6": {
+   "lolo_median_nn": 0.4180234968662262,
+   "n_obs": 40000,
+   "n_steps": 76873,
+   "path": "outputs/p4b2/pre/buffers/knn_S6.npz",
+   "sha256": "7abc2402f53cfde2087fccb4d94cb4a1546e8b1ae0abda673fe59151e4bd9cb7",
+   "snapshot": "runs/hockenheim-specialist-mlp-200M-s6/agent.pkl",
+   "snapshot_sha256": "3de10c78b67c1b220d46ba2ac656b8b0f3fae4dc4809776e5cbf6e590064432c",
+   "stream": 137
+  },
+  "S7": {
+   "lolo_median_nn": 0.3901755213737488,
+   "n_obs": 40000,
+   "n_steps": 75343,
+   "path": "outputs/p4b2/pre/buffers/knn_S7.npz",
+   "sha256": "9c3940804d2d4081dec3eb0b3022d51e8de4abe80cd5a0eb46e3094d7f16a524",
+   "snapshot": "runs/hockenheim-specialist-mlp-200M-s7/agent.pkl",
+   "snapshot_sha256": "d757ba515e8a2126413fe80cf1a925f680508fc79cee411474e5b64340238893",
+   "stream": 138
+  },
+  "S8": {
+   "lolo_median_nn": 0.36106938123703003,
+   "n_obs": 40000,
+   "n_steps": 74861,
+   "path": "outputs/p4b2/pre/buffers/knn_S8.npz",
+   "sha256": "653a414d5bb0c5fcfcd41eb4fd0ba661f706ae495ea8cb764a81becb5852fba0",
+   "snapshot": "runs/hockenheim-specialist-mlp-200M-s8/agent.pkl",
+   "snapshot_sha256": "c0b1b8ec4977abf523031a6d50cfb568c696abf5f93a78aa1bf61e114bcc375b",
+   "stream": 139
+  }
+ },
+ "provenance": {
+  "argv": [
+   "--workers",
+   "3",
+   "buffers"
+  ],
+  "changed_paths": [],
+  "draft": {
+   "path": "docs/prereg/p4-b2-specialists.md",
+   "sha256": "281746dcddcce011a37030481db7f437eb5a67aa592c2903548f06d53ed99f2e"
+  },
+  "end": "2026-10-27T23:06:23",
+  "environment": {
+   "XLA_FLAGS": "--xla_cpu_multi_thread_eigen=false intra_op_parallelism_threads=2",
+   "machine": "arm64",
+   "numpy": "2.5.4",
+   "python": "3.12.4",
+   "system": "Darwin"
+  },
+  "frozen_clean": true,
+  "git_head": "0749ecc94f7bcf9756ced3cdd2dd651e57198b78",
+  "inputs_sha256": {},
+  "script": "scripts/p4_b2.py",
+  "script_sha256": "f3a422b7662f370ad7f70b8115540fe2e480bcc625cfe5f9f0242f07b00fa7cf",
+  "seconds": 36.9,
+  "stage": "buffers",
+  "tag_gate": null
+ },
+ "status": "P4-B2 pre-tag d_OOD buffers (protocol exception 2)",
+ "streams": {
+  "S1": 132,
+  "S2": 133,
+  "S3": 134,
+  "S4": 135,
+  "S5": 136,
+  "S6": 137,
+  "S7": 138,
+  "S8": 139
+ }
+}

@@ -1,0 +1,115 @@
+{
+ "agents": {
+  "S4": {
+   "braking_unreachable": [],
+   "cause": "",
+   "class0": false,
+   "lap": "outputs/p4b2/pre/starts/real_laps/S4_Hockenheim.npz",
+   "lap_sha256": "2ebc3a53370eeedb5db3f1a0aeeab2458d3d537e45764e1d0b67141f7db70298",
+   "n_states": 20,
+   "snapshot": "runs/hockenheim-specialist-mlp-200M-s4/agent.pkl",
+   "snapshot_sha256": "dcb440b09afa30db6ba08db120359ecd378fd511f1ae4f60092054b00718ee7a",
+   "term_step": -1,
+   "unreachable": {}
+  },
+  "S5": {
+   "braking_unreachable": [],
+   "cause": "",
+   "class0": false,
+   "lap": "outputs/p4b2/pre/starts/real_laps/S5_Hockenheim.npz",
+   "lap_sha256": "dd7885e4a2c5abfadff2f1e4a3a1930eef507ab5c1957615b2e2f8da944384a2",
+   "n_states": 20,
+   "snapshot": "runs/hockenheim-specialist-mlp-200M-s5/agent.pkl",
+   "snapshot_sha256": "140c12ec8e7313c7b2a182240a2efddf11533ec96de99dfa5dce5f7c52d8e3f5",
+   "term_step": -1,
+   "unreachable": {}
+  },
+  "S6": {
+   "braking_unreachable": [],
+   "cause": "",
+   "class0": false,
+   "lap": "outputs/p4b2/pre/starts/real_laps/S6_Hockenheim.npz",
+   "lap_sha256": "d419189825d305b7d50136013f6eccf5ed18654908ad75c3a21dbea28dcc34e0",
+   "n_states": 20,
+   "snapshot": "runs/hockenheim-specialist-mlp-200M-s6/agent.pkl",
+   "snapshot_sha256": "3de10c78b67c1b220d46ba2ac656b8b0f3fae4dc4809776e5cbf6e590064432c",
+   "term_step": -1,
+   "unreachable": {}
+  },
+  "S7": {
+   "braking_unreachable": [],
+   "cause": "",
+   "class0": false,
+   "lap": "outputs/p4b2/pre/starts/real_laps/S7_Hockenheim.npz",
+   "lap_sha256": "28a93204bd0f851e9d9038dc69fb78425292b9c5a9c866849662a2f19eb7b492",
+   "n_states": 20,
+   "snapshot": "runs/hockenheim-specialist-mlp-200M-s7/agent.pkl",
+   "snapshot_sha256": "d757ba515e8a2126413fe80cf1a925f680508fc79cee411474e5b64340238893",
+   "term_step": -1,
+   "unreachable": {}
+  },
+  "S8": {
+   "braking_unreachable": [],
+   "cause": "",
+   "class0": false,
+   "lap": "outputs/p4b2/pre/starts/real_laps/S8_Hockenheim.npz",
+   "lap_sha256": "976e7eb088436a4b7fbefe2da08b2582c92e89937937ea67e76e7b3f12f655ab",
+   "n_states": 20,
+   "snapshot": "runs/hockenheim-specialist-mlp-200M-s8/agent.pkl",
+   "snapshot_sha256": "c0b1b8ec4977abf523031a6d50cfb568c696abf5f93a78aa1bf61e114bcc375b",
+   "term_step": -1,
+   "unreachable": {}
+  }
+ },
+ "braking": [
+  0,
+  1,
+  3,
+  4,
+  7,
+  8,
+  14,
+  16,
+  17
+ ],
+ "check": null,
+ "files_sha256": {
+  "outputs/p4b2/pre/starts/real_laps/S4_Hockenheim.npz": "2ebc3a53370eeedb5db3f1a0aeeab2458d3d537e45764e1d0b67141f7db70298",
+  "outputs/p4b2/pre/starts/real_laps/S5_Hockenheim.npz": "dd7885e4a2c5abfadff2f1e4a3a1930eef507ab5c1957615b2e2f8da944384a2",
+  "outputs/p4b2/pre/starts/real_laps/S6_Hockenheim.npz": "d419189825d305b7d50136013f6eccf5ed18654908ad75c3a21dbea28dcc34e0",
+  "outputs/p4b2/pre/starts/real_laps/S7_Hockenheim.npz": "28a93204bd0f851e9d9038dc69fb78425292b9c5a9c866849662a2f19eb7b492",
+  "outputs/p4b2/pre/starts/real_laps/S8_Hockenheim.npz": "976e7eb088436a4b7fbefe2da08b2582c92e89937937ea67e76e7b3f12f655ab",
+  "outputs/p4b2/pre/starts/real_states.json": "12b69bf3f93e66b477ef8239fec4dba9ea63b45ad6e73da1cea5cbd093296264",
+  "outputs/p4b2/pre/starts/real_states_index.json": "2827d9288c444ea255cde1945b5ceb5b39f247c74b95adfaaeddaa29b881e419"
+ },
+ "provenance": {
+  "argv": [
+   "--workers",
+   "3",
+   "starts"
+  ],
+  "changed_paths": [],
+  "draft": {
+   "path": "docs/prereg/p4-b2-specialists.md",
+   "sha256": "281746dcddcce011a37030481db7f437eb5a67aa592c2903548f06d53ed99f2e"
+  },
+  "end": "2026-10-27T23:06:30",
+  "environment": {
+   "XLA_FLAGS": "--xla_cpu_multi_thread_eigen=false intra_op_parallelism_threads=2",
+   "machine": "arm64",
+   "numpy": "2.5.4",
+   "python": "3.12.4",
+   "system": "Darwin"
+  },
+  "frozen_clean": true,
+  "git_head": "0749ecc94f7bcf9756ced3cdd2dd651e57198b78",
+  "inputs_sha256": {},
+  "script": "scripts/p4_b2.py",
+  "script_sha256": "f3a422b7662f370ad7f70b8115540fe2e480bcc625cfe5f9f0242f07b00fa7cf",
+  "seconds": 5.3,
+  "stage": "starts",
+  "tag_gate": null
+ },
+ "rule": "s_c - D_gap - 100 m on lap 2 (stimuli.real_state_requests), agents.real_state",
+ "status": "P4-B2 pre-tag start states (protocol exception 1, R1)"
+}

@@ -1,0 +1,910 @@
+{
+ "box_sha256": {
+  "files_equal": 85,
+  "lists": [
+   "runs/p4b2-box-sha256-0of1.txt"
+  ]
+ },
+ "boxes": [
+  {
+   "box_type": "massedcompute_A6000_plus",
+   "gpu_count": 1,
+   "gpu_model": "NVIDIA RTX A6000",
+   "gpus": 1,
+   "head": "860939a17709ffb676bcb0b228a5b731fecfc468",
+   "lanes_per_gpu": 5,
+   "path": "runs/p4b2-manifest-0of1.json",
+   "run_list_sha256": "de7f2f052a913687884bb93fbcc9dc8e96a3cf3a968b7db9b303142d186500db",
+   "sha256": "f40f596fe7c71c0466163fe1bd48a4cddd5f1a06b765c414c29b789e1e0bd989",
+   "shard": "0/1",
+   "tags": [
+    "gw3-prereg-v1",
+    "p4-b2-train-v1"
+   ],
+   "tree_clean": true,
+   "written": "2026-10-28T01:18:49Z",
+   "xla_mem_fraction": "0.18"
+  }
+ ],
+ "check": {
+  "report": [
+   "round p4b2: scripts/p4b2_runs.py: 5 runs, 5 seeds",
+   "tag p4-b2-train-v1: 860939a17709",
+   "  runs/p4b2-manifest-0of1.json: shard 0/1, 5 runs, massedcompute_A6000_plus, 1 x NVIDIA RTX A6000 (1 used, 5 lanes per GPU), HEAD 860939a17709, clean; queue 0.31 h x 1 GPUs = 0.3 GPU-h (idle included; setup and pull-back not)",
+   "runs: 5 done; 5 configs compared",
+   "note: scripts/train.py: --log-every is not recorded in train.py's config: not compared",
+   "note: 5 run name(s) do not start with p4b2-: stray directories of theirs are not looked for",
+   "OK: every run of p4b2 is done, once, at p4-b2-train-v1, with the arguments of its cmd"
+  ],
+  "returncode": 0
+ },
+ "final_timesteps": 199884800,
+ "k4_gate": {
+  "per_network": {
+   "S4": {
+    "completion": 1.0,
+    "gap": 0.03854879311109216,
+    "passes": true
+   },
+   "S5": {
+    "completion": 1.0,
+    "gap": 0.05506121323371205,
+    "passes": true
+   },
+   "S6": {
+    "completion": 1.0,
+    "gap": 0.06990483591344532,
+    "passes": true
+   },
+   "S7": {
+    "completion": 1.0,
+    "gap": 0.04780127648801247,
+    "passes": true
+   },
+   "S8": {
+    "completion": 1.0,
+    "gap": 0.04003611744359281,
+    "passes": true
+   }
+  },
+  "rule": "completion 100% and gap <= 8% (reported, decides nothing)"
+ },
+ "load": {
+  "boxes": [
+   {
+    "box_type": "massedcompute_A6000_plus",
+    "gpu_count": 1,
+    "gpus": 1,
+    "lanes_per_gpu": 5,
+    "shard": "0/1"
+   }
+  ],
+  "decided": true,
+  "deviation": null,
+  "rule": "all five at once on one GPU: GPUS=1 LANES_PER_GPU=5 (Section 2)",
+  "runs": {
+   "S4": {
+    "gpu": 0,
+    "lane": 0
+   },
+   "S5": {
+    "gpu": 0,
+    "lane": 1
+   },
+   "S6": {
+    "gpu": 0,
+    "lane": 2
+   },
+   "S7": {
+    "gpu": 0,
+    "lane": 3
+   },
+   "S8": {
+    "gpu": 0,
+    "lane": 4
+   }
+  }
+ },
+ "missing": {},
+ "networks": {
+  "S4": {
+   "agent": "S4",
+   "checkpoints": [
+    {
+     "path": "runs/hockenheim-specialist-mlp-200M-s4/ckpt/000005000000.pkl",
+     "sha256": "261c0debe88207c1077c31ea0e0e7ce39dc193f4bd97cb27b2546a96f9d7cc02"
+    },
+    {
+     "path": "runs/hockenheim-specialist-mlp-200M-s4/ckpt/000006394020.pkl",
+     "sha256": "fdf973d672ab32de0c3e90d8d24a29c90c404696828ff89323167dd84e12b3f0"
+    },
+    {
+     "path": "runs/hockenheim-specialist-mlp-200M-s4/ckpt/000008176698.pkl",
+     "sha256": "003fa70202884cc3ab3e88ed6042c41d3a77790829fbb1304bcf046b311b2cd5"
+    },
+    {
+     "path": "runs/hockenheim-specialist-mlp-200M-s4/ckpt/000010456395.pkl",
+     "sha256": "c3e443ebef9b7cdab7c0bf378f036f56fe778c370e48fad140f853f04e42409d"
+    },
+    {
+     "path": "runs/hockenheim-specialist-mlp-200M-s4/ckpt/000013371680.pkl",
+     "sha256": "5f0c9d056f77892fe9415c1e32421b8e746161036f59b54af807a1f01127511b"
+    },
+    {
+     "path": "runs/hockenheim-specialist-mlp-200M-s4/ckpt/000017099759.pkl",
+     "sha256": "d378f718e4dcaaecf601c8a0e839b33d2a797d08fffa39863db4187a1637c49a"
+    },
+    {
+     "path": "runs/hockenheim-specialist-mlp-200M-s4/ckpt/000021867241.pkl",
+     "sha256": "43bafc171597811be2eaaa63d0ce2ad81ad793139967535dbc1e7a12c0256a6a"
+    },
+    {
+     "path": "runs/hockenheim-specialist-mlp-200M-s4/ckpt/000027963916.pkl",
+     "sha256": "9d8554e275a76f8ef6dfc20f98df9cf07e07323dc3eab57a666bd9fd3a5dede7"
+    },
+    {
+     "path": "runs/hockenheim-specialist-mlp-200M-s4/ckpt/000035760369.pkl",
+     "sha256": "6ef65332aa04d73e150cd79e15320c0b741ff04b240a7bf963f3291984f35ff0"
+    },
+    {
+     "path": "runs/hockenheim-specialist-mlp-200M-s4/ckpt/000045730505.pkl",
+     "sha256": "53cbbd78ae5f8a246decb73ffb38243b544be9f7b4272eaa20f525415fe88da1"
+    },
+    {
+     "path": "runs/hockenheim-specialist-mlp-200M-s4/ckpt/000058480354.pkl",
+     "sha256": "d881f9b10f04e79db879c48941c07e3190d56c4e5fc200f458882671031cf3d4"
+    },
+    {
+     "path": "runs/hockenheim-specialist-mlp-200M-s4/ckpt/000074784913.pkl",
+     "sha256": "567840e6ebdc1874fb38cb1eda4e0d818e16be332e4078c9ea5586a26248e6f8"
+    },
+    {
+     "path": "runs/hockenheim-specialist-mlp-200M-s4/ckpt/000095635249.pkl",
+     "sha256": "3aabd723e00f357d02bb4ad07c19b855fcb8e6187d0f5743e7dc4ca3b3937985"
+    },
+    {
+     "path": "runs/hockenheim-specialist-mlp-200M-s4/ckpt/000122298743.pkl",
+     "sha256": "ee31cc998a2b618fd5b3bf9e2a24aedc465f2410976dee4a0c3fdb7d2e63e62d"
+    },
+    {
+     "path": "runs/hockenheim-specialist-mlp-200M-s4/ckpt/000156396127.pkl",
+     "sha256": "0d21b06fc8875d961e4c4bd1fbbb3e2ecdbdd2c533087234009125cb5f18f5fd"
+    },
+    {
+     "path": "runs/hockenheim-specialist-mlp-200M-s4/ckpt/000199884800.pkl",
+     "sha256": "d339a198dc7b082cdf1a59222d046ac7d8cc06026042dc253351358095c5499a"
+    }
+   ],
+   "config": {
+    "env": {
+     "action_cost": 0.02,
+     "dt": 0.05,
+     "edge_margin": 1.0,
+     "obs_noise": 0.0,
+     "progress_scale": 10.0,
+     "slow_speed": 2.0,
+     "slow_time": 2.0,
+     "strip_tail": 520.0,
+     "substeps": 10,
+     "window_steps": 1200
+    },
+    "path": "runs/hockenheim-specialist-mlp-200M-s4/config.json",
+    "ppo": {
+     "activation": "tanh",
+     "actor_width": 256,
+     "anneal_lr": true,
+     "clip_eps": 0.2,
+     "clip_value": true,
+     "critic_width": 256,
+     "ensemble_heads": 0,
+     "ent_coef": 0.001,
+     "ent_coef_final": 0.0,
+     "gae_lambda": 0.95,
+     "gamma": 0.995,
+     "log_std_init": -0.5,
+     "lr": 0.0003,
+     "max_grad_norm": 0.5,
+     "mlp_layers": 3,
+     "network": "mlp",
+     "normalize_obs": true,
+     "normalize_reward": true,
+     "num_envs": 2048,
+     "num_minibatches": 8,
+     "num_steps": 64,
+     "obs_noise": 0.0,
+     "total_timesteps": 200000000,
+     "update_epochs": 4,
+     "vf_coef": 0.5
+    },
+    "seed": 4,
+    "sha256": "547c63b98a1c1bf5eeef748e39d0a64cd764091b956bbcd1cd051c086e3e54de",
+    "tracks": [
+     "Hockenheim"
+    ]
+   },
+   "eval": {
+    "completion": 1.0,
+    "gap": 0.03854879311109216,
+    "k4_gate": true,
+    "median_lap_s": 74.02969914367421,
+    "ocp_lap_s": 71.28186911845494,
+    "path": "runs/hockenheim-specialist-mlp-200M-s4/eval.json",
+    "sha256": "c1f1c724fc3e1ac12795cdd66f68560bbc49c244db6b5fc71da1d72256e07740"
+   },
+   "final": {
+    "forward_pass_ok": true,
+    "log_std": [
+     -3.7540767192840576,
+     -2.991149663925171
+    ],
+    "obs_rms_sha256": "1dcfd451a0ffc97c8f9732b0710e7593fa11e8b5f097052015b91c1d5f794554",
+    "path": "runs/hockenheim-specialist-mlp-200M-s4/agent.pkl",
+    "sha256": "dcb440b09afa30db6ba08db120359ecd378fd511f1ae4f60092054b00718ee7a",
+    "size_bytes": 1515976,
+    "timesteps": 199884800
+   },
+   "first_attempt_log": null,
+   "log": {
+    "path": "runs/hockenheim-specialist-mlp-200M-s4.log",
+    "sha256": "7c2fa1a0c27bc04bdb15baa4769033f7631ede0b095871c0f425af381ba014dd"
+   },
+   "name": "hockenheim-specialist-mlp-200M-s4",
+   "queue": {
+    "end": "2026-10-28T01:18:45Z",
+    "gpu": 0,
+    "lane": 0,
+    "start": "2026-10-28T01:00:29Z"
+   },
+   "run": "runs/hockenheim-specialist-mlp-200M-s4",
+   "seed": 4,
+   "status": "done"
+  },
+  "S5": {
+   "agent": "S5",
+   "checkpoints": [
+    {
+     "path": "runs/hockenheim-specialist-mlp-200M-s5/ckpt/000005000000.pkl",
+     "sha256": "0a1135858dbc6a6ac3d1ad8e9cc310ed4d03e0a7bb2ab45fb0d8db44bfd5781a"
+    },
+    {
+     "path": "runs/hockenheim-specialist-mlp-200M-s5/ckpt/000006394020.pkl",
+     "sha256": "5d139483e99445e8e225280e06d600c0afe9ec3443056d27f0de302f50c7bd86"
+    },
+    {
+     "path": "runs/hockenheim-specialist-mlp-200M-s5/ckpt/000008176698.pkl",
+     "sha256": "f07d0b7a5f16bf8a97281feb01ef4e0d9d0168adf68b7e804fb0c569edc1b88f"
+    },
+    {
+     "path": "runs/hockenheim-specialist-mlp-200M-s5/ckpt/000010456395.pkl",
+     "sha256": "741e2fe65eb0e30ead36eb4e5aba059f674e7e1c45276fe0edef4100b0306d99"
+    },
+    {
+     "path": "runs/hockenheim-specialist-mlp-200M-s5/ckpt/000013371680.pkl",
+     "sha256": "c500b26dec674b29ff27005f6b857e9f1455f81da77539d8a939f6c97be5dbdd"
+    },
+    {
+     "path": "runs/hockenheim-specialist-mlp-200M-s5/ckpt/000017099759.pkl",
+     "sha256": "5fda47b72b971ed21bbbb99976fa470bdc0689d0cb3b2ceb84107fd7795ca809"
+    },
+    {
+     "path": "runs/hockenheim-specialist-mlp-200M-s5/ckpt/000021867241.pkl",
+     "sha256": "fa9aca9c3451a8774378f78ad9c8beb2c676eee1186ccf51be583443f915e0fb"
+    },
+    {
+     "path": "runs/hockenheim-specialist-mlp-200M-s5/ckpt/000027963916.pkl",
+     "sha256": "4fb8e3d694e9198be4d057f1f23e0127ff91c0635fd244df7093a26d7a7918a4"
+    },
+    {
+     "path": "runs/hockenheim-specialist-mlp-200M-s5/ckpt/000035760369.pkl",
+     "sha256": "e809ee824b70dd8b9f4475019759251f6e6debbf9a5b37f49e17a677a93b0144"
+    },
+    {
+     "path": "runs/hockenheim-specialist-mlp-200M-s5/ckpt/000045730505.pkl",
+     "sha256": "0e276a3b09c660eb023d86c7ba07e5fd9e476d89f5e4f00e35a5ef34728c4af3"
+    },
+    {
+     "path": "runs/hockenheim-specialist-mlp-200M-s5/ckpt/000058480354.pkl",
+     "sha256": "3c93e9b5933b5b9c6a9ed1b4f926b572ef109a1d1f71af35435163c2604d2335"
+    },
+    {
+     "path": "runs/hockenheim-specialist-mlp-200M-s5/ckpt/000074784913.pkl",
+     "sha256": "c9a97859fc47838dbef7b661120625055d37f354f60c9ceb1507629a84dd9ea4"
+    },
+    {
+     "path": "runs/hockenheim-specialist-mlp-200M-s5/ckpt/000095635249.pkl",
+     "sha256": "fadc4fbbfc834242846916f5c1eb5859c8316f713be3054d62131a8591d3e348"
+    },
+    {
+     "path": "runs/hockenheim-specialist-mlp-200M-s5/ckpt/000122298743.pkl",
+     "sha256": "0d9840de30df1ce75340bcbec762a5a14b1edd1530517531d3e5d12b1cc89114"
+    },
+    {
+     "path": "runs/hockenheim-specialist-mlp-200M-s5/ckpt/000156396127.pkl",
+     "sha256": "4e42cddc5081e63a74401c4aa71c436419e3b8d5d2d96fcff4c5b19a2d75bb40"
+    },
+    {
+     "path": "runs/hockenheim-specialist-mlp-200M-s5/ckpt/000199884800.pkl",
+     "sha256": "5d2eb8287d193622dca38a420af6f9b2548be78535d564c33713b3459db32620"
+    }
+   ],
+   "config": {
+    "env": {
+     "action_cost": 0.02,
+     "dt": 0.05,
+     "edge_margin": 1.0,
+     "obs_noise": 0.0,
+     "progress_scale": 10.0,
+     "slow_speed": 2.0,
+     "slow_time": 2.0,
+     "strip_tail": 520.0,
+     "substeps": 10,
+     "window_steps": 1200
+    },
+    "path": "runs/hockenheim-specialist-mlp-200M-s5/config.json",
+    "ppo": {
+     "activation": "tanh",
+     "actor_width": 256,
+     "anneal_lr": true,
+     "clip_eps": 0.2,
+     "clip_value": true,
+     "critic_width": 256,
+     "ensemble_heads": 0,
+     "ent_coef": 0.001,
+     "ent_coef_final": 0.0,
+     "gae_lambda": 0.95,
+     "gamma": 0.995,
+     "log_std_init": -0.5,
+     "lr": 0.0003,
+     "max_grad_norm": 0.5,
+     "mlp_layers": 3,
+     "network": "mlp",
+     "normalize_obs": true,
+     "normalize_reward": true,
+     "num_envs": 2048,
+     "num_minibatches": 8,
+     "num_steps": 64,
+     "obs_noise": 0.0,
+     "total_timesteps": 200000000,
+     "update_epochs": 4,
+     "vf_coef": 0.5
+    },
+    "seed": 5,
+    "sha256": "08de8ec844f176310dde8de88a9f359ee8a738f77d466a0c65e891220dbdd156",
+    "tracks": [
+     "Hockenheim"
+    ]
+   },
+   "eval": {
+    "completion": 1.0,
+    "gap": 0.05506121323371205,
+    "k4_gate": true,
+    "median_lap_s": 75.20673531368374,
+    "ocp_lap_s": 71.28186911845494,
+    "path": "runs/hockenheim-specialist-mlp-200M-s5/eval.json",
+    "sha256": "fe6f58b45e3bfe5fd758f6ccc4f5ac21ba5013d95a9158146e64630033256be2"
+   },
+   "final": {
+    "forward_pass_ok": true,
+    "log_std": [
+     -3.72780442237854,
+     -2.8478260040283203
+    ],
+    "obs_rms_sha256": "fb71de7c981904d6ad573a0f41faa00c6826ae4966707aca951d8971ce17aac6",
+    "path": "runs/hockenheim-specialist-mlp-200M-s5/agent.pkl",
+    "sha256": "140c12ec8e7313c7b2a182240a2efddf11533ec96de99dfa5dce5f7c52d8e3f5",
+    "size_bytes": 1515976,
+    "timesteps": 199884800
+   },
+   "first_attempt_log": null,
+   "log": {
+    "path": "runs/hockenheim-specialist-mlp-200M-s5.log",
+    "sha256": "6abba16cd5a93c0b932c75b33eb35486c951ff7912ba8a28562b4261ae6fccd3"
+   },
+   "name": "hockenheim-specialist-mlp-200M-s5",
+   "queue": {
+    "end": "2026-10-28T01:18:46Z",
+    "gpu": 0,
+    "lane": 1,
+    "start": "2026-10-28T01:00:29Z"
+   },
+   "run": "runs/hockenheim-specialist-mlp-200M-s5",
+   "seed": 5,
+   "status": "done"
+  },
+  "S6": {
+   "agent": "S6",
+   "checkpoints": [
+    {
+     "path": "runs/hockenheim-specialist-mlp-200M-s6/ckpt/000005000000.pkl",
+     "sha256": "38aac54391773bed8d6fbed0c72c43f1e2ad4b97ad41e92c470a4b6b4bc1b0a3"
+    },
+    {
+     "path": "runs/hockenheim-specialist-mlp-200M-s6/ckpt/000006394020.pkl",
+     "sha256": "1c6b03efddef4a1365258341c36363a668056c79f6362837ee633ab630e407d4"
+    },
+    {
+     "path": "runs/hockenheim-specialist-mlp-200M-s6/ckpt/000008176698.pkl",
+     "sha256": "5b3eb478314d20007b6a96e87b5481e3086bfa7efd639ebd09976da4293d8495"
+    },
+    {
+     "path": "runs/hockenheim-specialist-mlp-200M-s6/ckpt/000010456395.pkl",
+     "sha256": "7ee3dfd4b5cb5cc4f9442c657ce56f8682fed335f99cf01f920fa50526e244a0"
+    },
+    {
+     "path": "runs/hockenheim-specialist-mlp-200M-s6/ckpt/000013371680.pkl",
+     "sha256": "3c4902041112af4a38554f55be82536b4bca0239e04b5442f5efaf7a2e8fe9fe"
+    },
+    {
+     "path": "runs/hockenheim-specialist-mlp-200M-s6/ckpt/000017099759.pkl",
+     "sha256": "bf74ba1d35225e8ad802d8994f4fdffbd2d7dd55eadcc2d02e160535863f999e"
+    },
+    {
+     "path": "runs/hockenheim-specialist-mlp-200M-s6/ckpt/000021867241.pkl",
+     "sha256": "509ee856a3474698c232a83eb865a5e64f19e2bd8e6d988876a6609e40153b68"
+    },
+    {
+     "path": "runs/hockenheim-specialist-mlp-200M-s6/ckpt/000027963916.pkl",
+     "sha256": "411a78d83d5b4931ec23961ff03b80f9a8864071a6eb108ebe1445d451546461"
+    },
+    {
+     "path": "runs/hockenheim-specialist-mlp-200M-s6/ckpt/000035760369.pkl",
+     "sha256": "7c037410cb289625c54bdd4b0fdc61cacdad28dc1d75a09bac17bdd131ad2d85"
+    },
+    {
+     "path": "runs/hockenheim-specialist-mlp-200M-s6/ckpt/000045730505.pkl",
+     "sha256": "b782e26eb896ebd131c2acf954e0908e1517c0167ad0d35daa25574198bc572f"
+    },
+    {
+     "path": "runs/hockenheim-specialist-mlp-200M-s6/ckpt/000058480354.pkl",
+     "sha256": "34945c7bce51c1b22c043347fd7ee885cf75193cdc09873332ceb82ec20a215f"
+    },
+    {
+     "path": "runs/hockenheim-specialist-mlp-200M-s6/ckpt/000074784913.pkl",
+     "sha256": "7d0d4cad8ac623b1db377dcdc41e08317c3791b1a0f7a541a17c27b7aacd0e83"
+    },
+    {
+     "path": "runs/hockenheim-specialist-mlp-200M-s6/ckpt/000095635249.pkl",
+     "sha256": "1f0b40a471256ebe8f2d43db8fdd8b85e13f5c9235b374b1be613fddaf2d3f5b"
+    },
+    {
+     "path": "runs/hockenheim-specialist-mlp-200M-s6/ckpt/000122298743.pkl",
+     "sha256": "0acadbf8ae3c811ed20f4a6ee7d0b25dbd1c92c21ca42697d86566f5f9168cb2"
+    },
+    {
+     "path": "runs/hockenheim-specialist-mlp-200M-s6/ckpt/000156396127.pkl",
+     "sha256": "e36dceb3e8b7e577fa5125c03deab438f5f917319a4b5da4f3e38f4194e3d3f2"
+    },
+    {
+     "path": "runs/hockenheim-specialist-mlp-200M-s6/ckpt/000199884800.pkl",
+     "sha256": "cd4efd12f87a625a0853318350486969dc6e237f6cfba521600be987bcb4ead6"
+    }
+   ],
+   "config": {
+    "env": {
+     "action_cost": 0.02,
+     "dt": 0.05,
+     "edge_margin": 1.0,
+     "obs_noise": 0.0,
+     "progress_scale": 10.0,
+     "slow_speed": 2.0,
+     "slow_time": 2.0,
+     "strip_tail": 520.0,
+     "substeps": 10,
+     "window_steps": 1200
+    },
+    "path": "runs/hockenheim-specialist-mlp-200M-s6/config.json",
+    "ppo": {
+     "activation": "tanh",
+     "actor_width": 256,
+     "anneal_lr": true,
+     "clip_eps": 0.2,
+     "clip_value": true,
+     "critic_width": 256,
+     "ensemble_heads": 0,
+     "ent_coef": 0.001,
+     "ent_coef_final": 0.0,
+     "gae_lambda": 0.95,
+     "gamma": 0.995,
+     "log_std_init": -0.5,
+     "lr": 0.0003,
+     "max_grad_norm": 0.5,
+     "mlp_layers": 3,
+     "network": "mlp",
+     "normalize_obs": true,
+     "normalize_reward": true,
+     "num_envs": 2048,
+     "num_minibatches": 8,
+     "num_steps": 64,
+     "obs_noise": 0.0,
+     "total_timesteps": 200000000,
+     "update_epochs": 4,
+     "vf_coef": 0.5
+    },
+    "seed": 6,
+    "sha256": "4b8a01feab45c42b5547444b61af5424610544c9c8b2e62541173011ef89ec7b",
+    "tracks": [
+     "Hockenheim"
+    ]
+   },
+   "eval": {
+    "completion": 1.0,
+    "gap": 0.06990483591344532,
+    "k4_gate": true,
+    "median_lap_s": 76.26481648278421,
+    "ocp_lap_s": 71.28186911845494,
+    "path": "runs/hockenheim-specialist-mlp-200M-s6/eval.json",
+    "sha256": "3ce86e3a029e14a4681c62c15f4fb6ec5e7e345f8bf9948892057bfce8cce82b"
+   },
+   "final": {
+    "forward_pass_ok": true,
+    "log_std": [
+     -3.6927387714385986,
+     -2.9142987728118896
+    ],
+    "obs_rms_sha256": "bdfb068cc9e0552c13ff3822229f441edb9762e2f76ca233c63b79aa68908ef6",
+    "path": "runs/hockenheim-specialist-mlp-200M-s6/agent.pkl",
+    "sha256": "3de10c78b67c1b220d46ba2ac656b8b0f3fae4dc4809776e5cbf6e590064432c",
+    "size_bytes": 1515976,
+    "timesteps": 199884800
+   },
+   "first_attempt_log": null,
+   "log": {
+    "path": "runs/hockenheim-specialist-mlp-200M-s6.log",
+    "sha256": "680c8cdc8fd4b7737022cebd4bf6bbf183971bf6610e49608d1a5d28c52491b8"
+   },
+   "name": "hockenheim-specialist-mlp-200M-s6",
+   "queue": {
+    "end": "2026-10-28T01:18:45Z",
+    "gpu": 0,
+    "lane": 2,
+    "start": "2026-10-28T01:00:29Z"
+   },
+   "run": "runs/hockenheim-specialist-mlp-200M-s6",
+   "seed": 6,
+   "status": "done"
+  },
+  "S7": {
+   "agent": "S7",
+   "checkpoints": [
+    {
+     "path": "runs/hockenheim-specialist-mlp-200M-s7/ckpt/000005000000.pkl",
+     "sha256": "771723accfb6b2511eeacd7ac2df79ccf8fa319dfd750435169ba71f3bb2655a"
+    },
+    {
+     "path": "runs/hockenheim-specialist-mlp-200M-s7/ckpt/000006394020.pkl",
+     "sha256": "58cb53ab56ae6b0cc72a171b38d45801aa84fdd788ba16c97788ee05b4e644de"
+    },
+    {
+     "path": "runs/hockenheim-specialist-mlp-200M-s7/ckpt/000008176698.pkl",
+     "sha256": "b77a0d8b1fa290036b5f065f06e9959134ce565592f4751012b75e5446def762"
+    },
+    {
+     "path": "runs/hockenheim-specialist-mlp-200M-s7/ckpt/000010456395.pkl",
+     "sha256": "ddabce7f2ff5b6c3ce84eb11b553f5447e5c489afdf79bf25aa563982f18b95a"
+    },
+    {
+     "path": "runs/hockenheim-specialist-mlp-200M-s7/ckpt/000013371680.pkl",
+     "sha256": "04813b3eb867e70fc6508bf47f90989bc7554d9fb9fae5eadb1850e9e084f7ce"
+    },
+    {
+     "path": "runs/hockenheim-specialist-mlp-200M-s7/ckpt/000017099759.pkl",
+     "sha256": "309e0fa81ea721f48e85f09b4f04778e234ca45e5972ba972e358e641f967789"
+    },
+    {
+     "path": "runs/hockenheim-specialist-mlp-200M-s7/ckpt/000021867241.pkl",
+     "sha256": "1757e3c84f014cf0ee20d5f851553fc8057d620f865899beecdb326900b1b0a5"
+    },
+    {
+     "path": "runs/hockenheim-specialist-mlp-200M-s7/ckpt/000027963916.pkl",
+     "sha256": "f069a0c2adda43ba0b70688ecdaf2122dfc830e27bdadb408d1bc51f0e1a536d"
+    },
+    {
+     "path": "runs/hockenheim-specialist-mlp-200M-s7/ckpt/000035760369.pkl",
+     "sha256": "b16f5dc5c10c32f08509bba7f434d368fd2365e9f99eb178e35174581ce1444c"
+    },
+    {
+     "path": "runs/hockenheim-specialist-mlp-200M-s7/ckpt/000045730505.pkl",
+     "sha256": "f0efcbd8415e85a47cbb5381f56efec3b979abb0059e7a45e56f111cec54425b"
+    },
+    {
+     "path": "runs/hockenheim-specialist-mlp-200M-s7/ckpt/000058480354.pkl",
+     "sha256": "77bb81b55df2308651fca5117e6ef07025b24ae03d01950ea914c6e3884754d0"
+    },
+    {
+     "path": "runs/hockenheim-specialist-mlp-200M-s7/ckpt/000074784913.pkl",
+     "sha256": "fba5da6608145b2d20d5ecb7cac61a05e27bd7b2da608296c2b12d8d2e89f6a7"
+    },
+    {
+     "path": "runs/hockenheim-specialist-mlp-200M-s7/ckpt/000095635249.pkl",
+     "sha256": "c3f8c0fd64604a474104328f6346013f11005aaa06417bc65ea923cfd59f96f9"
+    },
+    {
+     "path": "runs/hockenheim-specialist-mlp-200M-s7/ckpt/000122298743.pkl",
+     "sha256": "db10e9a356c1bc7a47dcf77bec534bf0e9d158fc299fb4cf3eaba5f584d443cc"
+    },
+    {
+     "path": "runs/hockenheim-specialist-mlp-200M-s7/ckpt/000156396127.pkl",
+     "sha256": "7261d1d54e85c1c3aa2e1445f06b56b5a5257fbc0927d637646037bbc12c2993"
+    },
+    {
+     "path": "runs/hockenheim-specialist-mlp-200M-s7/ckpt/000199884800.pkl",
+     "sha256": "b14957a9c30e3e0c58ebce0e0552a468f8bd83ebcf2119aa9427a52428feb923"
+    }
+   ],
+   "config": {
+    "env": {
+     "action_cost": 0.02,
+     "dt": 0.05,
+     "edge_margin": 1.0,
+     "obs_noise": 0.0,
+     "progress_scale": 10.0,
+     "slow_speed": 2.0,
+     "slow_time": 2.0,
+     "strip_tail": 520.0,
+     "substeps": 10,
+     "window_steps": 1200
+    },
+    "path": "runs/hockenheim-specialist-mlp-200M-s7/config.json",
+    "ppo": {
+     "activation": "tanh",
+     "actor_width": 256,
+     "anneal_lr": true,
+     "clip_eps": 0.2,
+     "clip_value": true,
+     "critic_width": 256,
+     "ensemble_heads": 0,
+     "ent_coef": 0.001,
+     "ent_coef_final": 0.0,
+     "gae_lambda": 0.95,
+     "gamma": 0.995,
+     "log_std_init": -0.5,
+     "lr": 0.0003,
+     "max_grad_norm": 0.5,
+     "mlp_layers": 3,
+     "network": "mlp",
+     "normalize_obs": true,
+     "normalize_reward": true,
+     "num_envs": 2048,
+     "num_minibatches": 8,
+     "num_steps": 64,
+     "obs_noise": 0.0,
+     "total_timesteps": 200000000,
+     "update_epochs": 4,
+     "vf_coef": 0.5
+    },
+    "seed": 7,
+    "sha256": "4dea7305dc01a09ba3530306c588bae0ab019cf4ae2419f3928dbff6fa1c6095",
+    "tracks": [
+     "Hockenheim"
+    ]
+   },
+   "eval": {
+    "completion": 1.0,
+    "gap": 0.04780127648801247,
+    "k4_gate": true,
+    "median_lap_s": 74.68923345276852,
+    "ocp_lap_s": 71.28186911845494,
+    "path": "runs/hockenheim-specialist-mlp-200M-s7/eval.json",
+    "sha256": "507e6eafda3237fdb9e163cf171f32871de42db0f282f351925820425c35a6ad"
+   },
+   "final": {
+    "forward_pass_ok": true,
+    "log_std": [
+     -3.6896321773529053,
+     -2.906256914138794
+    ],
+    "obs_rms_sha256": "cf43a03d2bab696a8aecfd4b7ade84f23fadf2d964f9c5bccf0311ba4ea60055",
+    "path": "runs/hockenheim-specialist-mlp-200M-s7/agent.pkl",
+    "sha256": "d757ba515e8a2126413fe80cf1a925f680508fc79cee411474e5b64340238893",
+    "size_bytes": 1515976,
+    "timesteps": 199884800
+   },
+   "first_attempt_log": null,
+   "log": {
+    "path": "runs/hockenheim-specialist-mlp-200M-s7.log",
+    "sha256": "47f340b2966945370645d8c5426c96b3eff2826c03fadb9d3e6aef504da984f1"
+   },
+   "name": "hockenheim-specialist-mlp-200M-s7",
+   "queue": {
+    "end": "2026-10-28T01:18:48Z",
+    "gpu": 0,
+    "lane": 3,
+    "start": "2026-10-28T01:00:29Z"
+   },
+   "run": "runs/hockenheim-specialist-mlp-200M-s7",
+   "seed": 7,
+   "status": "done"
+  },
+  "S8": {
+   "agent": "S8",
+   "checkpoints": [
+    {
+     "path": "runs/hockenheim-specialist-mlp-200M-s8/ckpt/000005000000.pkl",
+     "sha256": "6b481245985ffdd72a317ac2f92acc133648d514a40ca04961908c188b7b917f"
+    },
+    {
+     "path": "runs/hockenheim-specialist-mlp-200M-s8/ckpt/000006394020.pkl",
+     "sha256": "ff8cda661810c15299aede7fc218fac51934261b8cb0c2bb3d30ccb0ed36766f"
+    },
+    {
+     "path": "runs/hockenheim-specialist-mlp-200M-s8/ckpt/000008176698.pkl",
+     "sha256": "aa57c172570a40fd2d2fb5e2e0c96c920673c872650c78cbe9b0771cf47ba1dd"
+    },
+    {
+     "path": "runs/hockenheim-specialist-mlp-200M-s8/ckpt/000010456395.pkl",
+     "sha256": "34e415117d66718dbc9194c5bb1a09391053505fc98c97e066960153fb125157"
+    },
+    {
+     "path": "runs/hockenheim-specialist-mlp-200M-s8/ckpt/000013371680.pkl",
+     "sha256": "1a2ee941a7e73e13672df8798a6de27d8285c62b2b80738adc80d9be355e94eb"
+    },
+    {
+     "path": "runs/hockenheim-specialist-mlp-200M-s8/ckpt/000017099759.pkl",
+     "sha256": "35d767aaf8d9b0baa929fd472713d5e9ec3d8ee7d47efd0b1046e48f00331127"
+    },
+    {
+     "path": "runs/hockenheim-specialist-mlp-200M-s8/ckpt/000021867241.pkl",
+     "sha256": "a90f52f8f8c1de3f6aff3e3f2a7446f8572e9ed3e6e754fc15c6ee9d1295502d"
+    },
+    {
+     "path": "runs/hockenheim-specialist-mlp-200M-s8/ckpt/000027963916.pkl",
+     "sha256": "5bddc2efb788ba18d8a7f364803d8292d7bb84b968530d6c7f7fc03f3e6b0569"
+    },
+    {
+     "path": "runs/hockenheim-specialist-mlp-200M-s8/ckpt/000035760369.pkl",
+     "sha256": "452504dbf803c0d58b193398197fbe1f5e29945b8fb7b284f613505154b0d509"
+    },
+    {
+     "path": "runs/hockenheim-specialist-mlp-200M-s8/ckpt/000045730505.pkl",
+     "sha256": "e9d5dcf6dac3063bc1e5d863484eee59f7627ae8a247a2d4bcbcdda8d3874605"
+    },
+    {
+     "path": "runs/hockenheim-specialist-mlp-200M-s8/ckpt/000058480354.pkl",
+     "sha256": "a97f908a7059d61002d4d3daa2e4384e301fdeac8eab376d23d83f65e1fe1e2c"
+    },
+    {
+     "path": "runs/hockenheim-specialist-mlp-200M-s8/ckpt/000074784913.pkl",
+     "sha256": "026ead488ca5fc155e0c18eb603e6eeea156057a67e5d3add1bc1afc682084cf"
+    },
+    {
+     "path": "runs/hockenheim-specialist-mlp-200M-s8/ckpt/000095635249.pkl",
+     "sha256": "dce69a17e70b77a91eab2cad6c0c733c8913b7409abf8f5ef502a4cf8e80dd5e"
+    },
+    {
+     "path": "runs/hockenheim-specialist-mlp-200M-s8/ckpt/000122298743.pkl",
+     "sha256": "e1924e522d24b40caf0d33f0033ccc50a622b88bdb55a6d00e17f0d017279190"
+    },
+    {
+     "path": "runs/hockenheim-specialist-mlp-200M-s8/ckpt/000156396127.pkl",
+     "sha256": "fe3130157b567b0bed35a0df5c37672983bbccf382c0a0ff14aade7c41d98a67"
+    },
+    {
+     "path": "runs/hockenheim-specialist-mlp-200M-s8/ckpt/000199884800.pkl",
+     "sha256": "72df0dd059d206d3f6c041178ed143d9ae118e88dee62efb49025899a507e811"
+    }
+   ],
+   "config": {
+    "env": {
+     "action_cost": 0.02,
+     "dt": 0.05,
+     "edge_margin": 1.0,
+     "obs_noise": 0.0,
+     "progress_scale": 10.0,
+     "slow_speed": 2.0,
+     "slow_time": 2.0,
+     "strip_tail": 520.0,
+     "substeps": 10,
+     "window_steps": 1200
+    },
+    "path": "runs/hockenheim-specialist-mlp-200M-s8/config.json",
+    "ppo": {
+     "activation": "tanh",
+     "actor_width": 256,
+     "anneal_lr": true,
+     "clip_eps": 0.2,
+     "clip_value": true,
+     "critic_width": 256,
+     "ensemble_heads": 0,
+     "ent_coef": 0.001,
+     "ent_coef_final": 0.0,
+     "gae_lambda": 0.95,
+     "gamma": 0.995,
+     "log_std_init": -0.5,
+     "lr": 0.0003,
+     "max_grad_norm": 0.5,
+     "mlp_layers": 3,
+     "network": "mlp",
+     "normalize_obs": true,
+     "normalize_reward": true,
+     "num_envs": 2048,
+     "num_minibatches": 8,
+     "num_steps": 64,
+     "obs_noise": 0.0,
+     "total_timesteps": 200000000,
+     "update_epochs": 4,
+     "vf_coef": 0.5
+    },
+    "seed": 8,
+    "sha256": "5f40d8bcabccf2b59bf9224c67aaa3fd8f6419c6967747b143c3ebefa81fd25d",
+    "tracks": [
+     "Hockenheim"
+    ]
+   },
+   "eval": {
+    "completion": 1.0,
+    "gap": 0.04003611744359281,
+    "k4_gate": true,
+    "median_lap_s": 74.13571840208022,
+    "ocp_lap_s": 71.28186911845494,
+    "path": "runs/hockenheim-specialist-mlp-200M-s8/eval.json",
+    "sha256": "ebc046b2f0e0d7dd049885bd738c5ec00880c4129887a6039fd01d2c5e14c0d4"
+   },
+   "final": {
+    "forward_pass_ok": true,
+    "log_std": [
+     -3.8047614097595215,
+     -3.020850658416748
+    ],
+    "obs_rms_sha256": "ecc4076c470fd6a0eec29390d6b17802a6e235dffb3d8e40c7303ec5ce80dda9",
+    "path": "runs/hockenheim-specialist-mlp-200M-s8/agent.pkl",
+    "sha256": "c0b1b8ec4977abf523031a6d50cfb568c696abf5f93a78aa1bf61e114bcc375b",
+    "size_bytes": 1515976,
+    "timesteps": 199884800
+   },
+   "first_attempt_log": null,
+   "log": {
+    "path": "runs/hockenheim-specialist-mlp-200M-s8.log",
+    "sha256": "eb3c2d037b3ba3e57513ecedb7eab12005ab8ca33e0ba4c0c5fdaec1922b9380"
+   },
+   "name": "hockenheim-specialist-mlp-200M-s8",
+   "queue": {
+    "end": "2026-10-28T01:18:47Z",
+    "gpu": 0,
+    "lane": 4,
+    "start": "2026-10-28T01:00:29Z"
+   },
+   "run": "runs/hockenheim-specialist-mlp-200M-s8",
+   "seed": 8,
+   "status": "done"
+  }
+ },
+ "provenance": {
+  "argv": [
+   "manifest"
+  ],
+  "changed_paths": [],
+  "draft": {
+   "path": "docs/prereg/p4-b2-specialists.md",
+   "sha256": "281746dcddcce011a37030481db7f437eb5a67aa592c2903548f06d53ed99f2e"
+  },
+  "end": "2026-10-27T23:05:33",
+  "environment": {
+   "XLA_FLAGS": "--xla_cpu_multi_thread_eigen=false intra_op_parallelism_threads=2",
+   "machine": "arm64",
+   "numpy": "2.5.4",
+   "python": "3.12.4",
+   "system": "Darwin"
+  },
+  "frozen_clean": true,
+  "git_head": "0749ecc94f7bcf9756ced3cdd2dd651e57198b78",
+  "inputs_sha256": {
+   "scripts/p4b2_runs.py": "41420ca3c2810d061cb9093e31d25f2b7df728eb99e165085d0eb59ed6266d92"
+  },
+  "script": "scripts/p4_b2.py",
+  "script_sha256": "f3a422b7662f370ad7f70b8115540fe2e480bcc625cfe5f9f0242f07b00fa7cf",
+  "seconds": 1.9,
+  "stage": "manifest",
+  "tag_gate": null
+ },
+ "round": "p4b2",
+ "round_files_sha256": {
+  "runs/p4b2-box-sha256-0of1.txt": "87b01a50664ee4b1609aaec131f1a9384d322863f8b3109481fd3dc3674dffba",
+  "runs/p4b2-manifest-0of1.json": "f40f596fe7c71c0466163fe1bd48a4cddd5f1a06b765c414c29b789e1e0bd989",
+  "runs/p4b2-queue-0of1.log": "fad04cf498f7c51be8d119cb69593397ace083c18c6d1c7c45e470788045ec07",
+  "runs/p4b2-status-0of1.tsv": "ab34451931d9b1fb6a41c5764ed940d6e36fa749a6175d5adb2de979d134f80a"
+ },
+ "runs_script": "scripts/p4b2_runs.py",
+ "status": "P4-B2 pre-registration DRAFT: the five runs as trained; no S4-S8 network has seen a protocol stimulus",
+ "train_commit": "860939a17709ffb676bcb0b228a5b731fecfc468",
+ "train_tag": "p4-b2-train-v1"
+}

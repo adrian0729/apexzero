@@ -3,11 +3,10 @@
 **Status.** DRAFT, 26 Oct 2026, for review. Nothing here is tagged. On 27 Oct 2026 the user
 accepted the draft's default for each of its five choices (Section 11), approved its box time
 (Section 8), and decided two more points: the queue's immediate retry in the same lane (Section
-11, item 6) and that the d_OOD buffers are bound by sha256, not committed (Section 11, item 7). No specialist below has been trained, and nothing in this document has been computed
-on one. After review the lead commits the final text, the five runs are trained, their manifest,
-d_OOD buffers and start states are built (the start states committed, the buffers bound by
-sha256 and not committed), and the tag `p4-b2-prereg-v1` is placed
-before any of them sees a protocol stimulus (Section 8). Only Hockenheim, an R-dev circuit, is
+11, item 6) and that the d_OOD buffers are bound by sha256, not committed (Section 11, item 7). On 28 Oct 2026 the five runs were trained at `p4-b2-train-v1` and their manifest, d_OOD
+buffers, start states and design were built (Section 12). None of S4–S8 has seen a protocol
+stimulus. The record binds them, and the tag `p4-b2-prereg-v1` is placed on the record's commit
+before any rollout (Section 8). Only Hockenheim, an R-dev circuit, is
 used. R_TEST stays sealed and `outputs/sealed/` is not read.
 
 **Build (27 Oct 2026).** The code is written, tested and committed (`40ebdf6`): the run list
@@ -588,23 +587,37 @@ nothing. Section 4.2 is unchanged by it.
 - **EB5** expects CM-6 for S4–S8. The dry run gives CM-6 for S2 and CM-1 for S3. That is
   reported and changes nothing.
 
-**Waiting for the training round** (Section 8, steps 2–4). The sha256 of each artifact goes here
-and into the record when it is built:
+**Built from the training round, 28 Oct 2026** (Section 8, steps 2–3). The sha256 of each artifact
+(first 8 hex digits here; in full in the record):
 
 | Artifact | Path | sha256 |
 |---|---|---|
-| Manifest | `outputs/p4b2/pre/manifest.json` | pending |
-| Buffers, S4–S8 (streams 135–139) | `outputs/p4b2/pre/buffers/knn_S{4..8}.npz` and `buffers.json` | pending |
-| Start states | `outputs/p4b2/pre/starts/` (`real_states.json`, `real_states_index.json`, `real_laps/S{4..8}_Hockenheim.npz`, `starts.json`) | pending |
-| S4–S8 design | `outputs/p4b2/build/` (design hash) | pending |
-| Record | `scripts/p4b2_prereg.json` | pending |
+| Manifest | `outputs/p4b2/pre/manifest.json` | `ea1ec175` |
+| Buffers, S4–S8 (streams 135–139) | `outputs/p4b2/pre/buffers/knn_S{4..8}.npz` and `buffers.json` | `8d8c8202`, `93d454fa`, `7abc2402`, `9c394080`, `653a414d`; `buffers.json` `cf19072d` |
+| Start states | `outputs/p4b2/pre/starts/` (`real_states.json`, `real_states_index.json`, `real_laps/S{4..8}_Hockenheim.npz`, `starts.json`) | `12b69bf3`, `2827d928`; `2ebc3a53`, `dd7885e4`, `d4191898`, `28a93204`, `976e7eb0`; `a675d961` |
+| S4–S8 design | `outputs/p4b2/build/` (design hash) | `944e97e2`; `build.json` `3be8ee28` |
+| Record | `scripts/p4b2_prereg.json` | binds the above; its own sha256 is the tag's |
 
 - **Size.** Each buffer is about 36 MB (40,000 observations of 222 float32 channels, with their
   actions), about 182 MB for the five, so they are not committed (Section 11, item 7): the record
   binds each by its sha256, and `outputs/` stays ignored. Each real lap is about 0.4 MB and is
   committed.
-- **Still to do before the tag:** the training round (with the box's sha256 list of Section 8,
-  step 2); `manifest`, `buffers`, `starts`, `build` and `record`; the tag.
+- **The training round, 28 Oct 2026.** The box was VG-1's pilot box, handed over set up at the
+  pilot's pull-back (00:59:53 UTC) and checked out at `p4-b2-train-v1` (`860939a`), clean. The
+  queue (`GPUS=1 LANES_PER_GPU=5`) ran 01:00:29–01:18:49 UTC: all five at once on GPU 0, lanes
+  0–4, each done at the first attempt, no retry. `round_manifest.py check` passed: 0.31 h x 1
+  GPU. Every `agent.pkl` and checkpoint (85 files) matched the box's sha256 list, taken before
+  the box was deleted at 03:03:28 UTC. K4's gate (reported, decides nothing): completion 100% for
+  all five, gap 3.9% (S4), 5.5% (S5), 7.0% (S6), 4.8% (S7), 4.0% (S8).
+- **Box time, a deviation (28 Oct 2026).** P4-B2's box time was 2.06 h x 1 GPU (00:59:53 to
+  03:03:28), above the stop rule's 1.2. The queue took 0.31 h. The box then sat idle for 1.74 h,
+  from the queue's end to the pull-back, while the lead was waiting on the user's decision about
+  VG-1's next step. That idle time is counted here, as P4-B2's, and costs about $1.20. No run or
+  output was affected. The stop rule was not triggered: the training projected 0.31 h.
+- **Then, on the Mac (28 Oct 2026):** `manifest`, `buffers` (S4–S8, streams 135–139, 40,000
+  observations each), `starts` (two laps and 20 of 20 tier D states each) and `build` (539 rows;
+  449 registered strips equal step 1's, 90 certified match the lists; 1,485 cells), then
+  `record` and the tag.
 
 **The adversarial review (27 Oct 2026).** An independent review of `40ebdf6` and `05f4e22`. Its
 fixes are in `b3ef979`; nothing in Sections 4 and 5 changed, and no S4–S8 run exists.
