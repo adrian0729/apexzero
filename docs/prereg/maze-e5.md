@@ -508,6 +508,11 @@ Per arm and primary score, read on both targets:
        cost.
    - **For the user:** the full queue on five single-GPU boxes at 8 lanes per GPU (6 runs per
      box), at about 108 GPU-h (stop rule 130), or a drop level from the table above.
+   - **The user's approval** (28 Oct 2026, before the training tag): the full queue (drop 0) on
+     five `massedcompute_A6000_plus` boxes ($0.68/h each that day), one seed per box
+     (`SHARD=i/5`), at 8 lanes per GPU, about 108 GPU-h with the audit and set-up. The stop rule's
+     threshold is 130 GPU-h, idle GPUs included. This replaces "Machine and queue"'s plan of one
+     x4 box: the x4 type was available, but its unbalanced GPUs make it the dearer layout (above).
 6. **Training,** once the user has approved the full queue on the measured estimate (Section 9).
    The lead tags the training commit `maze-e5-train-v1` and launches round `maze-e5`. The 30 runs;
    the 16 selected checkpoints per run are pulled back (`gpu_sync.sh pull-round`) with their

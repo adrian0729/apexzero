@@ -414,7 +414,7 @@ Limits that stand:
 ## 6. Not done, and questions for the lead
 
 Not done:
-- **CS-13 on T** (C2-pairs at matched decoys, about 30 min, stored arrays only). The plan's order
+- **CS-13 on T** (dropped by the user on 28 Oct 2026; C2-pairs at matched decoys, about 30 min, stored arrays only). The plan's order
   puts it with CS-6 and CS-12, but no step of this lane ran it. The follow-through rates it low
   value, since it qualifies a C2 confirm and C2 never confirmed. On N it is not scorable: no N
   state has a matched T state.

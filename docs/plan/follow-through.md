@@ -780,3 +780,17 @@ The lead's notes (28 Oct 2026, lane A and E5's calibration):
   inconclusive (GPU training is not bit-deterministic). The full queue goes to the user at about
   108 GPU-h, with the drop levels.
 - **Phase 3's A6000 time** is now 28.8 GPU-hours (27.1 + 1.74).
+
+The user's decisions (28 Oct 2026, sixth round):
+- **E0** (`docs/plan/e0.md`): the budget is approved, on one `massedcompute_A6000_plus` at 5 lanes,
+  about 2.8–3.2 GPU-h; the stop rule's threshold is 3.84 GPU-h. Tag `e0-train-v1`, then the run.
+- **E5** (`docs/prereg/maze-e5.md` Section 8 step 5): the full queue (drop 0) is approved on five
+  single-GPU boxes at 8 lanes per GPU, about 108 GPU-h with the audit; the stop rule's threshold
+  is 130 GPU-h. Tag `maze-e5-train-v1`, then the run.
+- **BC-1 is dropped** (#6). BC-a0 showed that road beyond the preview moves braking and corner λ
+  too much for the existing λ to be its target. #8's ban, which kept BC-1's confirmatory option
+  open, is lifted: critic gradients may now be compared with λ on braking and corner rows,
+  labelled exploratory.
+- **Lane A:** #8, #9 and #16 are confirmed as lane A ran them, so its results stand. CS-13 on T is
+  dropped (Section 8 allows it).
+
