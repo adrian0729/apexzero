@@ -1,0 +1,627 @@
+{
+ "record": "e0-manifest",
+ "round": "e0",
+ "tag": "e0-train-v1",
+ "tag_object": "58b8d809af751c234d74bd54b060636d8f838e2b",
+ "commit": "5edb66f81c7389d06d6b22f14fd3a5356a077255",
+ "runs": [
+  {
+   "name": "e0-s50",
+   "seed": 50,
+   "status": "done",
+   "failure": null,
+   "box": {
+    "box": "e0-manifest-0of1.json",
+    "lane": 0,
+    "gpu": 0,
+    "start": "2026-10-28T20:17:22Z",
+    "end": "2026-10-28T22:33:43Z",
+    "gpu_model": "NVIDIA RTX A6000",
+    "gpu_count": 1,
+    "box_type": "massedcompute_A6000_plus"
+   },
+   "checkpoints": [
+    {
+     "path": "runs/e0-s50/ckpt/000010000000.pkl",
+     "sha256": "ebcd29ba0ccbc03a36e778a130b3c1771ab2c0b1b40d7d52b1e2b9b2996c2ede",
+     "timesteps": 10000000
+    },
+    {
+     "path": "runs/e0-s50/ckpt/000013593563.pkl",
+     "sha256": "5e39e9f21a1f316ae9a3287772ec365216b359fa884bcbade526a53fb9b71e20",
+     "timesteps": 13593563
+    },
+    {
+     "path": "runs/e0-s50/ckpt/000018478497.pkl",
+     "sha256": "34271709d8cdc430b66f07054b7ed77838746a3e0021e053bc8d408a94baa822",
+     "timesteps": 18478497
+    },
+    {
+     "path": "runs/e0-s50/ckpt/000025118864.pkl",
+     "sha256": "44af98408922c8025c8d615d20bb6df2428703250454c03e19cfbcb311e96058",
+     "timesteps": 25118864
+    },
+    {
+     "path": "runs/e0-s50/ckpt/000034145488.pkl",
+     "sha256": "856378895d17721d4b073d120a2ac4a8447e0a8a2738c7fe689eb616e4af265b",
+     "timesteps": 34145488
+    },
+    {
+     "path": "runs/e0-s50/ckpt/000046415888.pkl",
+     "sha256": "ec6348fb15c1364c378acbaef013e2ea720d1d373085c1dd5e50bcd1c7f4cbbc",
+     "timesteps": 46415888
+    },
+    {
+     "path": "runs/e0-s50/ckpt/000063095734.pkl",
+     "sha256": "09e46f8e4ec71b9a43333f9881e2a342ac6e31c01e21d54531db43989d63e482",
+     "timesteps": 63095734
+    },
+    {
+     "path": "runs/e0-s50/ckpt/000085769589.pkl",
+     "sha256": "dd6046769662da3df0cebc3a3c9c886cafbc3ea8db64a630903c260a4b99db8c",
+     "timesteps": 85769589
+    },
+    {
+     "path": "runs/e0-s50/ckpt/000116591440.pkl",
+     "sha256": "802c00963cfcf5b95cfe12e7f109e4f4d91dd1ceb6eabd67b942145947044a50",
+     "timesteps": 116591440
+    },
+    {
+     "path": "runs/e0-s50/ckpt/000158489319.pkl",
+     "sha256": "0d6677918bc6cee0f0a0a99dae15e0bcfc443a65060ceb39aec6ace93e532fef",
+     "timesteps": 158489319
+    },
+    {
+     "path": "runs/e0-s50/ckpt/000215443469.pkl",
+     "sha256": "2b0817f2c0a8d27ce89cc9de8de62ac164af8e37a09f8ed55973addec03758a9",
+     "timesteps": 215443469
+    },
+    {
+     "path": "runs/e0-s50/ckpt/000292864456.pkl",
+     "sha256": "8d0a85713b849ba4c5db6cc127b49ad23c27f29f1f6c248e326fc3b69f29ee9f",
+     "timesteps": 292864456
+    },
+    {
+     "path": "runs/e0-s50/ckpt/000398107170.pkl",
+     "sha256": "87c46bca2bf2d66af4400604b9afbfe4f4cb989225b2a6348c5cd11f432c823e",
+     "timesteps": 398107170
+    },
+    {
+     "path": "runs/e0-s50/ckpt/000541169526.pkl",
+     "sha256": "0c410f012a146d30dfcf9141f0b50b9126569aeaea238c186c1b64d73f7b01ec",
+     "timesteps": 541169526
+    },
+    {
+     "path": "runs/e0-s50/ckpt/000735642254.pkl",
+     "sha256": "569dc35c02a038b7303a0d276256976637af3d4250143d54713a26c2c1054073",
+     "timesteps": 735642254
+    },
+    {
+     "path": "runs/e0-s50/ckpt/000999948288.pkl",
+     "sha256": "a03a918cb29d1c0dfc901006535a8b688dbf578565f82b8cd0f204d10d8a2c5c",
+     "timesteps": 999948288
+    }
+   ],
+   "final": {
+    "path": "runs/e0-s50/ckpt/000999948288.pkl",
+    "sha256": "a03a918cb29d1c0dfc901006535a8b688dbf578565f82b8cd0f204d10d8a2c5c",
+    "timesteps": 999948288
+   },
+   "config_sha256": "10e77c9abfc0a0aaacbb46f6f08ec1de94857cf31dff612a948c00964ca42366",
+   "metrics_sha256": "ae193f39ecfd74401ab2977d6cf0b2a11505d97a586e10e2fdf8639246fac166",
+   "eval_rdev_sha256": "4908bdd2a0dca213c62c3e9ffd56d7dffb5253f78b1043680d0c031f2a6b1e18",
+   "logs_sha256": {
+    "runs/e0-s50.log": "50d32928662dc8390926caff06a56d06d6dbe3e66955dd3171536c2cddc44244"
+   }
+  },
+  {
+   "name": "e0-s51",
+   "seed": 51,
+   "status": "done",
+   "failure": null,
+   "box": {
+    "box": "e0-manifest-0of1.json",
+    "lane": 1,
+    "gpu": 0,
+    "start": "2026-10-28T20:17:22Z",
+    "end": "2026-10-28T22:34:04Z",
+    "gpu_model": "NVIDIA RTX A6000",
+    "gpu_count": 1,
+    "box_type": "massedcompute_A6000_plus"
+   },
+   "checkpoints": [
+    {
+     "path": "runs/e0-s51/ckpt/000010000000.pkl",
+     "sha256": "3185de7a0a024bb2dc92e9a9a2e5b33e2e631e58782a0ee11c8478ccebfc26d3",
+     "timesteps": 10000000
+    },
+    {
+     "path": "runs/e0-s51/ckpt/000013593563.pkl",
+     "sha256": "2f4a1fd9d346b9c42d56974fa40cc96a4aa2f19c8ad1744608cd967d3549203b",
+     "timesteps": 13593563
+    },
+    {
+     "path": "runs/e0-s51/ckpt/000018478497.pkl",
+     "sha256": "1971f1366942bb2e4e5ac401a33c333d18585c01994577b8e10ef796dbd4cc3c",
+     "timesteps": 18478497
+    },
+    {
+     "path": "runs/e0-s51/ckpt/000025118864.pkl",
+     "sha256": "35fb5be1e86869333b2bef4f273950610cede19f153f610e05215e9547af6951",
+     "timesteps": 25118864
+    },
+    {
+     "path": "runs/e0-s51/ckpt/000034145488.pkl",
+     "sha256": "34c219b5e400975d903ea274a5a5567b74f56ce6368e93efa1f087fde606a911",
+     "timesteps": 34145488
+    },
+    {
+     "path": "runs/e0-s51/ckpt/000046415888.pkl",
+     "sha256": "e91f6a7e2ee3745e97d091f4bd69eb2d7b1ef0bb5c73032ae94199b781ff5dd6",
+     "timesteps": 46415888
+    },
+    {
+     "path": "runs/e0-s51/ckpt/000063095734.pkl",
+     "sha256": "49e5478724d4557675f868ece66808c91a2c67274c87f32b2a936ffa39451154",
+     "timesteps": 63095734
+    },
+    {
+     "path": "runs/e0-s51/ckpt/000085769589.pkl",
+     "sha256": "eb9c42024e3a8b50f1fa78ef372c2542a23bd4b7f7ace5ece71c95a8dfc6bee9",
+     "timesteps": 85769589
+    },
+    {
+     "path": "runs/e0-s51/ckpt/000116591440.pkl",
+     "sha256": "30a7feb8614af546566d80ac06ec98b90d9df2a20d9a28252ade02875f9f9a3b",
+     "timesteps": 116591440
+    },
+    {
+     "path": "runs/e0-s51/ckpt/000158489319.pkl",
+     "sha256": "3786ae4b491851587ae9efdf5ca66d573a6f8f6db3314ca094de3b706afab816",
+     "timesteps": 158489319
+    },
+    {
+     "path": "runs/e0-s51/ckpt/000215443469.pkl",
+     "sha256": "47e9ab879de443f3760fcf2ca28c262db2532f6a3616deb2edb2ad348dc36857",
+     "timesteps": 215443469
+    },
+    {
+     "path": "runs/e0-s51/ckpt/000292864456.pkl",
+     "sha256": "b10bead8cf2ac81bb2b1dee1292327945d4b67ca9dd14943398738e90b4f6921",
+     "timesteps": 292864456
+    },
+    {
+     "path": "runs/e0-s51/ckpt/000398107170.pkl",
+     "sha256": "31a0b46cbc74d7d8a22a72b74530d1c4e026a995ef0212d29d60685b35b879a9",
+     "timesteps": 398107170
+    },
+    {
+     "path": "runs/e0-s51/ckpt/000541169526.pkl",
+     "sha256": "07a9a21ea89ce4cfdea823fbccf789189480d4f39c2e5c4096661748be9ac255",
+     "timesteps": 541169526
+    },
+    {
+     "path": "runs/e0-s51/ckpt/000735642254.pkl",
+     "sha256": "c4312bff680d774d2646376266f80a397e860a863aa92b2b2d084485e3c3aa35",
+     "timesteps": 735642254
+    },
+    {
+     "path": "runs/e0-s51/ckpt/000999948288.pkl",
+     "sha256": "3a2ce18dfa838609603572d713531ca98124fadeddf17a9e5ca1ee29034256a4",
+     "timesteps": 999948288
+    }
+   ],
+   "final": {
+    "path": "runs/e0-s51/ckpt/000999948288.pkl",
+    "sha256": "3a2ce18dfa838609603572d713531ca98124fadeddf17a9e5ca1ee29034256a4",
+    "timesteps": 999948288
+   },
+   "config_sha256": "cec5ebce4b9d7817fe1450b3826fd1beafda1ab323e7f56e5bccaa72196e12f8",
+   "metrics_sha256": "ddb4f36643367b9b6493b869f29b57517f22fde4bcd45bc0ef4b837925a0c052",
+   "eval_rdev_sha256": "f311d31ea21f98735d6546fd56454d53eb6bc7962472a54b7d00553abc21e8b8",
+   "logs_sha256": {
+    "runs/e0-s51.log": "29ce32b973f34d1450978231aa9af1487e1cdaf2c58541e6dc7e5d660dbe84fc"
+   }
+  },
+  {
+   "name": "e0-s52",
+   "seed": 52,
+   "status": "done",
+   "failure": null,
+   "box": {
+    "box": "e0-manifest-0of1.json",
+    "lane": 2,
+    "gpu": 0,
+    "start": "2026-10-28T20:17:22Z",
+    "end": "2026-10-28T22:34:05Z",
+    "gpu_model": "NVIDIA RTX A6000",
+    "gpu_count": 1,
+    "box_type": "massedcompute_A6000_plus"
+   },
+   "checkpoints": [
+    {
+     "path": "runs/e0-s52/ckpt/000010000000.pkl",
+     "sha256": "3be2becdf01771537d3ad6400421638f94b4292410e71bd8d7d3c72065497f70",
+     "timesteps": 10000000
+    },
+    {
+     "path": "runs/e0-s52/ckpt/000013593563.pkl",
+     "sha256": "8058cfe9ab7afb03f42abe01f4888154899c40b5dc7f9c62c47e53ec42d30e31",
+     "timesteps": 13593563
+    },
+    {
+     "path": "runs/e0-s52/ckpt/000018478497.pkl",
+     "sha256": "777fe793e92109a3e742d9596e23320613eb8fef814e41737548c4eeb6b04af8",
+     "timesteps": 18478497
+    },
+    {
+     "path": "runs/e0-s52/ckpt/000025118864.pkl",
+     "sha256": "7707964376cc6cdd79d37ea40fdae77933cd944b06828ebd8ba3bda3bf610b9d",
+     "timesteps": 25118864
+    },
+    {
+     "path": "runs/e0-s52/ckpt/000034145488.pkl",
+     "sha256": "087d4b6410b2b811baa09182790980d46c5ae4007a5439a1dd0a141e48a0045e",
+     "timesteps": 34145488
+    },
+    {
+     "path": "runs/e0-s52/ckpt/000046415888.pkl",
+     "sha256": "49eed11a672522339ecdba3a8d1f2b91e09af92844abbc948ccd71dff2c41b11",
+     "timesteps": 46415888
+    },
+    {
+     "path": "runs/e0-s52/ckpt/000063095734.pkl",
+     "sha256": "3d945451c4c204cf7df2609c1dc1a72b6a532c85f51b3482d5f172924873730d",
+     "timesteps": 63095734
+    },
+    {
+     "path": "runs/e0-s52/ckpt/000085769589.pkl",
+     "sha256": "4d874a22451957bed8eaf2c2fae50770b8d91e1245bec537316ac136f39eb759",
+     "timesteps": 85769589
+    },
+    {
+     "path": "runs/e0-s52/ckpt/000116591440.pkl",
+     "sha256": "2c959ea42c9d10ddb1bd6e7ccfbc552d1f78932f07f93f89d8542149a7a09ad2",
+     "timesteps": 116591440
+    },
+    {
+     "path": "runs/e0-s52/ckpt/000158489319.pkl",
+     "sha256": "a7913d9cb7660f042ce3b43eb951075064ccee1037a808a4dbc87413c76d3df6",
+     "timesteps": 158489319
+    },
+    {
+     "path": "runs/e0-s52/ckpt/000215443469.pkl",
+     "sha256": "1a06d180fc72c1c5180e1112f9a1712503d9b153838e30fbc0cd3934ca67fc25",
+     "timesteps": 215443469
+    },
+    {
+     "path": "runs/e0-s52/ckpt/000292864456.pkl",
+     "sha256": "31e9dce2839c952d6190dc57be84021a4421f0844e445053a78b0d56d948d768",
+     "timesteps": 292864456
+    },
+    {
+     "path": "runs/e0-s52/ckpt/000398107170.pkl",
+     "sha256": "b4a809004421171d0700a600b0d7937aaf5fe504ebcfb24f5bc348b3b6099d59",
+     "timesteps": 398107170
+    },
+    {
+     "path": "runs/e0-s52/ckpt/000541169526.pkl",
+     "sha256": "4aeb1c3b7892976d26b23319cbd43a89a9e3648f9ff9299d047b7581017d1d9a",
+     "timesteps": 541169526
+    },
+    {
+     "path": "runs/e0-s52/ckpt/000735642254.pkl",
+     "sha256": "1515915a36e6f04861298f8c774e0f94270ff0776d7b536f61ddc92cf2dd4281",
+     "timesteps": 735642254
+    },
+    {
+     "path": "runs/e0-s52/ckpt/000999948288.pkl",
+     "sha256": "1b7078f4416f8b9671ebc4a14a2cae36a5ebcc27fe9cc4c2188241ed654256fe",
+     "timesteps": 999948288
+    }
+   ],
+   "final": {
+    "path": "runs/e0-s52/ckpt/000999948288.pkl",
+    "sha256": "1b7078f4416f8b9671ebc4a14a2cae36a5ebcc27fe9cc4c2188241ed654256fe",
+    "timesteps": 999948288
+   },
+   "config_sha256": "3dd62c4af12be5b0dbff3b77f141bfd989ce90658e68bed39912f7c8b7bb4d99",
+   "metrics_sha256": "7ec9fdbf8f70de9db647a688006a998ea80b9ea878642aa66ac85ae1b4cc5113",
+   "eval_rdev_sha256": "6b94c9697427216e3eafda96fce2e3e4514777e12f25ec2f11613c21c297f5b8",
+   "logs_sha256": {
+    "runs/e0-s52.log": "154f890c4f4c7b40e8c8c2c4480ee038d7769dcaa9877ca547351137c6917a2a"
+   }
+  },
+  {
+   "name": "e0-s53",
+   "seed": 53,
+   "status": "done",
+   "failure": null,
+   "box": {
+    "box": "e0-manifest-0of1.json",
+    "lane": 3,
+    "gpu": 0,
+    "start": "2026-10-28T20:17:22Z",
+    "end": "2026-10-28T22:31:34Z",
+    "gpu_model": "NVIDIA RTX A6000",
+    "gpu_count": 1,
+    "box_type": "massedcompute_A6000_plus"
+   },
+   "checkpoints": [
+    {
+     "path": "runs/e0-s53/ckpt/000010000000.pkl",
+     "sha256": "4e58448f7b66a2f454842c3598f1ad39182e7ab4907d354802b9a917999b3a44",
+     "timesteps": 10000000
+    },
+    {
+     "path": "runs/e0-s53/ckpt/000013593563.pkl",
+     "sha256": "c8c5e76658f190bae3a591aa80de6e3714ea2ff38f16a392fcd5e55942257a4f",
+     "timesteps": 13593563
+    },
+    {
+     "path": "runs/e0-s53/ckpt/000018478497.pkl",
+     "sha256": "8ed2b000bacd7abbd474dc2a72a8eaa492a69a998b74f224c102572d678950db",
+     "timesteps": 18478497
+    },
+    {
+     "path": "runs/e0-s53/ckpt/000025118864.pkl",
+     "sha256": "4c6119dbe866fbe89c83e97c4c7e0390fa2740a6c127238b9b5420cc2af13b4e",
+     "timesteps": 25118864
+    },
+    {
+     "path": "runs/e0-s53/ckpt/000034145488.pkl",
+     "sha256": "2c86b4a8d187cabae45275089ba7bd849efe0d333a729c955f6733210006783e",
+     "timesteps": 34145488
+    },
+    {
+     "path": "runs/e0-s53/ckpt/000046415888.pkl",
+     "sha256": "ef74f7584cd4876eb69990cc59d5798f2ca1302fa1ead2067903f63c56173e13",
+     "timesteps": 46415888
+    },
+    {
+     "path": "runs/e0-s53/ckpt/000063095734.pkl",
+     "sha256": "6bed2755f077dc84c7b1edea7fdfaf10073c76ed8ac5dc06b427941a01946240",
+     "timesteps": 63095734
+    },
+    {
+     "path": "runs/e0-s53/ckpt/000085769589.pkl",
+     "sha256": "ded463b60560c763e715b1978de875c6a3c502de50e3af164f89e67dca368731",
+     "timesteps": 85769589
+    },
+    {
+     "path": "runs/e0-s53/ckpt/000116591440.pkl",
+     "sha256": "0aa925e656d9c665ae54aaa43f13b46770c7514b8d838dffe5df1facbeda0ce2",
+     "timesteps": 116591440
+    },
+    {
+     "path": "runs/e0-s53/ckpt/000158489319.pkl",
+     "sha256": "8eff7f4ffd04833863b21f86e831ca89bf2656ea155a19d3bb1ee228c672ced6",
+     "timesteps": 158489319
+    },
+    {
+     "path": "runs/e0-s53/ckpt/000215443469.pkl",
+     "sha256": "b227cd3007be0084dd2a62ea7926f442ad909a291a8a97b0d7937da9282ba817",
+     "timesteps": 215443469
+    },
+    {
+     "path": "runs/e0-s53/ckpt/000292864456.pkl",
+     "sha256": "078546419a774d25d502557dbb82ff018663b4d6512acd0114efd9547d6d0a1f",
+     "timesteps": 292864456
+    },
+    {
+     "path": "runs/e0-s53/ckpt/000398107170.pkl",
+     "sha256": "dbb3ebde0d40576cbda6e2f85f9fff227802c180b8e0dc1e084584a03edab694",
+     "timesteps": 398107170
+    },
+    {
+     "path": "runs/e0-s53/ckpt/000541169526.pkl",
+     "sha256": "0b87f2e82a1e3d27203a8c618fb3fa1b7d43642b7d46f3efb66eeed9a9f0324f",
+     "timesteps": 541169526
+    },
+    {
+     "path": "runs/e0-s53/ckpt/000735642254.pkl",
+     "sha256": "cb50af62bb70f0c296c829e97f91f1fd23486371fc15e3fac672e2a98b535255",
+     "timesteps": 735642254
+    },
+    {
+     "path": "runs/e0-s53/ckpt/000999948288.pkl",
+     "sha256": "02827403a23cbc39173f6990b627ae0b54cb62c55146baafdba6d065717470b5",
+     "timesteps": 999948288
+    }
+   ],
+   "final": {
+    "path": "runs/e0-s53/ckpt/000999948288.pkl",
+    "sha256": "02827403a23cbc39173f6990b627ae0b54cb62c55146baafdba6d065717470b5",
+    "timesteps": 999948288
+   },
+   "config_sha256": "874f0257c8e43567367dff618ce88c03b3869bc5caa32f3ca2f138a57e537b67",
+   "metrics_sha256": "42b28bb2bbdea0cbce22a3ea9785ad1cd02f9e245c1acb01bab7c0e35288d389",
+   "eval_rdev_sha256": "551b7a161c2ab6bb457c27e9665aa343927d38c50c1ab2ae32ffce6d5da8828d",
+   "logs_sha256": {
+    "runs/e0-s53.log": "5bf384dff7790f2f7d928e337f3ada29f4b97b3bfefbf7d173343af7f5316913"
+   }
+  },
+  {
+   "name": "e0-s54",
+   "seed": 54,
+   "status": "done",
+   "failure": null,
+   "box": {
+    "box": "e0-manifest-0of1.json",
+    "lane": 4,
+    "gpu": 0,
+    "start": "2026-10-28T20:17:22Z",
+    "end": "2026-10-28T22:33:52Z",
+    "gpu_model": "NVIDIA RTX A6000",
+    "gpu_count": 1,
+    "box_type": "massedcompute_A6000_plus"
+   },
+   "checkpoints": [
+    {
+     "path": "runs/e0-s54/ckpt/000010000000.pkl",
+     "sha256": "b0c3b82893127c7b7b2582a738c129dd6d04c5b553df75b1ea296abda225f414",
+     "timesteps": 10000000
+    },
+    {
+     "path": "runs/e0-s54/ckpt/000013593563.pkl",
+     "sha256": "032fcccfe7335115f6d4bfe8fa2fa8e9285a10923af26b8fda7eb13c14e8b974",
+     "timesteps": 13593563
+    },
+    {
+     "path": "runs/e0-s54/ckpt/000018478497.pkl",
+     "sha256": "93c40f73adfb969f8836110ace2cad431e710284786ea59e2ff7bd6601a11607",
+     "timesteps": 18478497
+    },
+    {
+     "path": "runs/e0-s54/ckpt/000025118864.pkl",
+     "sha256": "194e6321339589a2a83957d03b3f09db51bc9ca35724ea931f4d86c3bd0bc57c",
+     "timesteps": 25118864
+    },
+    {
+     "path": "runs/e0-s54/ckpt/000034145488.pkl",
+     "sha256": "d65402a1cd70e02a305a2d0d0156227fd36c12fdaf179bb49c0d94a3dea4a05f",
+     "timesteps": 34145488
+    },
+    {
+     "path": "runs/e0-s54/ckpt/000046415888.pkl",
+     "sha256": "f181e746ca358180cbd84619921f86dc8ed3379dfbec791901e5494bbd6e53b4",
+     "timesteps": 46415888
+    },
+    {
+     "path": "runs/e0-s54/ckpt/000063095734.pkl",
+     "sha256": "593d807140b406124fa732e47ab0ddd46fa3c5410e25639c312d4ab6cb6c9650",
+     "timesteps": 63095734
+    },
+    {
+     "path": "runs/e0-s54/ckpt/000085769589.pkl",
+     "sha256": "c3d0907986cfa1f05a06055f6f5fc5a27ae38825949f9c2a8f38db9df359aef5",
+     "timesteps": 85769589
+    },
+    {
+     "path": "runs/e0-s54/ckpt/000116591440.pkl",
+     "sha256": "bda0fadf24d3efedf18176c5bbbd4364e2d57fc8de253d5548ac8ecc6fc933e8",
+     "timesteps": 116591440
+    },
+    {
+     "path": "runs/e0-s54/ckpt/000158489319.pkl",
+     "sha256": "8ded64dae837eaa0a75ddf6e11f90c54b3929e68297e0ace09b11fe2212dbc00",
+     "timesteps": 158489319
+    },
+    {
+     "path": "runs/e0-s54/ckpt/000215443469.pkl",
+     "sha256": "6a413f0644ef8721b9d9c93061d5eb83ae9f974e5974ca0ce6d0dc41e0c8378a",
+     "timesteps": 215443469
+    },
+    {
+     "path": "runs/e0-s54/ckpt/000292864456.pkl",
+     "sha256": "19454c90c569ceac3d9fc90c897cb03e0b88e09843d05e1f5f2d08c9d7d3a766",
+     "timesteps": 292864456
+    },
+    {
+     "path": "runs/e0-s54/ckpt/000398107170.pkl",
+     "sha256": "b08dd7444fd7315c26dbb50676c8a42b5e99c88db6585a6e64fdf4a90d948ecd",
+     "timesteps": 398107170
+    },
+    {
+     "path": "runs/e0-s54/ckpt/000541169526.pkl",
+     "sha256": "64183f5f0bdcb18a319dbc95eff362b2e5378e193d9442afc8655d3d0f22cb42",
+     "timesteps": 541169526
+    },
+    {
+     "path": "runs/e0-s54/ckpt/000735642254.pkl",
+     "sha256": "fbb5bd55c36efd6c8db459a0bf6966e5f07e61fe6141c7ea5e7903336d5d3186",
+     "timesteps": 735642254
+    },
+    {
+     "path": "runs/e0-s54/ckpt/000999948288.pkl",
+     "sha256": "4e9e7e91780fbe610eb2c1adcd036593048632cd20828de627eaf807c1f4cd75",
+     "timesteps": 999948288
+    }
+   ],
+   "final": {
+    "path": "runs/e0-s54/ckpt/000999948288.pkl",
+    "sha256": "4e9e7e91780fbe610eb2c1adcd036593048632cd20828de627eaf807c1f4cd75",
+    "timesteps": 999948288
+   },
+   "config_sha256": "b3522ee29f463d255e99409daa2cf2eea34a307b332f0998a280fd2f5a9dc10d",
+   "metrics_sha256": "4516074d2b519b1838a1429141fbdaefd754ecdfd3cc16cdab258b5fd76794ff",
+   "eval_rdev_sha256": "9b48d154fdc5fae63db2f8e0aee7795f0b6f9e6e1c803348c54cf842dca3af75",
+   "logs_sha256": {
+    "runs/e0-s54.log": "dd5e86442132b0430c4b5db3da9aef741751e3faba30ab1b7a7fb7fd8e5db359"
+   }
+  }
+ ],
+ "box_data_sha256": {
+  "data/tracks/tumftm/BrandsHatch.csv": "9c69b09cef717d8abffc7c9450e59d7e339ac0dd0c7ed8121d73fe2f373145bb",
+  "data/tracks/tumftm/Hockenheim.csv": "5eb6b7d8ff7b9fc905b38caed9a65d8e76e4bd7af5af9ba82aecdf4a6e0eacc5",
+  "data/tracks/tumftm/MoscowRaceway.csv": "843c0f47e7210b5c9bfb3bf2f55cfee02cced0970f9b711a951b650c5cad3753",
+  "data/tracks/tumftm/Norisring.csv": "8857d3c362ad2923c1f93c8d257498f50459770b9021adcc7969b71085c31d9a",
+  "data/tracks/tumftm/Nuerburgring.csv": "9fea2a9daa25311bb251be416140b6c55cb2e53bb4f69c28f512fbfce25a3f87",
+  "data/tracks/tumftm/Oschersleben.csv": "9ce893ee1fde37cc0626d654b765e65cd7159ffca922496ab881d61cad6ab304",
+  "data/tracks/tumftm/Sepang.csv": "89ee026fd439e9b41311fc742b44efb120c3c1148f55e5963b38b62971352eaf",
+  "data/tracks/tumftm/Sochi.csv": "caf3f00d78a7b54aeab131d2a8f263131c33d5431292a05dcbaaad49a19c351c",
+  "data/tracks/tumftm/YasMarina.csv": "befab5a3be5a6ab320ce16d5ac5ec9016d633c5d6e739b9483f4d6364f0fe017",
+  "data/tracks/tumftm/Melbourne.csv": "f9ea4395a25dc4189d8b8c692ce9656682de62ad7b784dfd7c024ac8d4f245e9",
+  "data/tracks/tumftm/Catalunya.csv": "8d6dc9d50e98bdecd818cb880a4b12bb5cec25d699a6b774e0b593c0f8a9da5e",
+  "data/tracks/tumftm/Zandvoort.csv": "f3f2a82c9f41bcee8d7161a6ad6c0b8e6d4b902dd772459918c9fe7f7451bc59",
+  "outputs/ocp/BrandsHatch.pkl": "2c8addbe5bd296b6b1b6356c6081b313a4704f14adb923cdca6ab2b71222a939",
+  "outputs/ocp/Hockenheim.pkl": "2cc8b8113bde3645fd6c4a068c2573acaf5a5ad7bf957d877a28f70effac8dc5",
+  "outputs/ocp/MoscowRaceway.pkl": "d5e42ef26bdb26dabd387042fea2e7d0ca50dfc6666b5c455ade9c8c382dc1fe",
+  "outputs/ocp/Norisring.pkl": "19289175beba94c1df6b1c45e9e074339776bc08b233fc35fd34e3e011ef6aa5",
+  "outputs/ocp/Nuerburgring.pkl": "c80fc5f860ee5c6cc0443a3f619aec552c978333d5c041fd9064af2019bd2877",
+  "outputs/ocp/Oschersleben.pkl": "dfbaeee52d78438d83194f55a25763e51c3161c34f3662c05a9e4c7c71d8a2bd",
+  "outputs/ocp/Sepang.pkl": "941c32b5219a94dfa21653344d732e0de3e469af61b62bd874ca1ce4d3c03039",
+  "outputs/ocp/Sochi.pkl": "451725a45f4e5747a84679565f36b96279bb59b7ca6850621efc154eb441c388",
+  "outputs/ocp/YasMarina.pkl": "d08853c4c1a35d10dd908b6c728b20e0d9c72624dee59b099140008aaf07d60e",
+  "outputs/ocp/Melbourne.pkl": "7395c3f8094ea20ecaf70aeefddb6a71b44237f8c4588434a4518610c474411e",
+  "outputs/ocp/Catalunya.pkl": "dc6ca50f225de45506780abc9e35edcfe8c5a63e79faacca475f44ee9f110ff8",
+  "outputs/ocp/Zandvoort.pkl": "3e2ef9a00167dd25a64fff0af3cc02ef5924b53f5463fd41722833e056dba646"
+ },
+ "round_files": {
+  "runs/e0-manifest-0of1.json": "3d7f085a0c28997be097c7e927eb39d72e87813ae13abcbd7ad17e35e9c904c3",
+  "runs/e0-queue-0of1.log": "43f2cfdb59172041b1208b1d96ace6866af5a0c54d87f22f2b53e6655dbce4dd",
+  "runs/e0-status-0of1.tsv": "df67df8e674801f094819f2c4d2d6580ad48ee05d557b5c430e8dc5ce76440e1"
+ },
+ "round_check": {
+  "returncode": 0,
+  "tolerated": [],
+  "report_sha256": "2e28ed215f0538da6148c63dcbe571b3604fae4b41368ead48a98e954bd8fc57",
+  "report": "round e0: scripts/e0_runs.py --phase main: 5 runs, 5 seeds\ntag e0-train-v1: 5edb66f81c73\n  runs/e0-manifest-0of1.json: shard 0/1, 5 runs, massedcompute_A6000_plus, 1 x NVIDIA RTX A6000 (1 used, 5 lanes per GPU), HEAD 5edb66f81c73, clean; queue 2.28 h x 1 GPUs = 2.3 GPU-h (idle included; setup and pull-back not)\nruns: 5 done; 5 configs compared\nnote: scripts/train_dr.py: --vg-lambda has a computed default: compared only where a cmd sets it\nnote: scripts/train_dr.py: --vg-winsor has a computed default: compared only where a cmd sets it\nOK: every run of e0 is done, once, at e0-train-v1, with the arguments of its cmd\n"
+ },
+ "box_sums_used": 109,
+ "provenance": {
+  "script": "scripts/e0_gate.py",
+  "script_sha256": "5331a816c5efcb3b1f185739aef898f1dbdb5aceb6233fcbad9126b35a3e2299",
+  "runs_script_sha256": "01b76446d69f2f4e18ca6bf2ee56e003e90cea57396beea299b16ae972f4cb5f",
+  "tag_gate": {
+   "tag": "e0-train-v1",
+   "tag_object": "58b8d809af751c234d74bd54b060636d8f838e2b",
+   "commit": "5edb66f81c7389d06d6b22f14fd3a5356a077255",
+   "head": "5edb66f81c7389d06d6b22f14fd3a5356a077255",
+   "upstream": {
+    "generator-v1": "f7c924002927374423ba44a476a23272a5ba2691",
+    "sim-v1": "f7c924002927374423ba44a476a23272a5ba2691"
+   }
+  },
+  "head": "5edb66f81c7389d06d6b22f14fd3a5356a077255",
+  "changed": [],
+  "inputs": {
+   "runs/e0-box-sha256-0.txt": "e28f816d9d8e351a7bc04b4b1f45ec6d8bddb4a5fd33f73520f27ea34843ff18"
+  },
+  "argv": [
+   "scripts/e0_gate.py",
+   "manifest",
+   "--tag",
+   "e0-train-v1",
+   "--box-sums",
+   "runs/e0-box-sha256-0.txt"
+  ],
+  "start": "2026-10-28T18:35:20",
+  "end": "2026-10-28T18:35:21",
+  "environment": {
+   "python": "3.12.4",
+   "machine": "arm64",
+   "system": "Darwin"
+  }
+ }
+}
