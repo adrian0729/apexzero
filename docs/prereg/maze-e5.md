@@ -299,7 +299,7 @@ Per arm and primary score, read on both targets:
 
 | Row | Rule | Reading |
 |---|---|---|
-| A, faithful | Faithful in every reached phase on both targets, and no row G for the arm's stored score | "On JaxUED's own [arm] agents, [score] tracks exact regret throughout training" |
+| A, faithful | Faithful in every reached phase on both targets, and no row G for the arm's stored score | "On [JaxUED's, or SFL's for the SFL arm] own [arm] agents, [score] tracks exact regret throughout training" |
 | B, degrades late | On one target, both: ρ̄_last − ρ̄_first ≤ −0.1 with its CI excluding 0, and PF-trend negative and significant after Holm. It holds if they hold together on either target (the target or targets are reported) | "The score tracks regret only while the agent is incompetent" |
 | B′, improves with competence (not in the plan's table) | The mirror image, on one target: ≥ +0.1 with its CI excluding 0, and PF-trend positive and significant after Holm | "The score tracks regret only once the agent solves most mazes" |
 | C, uninformative | Uninformative in every reached phase on both targets | "Ground truth confirms No Regrets on the maze" |
@@ -402,7 +402,9 @@ Per arm and primary score, read on both targets:
      in Section 10's table (all matched), and copied byte for byte into `third_party/sfl/`.
    - `third_party/sfl/README.md` records the source, commit, licence, files, hashes, the files
      not vendored, and DEV-E5-2, as `third_party/jaxued_examples/README.md` does.
-3. **The build.** Done on 27 Oct 2026; it still needs its adversarial review.
+3. **The build.** Done on 27 Oct 2026. It was reviewed on 27 Oct 2026 (build `fd8494a`, fixes
+   `ed69449`). The two later commits, `bed97b1` and `860939a`, were reviewed on 28 Oct 2026, with
+   the fixes listed in this item's commit.
    - `scripts/run_sfl_maze.py`, the SFL shim (DEV-E5-2, DEV-E5-7);
    - no DEV-E5-2 patch: the vendored files are unmodified;
    - `apexzero.maze.sfl`: the vendored blobs, the config, the checkpoint writer and loader, the
@@ -423,11 +425,12 @@ Per arm and primary score, read on both targets:
    - `tests/test_maze_e5.py`. It covers planted scores with a known ρ, the bootstrap (against
      Spearman on the expanded sample, and with 1 or more processes), Holm, the phase assignment,
      the slopes, nRC, the labels and rows (each planted row comes out), S1, the SFL loader's round
-     trip, the capture's bit-identity, the shim end to end (with JaxUED's network standing in for
-     SFL's), the run lists, the config checks, the train stage, the tag gate (with both index
+     trip, the capture's bit-identity, the shim end to end (it runs on SFL's own vendored
+     network), the run lists, the config checks, the train stage, the tag gate (with both index
      flags), run-once outputs, the audit job of a missing run, the run-list options the boxes
      recorded, the audit's equality with the pilot's and the projection rule (38 tests after the
-     review, 40 after the decisions of 27 Oct 2026).
+     review, 40 after the decisions of 27 Oct 2026, 46 after the review of 28 Oct 2026's two
+     commits, 47 with the B' reachability test).
 4. **A dry run** on the pilot's checkpoints: the pilot reproduction (Section 3), then `analyse`
    end to end on one seed. This is a machinery check only. Not yet run (the test shows the E5
    audit with its additions off equals the pilot's `audit_checkpoint` on a small case).
@@ -644,7 +647,7 @@ and copied byte for byte into `third_party/sfl/` with a README. `network.py` and
 | `chex`, `jax` (with `jax.experimental`), `flax`, `optax`, `numpy`, `wandb`, `matplotlib`, `PIL`, `jaxued` (`Maze`, `MazeRenderer`, `AutoReplayWrapper`, `Level`, `make_level_generator`) | installed. The script calls `jax.tree_map` (restored by `apexzero.compat`), passes integer `where=` masks that today's JAX refuses, and calls `FigureCanvasAgg.tostring_rgb`, which matplotlib 3.10 removed (both stood in, DEV-E5-7) |
 | `hydra` (`@hydra.main` on `main`), `omegaconf` (`OmegaConf.to_container`) | not installed; not needed: the shim composes the config and calls `main` itself (DEV-E5-7). No install is requested |
 | `sfl.train.train_utils.save_params` | not vendored (`sfl/train/train_utils/__init__.py`, 44 bytes, blob `b5437dc2…`, and `common.py`, 6,308 bytes, blob `be4f1f26…`); not needed: the shim's writer replaces it (DEV-E5-2) |
-| `sfl.train.minigrid_plr.ActorCritic, evaluate_rnn` | **vendored on 27 Oct 2026** (the user's approval, Section 11 item 8): `sfl/train/minigrid_plr.py`, 38,737 bytes, blob `9537a794b7df09c76bf816215b366b03eb10b682` (size and blob checked after the download, before the copy), the same commit and licence. It is SFL's network and its eval rollout; it differs from JaxUED's `maze_plr.py` (41,764 bytes, another blob), so JaxUED's network cannot stand in for it in the real runs. Its imports (read 27 Oct 2026): `json`, `time`, `os`, `enum`, `typing`, `numpy`, `jax`, `flax`, `optax`, `distrax`, `orbax.checkpoint`, `wandb`, `chex` and `jaxued` (all installed), `hydra` and `omegaconf` (stood in as above), `sfl.train.train_utils.save_params` (stood in as above), and `sfl.util.jaxued.jaxued_utils.l1_value_loss` (next row) |
+| `sfl.train.minigrid_plr.ActorCritic, evaluate_rnn` | **vendored on 27 Oct 2026** (the user's approval, Section 11 item 8): `sfl/train/minigrid_plr.py`, 38,737 bytes, blob `9537a794b7df09c76bf816215b366b03eb10b682` (size and blob checked after the download, before the copy), the same commit and licence. It is SFL's network and its eval rollout; it differs from JaxUED's `maze_plr.py` (41,764 bytes, another blob), so JaxUED's network cannot stand in for it in the real runs. The two `ActorCritic` classes (SFL's in `minigrid_plr.py`, about lines 303–337; JaxUED's in `maze_plr.py`, about lines 292–326) are the same architecture except for an unused `is_recurrent` field, so an output comparison cannot tell them apart. What guards the choice is `apexzero.maze.sfl.minigrid_plr()`, which loads only the hash-checked vendored file as module `sfl_minigrid_plr` (a test asserts `ActorCritic.__module__ == "sfl_minigrid_plr"`), and `load_any`'s dispatch on `arm == "sfl"` in `scripts/maze_e5.py`. Its imports (read 27 Oct 2026): `json`, `time`, `os`, `enum`, `typing`, `numpy`, `jax`, `flax`, `optax`, `distrax`, `orbax.checkpoint`, `wandb`, `chex` and `jaxued` (all installed), `hydra` and `omegaconf` (stood in as above), `sfl.train.train_utils.save_params` (stood in as above), and `sfl.util.jaxued.jaxued_utils.l1_value_loss` (next row) |
 | `sfl.util.jaxued.jaxued_utils.l1_value_loss` (by `minigrid_plr.py`) | **vendored on 27 Oct 2026** (the user's approval, Section 11 item 8): `sfl/util/jaxued/jaxued_utils.py`, 2,942 bytes, blob `f491626f2164e2b36b06c8e4977b672588c985ab`, and the empty package files `sfl/util/__init__.py` and `sfl/util/jaxued/__init__.py` (0 bytes, blob `e69de29bb2d1d6434b8b29ae775ad8c2e48c5391`), the same commit and licence; sizes and blobs checked after the download, before the copy. Read: it imports only `jax` and `jax.numpy` (it calls `jax.tree_map`, restored by `apexzero.compat`), both installed |
 
 The repo's environment has `jaxued` 0.0.1, whose maze env equals the pinned JaxUED commit's

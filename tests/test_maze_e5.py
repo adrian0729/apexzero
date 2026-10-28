@@ -983,7 +983,8 @@ def test_planted_effects_give_the_rows(planted):
 def test_faithful_everywhere_with_a_shift_is_row_a_not_b_or_b_prime():
     """Decided 27 Oct 2026 (maze-e5.md Section 11, item 11): a score faithful in every reached
     phase is A even when it also shifts significantly, in either direction. The shift is still
-    reported. A score that is not faithful late stays B."""
+    reported. (The rows of a score that is not faithful in some phase are checked in the next
+    test.)"""
     rng = np.random.default_rng(31)
 
     def noise_by_phase(sds):
@@ -1005,6 +1006,35 @@ def test_faithful_everywhere_with_a_shift_is_row_a_not_b_or_b_prime():
         assert x["trend_significant"] and sign * x["trend"] > 0
         assert (x["hi"] < 0) if sign < 0 else (x["lo"] > 0)
         assert row["rows"] == ["A"] and row["reading"] == [e5.reading("A", "dr", "pvl")]
+
+
+def test_b_prime_arises_only_from_a_score_not_faithful_in_some_phase():
+    """Row B' is reachable only under the rule that a score faithful in every reached phase drops
+    B and B' (decided 27 Oct 2026). Planted: a DR PVL score that is pure noise (sd 1) in the
+    early phase, so not faithful there, and faithful in mid and late (noise sd 0.05, 0.01). Its
+    rho rises by far more than ROW_SHIFT with a significant positive trend, so B' comes out and
+    B and A do not. The mirror (faithful early, noise late) gives B and not B'."""
+    rng = np.random.default_rng(41)
+
+    def noise_by_phase(sds):
+        def plan(arm, view, k, reg, rng):
+            sd = sds[0] if k < 6 else sds[1] if k < 11 else sds[2]
+            return {"pvl": reg + sd * rng.normal(size=reg.shape)}
+        return plan
+
+    for sds, want, other in (((1.0, 0.05, 0.01), "B'", "B"), ((0.01, 0.05, 1.0), "B", "B'")):
+        runs = [_run(rng, "dr", v, s, noise_by_phase(sds)) for s in range(1, 4)
+                for v in (13, 5)]
+        res = e5.analyse(runs, e5.bootstrap(runs, n_boot=2000, workers=3))
+        row = next(r for r in res["rows"] if (r["arm"], r["score"]) == ("dr", "pvl"))
+        labels = res["arms"]["dr"]["labels"]
+        faithful_phases = [ph for ph in e5.PHASES
+                           if all(labels[("pvl", t, ph)]["label"] == "faithful"
+                                  for t in e5.TARGETS)]
+        assert faithful_phases == (["mid", "late"] if want == "B'" else ["early", "mid"])
+        noisy = "early" if want == "B'" else "late"
+        assert all(labels[("pvl", t, noisy)]["label"] != "faithful" for t in e5.TARGETS)
+        assert want in row["rows"] and other not in row["rows"] and "A" not in row["rows"]
 
 
 def _plr_with_g(pvl_sds):

@@ -457,8 +457,9 @@ def import_context(stubs: dict):
     for the duration only (the imported modules keep their references)."""
     import sys
 
-    saved = {k: sys.modules.get(k) for k in [*stubs, "sfl", "sfl.train", "sfl.util",
-                                              "sfl.util.jaxued", "sfl.util.jaxued.jaxued_utils"]}
+    saved = {k: sys.modules.get(k) for k in [*stubs, "sfl", "sfl.train", "sfl.train.minigrid_plr",
+                                              "sfl.util", "sfl.util.jaxued",
+                                              "sfl.util.jaxued.jaxued_utils"]}
     sys.modules.update(stubs)
     sys.path.insert(0, str(VENDOR))
     try:
