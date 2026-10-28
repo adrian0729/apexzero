@@ -1,0 +1,3323 @@
+{
+ "status": "PRE-REGISTERED (gw3-prereg-v1, docs/prereg/gw3-width-round.md): P1 primary; S1, S1-v1, S1-v3 and S2 secondary (unadjusted); S3, the lap time's extras and the tables descriptive",
+ "runs": {
+  "expected": 120,
+  "present": 120,
+  "missing": {}
+ },
+ "primary": {
+  "P1": {
+   "treated": "sl",
+   "baseline": "base",
+   "variants": [
+    "v1",
+    "v3"
+   ],
+   "n_units": {
+    "v1": {
+     "treated": 10,
+     "baseline": 10
+    },
+    "v3": {
+     "treated": 10,
+     "baseline": 10
+    }
+   },
+   "means": {
+    "v1": {
+     "treated": 9.8,
+     "baseline": 4.6
+    },
+    "v3": {
+     "treated": 9.9,
+     "baseline": 5.0
+    }
+   },
+   "T": 10.1,
+   "p": 2.9295633766884514e-11,
+   "p_opposite": 1.0,
+   "count_ge": 1,
+   "count_le": 34134779536,
+   "relabellings": 34134779536,
+   "outcome": "confirm",
+   "question": "sl above base on held-out circuits, both variants (one-sided)"
+  }
+ },
+ "secondary": {
+  "label": "secondary: exact one-sided tests at 0.05, unadjusted",
+  "S1": {
+   "treated": "cl",
+   "baseline": "base",
+   "variants": [
+    "v1",
+    "v3"
+   ],
+   "n_units": {
+    "v1": {
+     "treated": 10,
+     "baseline": 10
+    },
+    "v3": {
+     "treated": 10,
+     "baseline": 10
+    }
+   },
+   "means": {
+    "v1": {
+     "treated": 7.4,
+     "baseline": 4.6
+    },
+    "v3": {
+     "treated": 7.6,
+     "baseline": 5.0
+    }
+   },
+   "T": 5.4,
+   "p": 4.291810346848581e-07,
+   "p_opposite": 0.999999904730599,
+   "count_ge": 14650,
+   "count_le": 34134776284,
+   "relabellings": 34134779536,
+   "outcome": "confirm",
+   "question": "cl above base on held-out circuits, both variants"
+  },
+  "S1-v1": {
+   "treated": "cl",
+   "baseline": "base",
+   "variants": [
+    "v1"
+   ],
+   "n_units": {
+    "v1": {
+     "treated": 10,
+     "baseline": 10
+    }
+   },
+   "means": {
+    "v1": {
+     "treated": 7.4,
+     "baseline": 4.6
+    }
+   },
+   "T": 2.8,
+   "p": 0.0001082508822446903,
+   "p_opposite": 0.9999837623676633,
+   "count_ge": 20,
+   "count_le": 184753,
+   "relabellings": 184756,
+   "outcome": "confirm",
+   "question": "cl above base within v1 (#12's transfer condition)"
+  },
+  "S1-v3": {
+   "treated": "cl",
+   "baseline": "base",
+   "variants": [
+    "v3"
+   ],
+   "n_units": {
+    "v3": {
+     "treated": 10,
+     "baseline": 10
+    }
+   },
+   "means": {
+    "v3": {
+     "treated": 7.6,
+     "baseline": 5.0
+    }
+   },
+   "T": 2.6,
+   "p": 0.0016345883218948235,
+   "p_opposite": 0.9994966333975622,
+   "count_ge": 302,
+   "count_le": 184663,
+   "relabellings": 184756,
+   "outcome": "confirm",
+   "question": "cl above base within v3 (reported; does not decide #12)"
+  },
+  "S2": {
+   "treated": "sa",
+   "baseline": "base",
+   "variants": [
+    "v1",
+    "v3"
+   ],
+   "n_units": {
+    "v1": {
+     "treated": 10,
+     "baseline": 10
+    },
+    "v3": {
+     "treated": 10,
+     "baseline": 10
+    }
+   },
+   "means": {
+    "v1": {
+     "treated": 9.6,
+     "baseline": 4.6
+    },
+    "v3": {
+     "treated": 9.3,
+     "baseline": 5.0
+    }
+   },
+   "T": 9.3,
+   "p": 5.859126753376903e-11,
+   "p_opposite": 1.0,
+   "count_ge": 2,
+   "count_le": 34134779536,
+   "relabellings": 34134779536,
+   "outcome": "confirm",
+   "question": "sa above base on all 12 (in-sample for M's summaries)"
+  }
+ },
+ "S3": {
+  "label": "descriptive (two-sided); GW-4's criterion 2 reads D2",
+  "cells": {
+   "v1/f1": {
+    "sl": {
+     "20": 3,
+     "21": 4,
+     "22": 4,
+     "23": 5,
+     "24": 4,
+     "25": 5,
+     "26": 4,
+     "27": 4,
+     "28": 4,
+     "29": 4
+    },
+    "cl": {
+     "20": 2,
+     "21": 3,
+     "22": 3,
+     "23": 3,
+     "24": 5,
+     "25": 2,
+     "26": 3,
+     "27": 2,
+     "28": 3,
+     "29": 3
+    },
+    "n_sl": 10,
+    "n_cl": 10,
+    "diff": 1.2,
+    "ci95": [
+     0.5999999999999996,
+     1.7999999999999998
+    ],
+    "mean_sl": 4.1,
+    "mean_cl": 2.9,
+    "draws_used": 20000
+   },
+   "v1/f2": {
+    "sl": {
+     "20": 6,
+     "21": 5,
+     "22": 6,
+     "23": 5,
+     "24": 6,
+     "25": 6,
+     "26": 6,
+     "27": 6,
+     "28": 5,
+     "29": 6
+    },
+    "cl": {
+     "20": 4,
+     "21": 5,
+     "22": 4,
+     "23": 3,
+     "24": 4,
+     "25": 5,
+     "26": 5,
+     "27": 5,
+     "28": 6,
+     "29": 4
+    },
+    "n_sl": 10,
+    "n_cl": 10,
+    "diff": 1.2,
+    "ci95": [
+     0.5,
+     1.7999999999999998
+    ],
+    "mean_sl": 5.7,
+    "mean_cl": 4.5,
+    "draws_used": 20000
+   },
+   "v3/f1": {
+    "sl": {
+     "20": 6,
+     "21": 4,
+     "22": 4,
+     "23": 5,
+     "24": 4,
+     "25": 4,
+     "26": 2,
+     "27": 4,
+     "28": 4,
+     "29": 3
+    },
+    "cl": {
+     "20": 3,
+     "21": 2,
+     "22": 3,
+     "23": 3,
+     "24": 4,
+     "25": 4,
+     "26": 5,
+     "27": 1,
+     "28": 4,
+     "29": 4
+    },
+    "n_sl": 10,
+    "n_cl": 10,
+    "diff": 0.7,
+    "ci95": [
+     -0.49999999999999956,
+     1.7999999999999998
+    ],
+    "mean_sl": 4.0,
+    "mean_cl": 3.3,
+    "draws_used": 20000
+   },
+   "v3/f2": {
+    "sl": {
+     "20": 6,
+     "21": 6,
+     "22": 6,
+     "23": 6,
+     "24": 6,
+     "25": 5,
+     "26": 6,
+     "27": 6,
+     "28": 6,
+     "29": 6
+    },
+    "cl": {
+     "20": 3,
+     "21": 4,
+     "22": 4,
+     "23": 4,
+     "24": 5,
+     "25": 4,
+     "26": 5,
+     "27": 4,
+     "28": 5,
+     "29": 5
+    },
+    "n_sl": 10,
+    "n_cl": 10,
+    "diff": 1.6,
+    "ci95": [
+     1.2000000000000002,
+     2.0000000000000004
+    ],
+    "mean_sl": 5.9,
+    "mean_cl": 4.3,
+    "draws_used": 20000
+   }
+  },
+  "D2": 1.175,
+  "bootstrap": {
+   "draws": 20000,
+   "rng": "numpy default_rng(0) per cell",
+   "over": "seeds 20-29 with replacement, both arms at the same drawn seeds"
+  }
+ },
+ "lap_time": {
+  "units": "points (100 x (median lap / s-OCP lap - 1))",
+  "per_network": {
+   "gw3-v1-base-s20": {
+    "variant": "v1",
+    "arm": "base",
+    "seed": 20,
+    "n_completed": 5,
+    "median_gap": 7.275483426190732
+   },
+   "gw3-v1-base-s21": {
+    "variant": "v1",
+    "arm": "base",
+    "seed": 21,
+    "n_completed": 4,
+    "median_gap": 7.570808379319727
+   },
+   "gw3-v1-base-s22": {
+    "variant": "v1",
+    "arm": "base",
+    "seed": 22,
+    "n_completed": 3,
+    "median_gap": 7.438424450931391
+   },
+   "gw3-v1-base-s23": {
+    "variant": "v1",
+    "arm": "base",
+    "seed": 23,
+    "n_completed": 4,
+    "median_gap": 7.6861014901196905
+   },
+   "gw3-v1-base-s24": {
+    "variant": "v1",
+    "arm": "base",
+    "seed": 24,
+    "n_completed": 4,
+    "median_gap": 7.1671950810695435
+   },
+   "gw3-v1-base-s25": {
+    "variant": "v1",
+    "arm": "base",
+    "seed": 25,
+    "n_completed": 6,
+    "median_gap": 7.375853710094593
+   },
+   "gw3-v1-base-s26": {
+    "variant": "v1",
+    "arm": "base",
+    "seed": 26,
+    "n_completed": 5,
+    "median_gap": 6.918037772824848
+   },
+   "gw3-v1-base-s27": {
+    "variant": "v1",
+    "arm": "base",
+    "seed": 27,
+    "n_completed": 4,
+    "median_gap": 6.965486226468287
+   },
+   "gw3-v1-base-s28": {
+    "variant": "v1",
+    "arm": "base",
+    "seed": 28,
+    "n_completed": 4,
+    "median_gap": 6.6392619839358735
+   },
+   "gw3-v1-base-s29": {
+    "variant": "v1",
+    "arm": "base",
+    "seed": 29,
+    "n_completed": 7,
+    "median_gap": 6.760997586436757
+   },
+   "gw3-v1-cl-f1-s20": {
+    "variant": "v1",
+    "arm": "cl-f1",
+    "seed": 20,
+    "n_completed": 7,
+    "median_gap": 6.987049509821919
+   },
+   "gw3-v1-cl-f1-s21": {
+    "variant": "v1",
+    "arm": "cl-f1",
+    "seed": 21,
+    "n_completed": 6,
+    "median_gap": 8.673133695040669
+   },
+   "gw3-v1-cl-f1-s22": {
+    "variant": "v1",
+    "arm": "cl-f1",
+    "seed": 22,
+    "n_completed": 7,
+    "median_gap": 8.846160099339539
+   },
+   "gw3-v1-cl-f1-s23": {
+    "variant": "v1",
+    "arm": "cl-f1",
+    "seed": 23,
+    "n_completed": 6,
+    "median_gap": 7.179081582243563
+   },
+   "gw3-v1-cl-f1-s24": {
+    "variant": "v1",
+    "arm": "cl-f1",
+    "seed": 24,
+    "n_completed": 9,
+    "median_gap": 7.508164564068087
+   },
+   "gw3-v1-cl-f1-s25": {
+    "variant": "v1",
+    "arm": "cl-f1",
+    "seed": 25,
+    "n_completed": 5,
+    "median_gap": 7.433306843571952
+   },
+   "gw3-v1-cl-f1-s26": {
+    "variant": "v1",
+    "arm": "cl-f1",
+    "seed": 26,
+    "n_completed": 8,
+    "median_gap": 7.955904677754621
+   },
+   "gw3-v1-cl-f1-s27": {
+    "variant": "v1",
+    "arm": "cl-f1",
+    "seed": 27,
+    "n_completed": 5,
+    "median_gap": 7.2393261105049955
+   },
+   "gw3-v1-cl-f1-s28": {
+    "variant": "v1",
+    "arm": "cl-f1",
+    "seed": 28,
+    "n_completed": 7,
+    "median_gap": 8.630020565072872
+   },
+   "gw3-v1-cl-f1-s29": {
+    "variant": "v1",
+    "arm": "cl-f1",
+    "seed": 29,
+    "n_completed": 8,
+    "median_gap": 7.863009374768215
+   },
+   "gw3-v1-cl-f2-s20": {
+    "variant": "v1",
+    "arm": "cl-f2",
+    "seed": 20,
+    "n_completed": 8,
+    "median_gap": 9.251508964337141
+   },
+   "gw3-v1-cl-f2-s21": {
+    "variant": "v1",
+    "arm": "cl-f2",
+    "seed": 21,
+    "n_completed": 9,
+    "median_gap": 7.656730814988211
+   },
+   "gw3-v1-cl-f2-s22": {
+    "variant": "v1",
+    "arm": "cl-f2",
+    "seed": 22,
+    "n_completed": 7,
+    "median_gap": 7.332375222497922
+   },
+   "gw3-v1-cl-f2-s23": {
+    "variant": "v1",
+    "arm": "cl-f2",
+    "seed": 23,
+    "n_completed": 7,
+    "median_gap": 8.176818834696231
+   },
+   "gw3-v1-cl-f2-s24": {
+    "variant": "v1",
+    "arm": "cl-f2",
+    "seed": 24,
+    "n_completed": 6,
+    "median_gap": 7.242341960599874
+   },
+   "gw3-v1-cl-f2-s25": {
+    "variant": "v1",
+    "arm": "cl-f2",
+    "seed": 25,
+    "n_completed": 9,
+    "median_gap": 7.957508939948199
+   },
+   "gw3-v1-cl-f2-s26": {
+    "variant": "v1",
+    "arm": "cl-f2",
+    "seed": 26,
+    "n_completed": 8,
+    "median_gap": 7.828217541186788
+   },
+   "gw3-v1-cl-f2-s27": {
+    "variant": "v1",
+    "arm": "cl-f2",
+    "seed": 27,
+    "n_completed": 6,
+    "median_gap": 8.105793151785967
+   },
+   "gw3-v1-cl-f2-s28": {
+    "variant": "v1",
+    "arm": "cl-f2",
+    "seed": 28,
+    "n_completed": 9,
+    "median_gap": 8.855082017985417
+   },
+   "gw3-v1-cl-f2-s29": {
+    "variant": "v1",
+    "arm": "cl-f2",
+    "seed": 29,
+    "n_completed": 6,
+    "median_gap": 8.23563466221039
+   },
+   "gw3-v1-sa-s20": {
+    "variant": "v1",
+    "arm": "sa",
+    "seed": 20,
+    "n_completed": 10,
+    "median_gap": 9.30152724411425
+   },
+   "gw3-v1-sa-s21": {
+    "variant": "v1",
+    "arm": "sa",
+    "seed": 21,
+    "n_completed": 9,
+    "median_gap": 8.713284149015355
+   },
+   "gw3-v1-sa-s22": {
+    "variant": "v1",
+    "arm": "sa",
+    "seed": 22,
+    "n_completed": 9,
+    "median_gap": 9.494034337777979
+   },
+   "gw3-v1-sa-s23": {
+    "variant": "v1",
+    "arm": "sa",
+    "seed": 23,
+    "n_completed": 10,
+    "median_gap": 8.79911485226491
+   },
+   "gw3-v1-sa-s24": {
+    "variant": "v1",
+    "arm": "sa",
+    "seed": 24,
+    "n_completed": 9,
+    "median_gap": 8.838370967106467
+   },
+   "gw3-v1-sa-s25": {
+    "variant": "v1",
+    "arm": "sa",
+    "seed": 25,
+    "n_completed": 10,
+    "median_gap": 8.957753272104597
+   },
+   "gw3-v1-sa-s26": {
+    "variant": "v1",
+    "arm": "sa",
+    "seed": 26,
+    "n_completed": 10,
+    "median_gap": 9.508977873610169
+   },
+   "gw3-v1-sa-s27": {
+    "variant": "v1",
+    "arm": "sa",
+    "seed": 27,
+    "n_completed": 10,
+    "median_gap": 8.888499142480931
+   },
+   "gw3-v1-sa-s28": {
+    "variant": "v1",
+    "arm": "sa",
+    "seed": 28,
+    "n_completed": 9,
+    "median_gap": 8.93300267198882
+   },
+   "gw3-v1-sa-s29": {
+    "variant": "v1",
+    "arm": "sa",
+    "seed": 29,
+    "n_completed": 10,
+    "median_gap": 8.703585937090473
+   },
+   "gw3-v1-sl-f1-s20": {
+    "variant": "v1",
+    "arm": "sl-f1",
+    "seed": 20,
+    "n_completed": 9,
+    "median_gap": 7.794185030874501
+   },
+   "gw3-v1-sl-f1-s21": {
+    "variant": "v1",
+    "arm": "sl-f1",
+    "seed": 21,
+    "n_completed": 10,
+    "median_gap": 8.879312808791939
+   },
+   "gw3-v1-sl-f1-s22": {
+    "variant": "v1",
+    "arm": "sl-f1",
+    "seed": 22,
+    "n_completed": 10,
+    "median_gap": 8.115067481143669
+   },
+   "gw3-v1-sl-f1-s23": {
+    "variant": "v1",
+    "arm": "sl-f1",
+    "seed": 23,
+    "n_completed": 11,
+    "median_gap": 9.446451203346594
+   },
+   "gw3-v1-sl-f1-s24": {
+    "variant": "v1",
+    "arm": "sl-f1",
+    "seed": 24,
+    "n_completed": 10,
+    "median_gap": 9.74005087277797
+   },
+   "gw3-v1-sl-f1-s25": {
+    "variant": "v1",
+    "arm": "sl-f1",
+    "seed": 25,
+    "n_completed": 11,
+    "median_gap": 9.000094739552189
+   },
+   "gw3-v1-sl-f1-s26": {
+    "variant": "v1",
+    "arm": "sl-f1",
+    "seed": 26,
+    "n_completed": 10,
+    "median_gap": 8.546945711993448
+   },
+   "gw3-v1-sl-f1-s27": {
+    "variant": "v1",
+    "arm": "sl-f1",
+    "seed": 27,
+    "n_completed": 9,
+    "median_gap": 8.489398137697957
+   },
+   "gw3-v1-sl-f1-s28": {
+    "variant": "v1",
+    "arm": "sl-f1",
+    "seed": 28,
+    "n_completed": 8,
+    "median_gap": 8.758668781968094
+   },
+   "gw3-v1-sl-f1-s29": {
+    "variant": "v1",
+    "arm": "sl-f1",
+    "seed": 29,
+    "n_completed": 10,
+    "median_gap": 8.913263884076915
+   },
+   "gw3-v1-sl-f2-s20": {
+    "variant": "v1",
+    "arm": "sl-f2",
+    "seed": 20,
+    "n_completed": 10,
+    "median_gap": 7.988032357707941
+   },
+   "gw3-v1-sl-f2-s21": {
+    "variant": "v1",
+    "arm": "sl-f2",
+    "seed": 21,
+    "n_completed": 8,
+    "median_gap": 8.921986093938294
+   },
+   "gw3-v1-sl-f2-s22": {
+    "variant": "v1",
+    "arm": "sl-f2",
+    "seed": 22,
+    "n_completed": 11,
+    "median_gap": 8.90009388987625
+   },
+   "gw3-v1-sl-f2-s23": {
+    "variant": "v1",
+    "arm": "sl-f2",
+    "seed": 23,
+    "n_completed": 9,
+    "median_gap": 8.957689059396667
+   },
+   "gw3-v1-sl-f2-s24": {
+    "variant": "v1",
+    "arm": "sl-f2",
+    "seed": 24,
+    "n_completed": 10,
+    "median_gap": 9.51903867793741
+   },
+   "gw3-v1-sl-f2-s25": {
+    "variant": "v1",
+    "arm": "sl-f2",
+    "seed": 25,
+    "n_completed": 10,
+    "median_gap": 9.288830105030089
+   },
+   "gw3-v1-sl-f2-s26": {
+    "variant": "v1",
+    "arm": "sl-f2",
+    "seed": 26,
+    "n_completed": 10,
+    "median_gap": 9.780902298449877
+   },
+   "gw3-v1-sl-f2-s27": {
+    "variant": "v1",
+    "arm": "sl-f2",
+    "seed": 27,
+    "n_completed": 10,
+    "median_gap": 8.83808963889452
+   },
+   "gw3-v1-sl-f2-s28": {
+    "variant": "v1",
+    "arm": "sl-f2",
+    "seed": 28,
+    "n_completed": 9,
+    "median_gap": 8.806519532400237
+   },
+   "gw3-v1-sl-f2-s29": {
+    "variant": "v1",
+    "arm": "sl-f2",
+    "seed": 29,
+    "n_completed": 10,
+    "median_gap": 9.190902940332835
+   },
+   "gw3-v3-base-s20": {
+    "variant": "v3",
+    "arm": "base",
+    "seed": 20,
+    "n_completed": 6,
+    "median_gap": 6.781830899397756
+   },
+   "gw3-v3-base-s21": {
+    "variant": "v3",
+    "arm": "base",
+    "seed": 21,
+    "n_completed": 2,
+    "median_gap": 8.18243460700967
+   },
+   "gw3-v3-base-s22": {
+    "variant": "v3",
+    "arm": "base",
+    "seed": 22,
+    "n_completed": 6,
+    "median_gap": 7.922315106050282
+   },
+   "gw3-v3-base-s23": {
+    "variant": "v3",
+    "arm": "base",
+    "seed": 23,
+    "n_completed": 4,
+    "median_gap": 7.059941025736293
+   },
+   "gw3-v3-base-s24": {
+    "variant": "v3",
+    "arm": "base",
+    "seed": 24,
+    "n_completed": 5,
+    "median_gap": 7.457836707448684
+   },
+   "gw3-v3-base-s25": {
+    "variant": "v3",
+    "arm": "base",
+    "seed": 25,
+    "n_completed": 5,
+    "median_gap": 7.0751703539504
+   },
+   "gw3-v3-base-s26": {
+    "variant": "v3",
+    "arm": "base",
+    "seed": 26,
+    "n_completed": 6,
+    "median_gap": 7.2075626670904285
+   },
+   "gw3-v3-base-s27": {
+    "variant": "v3",
+    "arm": "base",
+    "seed": 27,
+    "n_completed": 3,
+    "median_gap": 7.307673259052638
+   },
+   "gw3-v3-base-s28": {
+    "variant": "v3",
+    "arm": "base",
+    "seed": 28,
+    "n_completed": 7,
+    "median_gap": 7.312045997673056
+   },
+   "gw3-v3-base-s29": {
+    "variant": "v3",
+    "arm": "base",
+    "seed": 29,
+    "n_completed": 6,
+    "median_gap": 7.641060430157753
+   },
+   "gw3-v3-cl-f1-s20": {
+    "variant": "v3",
+    "arm": "cl-f1",
+    "seed": 20,
+    "n_completed": 5,
+    "median_gap": 7.98162362845638
+   },
+   "gw3-v3-cl-f1-s21": {
+    "variant": "v3",
+    "arm": "cl-f1",
+    "seed": 21,
+    "n_completed": 7,
+    "median_gap": 7.541074776384904
+   },
+   "gw3-v3-cl-f1-s22": {
+    "variant": "v3",
+    "arm": "cl-f1",
+    "seed": 22,
+    "n_completed": 7,
+    "median_gap": 8.260867853969511
+   },
+   "gw3-v3-cl-f1-s23": {
+    "variant": "v3",
+    "arm": "cl-f1",
+    "seed": 23,
+    "n_completed": 7,
+    "median_gap": 7.799067520930558
+   },
+   "gw3-v3-cl-f1-s24": {
+    "variant": "v3",
+    "arm": "cl-f1",
+    "seed": 24,
+    "n_completed": 9,
+    "median_gap": 8.097108212876014
+   },
+   "gw3-v3-cl-f1-s25": {
+    "variant": "v3",
+    "arm": "cl-f1",
+    "seed": 25,
+    "n_completed": 9,
+    "median_gap": 8.282391816240242
+   },
+   "gw3-v3-cl-f1-s26": {
+    "variant": "v3",
+    "arm": "cl-f1",
+    "seed": 26,
+    "n_completed": 10,
+    "median_gap": 8.318197049217158
+   },
+   "gw3-v3-cl-f1-s27": {
+    "variant": "v3",
+    "arm": "cl-f1",
+    "seed": 27,
+    "n_completed": 6,
+    "median_gap": 7.919636832967402
+   },
+   "gw3-v3-cl-f1-s28": {
+    "variant": "v3",
+    "arm": "cl-f1",
+    "seed": 28,
+    "n_completed": 8,
+    "median_gap": 7.780554154093188
+   },
+   "gw3-v3-cl-f1-s29": {
+    "variant": "v3",
+    "arm": "cl-f1",
+    "seed": 29,
+    "n_completed": 9,
+    "median_gap": 7.9059320110316245
+   },
+   "gw3-v3-cl-f2-s20": {
+    "variant": "v3",
+    "arm": "cl-f2",
+    "seed": 20,
+    "n_completed": 5,
+    "median_gap": 7.8480401549539724
+   },
+   "gw3-v3-cl-f2-s21": {
+    "variant": "v3",
+    "arm": "cl-f2",
+    "seed": 21,
+    "n_completed": 6,
+    "median_gap": 7.771370970176883
+   },
+   "gw3-v3-cl-f2-s22": {
+    "variant": "v3",
+    "arm": "cl-f2",
+    "seed": 22,
+    "n_completed": 6,
+    "median_gap": 7.946492303671848
+   },
+   "gw3-v3-cl-f2-s23": {
+    "variant": "v3",
+    "arm": "cl-f2",
+    "seed": 23,
+    "n_completed": 8,
+    "median_gap": 8.398165991602779
+   },
+   "gw3-v3-cl-f2-s24": {
+    "variant": "v3",
+    "arm": "cl-f2",
+    "seed": 24,
+    "n_completed": 9,
+    "median_gap": 8.236324646589566
+   },
+   "gw3-v3-cl-f2-s25": {
+    "variant": "v3",
+    "arm": "cl-f2",
+    "seed": 25,
+    "n_completed": 6,
+    "median_gap": 7.8436010650338
+   },
+   "gw3-v3-cl-f2-s26": {
+    "variant": "v3",
+    "arm": "cl-f2",
+    "seed": 26,
+    "n_completed": 8,
+    "median_gap": 7.4862160017681205
+   },
+   "gw3-v3-cl-f2-s27": {
+    "variant": "v3",
+    "arm": "cl-f2",
+    "seed": 27,
+    "n_completed": 9,
+    "median_gap": 7.890648558193436
+   },
+   "gw3-v3-cl-f2-s28": {
+    "variant": "v3",
+    "arm": "cl-f2",
+    "seed": 28,
+    "n_completed": 8,
+    "median_gap": 8.472161537850365
+   },
+   "gw3-v3-cl-f2-s29": {
+    "variant": "v3",
+    "arm": "cl-f2",
+    "seed": 29,
+    "n_completed": 10,
+    "median_gap": 7.730720184003948
+   },
+   "gw3-v3-sa-s20": {
+    "variant": "v3",
+    "arm": "sa",
+    "seed": 20,
+    "n_completed": 10,
+    "median_gap": 8.9684529663013
+   },
+   "gw3-v3-sa-s21": {
+    "variant": "v3",
+    "arm": "sa",
+    "seed": 21,
+    "n_completed": 7,
+    "median_gap": 8.56746578665466
+   },
+   "gw3-v3-sa-s22": {
+    "variant": "v3",
+    "arm": "sa",
+    "seed": 22,
+    "n_completed": 10,
+    "median_gap": 8.614249600643841
+   },
+   "gw3-v3-sa-s23": {
+    "variant": "v3",
+    "arm": "sa",
+    "seed": 23,
+    "n_completed": 11,
+    "median_gap": 8.857709468826048
+   },
+   "gw3-v3-sa-s24": {
+    "variant": "v3",
+    "arm": "sa",
+    "seed": 24,
+    "n_completed": 9,
+    "median_gap": 7.395241645170558
+   },
+   "gw3-v3-sa-s25": {
+    "variant": "v3",
+    "arm": "sa",
+    "seed": 25,
+    "n_completed": 11,
+    "median_gap": 8.436815947114962
+   },
+   "gw3-v3-sa-s26": {
+    "variant": "v3",
+    "arm": "sa",
+    "seed": 26,
+    "n_completed": 10,
+    "median_gap": 9.312716033921454
+   },
+   "gw3-v3-sa-s27": {
+    "variant": "v3",
+    "arm": "sa",
+    "seed": 27,
+    "n_completed": 8,
+    "median_gap": 9.07644056794712
+   },
+   "gw3-v3-sa-s28": {
+    "variant": "v3",
+    "arm": "sa",
+    "seed": 28,
+    "n_completed": 9,
+    "median_gap": 8.754041166381654
+   },
+   "gw3-v3-sa-s29": {
+    "variant": "v3",
+    "arm": "sa",
+    "seed": 29,
+    "n_completed": 8,
+    "median_gap": 8.027335960150438
+   },
+   "gw3-v3-sl-f1-s20": {
+    "variant": "v3",
+    "arm": "sl-f1",
+    "seed": 20,
+    "n_completed": 12,
+    "median_gap": 8.090875169710277
+   },
+   "gw3-v3-sl-f1-s21": {
+    "variant": "v3",
+    "arm": "sl-f1",
+    "seed": 21,
+    "n_completed": 9,
+    "median_gap": 8.118582625088045
+   },
+   "gw3-v3-sl-f1-s22": {
+    "variant": "v3",
+    "arm": "sl-f1",
+    "seed": 22,
+    "n_completed": 10,
+    "median_gap": 8.705013405406037
+   },
+   "gw3-v3-sl-f1-s23": {
+    "variant": "v3",
+    "arm": "sl-f1",
+    "seed": 23,
+    "n_completed": 11,
+    "median_gap": 8.418204403831053
+   },
+   "gw3-v3-sl-f1-s24": {
+    "variant": "v3",
+    "arm": "sl-f1",
+    "seed": 24,
+    "n_completed": 10,
+    "median_gap": 9.2269108942047
+   },
+   "gw3-v3-sl-f1-s25": {
+    "variant": "v3",
+    "arm": "sl-f1",
+    "seed": 25,
+    "n_completed": 10,
+    "median_gap": 8.781503067105511
+   },
+   "gw3-v3-sl-f1-s26": {
+    "variant": "v3",
+    "arm": "sl-f1",
+    "seed": 26,
+    "n_completed": 7,
+    "median_gap": 8.379346576682313
+   },
+   "gw3-v3-sl-f1-s27": {
+    "variant": "v3",
+    "arm": "sl-f1",
+    "seed": 27,
+    "n_completed": 10,
+    "median_gap": 8.347845379812636
+   },
+   "gw3-v3-sl-f1-s28": {
+    "variant": "v3",
+    "arm": "sl-f1",
+    "seed": 28,
+    "n_completed": 10,
+    "median_gap": 8.764549393168942
+   },
+   "gw3-v3-sl-f1-s29": {
+    "variant": "v3",
+    "arm": "sl-f1",
+    "seed": 29,
+    "n_completed": 9,
+    "median_gap": 8.983894296618566
+   },
+   "gw3-v3-sl-f2-s20": {
+    "variant": "v3",
+    "arm": "sl-f2",
+    "seed": 20,
+    "n_completed": 9,
+    "median_gap": 10.155820061366017
+   },
+   "gw3-v3-sl-f2-s21": {
+    "variant": "v3",
+    "arm": "sl-f2",
+    "seed": 21,
+    "n_completed": 10,
+    "median_gap": 8.617895227005645
+   },
+   "gw3-v3-sl-f2-s22": {
+    "variant": "v3",
+    "arm": "sl-f2",
+    "seed": 22,
+    "n_completed": 10,
+    "median_gap": 8.418726846951907
+   },
+   "gw3-v3-sl-f2-s23": {
+    "variant": "v3",
+    "arm": "sl-f2",
+    "seed": 23,
+    "n_completed": 10,
+    "median_gap": 9.475316261344146
+   },
+   "gw3-v3-sl-f2-s24": {
+    "variant": "v3",
+    "arm": "sl-f2",
+    "seed": 24,
+    "n_completed": 9,
+    "median_gap": 8.747906970923381
+   },
+   "gw3-v3-sl-f2-s25": {
+    "variant": "v3",
+    "arm": "sl-f2",
+    "seed": 25,
+    "n_completed": 11,
+    "median_gap": 8.624579418093447
+   },
+   "gw3-v3-sl-f2-s26": {
+    "variant": "v3",
+    "arm": "sl-f2",
+    "seed": 26,
+    "n_completed": 10,
+    "median_gap": 8.998355644457213
+   },
+   "gw3-v3-sl-f2-s27": {
+    "variant": "v3",
+    "arm": "sl-f2",
+    "seed": 27,
+    "n_completed": 10,
+    "median_gap": 8.95427587407338
+   },
+   "gw3-v3-sl-f2-s28": {
+    "variant": "v3",
+    "arm": "sl-f2",
+    "seed": 28,
+    "n_completed": 10,
+    "median_gap": 8.521915968688253
+   },
+   "gw3-v3-sl-f2-s29": {
+    "variant": "v3",
+    "arm": "sl-f2",
+    "seed": 29,
+    "n_completed": 10,
+    "median_gap": 8.66668366822828
+   }
+  },
+  "delta_gap": 1.5201549214853785,
+  "pooled": {
+   "sa": {
+    "n": 20,
+    "n_left_out": 0,
+    "mean": 8.807430979533299,
+    "sd": 0.48489850826544956,
+    "left_out_per_variant": {
+     "v1": 0,
+     "v3": 0
+    }
+   },
+   "base": {
+    "n": 20,
+    "n_left_out": 0,
+    "mean": 7.287276058047921,
+    "sd": 0.39335573403603336,
+    "left_out_per_variant": {
+     "v1": 0,
+     "v3": 0
+    }
+   },
+   "delta": 1.5201549214853785
+  },
+  "per_variant": {
+   "v1": {
+    "sa": {
+     "n": 10,
+     "n_left_out": 0,
+     "mean": 9.013815044755395,
+     "sd": 0.30684604518529013,
+     "left_out_per_variant": {
+      "v1": 0
+     }
+    },
+    "base": {
+     "n": 10,
+     "n_left_out": 0,
+     "mean": 7.179765010739144,
+     "sd": 0.3505382006067356,
+     "left_out_per_variant": {
+      "v1": 0
+     }
+    },
+    "delta": 1.8340500340162507
+   },
+   "v3": {
+    "sa": {
+     "n": 10,
+     "n_left_out": 0,
+     "mean": 8.601046914311203,
+     "sd": 0.5545895976584309,
+     "left_out_per_variant": {
+      "v3": 0
+     }
+    },
+    "base": {
+     "n": 10,
+     "n_left_out": 0,
+     "mean": 7.394787105356696,
+     "sd": 0.42200318058983566,
+     "left_out_per_variant": {
+      "v3": 0
+     }
+    },
+    "delta": 1.2062598089545071
+   }
+  },
+  "paired_by_seed": {
+   "label": "descriptive",
+   "pairs": {
+    "v1/s20": {
+     "variant": "v1",
+     "n_common": 5,
+     "median_sa": 7.6278723704888085,
+     "median_base": 7.275483426190732,
+     "diff_of_medians": 0.35238894429807655,
+     "mean_of_diffs": 0.6514914436819288
+    },
+    "v1/s21": {
+     "variant": "v1",
+     "n_common": 4,
+     "median_sa": 8.301715884442507,
+     "median_base": 7.570808379319727,
+     "diff_of_medians": 0.7309075051227794,
+     "mean_of_diffs": 0.08333015995082871
+    },
+    "v1/s22": {
+     "variant": "v1",
+     "n_common": 3,
+     "median_sa": 7.955867394060512,
+     "median_base": 7.438424450931391,
+     "diff_of_medians": 0.5174429431291205,
+     "mean_of_diffs": 1.3653030010848533
+    },
+    "v1/s23": {
+     "variant": "v1",
+     "n_common": 4,
+     "median_sa": 8.623139056221685,
+     "median_base": 7.6861014901196905,
+     "diff_of_medians": 0.9370375661019947,
+     "mean_of_diffs": 0.7258983225392699
+    },
+    "v1/s24": {
+     "variant": "v1",
+     "n_common": 4,
+     "median_sa": 8.086335048181015,
+     "median_base": 7.1671950810695435,
+     "diff_of_medians": 0.9191399671114713,
+     "mean_of_diffs": 1.1307457242280659
+    },
+    "v1/s25": {
+     "variant": "v1",
+     "n_common": 6,
+     "median_sa": 8.057368489960982,
+     "median_base": 7.375853710094593,
+     "diff_of_medians": 0.6815147798663892,
+     "mean_of_diffs": 1.3223402326231022
+    },
+    "v1/s26": {
+     "variant": "v1",
+     "n_common": 5,
+     "median_sa": 8.384894361194895,
+     "median_base": 6.918037772824848,
+     "diff_of_medians": 1.4668565883700477,
+     "mean_of_diffs": 1.468309588539909
+    },
+    "v1/s27": {
+     "variant": "v1",
+     "n_common": 4,
+     "median_sa": 8.215233844508596,
+     "median_base": 6.965486226468287,
+     "diff_of_medians": 1.2497476180403089,
+     "mean_of_diffs": 1.1769057515732375
+    },
+    "v1/s28": {
+     "variant": "v1",
+     "n_common": 3,
+     "median_sa": 8.727093788544394,
+     "median_base": 6.661382794963555,
+     "diff_of_medians": 2.065710993580839,
+     "mean_of_diffs": 1.02972454462705
+    },
+    "v1/s29": {
+     "variant": "v1",
+     "n_common": 7,
+     "median_sa": 8.116063085697522,
+     "median_base": 6.760997586436757,
+     "diff_of_medians": 1.3550654992607658,
+     "mean_of_diffs": 1.2888658145234544
+    },
+    "v3/s20": {
+     "variant": "v3",
+     "n_common": 6,
+     "median_sa": 7.80438480132517,
+     "median_base": 6.781830899397756,
+     "diff_of_medians": 1.0225539019274148,
+     "mean_of_diffs": 1.2179505983178114
+    },
+    "v3/s21": {
+     "variant": "v3",
+     "n_common": 2,
+     "median_sa": 9.07342457516126,
+     "median_base": 8.18243460700967,
+     "diff_of_medians": 0.8909899681515903,
+     "mean_of_diffs": 0.8909899681515898
+    },
+    "v3/s22": {
+     "variant": "v3",
+     "n_common": 6,
+     "median_sa": 8.138208984882867,
+     "median_base": 7.922315106050282,
+     "diff_of_medians": 0.2158938788325857,
+     "mean_of_diffs": 0.7218655285872403
+    },
+    "v3/s23": {
+     "variant": "v3",
+     "n_common": 4,
+     "median_sa": 7.7573051514510105,
+     "median_base": 7.059941025736293,
+     "diff_of_medians": 0.6973641257147172,
+     "mean_of_diffs": 1.0727802859411384
+    },
+    "v3/s24": {
+     "variant": "v3",
+     "n_common": 5,
+     "median_sa": 7.395241645170558,
+     "median_base": 7.457836707448684,
+     "diff_of_medians": -0.06259506227812572,
+     "mean_of_diffs": -0.09431972837476987
+    },
+    "v3/s25": {
+     "variant": "v3",
+     "n_common": 5,
+     "median_sa": 7.491024553643788,
+     "median_base": 7.0751703539504,
+     "diff_of_medians": 0.41585419969338844,
+     "mean_of_diffs": 0.6976951828371456
+    },
+    "v3/s26": {
+     "variant": "v3",
+     "n_common": 6,
+     "median_sa": 8.19797342009333,
+     "median_base": 7.2075626670904285,
+     "diff_of_medians": 0.9904107530029016,
+     "mean_of_diffs": 0.8993047632878038
+    },
+    "v3/s27": {
+     "variant": "v3",
+     "n_common": 2,
+     "median_sa": 7.918260052288451,
+     "median_base": 7.292325261254562,
+     "diff_of_medians": 0.625934791033889,
+     "mean_of_diffs": 0.6259347910338886
+    },
+    "v3/s28": {
+     "variant": "v3",
+     "n_common": 7,
+     "median_sa": 8.186402654108594,
+     "median_base": 7.312045997673056,
+     "diff_of_medians": 0.8743566564355385,
+     "mean_of_diffs": 0.7144142050655693
+    },
+    "v3/s29": {
+     "variant": "v3",
+     "n_common": 6,
+     "median_sa": 8.027335960150438,
+     "median_base": 7.641060430157753,
+     "diff_of_medians": 0.3862755299926848,
+     "mean_of_diffs": 0.5653538571146256
+    }
+   },
+   "left_out": [],
+   "mean_over_pairs": {
+    "diff_of_medians": {
+     "pooled": 0.8166425573694187,
+     "v1": 1.0275812404881792,
+     "v3": 0.6057038742506584
+    },
+    "mean_of_diffs": {
+     "pooled": 0.8777442017666871,
+     "v1": 1.0242914583371698,
+     "v3": 0.7311969451962044
+    }
+   }
+  },
+  "per_circuit": {
+   "label": "descriptive (interp-leftovers.md Section 6.1's table)",
+   "v1": {
+    "circuits": {
+     "BrandsHatch": {
+      "base": 8.093234008456651,
+      "sa": 8.822129810699252,
+      "delta": 0.7288958022426009,
+      "n_base": 6,
+      "n_sa": 10
+     },
+     "Hockenheim": {
+      "base": 7.4738923666667345,
+      "sa": 9.414794497003632,
+      "delta": 1.9409021303368972,
+      "n_base": 2,
+      "n_sa": 10
+     },
+     "MoscowRaceway": {
+      "base": 8.404047241734137,
+      "sa": 9.912030175830676,
+      "delta": 1.507982934096539,
+      "n_base": 4,
+      "n_sa": 10
+     },
+     "Nuerburgring": {
+      "base": 7.0550177102887695,
+      "sa": 7.779860951166329,
+      "delta": 0.7248432408775596,
+      "n_base": 10,
+      "n_sa": 10
+     },
+     "Oschersleben": {
+      "base": 9.643108450330907,
+      "sa": 10.817164631556553,
+      "delta": 1.1740561812256463,
+      "n_base": 4,
+      "n_sa": 10
+     },
+     "Sepang": {
+      "base": 6.702159953908482,
+      "sa": 7.48189137301416,
+      "delta": 0.7797314191056781,
+      "n_base": 8,
+      "n_sa": 10
+     },
+     "Melbourne": {
+      "base": 9.23036124291967,
+      "sa": 10.722758609033477,
+      "delta": 1.4923973661138064,
+      "n_base": 1,
+      "n_sa": 10
+     },
+     "Catalunya": {
+      "base": 6.362471453965846,
+      "sa": 7.2248273854738425,
+      "delta": 0.8623559315079969,
+      "n_base": 6,
+      "n_sa": 10
+     },
+     "Zandvoort": {
+      "base": 6.670491773302012,
+      "sa": 7.760750625311708,
+      "delta": 1.090258852009696,
+      "n_base": 5,
+      "n_sa": 8
+     }
+    },
+    "n_circuits": 9,
+    "median_delta": 1.090258852009696,
+    "n_positive": 9
+   },
+   "v3": {
+    "circuits": {
+     "BrandsHatch": {
+      "base": 8.58746466800573,
+      "sa": 9.38472008490384,
+      "delta": 0.7972554168981105,
+      "n_base": 6,
+      "n_sa": 8
+     },
+     "Hockenheim": {
+      "base": 8.175760481115212,
+      "sa": 8.648239048020612,
+      "delta": 0.4724785669053997,
+      "n_base": 5,
+      "n_sa": 7
+     },
+     "MoscowRaceway": {
+      "base": 8.165231664722405,
+      "sa": 9.162851425123343,
+      "delta": 0.9976197604009371,
+      "n_base": 5,
+      "n_sa": 9
+     },
+     "Nuerburgring": {
+      "base": 7.1972701776724435,
+      "sa": 7.780410254143543,
+      "delta": 0.5831400764710999,
+      "n_base": 8,
+      "n_sa": 10
+     },
+     "Oschersleben": {
+      "base": 9.755699270917006,
+      "sa": 11.137406973169671,
+      "delta": 1.3817077022526654,
+      "n_base": 4,
+      "n_sa": 10
+     },
+     "Sepang": {
+      "base": 7.150582575912323,
+      "sa": 7.723940602068657,
+      "delta": 0.5733580261563338,
+      "n_base": 10,
+      "n_sa": 10
+     },
+     "Catalunya": {
+      "base": 6.211240705098486,
+      "sa": 7.183569923892474,
+      "delta": 0.9723292187939876,
+      "n_base": 5,
+      "n_sa": 10
+     },
+     "Zandvoort": {
+      "base": 7.23649165879956,
+      "sa": 7.724412152334603,
+      "delta": 0.48792049353504297,
+      "n_base": 7,
+      "n_sa": 10
+     }
+    },
+    "n_circuits": 8,
+    "median_delta": 0.6901977466846052,
+    "n_positive": 8
+   }
+  }
+ },
+ "descriptive": {
+  "counts": {
+   "v1/base": {
+    "all_12": {
+     "per_seed": {
+      "20": 5,
+      "21": 4,
+      "22": 3,
+      "23": 4,
+      "24": 4,
+      "25": 6,
+      "26": 5,
+      "27": 4,
+      "28": 4,
+      "29": 7
+     },
+     "n": 10,
+     "mean": 4.6,
+     "sd": 1.1737877907772674
+    }
+   },
+   "v1/cl-f1": {
+    "all_12": {
+     "per_seed": {
+      "20": 7,
+      "21": 6,
+      "22": 7,
+      "23": 6,
+      "24": 9,
+      "25": 5,
+      "26": 8,
+      "27": 5,
+      "28": 7,
+      "29": 8
+     },
+     "n": 10,
+     "mean": 6.8,
+     "sd": 1.3165611772087666
+    },
+    "held_out": {
+     "per_seed": {
+      "20": 2,
+      "21": 3,
+      "22": 3,
+      "23": 3,
+      "24": 5,
+      "25": 2,
+      "26": 3,
+      "27": 2,
+      "28": 3,
+      "29": 3
+     },
+     "n": 10,
+     "mean": 2.9,
+     "sd": 0.875595035770913
+    },
+    "in_sample_fold": {
+     "per_seed": {
+      "20": 5,
+      "21": 3,
+      "22": 4,
+      "23": 3,
+      "24": 4,
+      "25": 3,
+      "26": 5,
+      "27": 3,
+      "28": 4,
+      "29": 5
+     },
+     "n": 10,
+     "mean": 3.9,
+     "sd": 0.8755950357709131
+    }
+   },
+   "v1/cl-f2": {
+    "all_12": {
+     "per_seed": {
+      "20": 8,
+      "21": 9,
+      "22": 7,
+      "23": 7,
+      "24": 6,
+      "25": 9,
+      "26": 8,
+      "27": 6,
+      "28": 9,
+      "29": 6
+     },
+     "n": 10,
+     "mean": 7.5,
+     "sd": 1.2692955176439846
+    },
+    "held_out": {
+     "per_seed": {
+      "20": 4,
+      "21": 5,
+      "22": 4,
+      "23": 3,
+      "24": 4,
+      "25": 5,
+      "26": 5,
+      "27": 5,
+      "28": 6,
+      "29": 4
+     },
+     "n": 10,
+     "mean": 4.5,
+     "sd": 0.8498365855987975
+    },
+    "in_sample_fold": {
+     "per_seed": {
+      "20": 4,
+      "21": 4,
+      "22": 3,
+      "23": 4,
+      "24": 2,
+      "25": 4,
+      "26": 3,
+      "27": 1,
+      "28": 3,
+      "29": 2
+     },
+     "n": 10,
+     "mean": 3.0,
+     "sd": 1.0540925533894598
+    }
+   },
+   "v1/sl-f1": {
+    "all_12": {
+     "per_seed": {
+      "20": 9,
+      "21": 10,
+      "22": 10,
+      "23": 11,
+      "24": 10,
+      "25": 11,
+      "26": 10,
+      "27": 9,
+      "28": 8,
+      "29": 10
+     },
+     "n": 10,
+     "mean": 9.8,
+     "sd": 0.9189365834726815
+    },
+    "held_out": {
+     "per_seed": {
+      "20": 3,
+      "21": 4,
+      "22": 4,
+      "23": 5,
+      "24": 4,
+      "25": 5,
+      "26": 4,
+      "27": 4,
+      "28": 4,
+      "29": 4
+     },
+     "n": 10,
+     "mean": 4.1,
+     "sd": 0.5676462121975466
+    },
+    "in_sample_fold": {
+     "per_seed": {
+      "20": 6,
+      "21": 6,
+      "22": 6,
+      "23": 6,
+      "24": 6,
+      "25": 6,
+      "26": 6,
+      "27": 5,
+      "28": 4,
+      "29": 6
+     },
+     "n": 10,
+     "mean": 5.7,
+     "sd": 0.6749485577105528
+    }
+   },
+   "v1/sl-f2": {
+    "all_12": {
+     "per_seed": {
+      "20": 10,
+      "21": 8,
+      "22": 11,
+      "23": 9,
+      "24": 10,
+      "25": 10,
+      "26": 10,
+      "27": 10,
+      "28": 9,
+      "29": 10
+     },
+     "n": 10,
+     "mean": 9.7,
+     "sd": 0.8232726023485646
+    },
+    "held_out": {
+     "per_seed": {
+      "20": 6,
+      "21": 5,
+      "22": 6,
+      "23": 5,
+      "24": 6,
+      "25": 6,
+      "26": 6,
+      "27": 6,
+      "28": 5,
+      "29": 6
+     },
+     "n": 10,
+     "mean": 5.7,
+     "sd": 0.48304589153964794
+    },
+    "in_sample_fold": {
+     "per_seed": {
+      "20": 4,
+      "21": 3,
+      "22": 5,
+      "23": 4,
+      "24": 4,
+      "25": 4,
+      "26": 4,
+      "27": 4,
+      "28": 4,
+      "29": 4
+     },
+     "n": 10,
+     "mean": 4.0,
+     "sd": 0.4714045207910317
+    }
+   },
+   "v1/sa": {
+    "all_12": {
+     "per_seed": {
+      "20": 10,
+      "21": 9,
+      "22": 9,
+      "23": 10,
+      "24": 9,
+      "25": 10,
+      "26": 10,
+      "27": 10,
+      "28": 9,
+      "29": 10
+     },
+     "n": 10,
+     "mean": 9.6,
+     "sd": 0.5163977794943222
+    }
+   },
+   "v3/base": {
+    "all_12": {
+     "per_seed": {
+      "20": 6,
+      "21": 2,
+      "22": 6,
+      "23": 4,
+      "24": 5,
+      "25": 5,
+      "26": 6,
+      "27": 3,
+      "28": 7,
+      "29": 6
+     },
+     "n": 10,
+     "mean": 5.0,
+     "sd": 1.5634719199411433
+    }
+   },
+   "v3/cl-f1": {
+    "all_12": {
+     "per_seed": {
+      "20": 5,
+      "21": 7,
+      "22": 7,
+      "23": 7,
+      "24": 9,
+      "25": 9,
+      "26": 10,
+      "27": 6,
+      "28": 8,
+      "29": 9
+     },
+     "n": 10,
+     "mean": 7.7,
+     "sd": 1.5670212364724212
+    },
+    "held_out": {
+     "per_seed": {
+      "20": 3,
+      "21": 2,
+      "22": 3,
+      "23": 3,
+      "24": 4,
+      "25": 4,
+      "26": 5,
+      "27": 1,
+      "28": 4,
+      "29": 4
+     },
+     "n": 10,
+     "mean": 3.3,
+     "sd": 1.1595018087284057
+    },
+    "in_sample_fold": {
+     "per_seed": {
+      "20": 2,
+      "21": 5,
+      "22": 4,
+      "23": 4,
+      "24": 5,
+      "25": 5,
+      "26": 5,
+      "27": 5,
+      "28": 4,
+      "29": 5
+     },
+     "n": 10,
+     "mean": 4.4,
+     "sd": 0.9660917830792959
+    }
+   },
+   "v3/cl-f2": {
+    "all_12": {
+     "per_seed": {
+      "20": 5,
+      "21": 6,
+      "22": 6,
+      "23": 8,
+      "24": 9,
+      "25": 6,
+      "26": 8,
+      "27": 9,
+      "28": 8,
+      "29": 10
+     },
+     "n": 10,
+     "mean": 7.5,
+     "sd": 1.6499158227686108
+    },
+    "held_out": {
+     "per_seed": {
+      "20": 3,
+      "21": 4,
+      "22": 4,
+      "23": 4,
+      "24": 5,
+      "25": 4,
+      "26": 5,
+      "27": 4,
+      "28": 5,
+      "29": 5
+     },
+     "n": 10,
+     "mean": 4.3,
+     "sd": 0.6749485577105528
+    },
+    "in_sample_fold": {
+     "per_seed": {
+      "20": 2,
+      "21": 2,
+      "22": 2,
+      "23": 4,
+      "24": 4,
+      "25": 2,
+      "26": 3,
+      "27": 5,
+      "28": 3,
+      "29": 5
+     },
+     "n": 10,
+     "mean": 3.2,
+     "sd": 1.2292725943057183
+    }
+   },
+   "v3/sl-f1": {
+    "all_12": {
+     "per_seed": {
+      "20": 12,
+      "21": 9,
+      "22": 10,
+      "23": 11,
+      "24": 10,
+      "25": 10,
+      "26": 7,
+      "27": 10,
+      "28": 10,
+      "29": 9
+     },
+     "n": 10,
+     "mean": 9.8,
+     "sd": 1.3165611772087666
+    },
+    "held_out": {
+     "per_seed": {
+      "20": 6,
+      "21": 4,
+      "22": 4,
+      "23": 5,
+      "24": 4,
+      "25": 4,
+      "26": 2,
+      "27": 4,
+      "28": 4,
+      "29": 3
+     },
+     "n": 10,
+     "mean": 4.0,
+     "sd": 1.0540925533894598
+    },
+    "in_sample_fold": {
+     "per_seed": {
+      "20": 6,
+      "21": 5,
+      "22": 6,
+      "23": 6,
+      "24": 6,
+      "25": 6,
+      "26": 5,
+      "27": 6,
+      "28": 6,
+      "29": 6
+     },
+     "n": 10,
+     "mean": 5.8,
+     "sd": 0.4216370213557839
+    }
+   },
+   "v3/sl-f2": {
+    "all_12": {
+     "per_seed": {
+      "20": 9,
+      "21": 10,
+      "22": 10,
+      "23": 10,
+      "24": 9,
+      "25": 11,
+      "26": 10,
+      "27": 10,
+      "28": 10,
+      "29": 10
+     },
+     "n": 10,
+     "mean": 9.9,
+     "sd": 0.5676462121975466
+    },
+    "held_out": {
+     "per_seed": {
+      "20": 6,
+      "21": 6,
+      "22": 6,
+      "23": 6,
+      "24": 6,
+      "25": 5,
+      "26": 6,
+      "27": 6,
+      "28": 6,
+      "29": 6
+     },
+     "n": 10,
+     "mean": 5.9,
+     "sd": 0.31622776601683794
+    },
+    "in_sample_fold": {
+     "per_seed": {
+      "20": 3,
+      "21": 4,
+      "22": 4,
+      "23": 4,
+      "24": 3,
+      "25": 6,
+      "26": 4,
+      "27": 4,
+      "28": 4,
+      "29": 4
+     },
+     "n": 10,
+     "mean": 4.0,
+     "sd": 0.816496580927726
+    }
+   },
+   "v3/sa": {
+    "all_12": {
+     "per_seed": {
+      "20": 10,
+      "21": 7,
+      "22": 10,
+      "23": 11,
+      "24": 9,
+      "25": 11,
+      "26": 10,
+      "27": 8,
+      "28": 9,
+      "29": 8
+     },
+     "n": 10,
+     "mean": 9.3,
+     "sd": 1.3374935098492586
+    }
+   }
+  },
+  "units": {
+   "base": {
+    "v1": {
+     "20": 5,
+     "21": 4,
+     "22": 3,
+     "23": 4,
+     "24": 4,
+     "25": 6,
+     "26": 5,
+     "27": 4,
+     "28": 4,
+     "29": 7
+    },
+    "v3": {
+     "20": 6,
+     "21": 2,
+     "22": 6,
+     "23": 4,
+     "24": 5,
+     "25": 5,
+     "26": 6,
+     "27": 3,
+     "28": 7,
+     "29": 6
+    }
+   },
+   "sl": {
+    "v1": {
+     "20": 9,
+     "21": 9,
+     "22": 10,
+     "23": 10,
+     "24": 10,
+     "25": 11,
+     "26": 10,
+     "27": 10,
+     "28": 9,
+     "29": 10
+    },
+    "v3": {
+     "20": 12,
+     "21": 10,
+     "22": 10,
+     "23": 11,
+     "24": 10,
+     "25": 9,
+     "26": 8,
+     "27": 10,
+     "28": 10,
+     "29": 9
+    }
+   },
+   "cl": {
+    "v1": {
+     "20": 6,
+     "21": 8,
+     "22": 7,
+     "23": 6,
+     "24": 9,
+     "25": 7,
+     "26": 8,
+     "27": 7,
+     "28": 9,
+     "29": 7
+    },
+    "v3": {
+     "20": 6,
+     "21": 6,
+     "22": 7,
+     "23": 7,
+     "24": 9,
+     "25": 8,
+     "26": 10,
+     "27": 5,
+     "28": 9,
+     "29": 9
+    }
+   },
+   "sa": {
+    "v1": {
+     "20": 10,
+     "21": 9,
+     "22": 9,
+     "23": 10,
+     "24": 9,
+     "25": 10,
+     "26": 10,
+     "27": 10,
+     "28": 9,
+     "29": 10
+    },
+    "v3": {
+     "20": 10,
+     "21": 7,
+     "22": 10,
+     "23": 11,
+     "24": 9,
+     "25": 11,
+     "26": 10,
+     "27": 8,
+     "28": 9,
+     "29": 8
+    }
+   }
+  },
+  "per_circuit_share": {
+   "named": [
+    "Norisring",
+    "YasMarina",
+    "Sochi",
+    "Melbourne"
+   ],
+   "shares": {
+    "v1/base": {
+     "BrandsHatch": {
+      "share": 0.6,
+      "n": 10,
+      "held_out": null
+     },
+     "Hockenheim": {
+      "share": 0.2,
+      "n": 10,
+      "held_out": null
+     },
+     "MoscowRaceway": {
+      "share": 0.4,
+      "n": 10,
+      "held_out": null
+     },
+     "Norisring": {
+      "share": 0.0,
+      "n": 10,
+      "held_out": null
+     },
+     "Nuerburgring": {
+      "share": 1.0,
+      "n": 10,
+      "held_out": null
+     },
+     "Oschersleben": {
+      "share": 0.4,
+      "n": 10,
+      "held_out": null
+     },
+     "Sepang": {
+      "share": 0.8,
+      "n": 10,
+      "held_out": null
+     },
+     "Sochi": {
+      "share": 0.0,
+      "n": 10,
+      "held_out": null
+     },
+     "YasMarina": {
+      "share": 0.0,
+      "n": 10,
+      "held_out": null
+     },
+     "Melbourne": {
+      "share": 0.1,
+      "n": 10,
+      "held_out": null
+     },
+     "Catalunya": {
+      "share": 0.6,
+      "n": 10,
+      "held_out": null
+     },
+     "Zandvoort": {
+      "share": 0.5,
+      "n": 10,
+      "held_out": null
+     }
+    },
+    "v1/cl-f1": {
+     "BrandsHatch": {
+      "share": 0.5,
+      "n": 10,
+      "held_out": false
+     },
+     "Hockenheim": {
+      "share": 0.7,
+      "n": 10,
+      "held_out": true
+     },
+     "MoscowRaceway": {
+      "share": 0.8,
+      "n": 10,
+      "held_out": false
+     },
+     "Norisring": {
+      "share": 0.1,
+      "n": 10,
+      "held_out": true
+     },
+     "Nuerburgring": {
+      "share": 1.0,
+      "n": 10,
+      "held_out": false
+     },
+     "Oschersleben": {
+      "share": 0.7,
+      "n": 10,
+      "held_out": true
+     },
+     "Sepang": {
+      "share": 1.0,
+      "n": 10,
+      "held_out": false
+     },
+     "Sochi": {
+      "share": 0.1,
+      "n": 10,
+      "held_out": true
+     },
+     "YasMarina": {
+      "share": 0.0,
+      "n": 10,
+      "held_out": false
+     },
+     "Melbourne": {
+      "share": 0.3,
+      "n": 10,
+      "held_out": true
+     },
+     "Catalunya": {
+      "share": 0.6,
+      "n": 10,
+      "held_out": false
+     },
+     "Zandvoort": {
+      "share": 1.0,
+      "n": 10,
+      "held_out": true
+     }
+    },
+    "v1/cl-f2": {
+     "BrandsHatch": {
+      "share": 0.8,
+      "n": 10,
+      "held_out": true
+     },
+     "Hockenheim": {
+      "share": 0.5,
+      "n": 10,
+      "held_out": false
+     },
+     "MoscowRaceway": {
+      "share": 0.9,
+      "n": 10,
+      "held_out": true
+     },
+     "Norisring": {
+      "share": 0.1,
+      "n": 10,
+      "held_out": false
+     },
+     "Nuerburgring": {
+      "share": 1.0,
+      "n": 10,
+      "held_out": true
+     },
+     "Oschersleben": {
+      "share": 0.5,
+      "n": 10,
+      "held_out": false
+     },
+     "Sepang": {
+      "share": 1.0,
+      "n": 10,
+      "held_out": true
+     },
+     "Sochi": {
+      "share": 0.3,
+      "n": 10,
+      "held_out": false
+     },
+     "YasMarina": {
+      "share": 0.1,
+      "n": 10,
+      "held_out": true
+     },
+     "Melbourne": {
+      "share": 0.6,
+      "n": 10,
+      "held_out": false
+     },
+     "Catalunya": {
+      "share": 0.7,
+      "n": 10,
+      "held_out": true
+     },
+     "Zandvoort": {
+      "share": 1.0,
+      "n": 10,
+      "held_out": false
+     }
+    },
+    "v1/sl-f1": {
+     "BrandsHatch": {
+      "share": 1.0,
+      "n": 10,
+      "held_out": false
+     },
+     "Hockenheim": {
+      "share": 1.0,
+      "n": 10,
+      "held_out": true
+     },
+     "MoscowRaceway": {
+      "share": 0.9,
+      "n": 10,
+      "held_out": false
+     },
+     "Norisring": {
+      "share": 0.1,
+      "n": 10,
+      "held_out": true
+     },
+     "Nuerburgring": {
+      "share": 1.0,
+      "n": 10,
+      "held_out": false
+     },
+     "Oschersleben": {
+      "share": 0.9,
+      "n": 10,
+      "held_out": true
+     },
+     "Sepang": {
+      "share": 1.0,
+      "n": 10,
+      "held_out": false
+     },
+     "Sochi": {
+      "share": 0.1,
+      "n": 10,
+      "held_out": true
+     },
+     "YasMarina": {
+      "share": 0.9,
+      "n": 10,
+      "held_out": false
+     },
+     "Melbourne": {
+      "share": 1.0,
+      "n": 10,
+      "held_out": true
+     },
+     "Catalunya": {
+      "share": 0.9,
+      "n": 10,
+      "held_out": false
+     },
+     "Zandvoort": {
+      "share": 1.0,
+      "n": 10,
+      "held_out": true
+     }
+    },
+    "v1/sl-f2": {
+     "BrandsHatch": {
+      "share": 0.9,
+      "n": 10,
+      "held_out": true
+     },
+     "Hockenheim": {
+      "share": 1.0,
+      "n": 10,
+      "held_out": false
+     },
+     "MoscowRaceway": {
+      "share": 1.0,
+      "n": 10,
+      "held_out": true
+     },
+     "Norisring": {
+      "share": 0.2,
+      "n": 10,
+      "held_out": false
+     },
+     "Nuerburgring": {
+      "share": 1.0,
+      "n": 10,
+      "held_out": true
+     },
+     "Oschersleben": {
+      "share": 0.6,
+      "n": 10,
+      "held_out": false
+     },
+     "Sepang": {
+      "share": 1.0,
+      "n": 10,
+      "held_out": true
+     },
+     "Sochi": {
+      "share": 0.2,
+      "n": 10,
+      "held_out": false
+     },
+     "YasMarina": {
+      "share": 0.8,
+      "n": 10,
+      "held_out": true
+     },
+     "Melbourne": {
+      "share": 1.0,
+      "n": 10,
+      "held_out": false
+     },
+     "Catalunya": {
+      "share": 1.0,
+      "n": 10,
+      "held_out": true
+     },
+     "Zandvoort": {
+      "share": 1.0,
+      "n": 10,
+      "held_out": false
+     }
+    },
+    "v1/sa": {
+     "BrandsHatch": {
+      "share": 1.0,
+      "n": 10,
+      "held_out": null
+     },
+     "Hockenheim": {
+      "share": 1.0,
+      "n": 10,
+      "held_out": null
+     },
+     "MoscowRaceway": {
+      "share": 1.0,
+      "n": 10,
+      "held_out": null
+     },
+     "Norisring": {
+      "share": 0.0,
+      "n": 10,
+      "held_out": null
+     },
+     "Nuerburgring": {
+      "share": 1.0,
+      "n": 10,
+      "held_out": null
+     },
+     "Oschersleben": {
+      "share": 1.0,
+      "n": 10,
+      "held_out": null
+     },
+     "Sepang": {
+      "share": 1.0,
+      "n": 10,
+      "held_out": null
+     },
+     "Sochi": {
+      "share": 0.0,
+      "n": 10,
+      "held_out": null
+     },
+     "YasMarina": {
+      "share": 0.8,
+      "n": 10,
+      "held_out": null
+     },
+     "Melbourne": {
+      "share": 1.0,
+      "n": 10,
+      "held_out": null
+     },
+     "Catalunya": {
+      "share": 1.0,
+      "n": 10,
+      "held_out": null
+     },
+     "Zandvoort": {
+      "share": 0.8,
+      "n": 10,
+      "held_out": null
+     }
+    },
+    "v3/base": {
+     "BrandsHatch": {
+      "share": 0.6,
+      "n": 10,
+      "held_out": null
+     },
+     "Hockenheim": {
+      "share": 0.5,
+      "n": 10,
+      "held_out": null
+     },
+     "MoscowRaceway": {
+      "share": 0.5,
+      "n": 10,
+      "held_out": null
+     },
+     "Norisring": {
+      "share": 0.0,
+      "n": 10,
+      "held_out": null
+     },
+     "Nuerburgring": {
+      "share": 0.8,
+      "n": 10,
+      "held_out": null
+     },
+     "Oschersleben": {
+      "share": 0.4,
+      "n": 10,
+      "held_out": null
+     },
+     "Sepang": {
+      "share": 1.0,
+      "n": 10,
+      "held_out": null
+     },
+     "Sochi": {
+      "share": 0.0,
+      "n": 10,
+      "held_out": null
+     },
+     "YasMarina": {
+      "share": 0.0,
+      "n": 10,
+      "held_out": null
+     },
+     "Melbourne": {
+      "share": 0.0,
+      "n": 10,
+      "held_out": null
+     },
+     "Catalunya": {
+      "share": 0.5,
+      "n": 10,
+      "held_out": null
+     },
+     "Zandvoort": {
+      "share": 0.7,
+      "n": 10,
+      "held_out": null
+     }
+    },
+    "v3/cl-f1": {
+     "BrandsHatch": {
+      "share": 0.7,
+      "n": 10,
+      "held_out": false
+     },
+     "Hockenheim": {
+      "share": 0.8,
+      "n": 10,
+      "held_out": true
+     },
+     "MoscowRaceway": {
+      "share": 0.9,
+      "n": 10,
+      "held_out": false
+     },
+     "Norisring": {
+      "share": 0.0,
+      "n": 10,
+      "held_out": true
+     },
+     "Nuerburgring": {
+      "share": 1.0,
+      "n": 10,
+      "held_out": false
+     },
+     "Oschersleben": {
+      "share": 1.0,
+      "n": 10,
+      "held_out": true
+     },
+     "Sepang": {
+      "share": 1.0,
+      "n": 10,
+      "held_out": false
+     },
+     "Sochi": {
+      "share": 0.3,
+      "n": 10,
+      "held_out": true
+     },
+     "YasMarina": {
+      "share": 0.0,
+      "n": 10,
+      "held_out": false
+     },
+     "Melbourne": {
+      "share": 0.4,
+      "n": 10,
+      "held_out": true
+     },
+     "Catalunya": {
+      "share": 0.8,
+      "n": 10,
+      "held_out": false
+     },
+     "Zandvoort": {
+      "share": 0.8,
+      "n": 10,
+      "held_out": true
+     }
+    },
+    "v3/cl-f2": {
+     "BrandsHatch": {
+      "share": 0.5,
+      "n": 10,
+      "held_out": true
+     },
+     "Hockenheim": {
+      "share": 0.6,
+      "n": 10,
+      "held_out": false
+     },
+     "MoscowRaceway": {
+      "share": 0.9,
+      "n": 10,
+      "held_out": true
+     },
+     "Norisring": {
+      "share": 0.1,
+      "n": 10,
+      "held_out": false
+     },
+     "Nuerburgring": {
+      "share": 1.0,
+      "n": 10,
+      "held_out": true
+     },
+     "Oschersleben": {
+      "share": 0.8,
+      "n": 10,
+      "held_out": false
+     },
+     "Sepang": {
+      "share": 1.0,
+      "n": 10,
+      "held_out": true
+     },
+     "Sochi": {
+      "share": 0.3,
+      "n": 10,
+      "held_out": false
+     },
+     "YasMarina": {
+      "share": 0.1,
+      "n": 10,
+      "held_out": true
+     },
+     "Melbourne": {
+      "share": 0.4,
+      "n": 10,
+      "held_out": false
+     },
+     "Catalunya": {
+      "share": 0.8,
+      "n": 10,
+      "held_out": true
+     },
+     "Zandvoort": {
+      "share": 1.0,
+      "n": 10,
+      "held_out": false
+     }
+    },
+    "v3/sl-f1": {
+     "BrandsHatch": {
+      "share": 0.9,
+      "n": 10,
+      "held_out": false
+     },
+     "Hockenheim": {
+      "share": 0.9,
+      "n": 10,
+      "held_out": true
+     },
+     "MoscowRaceway": {
+      "share": 1.0,
+      "n": 10,
+      "held_out": false
+     },
+     "Norisring": {
+      "share": 0.1,
+      "n": 10,
+      "held_out": true
+     },
+     "Nuerburgring": {
+      "share": 1.0,
+      "n": 10,
+      "held_out": false
+     },
+     "Oschersleben": {
+      "share": 0.7,
+      "n": 10,
+      "held_out": true
+     },
+     "Sepang": {
+      "share": 1.0,
+      "n": 10,
+      "held_out": false
+     },
+     "Sochi": {
+      "share": 0.3,
+      "n": 10,
+      "held_out": true
+     },
+     "YasMarina": {
+      "share": 0.9,
+      "n": 10,
+      "held_out": false
+     },
+     "Melbourne": {
+      "share": 1.0,
+      "n": 10,
+      "held_out": true
+     },
+     "Catalunya": {
+      "share": 1.0,
+      "n": 10,
+      "held_out": false
+     },
+     "Zandvoort": {
+      "share": 1.0,
+      "n": 10,
+      "held_out": true
+     }
+    },
+    "v3/sl-f2": {
+     "BrandsHatch": {
+      "share": 0.9,
+      "n": 10,
+      "held_out": true
+     },
+     "Hockenheim": {
+      "share": 1.0,
+      "n": 10,
+      "held_out": false
+     },
+     "MoscowRaceway": {
+      "share": 1.0,
+      "n": 10,
+      "held_out": true
+     },
+     "Norisring": {
+      "share": 0.1,
+      "n": 10,
+      "held_out": false
+     },
+     "Nuerburgring": {
+      "share": 1.0,
+      "n": 10,
+      "held_out": true
+     },
+     "Oschersleben": {
+      "share": 0.8,
+      "n": 10,
+      "held_out": false
+     },
+     "Sepang": {
+      "share": 1.0,
+      "n": 10,
+      "held_out": true
+     },
+     "Sochi": {
+      "share": 0.1,
+      "n": 10,
+      "held_out": false
+     },
+     "YasMarina": {
+      "share": 1.0,
+      "n": 10,
+      "held_out": true
+     },
+     "Melbourne": {
+      "share": 1.0,
+      "n": 10,
+      "held_out": false
+     },
+     "Catalunya": {
+      "share": 1.0,
+      "n": 10,
+      "held_out": true
+     },
+     "Zandvoort": {
+      "share": 1.0,
+      "n": 10,
+      "held_out": false
+     }
+    },
+    "v3/sa": {
+     "BrandsHatch": {
+      "share": 0.8,
+      "n": 10,
+      "held_out": null
+     },
+     "Hockenheim": {
+      "share": 0.7,
+      "n": 10,
+      "held_out": null
+     },
+     "MoscowRaceway": {
+      "share": 0.9,
+      "n": 10,
+      "held_out": null
+     },
+     "Norisring": {
+      "share": 0.2,
+      "n": 10,
+      "held_out": null
+     },
+     "Nuerburgring": {
+      "share": 1.0,
+      "n": 10,
+      "held_out": null
+     },
+     "Oschersleben": {
+      "share": 1.0,
+      "n": 10,
+      "held_out": null
+     },
+     "Sepang": {
+      "share": 1.0,
+      "n": 10,
+      "held_out": null
+     },
+     "Sochi": {
+      "share": 0.1,
+      "n": 10,
+      "held_out": null
+     },
+     "YasMarina": {
+      "share": 0.6,
+      "n": 10,
+      "held_out": null
+     },
+     "Melbourne": {
+      "share": 1.0,
+      "n": 10,
+      "held_out": null
+     },
+     "Catalunya": {
+      "share": 1.0,
+      "n": 10,
+      "held_out": null
+     },
+     "Zandvoort": {
+      "share": 1.0,
+      "n": 10,
+      "held_out": null
+     }
+    }
+   }
+  },
+  "per_seed_pairs_sl_base": {
+   "v1": {
+    "20": {
+     "sl": 9,
+     "base": 5,
+     "diff": 4
+    },
+    "21": {
+     "sl": 9,
+     "base": 4,
+     "diff": 5
+    },
+    "22": {
+     "sl": 10,
+     "base": 3,
+     "diff": 7
+    },
+    "23": {
+     "sl": 10,
+     "base": 4,
+     "diff": 6
+    },
+    "24": {
+     "sl": 10,
+     "base": 4,
+     "diff": 6
+    },
+    "25": {
+     "sl": 11,
+     "base": 6,
+     "diff": 5
+    },
+    "26": {
+     "sl": 10,
+     "base": 5,
+     "diff": 5
+    },
+    "27": {
+     "sl": 10,
+     "base": 4,
+     "diff": 6
+    },
+    "28": {
+     "sl": 9,
+     "base": 4,
+     "diff": 5
+    },
+    "29": {
+     "sl": 10,
+     "base": 7,
+     "diff": 3
+    }
+   },
+   "v3": {
+    "20": {
+     "sl": 12,
+     "base": 6,
+     "diff": 6
+    },
+    "21": {
+     "sl": 10,
+     "base": 2,
+     "diff": 8
+    },
+    "22": {
+     "sl": 10,
+     "base": 6,
+     "diff": 4
+    },
+    "23": {
+     "sl": 11,
+     "base": 4,
+     "diff": 7
+    },
+    "24": {
+     "sl": 10,
+     "base": 5,
+     "diff": 5
+    },
+    "25": {
+     "sl": 9,
+     "base": 5,
+     "diff": 4
+    },
+    "26": {
+     "sl": 8,
+     "base": 6,
+     "diff": 2
+    },
+    "27": {
+     "sl": 10,
+     "base": 3,
+     "diff": 7
+    },
+    "28": {
+     "sl": 10,
+     "base": 7,
+     "diff": 3
+    },
+    "29": {
+     "sl": 9,
+     "base": 6,
+     "diff": 3
+    }
+   }
+  },
+  "c_at_least_10_of_12": {
+   "label": "not the gate (Section 6)",
+   "per_cell": {
+    "v1/base": {
+     "n": 10,
+     "c_at_least_10": 0
+    },
+    "v1/cl-f1": {
+     "n": 10,
+     "c_at_least_10": 0
+    },
+    "v1/cl-f2": {
+     "n": 10,
+     "c_at_least_10": 0
+    },
+    "v1/sl-f1": {
+     "n": 10,
+     "c_at_least_10": 7
+    },
+    "v1/sl-f2": {
+     "n": 10,
+     "c_at_least_10": 7
+    },
+    "v1/sa": {
+     "n": 10,
+     "c_at_least_10": 6
+    },
+    "v3/base": {
+     "n": 10,
+     "c_at_least_10": 0
+    },
+    "v3/cl-f1": {
+     "n": 10,
+     "c_at_least_10": 1
+    },
+    "v3/cl-f2": {
+     "n": 10,
+     "c_at_least_10": 1
+    },
+    "v3/sl-f1": {
+     "n": 10,
+     "c_at_least_10": 7
+    },
+    "v3/sl-f2": {
+     "n": 10,
+     "c_at_least_10": 8
+    },
+    "v3/sa": {
+     "n": 10,
+     "c_at_least_10": 5
+    }
+   }
+  }
+ },
+ "gw4": {
+  "criteria": {
+   "1": {
+    "holds": true,
+    "P1": "confirm"
+   },
+   "2": {
+    "holds": true,
+    "D2": 1.175,
+    "min": -0.5
+   },
+   "3": {
+    "holds": false,
+    "delta_gap": 1.5201549214853785,
+    "max_exclusive": 1.0
+   },
+   "4": {
+    "holds": true,
+    "sha256": "5871664be5a6ff6ac882e3a38e131660fe16676f37ddd0a99ffba7294a42f014",
+    "pinned_sha256": "5871664be5a6ff6ac882e3a38e131660fe16676f37ddd0a99ffba7294a42f014",
+    "n_checks": 90,
+    "failed": [
+     "f1/v3/share_1m",
+     "f1/v3/spectrum:8-16",
+     "f2/v3/share_1m"
+    ],
+    "v1_failed": [],
+    "v3_failed_outside_allowed": [],
+    "nocopy_failed": [],
+    "v3_allowed": [
+     "f1/v3/share_1m",
+     "f2/v3/share_1m",
+     "f1/v3/spectrum:8-16"
+    ]
+   },
+   "5": {
+    "holds": null,
+    "read": "by GW-4 at the generator-v1 commit, not here",
+    "tests": [
+     "tests/test_stat_widths.py::test_default_is_bit_identical",
+     "tests/test_stat_widths.py::test_default_bank_is_bit_identical",
+     "tests/test_stat_widths.py::test_train_dr_default_path_is_unchanged",
+     "tests/test_real_widths.py::test_default_is_unchanged",
+     "tests/test_reexpress.py::test_default_and_2a_unchanged_and_2b_fit (if (2b) is there)",
+     "tests/test_value_gradient.py::test_default_racing_update_reproduces_the_pre_term_values",
+     "tests/test_value_gradient.py::test_default_rollout_records_no_capture_and_defaults_are_off",
+     "tests/test_value_gradient.py::test_train_dr_default_path_passes_no_term",
+     "tests/test_ppo.py::test_make_train_reproduces_the_pre_split_update",
+     "tests/test_value_gradient.py::test_train_dr_skip_eval_rdev_writes_no_rdev_result_and_the_default_is_unchanged"
+    ]
+   }
+  },
+  "s1_v1": "confirm",
+  "decisions": {
+   "adopt": "generator-v1 sets stat_widths (M = (2a), fitted on all 12 R-dev circuits) as E0's training width model; the default stays the frozen default",
+   "copied": "generator-v1 uses copied R-dev width profiles (--real-widths); every R-dev number for E0 is labelled 'in-sample for widths'",
+   "default": "generator-v1 uses the default widths"
+  },
+  "criteria_1_to_4_hold": false,
+  "if_criterion_5_holds": "copied",
+  "if_criterion_5_fails": "copied",
+  "fallback_rule": "#12: copied R-dev widths if and only if (2a) fails the rule and S1-v1 confirms (not testable counts as not confirmed); otherwise the default widths",
+  "in_sample_label": {
+   "if_criterion_5_holds": "in-sample for widths",
+   "if_criterion_5_fails": "in-sample for widths"
+  },
+  "in_sample_label_covers": [
+   "the 80% gate's result (#10: the median seed's completed R-dev circuits) and each seed's",
+   "per-circuit R-dev completion, lap times and gaps to the s-OCP lap",
+   "every comparison or figure that uses E0's R-dev results"
+  ],
+  "e0_variant": "v1 (decided 27 Oct 2026; not chosen on GW-3's results)",
+  "lockbox": "R_TEST is unaffected either way"
+ },
+ "gate_80pct": {
+  "read_here": false,
+  "rule": "E0 (5 seeds x 1B steps in v1, on generator-v1 and sim-v1) passes if its median seed completes at least 10 of the 12 R-dev circuits at its final checkpoint",
+  "checkpoint": "the final one; no checkpoint is chosen on R-dev",
+  "label_if_copied_widths": "in-sample for widths",
+  "gw3": "GW-3's 200M runs are not E0; its count of networks with C >= 10 is descriptive and labelled 'not the gate'"
+ },
+ "provenance": {
+  "label": "PRE-REGISTERED (gw3-prereg-v1, docs/prereg/gw3-width-round.md): P1 primary; S1, S1-v1, S1-v3 and S2 secondary (unadjusted); S3, the lap time's extras and the tables descriptive",
+  "plan": "docs/prereg/gw3-width-round.md",
+  "plan_sha256": "86436a071921dc62da13b2e12bbccca1972d95d05e2c11417fc09c12b6046e89",
+  "tag": "gw3-prereg-v1",
+  "tag_object": "0569b467bd324bebdc6076b36423b4efa7d85e68",
+  "tag_commit": "860939a17709ffb676bcb0b228a5b731fecfc468",
+  "script": "scripts/gw3_analysis.py",
+  "script_sha256": "74dba802e8975a43aea478a48a293ae2e4c9efaf0a18a29651bdb0a82e3eeede",
+  "runs_script_sha256": "6922a5f03fc7fd8acfe2e61d36fe6f52cdcebd4d29284710feaa791d3bb10203",
+  "git_head": "8839db377666b78a793e197a7f5e7a239b390c46",
+  "changed_paths": [],
+  "inputs_sha256": {
+   "outputs/gw3/manifest.json": "608e829001fdd596968f8f1c4d89068614ce72c4822d201ab8c05658305fcbdb",
+   "outputs/ocp/BrandsHatch.pkl": "2c8addbe5bd296b6b1b6356c6081b313a4704f14adb923cdca6ab2b71222a939",
+   "outputs/ocp/Catalunya.pkl": "dc6ca50f225de45506780abc9e35edcfe8c5a63e79faacca475f44ee9f110ff8",
+   "outputs/ocp/Hockenheim.pkl": "2cc8b8113bde3645fd6c4a068c2573acaf5a5ad7bf957d877a28f70effac8dc5",
+   "outputs/ocp/Melbourne.pkl": "7395c3f8094ea20ecaf70aeefddb6a71b44237f8c4588434a4518610c474411e",
+   "outputs/ocp/MoscowRaceway.pkl": "d5e42ef26bdb26dabd387042fea2e7d0ca50dfc6666b5c455ade9c8c382dc1fe",
+   "outputs/ocp/Norisring.pkl": "19289175beba94c1df6b1c45e9e074339776bc08b233fc35fd34e3e011ef6aa5",
+   "outputs/ocp/Nuerburgring.pkl": "c80fc5f860ee5c6cc0443a3f619aec552c978333d5c041fd9064af2019bd2877",
+   "outputs/ocp/Oschersleben.pkl": "dfbaeee52d78438d83194f55a25763e51c3161c34f3662c05a9e4c7c71d8a2bd",
+   "outputs/ocp/Sepang.pkl": "941c32b5219a94dfa21653344d732e0de3e469af61b62bd874ca1ce4d3c03039",
+   "outputs/ocp/Sochi.pkl": "451725a45f4e5747a84679565f36b96279bb59b7ca6850621efc154eb441c388",
+   "outputs/ocp/YasMarina.pkl": "d08853c4c1a35d10dd908b6c728b20e0d9c72624dee59b099140008aaf07d60e",
+   "outputs/ocp/Zandvoort.pkl": "3e2ef9a00167dd25a64fff0af3cc02ef5924b53f5463fd41722833e056dba646",
+   "outputs/width-report/report.json": "5871664be5a6ff6ac882e3a38e131660fe16676f37ddd0a99ffba7294a42f014",
+   "runs/gw3-v1-base-s20/eval_rdev.json": "90bd374cafec2bbd82466c747f86a3b327ab59a5bf7ec324186916bb33b6b43e",
+   "runs/gw3-v1-base-s21/eval_rdev.json": "9293b4ee7d60dc75fdb892073dc32302fa7aabff57eb302cfe648a675e84361b",
+   "runs/gw3-v1-base-s22/eval_rdev.json": "72a3ee6c3f04a082b31329a886847863f763ed7c5db2befa660d4dff43c16844",
+   "runs/gw3-v1-base-s23/eval_rdev.json": "b26ab103c01a873898d39f8f1ac28ca3743e1cbc968c62ff87a2b6c76e734f96",
+   "runs/gw3-v1-base-s24/eval_rdev.json": "a7f4a9394db8f56a94b40348084b4b0bf8f929fa9818fed266dc32ded43d3943",
+   "runs/gw3-v1-base-s25/eval_rdev.json": "a5a420ea1e761cf73413f154a3e26e3f296e948dd1d54f140edca3b865fe2801",
+   "runs/gw3-v1-base-s26/eval_rdev.json": "e9f71fa48e9a9ce178b7082246743af3c465cfd363f575fd8614756e59cef577",
+   "runs/gw3-v1-base-s27/eval_rdev.json": "36438e91d01f04e92ba3204b693c375651a75b284e2272b14f3c9bf31e15f61e",
+   "runs/gw3-v1-base-s28/eval_rdev.json": "ef101ba7bb8d63764f8f707dd396bb007e66518ee09dea3515ec0289e4718163",
+   "runs/gw3-v1-base-s29/eval_rdev.json": "cc96994742325aaaf70eb05db39376bd8e375a4b4b5cdc06aa712f7544deddf4",
+   "runs/gw3-v1-cl-f1-s20/eval_rdev.json": "3ae942136f26935189a4ebeec42ab4413de5190a7ca9ba4b1e9c275c05f33026",
+   "runs/gw3-v1-cl-f1-s21/eval_rdev.json": "fb3cf9c50bdb28c77419be1798b42254a54747b9dad5ed2af10975868dc21710",
+   "runs/gw3-v1-cl-f1-s22/eval_rdev.json": "aa144ad34e3bc3f9006a36673d54b190331526398b827fbc6eea4b42c216e068",
+   "runs/gw3-v1-cl-f1-s23/eval_rdev.json": "e44f60d9ff9f4d94f859fa3b25719387450fa5e27191ed453cbc4d60cc7eff31",
+   "runs/gw3-v1-cl-f1-s24/eval_rdev.json": "1b3d36782c830695e63f9bb5b7942d455d8aad229f3a83d3e3d0e6f6a3b7aa57",
+   "runs/gw3-v1-cl-f1-s25/eval_rdev.json": "0f99bd3b59bfe141886859e1bda348c286857bbc04ee615816a61909e064fe1b",
+   "runs/gw3-v1-cl-f1-s26/eval_rdev.json": "9397d79d99b8869755fce375d9efd6721c4e9098df4773bff3093b1e0280be11",
+   "runs/gw3-v1-cl-f1-s27/eval_rdev.json": "3ca669fd6a66e2c9d90789475a3e44be73e74c5f75d2f99c324b0c95bae8db82",
+   "runs/gw3-v1-cl-f1-s28/eval_rdev.json": "94f7ceea66d7ce72abc0b565584a1b2c23a54c998d22e825018a9a026d600661",
+   "runs/gw3-v1-cl-f1-s29/eval_rdev.json": "92429694cc8a3e28cae4399a6460580ec903cb0436c8e9b2a9832eda304bd9f5",
+   "runs/gw3-v1-cl-f2-s20/eval_rdev.json": "b30415b2000ffdf0a0a46d2e7539faf4b61d4aacc978366ee1bdedc9611aea9c",
+   "runs/gw3-v1-cl-f2-s21/eval_rdev.json": "7150e25cae34165fa5c12b3f61ae03072ba2c36ba4fe1c89b7b1c87811e5ae1f",
+   "runs/gw3-v1-cl-f2-s22/eval_rdev.json": "93bfc599670e86135cda8ef984c53dbb0fd918876c0c665ab16b08597b61060e",
+   "runs/gw3-v1-cl-f2-s23/eval_rdev.json": "08355ada10240e91d3866814609ddffd13f6d208c83a82939e1a4dc579d25550",
+   "runs/gw3-v1-cl-f2-s24/eval_rdev.json": "ba5414b6b339adc9184e95669359f006fc74eba5ee7577cfd8a96c66aeff9938",
+   "runs/gw3-v1-cl-f2-s25/eval_rdev.json": "10c3f621db1f9dd738f2982efd85aaa0347e68580fb386f4e5879a224fd6a043",
+   "runs/gw3-v1-cl-f2-s26/eval_rdev.json": "9bd332542e0d8bbb9123a27ebf7606c7d979b010df274072472bfbff1e68f7ff",
+   "runs/gw3-v1-cl-f2-s27/eval_rdev.json": "add5323dc2420dfc57f34256637cf8695f13cc44b46ff1a810fcb009a53f291b",
+   "runs/gw3-v1-cl-f2-s28/eval_rdev.json": "f983bebd7021e79f773c13af31137fbee8980cd5aaf516702eff0a351e3b5113",
+   "runs/gw3-v1-cl-f2-s29/eval_rdev.json": "8bf6ccdbede9e5bc802e4e5f834fd8311ce55bd106432eb94896668daf521cdb",
+   "runs/gw3-v1-sa-s20/eval_rdev.json": "105216da6e4f03cb13b4cb095c045aba74129e0ce288da085d3ab9722bfc53e2",
+   "runs/gw3-v1-sa-s21/eval_rdev.json": "bd0d2af2874ae78c68cfbd0add03d3ab13de70c774c7885613245fa783e225d1",
+   "runs/gw3-v1-sa-s22/eval_rdev.json": "05dd3c00b605b646df21960fb21ae862a7a376eb7da02145edb884e111240801",
+   "runs/gw3-v1-sa-s23/eval_rdev.json": "d942162d584393e451e00c3225ba4d8e00507558a6e8d7be6597d15df7430df9",
+   "runs/gw3-v1-sa-s24/eval_rdev.json": "09ff880b32d326a18a565f3c520c731f43d17ce73b9ac29a30eca63e47683e64",
+   "runs/gw3-v1-sa-s25/eval_rdev.json": "5138907ea3a9fd0b63331851d51d28117942aadedfb13804c59e7a81171e761e",
+   "runs/gw3-v1-sa-s26/eval_rdev.json": "d988872e5886d26aa470e12661dd321b1bf73f71f8353e5fdc4d53e0dd2120e3",
+   "runs/gw3-v1-sa-s27/eval_rdev.json": "51ad1c252b662f15a8576ff9d259b12f4f95d26ef52c17273a89d29ce93ad8c6",
+   "runs/gw3-v1-sa-s28/eval_rdev.json": "9e515710c6758011aa1e11de92fefe9ae1925452c3e240a47bc7dea89978454f",
+   "runs/gw3-v1-sa-s29/eval_rdev.json": "f7a6c5b47b6c213314536614bdc67bf66e407509d1af3086d4ffca7166ffe134",
+   "runs/gw3-v1-sl-f1-s20/eval_rdev.json": "891775c5a72dfdd02749c24b6fe4cec1720ab64069ed19617b8c2899170d8659",
+   "runs/gw3-v1-sl-f1-s21/eval_rdev.json": "e5311f8fe319b63edb866051115fb07040db74546f63710343f83a24317071b6",
+   "runs/gw3-v1-sl-f1-s22/eval_rdev.json": "bb0b8d6aa6579629ec04517c97526555d325d19916d14cbdb3aab837dc4b91f5",
+   "runs/gw3-v1-sl-f1-s23/eval_rdev.json": "4aaecbb2a684d35239e58706a4c51ccb275252d1fe3482704132b0218d31eb4b",
+   "runs/gw3-v1-sl-f1-s24/eval_rdev.json": "e203ff1021fc9f2cafc2661a16c35b4d20a37d9f00a76f717d53aebffa1c3a12",
+   "runs/gw3-v1-sl-f1-s25/eval_rdev.json": "67985c3eafd992bbfb3b388b9f038b1fa9b345e71bdf0c52a8f39f47113a0143",
+   "runs/gw3-v1-sl-f1-s26/eval_rdev.json": "be99668c40ca8485535c4071c5a0f83f19947a6faec6347d3530c4d2472149d6",
+   "runs/gw3-v1-sl-f1-s27/eval_rdev.json": "2ec0a34bc37db2f5901c8554ae61a55f8269b7436ec9842d7d4043e3a430f101",
+   "runs/gw3-v1-sl-f1-s28/eval_rdev.json": "2a59efdc6120197a301c821ececaa3d6871e9b80fd20f965b1bf85816885d444",
+   "runs/gw3-v1-sl-f1-s29/eval_rdev.json": "4b5a968aca14b96f6cb7654347919c005565aaed26a3f533a2ab50f13c56dac6",
+   "runs/gw3-v1-sl-f2-s20/eval_rdev.json": "693737ed0326165bd5ab47526fc057e26d378a515512ca1584d48ff2bff5fc53",
+   "runs/gw3-v1-sl-f2-s21/eval_rdev.json": "d4f721c0384adcdc21b9544c04dd19b47308303d68f10b6fb6b13c3b359fd4c2",
+   "runs/gw3-v1-sl-f2-s22/eval_rdev.json": "94b40d424b6d95517114f2d86da0145a9b7971ef33e52eca5bd257e24cc2dd63",
+   "runs/gw3-v1-sl-f2-s23/eval_rdev.json": "e439939a1f3df00b8efaf4e4d7fbd77d49e0729e4f51b6f4b68b1ae9a81f87c9",
+   "runs/gw3-v1-sl-f2-s24/eval_rdev.json": "4da38bc1741da426040960e9141c69acba5ab8122e8a7d948aa1fb55177bd49f",
+   "runs/gw3-v1-sl-f2-s25/eval_rdev.json": "6266060c480ec47d87b2c253622c7ee64c8c53307fffe1bbea7391b5d7c58fc1",
+   "runs/gw3-v1-sl-f2-s26/eval_rdev.json": "cb6d767b74b499a1b5a2eab6d326f444afecf5332bd767d1d6f27177afd30b6b",
+   "runs/gw3-v1-sl-f2-s27/eval_rdev.json": "c52e4533dfd1579172420f0159f7649c7151e853e19a7efa03ec843109ba598c",
+   "runs/gw3-v1-sl-f2-s28/eval_rdev.json": "76b9caa0509ce678cc69e0c30f76dfb622f6d6954f7ef2bf557ff1298f5c5470",
+   "runs/gw3-v1-sl-f2-s29/eval_rdev.json": "7db3850b30b90760224f7b43aadbbd57ec57d508330fd732080d2572bdf1b930",
+   "runs/gw3-v3-base-s20/eval_rdev.json": "9629d0d6069103ab7df95e63a6903e20c6bd641fc09eb6cb2a925e615a64145f",
+   "runs/gw3-v3-base-s21/eval_rdev.json": "bcdd1659d48794abc1dcd2ba05bc888f8a38ec6e4fdf5fa2a5413334aff42370",
+   "runs/gw3-v3-base-s22/eval_rdev.json": "16b5a43cdf1aa2032c1b8fc5c921305ee9c749a80c906d55143c0e44d10f3ff1",
+   "runs/gw3-v3-base-s23/eval_rdev.json": "0a310030301f792954fb0c4b868c2920beab96e5855045995a1a8db1caaf88ab",
+   "runs/gw3-v3-base-s24/eval_rdev.json": "f76ee0154b3df4fc14dc01ad99bfbbb91f04ccf243217767c95519763a6b20fb",
+   "runs/gw3-v3-base-s25/eval_rdev.json": "0ef504eab03567044750c6f4ab8d3b3b56d222ebce8012c2d91dc9321126a32b",
+   "runs/gw3-v3-base-s26/eval_rdev.json": "338e5d8dadbd4d6b4791c011898ec4ea5910c2ec53bea2f842e918c28c5f447b",
+   "runs/gw3-v3-base-s27/eval_rdev.json": "c894617b80319dcca13e7858a1bbedc7c99bea7dd18e5d9f7deaf745922eb577",
+   "runs/gw3-v3-base-s28/eval_rdev.json": "740b54e8b4c360c32e62f204a7bf8c40fb2363b7017704580ffd801b42977396",
+   "runs/gw3-v3-base-s29/eval_rdev.json": "09bb705f37bc05fe1e7f71ce6695765537f2bce22c57d6ca87d855809d2177fb",
+   "runs/gw3-v3-cl-f1-s20/eval_rdev.json": "73f23e11b0114682e411e35a7a9837f0d280d64e6a9aeb684a5040ce24a1f858",
+   "runs/gw3-v3-cl-f1-s21/eval_rdev.json": "75802a69edb97cedd4de96105362b6522e28bb21e60509d9d8d9a43c815a62fd",
+   "runs/gw3-v3-cl-f1-s22/eval_rdev.json": "a615ef1a4e97ec2925de515f0293b8aadd38bc6feef655ba0db57f407673ddf8",
+   "runs/gw3-v3-cl-f1-s23/eval_rdev.json": "6bd4176e33ac552998eefabac7f8c18fe745db648c25366bc32604178067b081",
+   "runs/gw3-v3-cl-f1-s24/eval_rdev.json": "cf1b67c4693520fd9e038190add4e6bd6f9bcfe1ed30b87e7c16c7d7fcab7c15",
+   "runs/gw3-v3-cl-f1-s25/eval_rdev.json": "6871bdbf666e76d5edb876db527d5429160d20f48f08fad5a83b3d860c666666",
+   "runs/gw3-v3-cl-f1-s26/eval_rdev.json": "6e8c40c89765ab1d21b044a0f71b8947ef7a9f958f720a441fe1aa01f1a19ee7",
+   "runs/gw3-v3-cl-f1-s27/eval_rdev.json": "5a68ff92f61b01edfced500e46a02691596fe79df5fe51108f39486200c9dbac",
+   "runs/gw3-v3-cl-f1-s28/eval_rdev.json": "57f828655be4b715bb3e8380aad76a74bb3a796f9f9fb0efaeb75c7555d0411c",
+   "runs/gw3-v3-cl-f1-s29/eval_rdev.json": "effd37141ee6311c51f3fde83c439a0325ae9ce85e474f9aedadede799e875e5",
+   "runs/gw3-v3-cl-f2-s20/eval_rdev.json": "fa9ac1330f3b735241b36c23967da98a30e7af4451bf3e3940a32063ed67322f",
+   "runs/gw3-v3-cl-f2-s21/eval_rdev.json": "0c836b544dd657ad6983e657da3e0a4085d9545af3e45dd8fbe23bae5d3a50c1",
+   "runs/gw3-v3-cl-f2-s22/eval_rdev.json": "448ba91137da65b9853c6fa5a0ca527144de447b6f3a6002f5d9a03c82a472c5",
+   "runs/gw3-v3-cl-f2-s23/eval_rdev.json": "41b04a42fc5dc2f6a7757d01f37371e1a6a69f8c6fe9ff244c47af0db61ad4d9",
+   "runs/gw3-v3-cl-f2-s24/eval_rdev.json": "61ea7f75bc6535d367c17dbbb512cf303cb2fd169fe5cd68961f00e1730d5dc1",
+   "runs/gw3-v3-cl-f2-s25/eval_rdev.json": "bfc8168df0c762cb7502c88c77d566a42cb912dca23c326207da076819af93c6",
+   "runs/gw3-v3-cl-f2-s26/eval_rdev.json": "63662d8924e7359fbed23d9645e9164e3e81904fc3b45c6bccab9b34a4960785",
+   "runs/gw3-v3-cl-f2-s27/eval_rdev.json": "eac6a3408949901f51f0b573ccb8a0e625413953e1b187fa39684068c125e51f",
+   "runs/gw3-v3-cl-f2-s28/eval_rdev.json": "fe9cd1a40ad844b465eaaa347a757313ae533a0882bf9f7d5685d29c2100a2c2",
+   "runs/gw3-v3-cl-f2-s29/eval_rdev.json": "2eee2d538d2d4ff83c17fcf34b12e63251534d9e723e4943c66179a9a1fc3bd7",
+   "runs/gw3-v3-sa-s20/eval_rdev.json": "40700131bdc5839276f1959137e990d18a6683ee70eb544b92ef52ed1805fc27",
+   "runs/gw3-v3-sa-s21/eval_rdev.json": "0ee79ff6076ce8ffa7b2febb0694b1c1e967114a8d0ba209d6db0e7580c2b2cd",
+   "runs/gw3-v3-sa-s22/eval_rdev.json": "ff80c47ad1cbf18f5b9c855463a119919bb5a3b7a27a9a5f09f730b8b9a732f0",
+   "runs/gw3-v3-sa-s23/eval_rdev.json": "f05bbf863d8364346e7ebf9188cea977e89efd2795331f2484c359bb74497d48",
+   "runs/gw3-v3-sa-s24/eval_rdev.json": "daa740da8cfd75814edc2c15c87683069f9564db23531c536aac924f30b28610",
+   "runs/gw3-v3-sa-s25/eval_rdev.json": "3189fb61c479d5eed8be786216c1e10663e2a70a15462535560b230abdd7d63a",
+   "runs/gw3-v3-sa-s26/eval_rdev.json": "b0641bea9d8aa31bada4b295b34c24429c58079c1b28bcdcc29729eea65c1f6a",
+   "runs/gw3-v3-sa-s27/eval_rdev.json": "c0833d47b40d24b4ff852997dbd1ead67980c7f4b90ed88e04a5f5f356511ddc",
+   "runs/gw3-v3-sa-s28/eval_rdev.json": "56ce5ca0b2c3ced310f467fd66c50deab5c5f0c7c9c995de20b34cd72bf37ecf",
+   "runs/gw3-v3-sa-s29/eval_rdev.json": "7715f6316f6f3b236ba85c125e18de28690eb79593259e80c34c0022102630cd",
+   "runs/gw3-v3-sl-f1-s20/eval_rdev.json": "f7f6970f136a4c974d24b40ca078e61d244b857d64c7aa13207d2b37241f9844",
+   "runs/gw3-v3-sl-f1-s21/eval_rdev.json": "edc1881e8547c2ba689bc7726d6ffb60c4906b0b32351db23a2a6cb14ab1d1a7",
+   "runs/gw3-v3-sl-f1-s22/eval_rdev.json": "833b316c0573673592ad7b834a8614e75725f738ab6bce44ae6910783115ec19",
+   "runs/gw3-v3-sl-f1-s23/eval_rdev.json": "2e2e6c6adc800cc98951d92a3cd486d76552568e19aa9ae14469113692b968c6",
+   "runs/gw3-v3-sl-f1-s24/eval_rdev.json": "9b2489ebef0cb722840ee44a01c052edc20e6b392ea2bf4540bf716942332351",
+   "runs/gw3-v3-sl-f1-s25/eval_rdev.json": "5f5910af860223f7355643c9bc5346781ff6afc75d360a24608a35f58ebfd74e",
+   "runs/gw3-v3-sl-f1-s26/eval_rdev.json": "9540a47a8113c3deaca73160e3dd7bc4263c6b04bf28ba6052ef08f9877715c0",
+   "runs/gw3-v3-sl-f1-s27/eval_rdev.json": "5c62d92d022ab57097abf4d577a539fdafbfe5af16b5db96caa05b878f023027",
+   "runs/gw3-v3-sl-f1-s28/eval_rdev.json": "f6ee22242e8578c77b91a22b2caf8997f928afe7710a0c7d339f62e4334a95e1",
+   "runs/gw3-v3-sl-f1-s29/eval_rdev.json": "d9a84a277420ed4cba3b8a90a8506795c65d4abcf3288e2c9689f7ae9b37b4ce",
+   "runs/gw3-v3-sl-f2-s20/eval_rdev.json": "41cfaa9e58738664ac07db3e0ff774e4ad2b490b670b409460393ede37914e07",
+   "runs/gw3-v3-sl-f2-s21/eval_rdev.json": "ffd97dbfaa1ebc4acfd7f13fe8fe39d84fd26468fd8c218f95e485fe062c5583",
+   "runs/gw3-v3-sl-f2-s22/eval_rdev.json": "d429395d99fc5e245229c87d5c21d53975b54eab9eaf8c94f8a0a01ea77cc5b7",
+   "runs/gw3-v3-sl-f2-s23/eval_rdev.json": "f9681692f2f557a66f264a1294b0a27f7ffa4295622a952ea7de5af00192d52f",
+   "runs/gw3-v3-sl-f2-s24/eval_rdev.json": "3f1f5e0fb78ee689a31d90a7038ae7adf4a7bd9765b0bff25a073fd001e437d1",
+   "runs/gw3-v3-sl-f2-s25/eval_rdev.json": "e93b0a98927f2cf8a5dc02a755aed72298daa0d02b432927338247012cb89f62",
+   "runs/gw3-v3-sl-f2-s26/eval_rdev.json": "14bb60858527f82f490f5182e1806707ad200df573e15df74893b87a69f2cb71",
+   "runs/gw3-v3-sl-f2-s27/eval_rdev.json": "eaeefedc9d3b24e64b7fbfe2795e4a7a2af6f28cf186cdc3870362cdb45bd09b",
+   "runs/gw3-v3-sl-f2-s28/eval_rdev.json": "f4e786fbf1d7f0f6c85d516a33c0f9eb6dfe02dbae691b8185bfc9b2d22570af",
+   "runs/gw3-v3-sl-f2-s29/eval_rdev.json": "916a490bf79e0cf34dd6e14547d5208a37ab9af09802f6777185e5cc0bde410c"
+  },
+  "argv": [
+   "analyse"
+  ],
+  "start": "2026-10-27T23:11:21",
+  "end": "2026-10-27T23:11:21",
+  "seconds": 0.3,
+  "environment": {
+   "python": "3.12.4",
+   "numpy": "2.5.4",
+   "machine": "arm64",
+   "system": "Darwin",
+   "nice": 10
+  }
+ }
+}
