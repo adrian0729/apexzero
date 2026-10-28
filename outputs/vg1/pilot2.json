@@ -1,0 +1,158 @@
+{
+ "record": "vg1-pilot",
+ "phase": "pilot2",
+ "label": "exploratory (the second pilot; never confirmatory)",
+ "pilot_commit": "495885a2a06536b1358175e5df9cb0dae92dd6df",
+ "runs": {
+  "vg1p2-b0.01-s15": {
+   "name": "vg1p2-b0.01-s15",
+   "beta": "0.01",
+   "seed": 15,
+   "status": "done",
+   "finished": true,
+   "gpu_minutes": 12.815277777777778,
+   "m1": -0.4171093809645145,
+   "m0": 0.9211947917938232,
+   "ev": 0.9429331421852112,
+   "k3_pass": true,
+   "params_finite": true,
+   "s4": {
+    "steer": 0.9450191855430603,
+    "pedal": 1.1170629262924194
+   },
+   "metrics_finite": true,
+   "nonfinite_metrics": []
+  },
+  "vg1p2-b0.03-s15": {
+   "name": "vg1p2-b0.03-s15",
+   "beta": "0.03",
+   "seed": 15,
+   "status": "done",
+   "finished": true,
+   "gpu_minutes": 12.790277777777778,
+   "m1": -0.1651299552219716,
+   "m0": 0.6979241967201233,
+   "ev": 0.9249142408370972,
+   "k3_pass": true,
+   "params_finite": true,
+   "s4": {
+    "steer": 0.7685060501098633,
+    "pedal": 0.7334251403808594
+   },
+   "metrics_finite": true,
+   "nonfinite_metrics": []
+  },
+  "vg1p2-b0.01-s16": {
+   "name": "vg1p2-b0.01-s16",
+   "beta": "0.01",
+   "seed": 16,
+   "status": "done",
+   "finished": true,
+   "gpu_minutes": 12.815277777777778,
+   "m1": -0.43265923072842627,
+   "m0": 0.8504902720451355,
+   "ev": 0.9375806450843811,
+   "k3_pass": true,
+   "params_finite": true,
+   "s4": {
+    "steer": 0.8811151385307312,
+    "pedal": 0.9045162796974182
+   },
+   "metrics_finite": true,
+   "nonfinite_metrics": []
+  },
+  "vg1p2-b0.03-s16": {
+   "name": "vg1p2-b0.03-s16",
+   "beta": "0.03",
+   "seed": 16,
+   "status": "done",
+   "finished": true,
+   "gpu_minutes": 12.1625,
+   "m1": -0.28469180142171374,
+   "m0": 0.8984566330909729,
+   "ev": 0.9162261486053467,
+   "k3_pass": true,
+   "params_finite": true,
+   "s4": {
+    "steer": 0.9253718852996826,
+    "pedal": 0.9714162349700928
+   },
+   "metrics_finite": true,
+   "nonfinite_metrics": []
+  }
+ },
+ "eligible": {
+  "0.01": true,
+  "0.03": true
+ },
+ "ineligible_because": {
+  "0.01": [],
+  "0.03": []
+ },
+ "median_m1": {
+  "0.01": -0.4248843058464704,
+  "0.03": -0.22491087832184267
+ },
+ "beta_star": 0.03,
+ "beta_star_text": "0.03",
+ "cost_check": {
+  "applies": true,
+  "pilot_gpu_hours": 2.48,
+  "first_pilot_gpu_hours": 1.5,
+  "this_pilot_gpu_hours": 0.98,
+  "beta_star_gpu_minutes": 12.476388888888888,
+  "main_projected_gpu_hours": 7.325462962962963,
+  "main_gpus": 4,
+  "total": 9.805462962962963,
+  "limit": 14.0,
+  "to_the_user": false,
+  "stop_rule": 16.8,
+  "formula": "20 x 6.5 min + 20 x beta*'s mean GPU minutes + 15 min x the main box's GPUs"
+ },
+ "queue_gpu_hours": 0.8430555555555556,
+ "rule": {
+  "ev_min": 0.9,
+  "m0_max_exclusive": 13.99,
+  "betas": [
+   "0.01",
+   "0.03"
+  ],
+  "tie": "the smaller beta",
+  "finite": "M1, M0, EV, the last metrics.csv row and the final checkpoint's parameters"
+ },
+ "provenance": {
+  "script": "scripts/vg1_analysis.py",
+  "script_sha256": "1d88120a058492b9dabe921827272765d161d68530856185b459c284210da159",
+  "head": "495885a2a06536b1358175e5df9cb0dae92dd6df",
+  "changed": [],
+  "inputs": {
+   "outputs/vg1/c1/pilot2.json": "86a6d869af283b6089aedefbecb404798f4cb8dbb39704d2507446a56545033e",
+   "outputs/vg1/m0/vg1p2-b0.01-s15.check.json": "135b3e578c61a744f27c54aee60bca476c725a5cd88241013540b6c83706edcf",
+   "outputs/vg1/m0/vg1p2-b0.01-s15.json": "4d2ec544e920e572d61b9d1ab857a143075524d3a2ebd2263ef35f206972a7b1",
+   "outputs/vg1/m0/vg1p2-b0.01-s16.check.json": "6a3c9f33a5b98670bdf29f7ec110d7982ee8348ffc04d241a7cfde01a9380ac5",
+   "outputs/vg1/m0/vg1p2-b0.01-s16.json": "6ba17ad9d044f132234a871f01239fd19d0b44dc3d33b41dd463683e85f83731",
+   "outputs/vg1/m0/vg1p2-b0.03-s15.check.json": "50c5fc1ddba1ec1a50bdd3cb76fe516e51a43ca288bb5833ef13de10cffe821d",
+   "outputs/vg1/m0/vg1p2-b0.03-s15.json": "c4ffe59fc534508841105559783b314e902211bf3ab3f3f38988b3a15342bc36",
+   "outputs/vg1/m0/vg1p2-b0.03-s16.check.json": "937f90e96682eabadd7ec404f6be21ce8408ef25f179b2cd7b0135f0361b4363",
+   "outputs/vg1/m0/vg1p2-b0.03-s16.json": "47f00c97b21defa53592b0b862ba80e896fcfee105fccc35924090ebbb3a6543",
+   "outputs/vg1/manifest-pilot2.json": "492c5f18ead2dd20f74aecd35f04d5037908403b88e0823e3241fed642a55cd2",
+   "outputs/vg1/pilot.json": "75da9836ee21c85236ec6d09dae9c52477875734598e11a563c56824721473a8"
+  },
+  "argv": [
+   "scripts/vg1_analysis.py",
+   "pilot",
+   "--phase",
+   "pilot2",
+   "--box-gpu-hours",
+   "0.98"
+  ],
+  "start": "2026-10-28T00:38:05",
+  "end": "2026-10-28T00:38:05",
+  "environment": {
+   "python": "3.12.4",
+   "numpy": "2.5.4",
+   "machine": "arm64",
+   "system": "Darwin"
+  }
+ }
+}

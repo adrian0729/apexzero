@@ -440,7 +440,7 @@ All items are settled in the text before the pilot commit (Section 9). The user 
 
 **The second pilot commit** is the commit the box checks out for round `vg1p2`: the commit on main that contains this Section 11 and the pilot2 code. It is the commit `outputs/vg1/manifest-pilot2.json` records as `commit`, and the one the round check confirms when `manifest --phase pilot2` is run with `--tag` set to it. The lead records its sha in the commit that records β\* below and in the findings. It replaces "the pilot commit" in Section 9, step 4's freeze check. Between it and the tag, only the line below and `outputs/vg1/pilot2.json` may change; the paths listed in step 4 are otherwise frozen. The main run reads β\* from `outputs/vg1/pilot2.json`, which must be committed, unchanged against HEAD, of phase `pilot2` and name an eligible β of {0.01, 0.03}; it also requires `outputs/vg1/pilot.json` to be committed with no β eligible.
 
-**β\* (second pilot):** to be recorded here after the second pilot, before the tag.
+**β\* (second pilot):** 0.03 (recorded 28 Oct 2026 from `outputs/vg1/pilot2.json`; second pilot commit `495885a`). Both β of the second grid are eligible: EV 0.943 and 0.938 at β = 0.01, 0.925 and 0.916 at β = 0.03; M0 0.70–0.92; all finite, K3 passed. β = 0.03 has the higher median M1 (−0.225 against −0.425). The cost check projects 9.81 GPU-hours (1.50 + 0.98 + 7.33), under 14.
 
 **The procedure.**
 1. Rent one `massedcompute_A6000_plus`, set it up, push R-dev data, and check out the second pilot commit detached (the commit described above).
