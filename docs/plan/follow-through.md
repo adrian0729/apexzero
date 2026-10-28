@@ -747,3 +747,20 @@ The lead's notes (27 Oct 2026, launch):
 - The account allowed two instances at once: one `massedcompute_A6000_plusx4` box for GW-3 (then
   VG-1's main run after its tag) and one `massedcompute_A6000_plus` box for the memory check, the
   VG-1 pilot and then P4-B2.
+
+The lead's notes (28 Oct 2026, Phase 3 done):
+- **GW-3** (`docs/findings/gw3.md`): P1 confirms (v1 9.8 against 4.6, v3 9.9 against 5.0 held-out
+  circuits of 12; p = 2.9e-11). GW-4's criterion 3 fails (Δgap +1.52 points), so by #12
+  `generator-v1` uses copied R-dev widths, and every R-dev number for E0 is labelled "in-sample
+  for widths". Box 14.7 GPU-hours.
+- **P4-B2** (`docs/findings/p4-b2.md`): no recipe-level description; no reading reaches 3 of the
+  5 specialists (one mixed, two undecided, one fragile, one context-keyed). Box 2.06 GPU-hours,
+  1.74 of them idle while the lead waited on an answer about VG-1.
+- **VG-1** (`docs/findings/vg1.md`): P confirms (C1's R²_c, p = 0.0105, Hodges–Lehmann +0.35);
+  reading row 2. S1 shows no completion difference (−0.5 circuits, CI −1.2 to +0.2), so "fix the
+  critic's gradient" is closed as a completion lever at 200M, v1. E0 is unchanged. A second pilot
+  at smaller β (Amendment 1, the user's choice) was needed; 10.31 GPU-hours in all.
+- **Phase 3's A6000 time:** 27.1 GPU-hours (14.7 + 2.06 + 10.31) against the approved 23–29.
+- **Still to come from Phase 3:** maze E5's timing run (PA-3), after a review of the changes made
+  since its build review (the vendored network and Section 11 item 11) and its dry run on the
+  pilot's checkpoints.
