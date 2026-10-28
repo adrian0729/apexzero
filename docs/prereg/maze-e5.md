@@ -451,6 +451,63 @@ Per arm and primary score, read on both targets:
      - On the Mac, E5's audit took about 115 s per DR checkpoint and 150 s per PLR checkpoint.
 5. **Timing calibration** on the box (Section 9). It fixes the lanes and the projection. It is the
    only box time approved so far (27 Oct 2026), and its measured projection goes to the user.
+   **Run on 28 Oct 2026** on one `massedcompute_A6000_plus` box (G = 1) at `706aa02`, detached
+   and clean. The box lived 07:57:56–09:42:08 UTC: 1.74 GPU-h, about $1.18.
+   - **The rounds.** `maze-e5t4` (8 runs at 4 lanes), `maze-e5t8` (8 runs at 8 lanes),
+     `maze-e5at` (6 timing-only audits) and `maze-e5c` (3 runs) ran 08:16–09:38 UTC. Every run
+     finished on its first attempt; no load failed.
+   - **The rule's output** (`scripts/maze_e5.py timing`; `runs/maze-e5-timing.json`, sha256
+     `abdc5ca1…`, not committed):
+
+     | Load | x4 box | 5 single-GPU boxes |
+     |---|---|---|
+     | 4 lanes | 128.5 GPU-h (train 29.3 h wall) | 135.2 GPU-h |
+     | 8 lanes | **87.6 GPU-h** (train 19.0 h wall; stop rule 105.1) | **106.8 GPU-h** (19.0 h per box) |
+
+     The rule chooses 8 lanes for both layouts. The audit adds 10.4 GPU-h (59–86 s per
+     checkpoint) and set-up 0.25 h per box. Two start-ups at 8 lanes are negative (PLR-13
+     −2.8 s, DR-13 −37.6 s): their first block ran while the SFL runs were still compiling.
+   - **The capture check is inconclusive.** The two captured runs differ: at update 200,
+     432,785 of 432,929 parameters, by up to 0.11. Each differs from the uncaptured run by as
+     much (up to 0.13). GPU training is not bit-deterministic here, so the GPU says nothing
+     about DEV-E5-2, as Section 9 allows. The CPU test (`tests/test_maze_e5.py`) stands as the
+     evidence that the capture leaves the parameters unchanged.
+   - **The lead's check of the rule** (not part of the rule; it changes no rule, only what the
+     user is told). The load changed within each calibration run, because the short cells
+     finished first. At 8 lanes, the SFL 13×13 runs' last three blocks ran with 2 runs alive,
+     not 8, and the rule's per-update times come from those blocks.
+     - **The model.** Every block's time is close to its cell's GPU cost times the number of
+       runs alive. For example, DR-13 takes 29 s per 100 updates alone and 26–30 s per share
+       with 6–8 alive; SFL-13 takes 103–114 s per share at 2 and at 4 alive. So the GPU is
+       shared fairly and stays saturated.
+     - **The GPU cost per update** (median over blocks 2–5 of both rounds):
+
+       | Cell | SFL-13 | SFL-5 | PLR-13 | PLR-5 | DR-13 | DR-5 |
+       |---|---|---|---|---|---|---|
+       | GPU-s per update | 1.115 | 0.411 | 0.263 | 0.107 | 0.290 | 0.122 |
+
+     - **The training work.** 30,000 updates per run come to 96.2 GPU-h for the 30 runs.
+       - The x4 figure (76.1 GPU-h of training) is below that work, so it cannot be right.
+       - `gpu_round.sh` sends job j to GPU j mod 4, which puts three SFL-13 runs on GPU 0. That
+         GPU carries 39.5 h of work, while the others carry 12–30 h. That is about 170 GPU-h with
+         the audit.
+     - **The single-GPU boxes** (one seed each) are balanced: 19.2 h of work per box, 107.8
+       GPU-h with the audit and set-up, in about 22 h of wall time. That agrees with the rule's
+       106.8.
+     - **By drop level** (Section 9's order; single-GPU boxes):
+
+       | Drop | Runs | GPU-h | Wall time |
+       |---|---|---|---|
+       | 0 | 30 | 108 | 22 h |
+       | 1 | 25 | 60 | 12 h |
+       | 2 | 15 | 33 | 7 h |
+       | 3 | 12 | 26 | 7 h |
+       | 4 | 9 | 20 | 7 h |
+
+       At drop 0 that is 5–15 times Section 9's 7–22 estimate. SFL-13 alone is about half the
+       cost.
+   - **For the user:** the full queue on five single-GPU boxes at 8 lanes per GPU (6 runs per
+     box), at about 108 GPU-h (stop rule 130), or a drop level from the table above.
 6. **Training,** once the user has approved the full queue on the measured estimate (Section 9).
    The lead tags the training commit `maze-e5-train-v1` and launches round `maze-e5`. The 30 runs;
    the 16 selected checkpoints per run are pulled back (`gpu_sync.sh pull-round`) with their

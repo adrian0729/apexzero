@@ -764,3 +764,19 @@ The lead's notes (28 Oct 2026, Phase 3 done):
 - **Still to come from Phase 3:** maze E5's timing run (PA-3), after a review of the changes made
   since its build review (the vendored network and Section 11 item 11) and its dry run on the
   pilot's checkpoints.
+
+The lead's notes (28 Oct 2026, lane A and E5's calibration):
+- **Lane A** (`docs/findings/costate-followups.md`, merged into main as `0bbf966`): CS-1 to CS-15
+  and BC-a0 ran, except CS-13 on T; all exploratory. The C1 refute holds at the policies' own
+  states, on N and at all 144 training snapshots. λ is decodable from z (R² 0.35 for λ_s, 0.67 for
+  λ_ξ), but the critics' input gradients do not express it. BC-a0: road beyond the preview moves
+  braking and corner λ by 9–103% of its phase variance, so BC-1 would need the preview-matched
+  average target (option (ii)), at about 2.3–2.9 times the planned 150–380 CPU-h. The note's
+  Section 6 lists what is not done and the questions for the lead.
+- **E5's calibration** (`docs/prereg/maze-e5.md` Section 8 step 5): 1.74 GPU-h on one A6000. The
+  rule projects 87.6 GPU-h on an x4 box and 106.8 on five single-GPU boxes. The x4 figure is too
+  low, because the load changed within the calibration runs; under the measured fair-share model
+  the x4 box needs about 170 GPU-h and the single-GPU boxes about 108. The GPU capture check is
+  inconclusive (GPU training is not bit-deterministic). The full queue goes to the user at about
+  108 GPU-h, with the drop levels.
+- **Phase 3's A6000 time** is now 28.8 GPU-hours (27.1 + 1.74).
