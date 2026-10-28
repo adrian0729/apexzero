@@ -1,0 +1,223 @@
+{
+ "record": "e0-gate",
+ "label": "in-sample for widths",
+ "threshold": {
+  "completed_if_completion_above": 0.5,
+  "pass_if_median_at_least": 10
+ },
+ "counts": [
+  4,
+  10,
+  8,
+  8,
+  6
+ ],
+ "median": 8,
+ "pass": false,
+ "seeds_at_least_pass_median": 1,
+ "per_seed": {
+  "e0-s50": {
+   "name": "e0-s50",
+   "seed": 50,
+   "count": 4,
+   "counted_as_zero": null,
+   "completion_by_circuit": {
+    "BrandsHatch": 0.0,
+    "Hockenheim": 0.0,
+    "MoscowRaceway": 1.0,
+    "Norisring": 0.0,
+    "Nuerburgring": 0.0,
+    "Oschersleben": 1.0,
+    "Sepang": 1.0,
+    "Sochi": 0.0,
+    "YasMarina": 0.0,
+    "Melbourne": 0.0,
+    "Catalunya": 0.0,
+    "Zandvoort": 1.0
+   },
+   "gap_by_circuit_completed": {
+    "MoscowRaceway": 0.06748536635391278,
+    "Oschersleben": 0.08603680265516567,
+    "Sepang": 0.05713357738451452,
+    "Zandvoort": 0.05650663266381106
+   }
+  },
+  "e0-s51": {
+   "name": "e0-s51",
+   "seed": 51,
+   "count": 10,
+   "counted_as_zero": null,
+   "completion_by_circuit": {
+    "BrandsHatch": 1.0,
+    "Hockenheim": 0.5,
+    "MoscowRaceway": 0.0,
+    "Norisring": 1.0,
+    "Nuerburgring": 1.0,
+    "Oschersleben": 1.0,
+    "Sepang": 1.0,
+    "Sochi": 1.0,
+    "YasMarina": 1.0,
+    "Melbourne": 1.0,
+    "Catalunya": 1.0,
+    "Zandvoort": 1.0
+   },
+   "gap_by_circuit_completed": {
+    "BrandsHatch": 0.06788952338993659,
+    "Norisring": 0.11745209530737744,
+    "Nuerburgring": 0.06052326653408158,
+    "Oschersleben": 0.08359359078508155,
+    "Sepang": 0.0642714574427754,
+    "Sochi": 0.06161228629004101,
+    "YasMarina": 0.11621697542138199,
+    "Melbourne": 0.07920778155067021,
+    "Catalunya": 0.05109218951436989,
+    "Zandvoort": 0.05580237882717065
+   }
+  },
+  "e0-s52": {
+   "name": "e0-s52",
+   "seed": 52,
+   "count": 8,
+   "counted_as_zero": null,
+   "completion_by_circuit": {
+    "BrandsHatch": 1.0,
+    "Hockenheim": 1.0,
+    "MoscowRaceway": 1.0,
+    "Norisring": 0.0,
+    "Nuerburgring": 1.0,
+    "Oschersleben": 1.0,
+    "Sepang": 1.0,
+    "Sochi": 0.0,
+    "YasMarina": 0.0,
+    "Melbourne": 0.0,
+    "Catalunya": 1.0,
+    "Zandvoort": 1.0
+   },
+   "gap_by_circuit_completed": {
+    "BrandsHatch": 0.06352276619918884,
+    "Hockenheim": 0.07460046959198574,
+    "MoscowRaceway": 0.0680051552134564,
+    "Nuerburgring": 0.06044171547604238,
+    "Oschersleben": 0.07472378947217506,
+    "Sepang": 0.05521899737609837,
+    "Catalunya": 0.051868177151832784,
+    "Zandvoort": 0.05887739020131866
+   }
+  },
+  "e0-s53": {
+   "name": "e0-s53",
+   "seed": 53,
+   "count": 8,
+   "counted_as_zero": null,
+   "completion_by_circuit": {
+    "BrandsHatch": 1.0,
+    "Hockenheim": 1.0,
+    "MoscowRaceway": 1.0,
+    "Norisring": 0.0,
+    "Nuerburgring": 1.0,
+    "Oschersleben": 1.0,
+    "Sepang": 1.0,
+    "Sochi": 1.0,
+    "YasMarina": 0.0,
+    "Melbourne": 0.0,
+    "Catalunya": 0.0,
+    "Zandvoort": 1.0
+   },
+   "gap_by_circuit_completed": {
+    "BrandsHatch": 0.07307812152968873,
+    "Hockenheim": 0.0642553860340529,
+    "MoscowRaceway": 0.07417708915971577,
+    "Nuerburgring": 0.06106860346584653,
+    "Oschersleben": 0.09027230652805818,
+    "Sepang": 0.06273023425515079,
+    "Sochi": 0.06049333218157038,
+    "Zandvoort": 0.05538433684733812
+   }
+  },
+  "e0-s54": {
+   "name": "e0-s54",
+   "seed": 54,
+   "count": 6,
+   "counted_as_zero": null,
+   "completion_by_circuit": {
+    "BrandsHatch": 1.0,
+    "Hockenheim": 0.0,
+    "MoscowRaceway": 0.0,
+    "Norisring": 0.0,
+    "Nuerburgring": 1.0,
+    "Oschersleben": 1.0,
+    "Sepang": 1.0,
+    "Sochi": 0.0,
+    "YasMarina": 0.3,
+    "Melbourne": 0.0,
+    "Catalunya": 1.0,
+    "Zandvoort": 1.0
+   },
+   "gap_by_circuit_completed": {
+    "BrandsHatch": 0.07086786910135667,
+    "Nuerburgring": 0.05728842469445472,
+    "Oschersleben": 0.08811434868934764,
+    "Sepang": 0.06673656209230372,
+    "Catalunya": 0.058389924168820606,
+    "Zandvoort": 0.06260764585978373
+   }
+  }
+ },
+ "tag": {
+  "tag": "e0-train-v1",
+  "tag_object": "58b8d809af751c234d74bd54b060636d8f838e2b",
+  "commit": "5edb66f81c7389d06d6b22f14fd3a5356a077255",
+  "head": "f01206299e4cba1c9f8ae01fe90c2e179473dd4a",
+  "upstream": {
+   "generator-v1": "f7c924002927374423ba44a476a23272a5ba2691",
+   "sim-v1": "f7c924002927374423ba44a476a23272a5ba2691"
+  }
+ },
+ "manifest_sha256": "9b8595701e65b367eb4fa7610ef41bfd16e19ed924f3d76d7a479e488f2db734",
+ "provenance": {
+  "script": "scripts/e0_gate.py",
+  "script_sha256": "5331a816c5efcb3b1f185739aef898f1dbdb5aceb6233fcbad9126b35a3e2299",
+  "runs_script_sha256": "01b76446d69f2f4e18ca6bf2ee56e003e90cea57396beea299b16ae972f4cb5f",
+  "tag_gate": {
+   "tag": "e0-train-v1",
+   "tag_object": "58b8d809af751c234d74bd54b060636d8f838e2b",
+   "commit": "5edb66f81c7389d06d6b22f14fd3a5356a077255",
+   "head": "f01206299e4cba1c9f8ae01fe90c2e179473dd4a",
+   "upstream": {
+    "generator-v1": "f7c924002927374423ba44a476a23272a5ba2691",
+    "sim-v1": "f7c924002927374423ba44a476a23272a5ba2691"
+   }
+  },
+  "head": "f01206299e4cba1c9f8ae01fe90c2e179473dd4a",
+  "changed": [],
+  "inputs": {
+   "outputs/e0/manifest.json": "9b8595701e65b367eb4fa7610ef41bfd16e19ed924f3d76d7a479e488f2db734",
+   "runs/e0-s50/config.json": "10e77c9abfc0a0aaacbb46f6f08ec1de94857cf31dff612a948c00964ca42366",
+   "runs/e0-s50/eval_rdev.json": "4908bdd2a0dca213c62c3e9ffd56d7dffb5253f78b1043680d0c031f2a6b1e18",
+   "runs/e0-s50/metrics.csv": "ae193f39ecfd74401ab2977d6cf0b2a11505d97a586e10e2fdf8639246fac166",
+   "runs/e0-s51/config.json": "cec5ebce4b9d7817fe1450b3826fd1beafda1ab323e7f56e5bccaa72196e12f8",
+   "runs/e0-s51/eval_rdev.json": "f311d31ea21f98735d6546fd56454d53eb6bc7962472a54b7d00553abc21e8b8",
+   "runs/e0-s51/metrics.csv": "ddb4f36643367b9b6493b869f29b57517f22fde4bcd45bc0ef4b837925a0c052",
+   "runs/e0-s52/config.json": "3dd62c4af12be5b0dbff3b77f141bfd989ce90658e68bed39912f7c8b7bb4d99",
+   "runs/e0-s52/eval_rdev.json": "6b94c9697427216e3eafda96fce2e3e4514777e12f25ec2f11613c21c297f5b8",
+   "runs/e0-s52/metrics.csv": "7ec9fdbf8f70de9db647a688006a998ea80b9ea878642aa66ac85ae1b4cc5113",
+   "runs/e0-s53/config.json": "874f0257c8e43567367dff618ce88c03b3869bc5caa32f3ca2f138a57e537b67",
+   "runs/e0-s53/eval_rdev.json": "551b7a161c2ab6bb457c27e9665aa343927d38c50c1ab2ae32ffce6d5da8828d",
+   "runs/e0-s53/metrics.csv": "42b28bb2bbdea0cbce22a3ea9785ad1cd02f9e245c1acb01bab7c0e35288d389",
+   "runs/e0-s54/config.json": "b3522ee29f463d255e99409daa2cf2eea34a307b332f0998a280fd2f5a9dc10d",
+   "runs/e0-s54/eval_rdev.json": "9b48d154fdc5fae63db2f8e0aee7795f0b6f9e6e1c803348c54cf842dca3af75",
+   "runs/e0-s54/metrics.csv": "4516074d2b519b1838a1429141fbdaefd754ecdfd3cc16cdab258b5fd76794ff"
+  },
+  "argv": [
+   "scripts/e0_gate.py",
+   "gate"
+  ],
+  "start": "2026-10-28T18:35:45",
+  "end": "2026-10-28T18:35:45",
+  "environment": {
+   "python": "3.12.4",
+   "machine": "arm64",
+   "system": "Darwin"
+  }
+ }
+}
