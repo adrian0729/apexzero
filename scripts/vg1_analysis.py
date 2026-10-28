@@ -1116,7 +1116,9 @@ def cmd_pilot(a) -> None:
         if not committed(first_path):
             raise CheckFailed(f"{first_path} is not committed: the second pilot binds it")
         first = read_json(first_path, inputs)
-        if first.get("record") != "vg1-pilot" or first.get("beta_star") is not None:
+        if first.get("record") != "vg1-pilot":
+            raise CheckFailed(f"{first_path} is not VG-1's pilot record")
+        if first.get("beta_star") is not None:
             raise CheckFailed(f"{first_path}: its beta_star is {first.get('beta_star')!r}, not "
                               "null: the second pilot does not apply (Amendment 1)")
         first_hours = FIRST_PILOT_GPU_HOURS

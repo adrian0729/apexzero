@@ -1210,13 +1210,116 @@ def test_pilot2_binds_the_first_pilot_and_needs_its_beta_null(VA, root, monkeypa
     (out / "pilot.json").write_text(json.dumps(pilot_record(0.3)))
     with pytest.raises(VA.CheckFailed, match="not null"):
         VA.cmd_pilot(a)
+    (out / "pilot.json").write_text(json.dumps(pilot_record("0.1")))
+    with pytest.raises(VA.CheckFailed, match=r"beta_star is '0.1', not null"):
+        VA.cmd_pilot(a)
     (out / "pilot.json").write_text(json.dumps({**NO_BETA, "record": "other"}))
-    with pytest.raises(VA.CheckFailed, match="not null"):
+    with pytest.raises(VA.CheckFailed, match="is not VG-1's pilot record"):
         VA.cmd_pilot(a)
     # with a null first record it goes on to the second pilot's own manifest
     (out / "pilot.json").write_text(json.dumps(NO_BETA))
     with pytest.raises(VA.CheckFailed, match="manifest-pilot2.json not found"):
         VA.cmd_pilot(a)
+
+
+def plant_pilot2_inputs(VA, root: Path, monkeypatch, vals: dict) -> None:
+    """The second pilot's cmd_pilot inputs in a real repo at ``root`` (pilot.json committed,
+    beta_star null): its manifest, C1 record, M0 records with sidecars and metrics.csv rows.
+    ``vals`` is {run: (m1, m0, ev)}. The code-at-commit checks (git trees) are stubbed."""
+    monkeypatch.setattr(VA, "ROOT", root)
+    monkeypatch.setattr(VA, "code_at", lambda head, commit, paths=VA.CODE_PATHS: head == "good")
+    monkeypatch.setattr(VA, "blob_sha256", lambda rev, rel: "v")
+    commit = "c" * 40
+    out = root / "outputs" / "vg1"
+    (out / "m0").mkdir(parents=True, exist_ok=True)
+    (out / "c1").mkdir(parents=True, exist_ok=True)
+    ents, nets = [], {}
+    for k, (name, (m1, m0, ev)) in enumerate(vals.items()):
+        plant_run(root, name, ev=ev)
+        final = {"path": f"runs/{name}/ckpt/000199884800.pkl", "sha256": f"s-{name}",
+                 "timesteps": VA.FINAL_TIMESTEPS}
+        ents.append({"name": name, "seed": int(name[-2:]), "arm": "pilot2",
+                     "beta": float(name.split("-")[1][1:]), "status": "done", "failure": None,
+                     "final": final, "checkpoints": [final], "config_sha256": None,
+                     "metrics_sha256": VA.sha256_file(root / "runs" / name / "metrics.csv"),
+                     "eval_rdev_sha256": None,
+                     "box": {"box": "vg1p2-manifest-0of1.json", "lane": k, "gpu": 0,
+                             "start": "2026-10-28T10:00:00Z", "end": "2026-10-28T10:15:00Z",
+                             "gpu_count": 1}})
+        nets[name] = {**c1rec(m1), "checkpoint": {"sha256": final["sha256"]}}
+        rec = {**m0rec(m0), "run": name, "checkpoint": "000199884800.pkl",
+               "checkpoint_sha256": final["sha256"], "sizes": dict(VA.M0_SIZES),
+               "vg": dict(VA.M0_VG), "environment": {"head": "good"}}
+        (out / "m0" / f"{name}.json").write_text(json.dumps(rec))
+        (out / "m0" / f"{name}.check.json").write_text(json.dumps(
+            {"vg1_code_clean": True, "m0_sha256": VA.sha256_file(out / "m0" / f"{name}.json"),
+             "head": "good", "commit": commit}))
+    (out / "manifest-pilot2.json").write_text(json.dumps(
+        {"record": "vg1-manifest", "phase": "pilot2", "round": "vg1p2", "commit": commit,
+         "runs": ents}))
+    (out / "c1" / "pilot2.json").write_text(json.dumps(
+        {"record": "vg1-c1", "phase": "pilot2", "partial": False, "gate": {"pass": True},
+         "manifest_sha256": VA.sha256_file(out / "manifest-pilot2.json"),
+         "provenance": {"head": "good", "changed": [], "script_sha256": "v"}, "networks": nets}))
+
+
+def pilot2_vals(ev=0.93, m0=0.7) -> dict:
+    m1 = {"0.01": -0.6, "0.03": -0.3}
+    return {f"vg1p2-b{b}-s{s}": (m1[b] + (s - 15) * 0.02, m0, ev)
+            for s in (15, 16) for b in ("0.01", "0.03")}
+
+
+@needs_git
+def test_cmd_pilot2_writes_the_record_and_main_reads_it_back(VA, VR, tmp_path, monkeypatch):
+    root = pilot_repo(tmp_path, None)                       # pilot.json committed, beta null
+    plant_pilot2_inputs(VA, root, monkeypatch, pilot2_vals())
+    VA.cmd_pilot(argparse.Namespace(phase="pilot2", box_gpu_hours=0.30, main_gpus=4))
+    path = root / "outputs" / "vg1" / "pilot2.json"
+    rec = json.loads(path.read_text())
+    assert rec["record"] == "vg1-pilot" and rec["phase"] == "pilot2"
+    assert rec["beta_star"] == 0.03 and rec["beta_star_text"] == "0.03"
+    assert rec["eligible"] == {"0.01": True, "0.03": True}
+    assert rec["rule"]["betas"] == ["0.01", "0.03"] and rec["pilot_commit"] == "c" * 40
+    assert set(rec["runs"]) == set(pilot2_vals())
+    assert rec["median_m1"]["0.03"] == pytest.approx(-0.29)
+    cost = rec["cost_check"]
+    assert cost["first_pilot_gpu_hours"] == 1.50 and cost["this_pilot_gpu_hours"] == 0.30
+    assert cost["pilot_gpu_hours"] == pytest.approx(1.80)
+    assert cost["beta_star_gpu_minutes"] == pytest.approx(3.75)     # 4 runs at once for 15 min
+    main = (20 * 6.5 + 20 * 3.75 + 15 * 4) / 60
+    assert cost["total"] == pytest.approx(1.80 + main) and cost["to_the_user"] is False
+    # the first pilot's record is bound in the inputs
+    assert "outputs/vg1/pilot.json" in rec["provenance"]["inputs"]
+    # write-once: a second run refuses, and so does one after the record is committed
+    with pytest.raises(VA.CheckFailed, match="runs once"):
+        VA.cmd_pilot(argparse.Namespace(phase="pilot2", box_gpu_hours=0.30, main_gpus=4))
+    _git(root, "add", "-f", "outputs/vg1/pilot2.json")
+    _git(root, "commit", "-qm", "pilot2")
+    path.unlink()
+    with pytest.raises(VA.CheckFailed, match="runs once"):
+        VA.cmd_pilot(argparse.Namespace(phase="pilot2", box_gpu_hours=0.30, main_gpus=4))
+    _git(root, "checkout", "--", "outputs/vg1/pilot2.json")
+    assert VR.beta_star(root) == "0.03"
+    assert next(x["cmd"][-2:] for x in VR.runs("main", root) if x["arm"] == "vgl") == [
+        "--vg-coef", "0.03"]
+
+
+@needs_git
+def test_cmd_pilot2_with_every_run_below_the_ev_bar_has_no_beta(VA, VR, tmp_path, monkeypatch):
+    root = pilot_repo(tmp_path, None)
+    plant_pilot2_inputs(VA, root, monkeypatch, pilot2_vals(ev=0.85))
+    VA.cmd_pilot(argparse.Namespace(phase="pilot2", box_gpu_hours=0.30, main_gpus=4))
+    rec = json.loads((root / "outputs" / "vg1" / "pilot2.json").read_text())
+    assert rec["phase"] == "pilot2" and rec["beta_star"] is None
+    assert rec["eligible"] == {"0.01": False, "0.03": False}
+    assert all("EV 0.8500" in w for ws in rec["ineligible_because"].values() for w in ws[:1])
+    assert rec["cost_check"]["applies"] is False
+    _git(root, "add", "-f", "outputs/vg1/pilot2.json")
+    _git(root, "commit", "-qm", "pilot2")
+    with pytest.raises(SystemExit, match="no beta is eligible"):
+        VR.beta_star(root)
+    with pytest.raises(SystemExit, match="no beta is eligible"):
+        VR.runs("main", root)
 
 
 def test_main_paths_need_both_pilot_records_committed(VA, root, monkeypatch):
