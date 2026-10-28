@@ -4,7 +4,7 @@ Section 5.1): ENGINEERING until the tag, the primary's measurement after it.
     uv run --no-sync python scripts/vg1_c1.py worktree           # once: ../RL-racing-vg1-c1
     uv run --no-sync python scripts/vg1_c1.py verify             # every bound file; writes nothing
     uv run --no-sync python scripts/vg1_c1.py gate [--out FILE]  # the wiring gate alone
-    uv run --no-sync python scripts/vg1_c1.py measure --phase pilot|main
+    uv run --no-sync python scripts/vg1_c1.py measure --phase pilot|pilot2|main
     uv run --no-sync python scripts/vg1_c1.py snapshots          # descriptive, after the main run
 
 **The worktree.** Main's src/ is not the tag's (VG-0 changed agents/ppo.py and env/adapters.py),
@@ -66,7 +66,8 @@ checkpoint loaded through its manifest pin, sha256 and timesteps checked):
 and C1-dev's rho over log timesteps (``analysis.c1_dev``).
 
 **Outputs** under outputs/vg1/c1/ only (never outputs/costate or outputs/sealed), write-once:
-gate.json (``gate --out`` elsewhere), pilot.json, main.json, snapshots.json. Each carries a
+gate.json (``gate --out`` elsewhere), pilot.json, pilot2.json (the second pilot, Amendment 1:
+the same as pilot, no tag gate), main.json, snapshots.json. Each carries a
 provenance stamp: this repo's HEAD and changed paths, the worktree's HEAD, the costate tag, the
 code hash, the pin, the gate's record, every input's sha256, the arguments (repo-relative) and the
 environment. Non-finite numbers are written as null or "inf" / "-inf".
@@ -130,6 +131,7 @@ SNAPSHOT_SEEDS = (30, 31, 32, 33)
 DEFAULT_THREADS = 2
 DEFAULT_NICE = 10
 LABEL = {"pilot": "exploratory (VG-1's pilot, before the tag)",
+         "pilot2": "exploratory (VG-1's second pilot, before the tag)",
          "main": "confirmatory input (VG-1, at vg1-prereg-v1)",
          "snapshots": "descriptive (VG-1, Section 5.3)", "gate": "engineering (the wiring gate)"}
 
@@ -1034,7 +1036,7 @@ def main(argv: list[str] | None = None) -> None:
     g = sub.add_parser("gate", help="the wiring gate on G1")
     g.add_argument("--out", default="")
     m = sub.add_parser("measure", help="C1 of the phase's networks")
-    m.add_argument("--phase", choices=["pilot", "main"], required=True)
+    m.add_argument("--phase", choices=["pilot", "pilot2", "main"], required=True)
     m.add_argument("--network", action="append",
                    help="only this run (repeatable; a partial run needs --out)")
     m.add_argument("--manifest", default="",

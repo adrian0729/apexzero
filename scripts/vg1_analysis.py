@@ -4,21 +4,25 @@
         --box-sums runs/vg1p-box-sha256.txt
     uv run python scripts/vg1_analysis.py m0 --phase pilot
     uv run python scripts/vg1_analysis.py pilot --box-gpu-hours <H>
+    uv run python scripts/vg1_analysis.py manifest --phase pilot2 --tag <second pilot commit> \\
+        --box-sums runs/vg1p2-box-sha256.txt
+    uv run python scripts/vg1_analysis.py m0 --phase pilot2
+    uv run python scripts/vg1_analysis.py pilot --phase pilot2 --box-gpu-hours <H2>
     uv run python scripts/vg1_analysis.py manifest --phase main --tag vg1-prereg-v1 \\
         --box-sums runs/vg1-box-sha256.txt
     uv run python scripts/vg1_analysis.py m0 --phase main
     uv run python scripts/vg1_analysis.py analyse
 
 **manifest** (on the Mac, after ``gpu_sync.sh pull-round``): runs ``round_manifest.py check``
-on the round (vg1p for the pilot, vg1 for the main run) against ``--tag`` (the pilot commit's
-sha for the pilot, the tag for the main run). Its only tolerated problems are those of a run
+on the round (vg1p for the pilot, vg1p2 for the second pilot of Amendment 1, vg1 for the main
+run) against ``--tag`` (the pilot commit's sha for a pilot, the tag for the main run). Its only tolerated problems are those of a run
 outputs/vg1/failures.json classifies (committed; a run that failed twice: 'missing' for the
 box, memory, I/O or the harness, 'failed' for non-finite numbers; Section 5.1). Then, per run:
 every checkpoint's sha256 and timesteps, the final one at ``FINAL_TIMESTEPS``, checked against
 the box's own sha256 (``--box-sums``: ``sha256sum`` lines taken on the box before it is deleted);
 config.json, metrics.csv, eval_rdev.json and the logs' sha256; the box's status, times, lane
-and GPU. A pilot run must have --skip-eval-rdev in its config, no eval_rdev.json, and no R-dev
-circuit's name and no 'completion' in its logs. A main run's config must carry the arm's
+and GPU. A pilot run (either pilot: ``PILOTS``) must have --skip-eval-rdev in its config, no
+eval_rdev.json, and no R-dev circuit's name and no 'completion' in its logs. A main run's config must carry the arm's
 flags: ``vg`` = {coef beta*, lam 0.95, winsor 0.005} for vgl, no ``vg`` for base (Section 4.2).
 Writes outputs/vg1/manifest-<phase>.json, write-once.
 
@@ -29,7 +33,9 @@ studies' untracked files, which vgl.py's own clean flag counts, do not). A sidec
 <run>.check.json binds the record's sha256, HEAD and that check; ``check_m0`` requires it,
 since vgl.py's own flag, like git status, trusts the index.
 
-**pilot** (Section 4.1): reads the pilot manifest, outputs/vg1/c1/pilot.json (M1, from
+**pilot** (Section 4.1; ``--phase pilot`` the default, ``--phase pilot2`` Amendment 1's second
+pilot over the grid {0.01, 0.03}, with its own manifest, C1 record, M0 records and outputs/vg1/
+pilot2.json): reads the pilot manifest, outputs/vg1/c1/pilot.json (M1, from
 scripts/vg1_c1.py), outputs/vg1/m0/<run>.json (M0, from ``m0``) and each run's last
 metrics.csv row (EV), each checked against the manifest's sha256 and against the pilot
 commit's code. A beta is eligible if both its runs finished with finite metrics (M1, M0, EV,
@@ -37,14 +43,17 @@ every value of the last metrics.csv row and the final checkpoint's parameters), 
 M0 < 13.99. beta* is the eligible beta with the highest median M1 over its two seeds, a tie to
 the smaller beta; with none eligible, beta* is null and the main run does not start. The cost
 check, in GPU-hours with idle GPUs included: the pilot's box GPU-hours (``--box-gpu-hours``:
-box lifetime x its GPUs, setup and pull-back included; at least the queue's) plus the main
+box lifetime x its GPUs, setup and pull-back included; at least the queue's; for pilot2 plus
+``FIRST_PILOT_GPU_HOURS``, the first pilot's 1.50, the two terms shown apart) plus the main
 run's projection, 20 x 6.5 min + 20 x beta*'s mean pilot GPU minutes per run + 15 min x the
 main box's GPUs (``--main-gpus``, default 4); above 14, or not computable, it goes to the user
 before the tag, and the stop rule pauses VG-1 above 16.8. A run's GPU minutes are its share of
 its GPU (``gpu_minutes``): the integral over its time of 1 / (the runs on that GPU then), from
-the manifest's UTC times. Writes outputs/vg1/pilot.json, write-once.
+the manifest's UTC times. Writes outputs/vg1/pilot.json (pilot2.json for pilot2, with phase "pilot2"), write-once;
+pilot2 also reads and binds the committed pilot.json and refuses unless its beta_star is null.
 
-**analyse** (Sections 5 and 6), once, after the tag: the tag gate (``tag_gate``: vg1-prereg-v1
+**analyse** (Sections 5 and 6), once, after the tag: both pilot records committed (beta* is
+pilot2.json's, Amendment 1; both go in the pilot block); the tag gate (``tag_gate``: vg1-prereg-v1
 on origin as an annotated tag, the local tag the same object, HEAD descended from it, VG-1's
 code ``CODE_PATHS`` the tagged code byte for byte, untracked files included); refuses if
 analysis.json or its lock exists or was ever committed; re-checks the manifest
@@ -94,7 +103,7 @@ import numpy as np
 ROOT = Path(__file__).resolve().parents[1]
 OUT = "outputs/vg1"
 RUNS_SCRIPT = "scripts/vg1_runs.py"
-ROUNDS = {"pilot": "vg1p", "main": "vg1"}
+ROUNDS = {"pilot": "vg1p", "pilot2": "vg1p2", "main": "vg1"}
 TAG = "vg1-prereg-v1"
 CODE_PATHS = ("scripts/vg1_analysis.py", "scripts/vg1_c1.py", "scripts/vg1_runs.py",
               "scripts/vgl.py", "scripts/train_dr.py", "scripts/round_manifest.py",
@@ -105,6 +114,9 @@ FAILURE_CLASSES = ("missing", "failed")
 EV_MIN = 0.90
 M0_MAX = 13.99                      # strictly below: the median M0 of H4R's five v1 baselines
 BETAS = ("0.1", "0.3", "1.0")
+BETAS2 = ("0.01", "0.03")           # Amendment 1's grid, under the same rule
+GRIDS = {"pilot": BETAS, "pilot2": BETAS2}
+PILOTS = tuple(GRIDS)               # the phases that run before the tag, with --skip-eval-rdev
 # scripts/vgl.py residual's fixed settings (Sections 4.1 and 5.2: S3)
 M0_SIZES = {"rollouts": 4, "num_envs": 64, "num_steps": 64, "bank": 256, "seed": 20261026}
 M0_VG = {"lam": 0.95, "winsor": 0.005}
@@ -114,6 +126,7 @@ BASE_GPU_MIN = 6.5                  # per 200M default-path run at 4 lanes per G
 MAIN_RUNS_PER_ARM = 20
 SETUP_MIN = 15.0                    # setup and pull-back, per box, in wall minutes
 COST_LIMIT_H = 14.0
+FIRST_PILOT_GPU_HOURS = 1.50        # the first pilot's box (Amendment 1), counted in the pilot2 check
 STOP_RULE_H = 16.8                  # 14 h + 20%
 # the analysis (Section 5)
 ALPHA = 0.05
@@ -460,7 +473,7 @@ def config_problems(run: dict, cfg: dict, phase: str, beta: str | None) -> list[
     """The arm's flags in a run's config.json (Sections 4.1 and 4.2)."""
     name, args = run["name"], cfg.get("args") or {}
     out = []
-    if phase == "pilot":
+    if phase in PILOTS:
         if args.get("skip_eval_rdev") is not True:
             out.append(f"{name}: --skip-eval-rdev is not in its config")
         want = {"coef": run["beta"], **VG_FLAGS}
@@ -537,7 +550,7 @@ def build_manifest(phase: str, tag: str, sums: dict[str, str], runs: list[dict],
                 problems.append(f"{name}: no eval_rdev.json")
         elif fail is None:
             problems.append(f"{name}: status {box.get('status')!r} and not in failures.json")
-        if phase == "pilot":
+        if phase in PILOTS:
             problems += leak_problems(name, names)
         entries.append(ent)
     unlisted = sorted(set(failures) - {r["name"] for r in runs})
@@ -552,6 +565,18 @@ def build_manifest(phase: str, tag: str, sums: dict[str, str], runs: list[dict],
             "box_sums_used": len(sums)}
 
 
+def main_pilot_records(inputs: dict) -> tuple[dict, dict]:
+    """(the first pilot's record, the second's), each committed and unchanged against HEAD:
+    the main run's beta* is the second's (Amendment 1), the first's beta_star being null."""
+    out = []
+    for name in ("pilot", "pilot2"):
+        path = f"{OUT}/{name}.json"
+        if not committed(path):
+            raise CheckFailed(f"{path} is not committed (Section 9 step 3, Amendment 1)")
+        out.append(read_json(path, inputs))
+    return out[0], out[1]
+
+
 def cmd_manifest(a) -> None:
     t0 = time.time()
     phase = a.phase
@@ -563,7 +588,7 @@ def cmd_manifest(a) -> None:
     check = round_check(phase, a.tag, failures)
     beta = None
     if phase == "main":
-        read_json(f"{OUT}/pilot.json", inputs)
+        main_pilot_records(inputs)
         beta = load_runs_script().beta_star(ROOT)
     runs = load_runs_script().runs(phase, ROOT)
     sums = box_sums(a.box_sums)
@@ -1012,13 +1037,14 @@ def analysis_tests(vals: list[dict]) -> dict:
 # ------------------------------------------------------------------------- pilot
 
 
-def pilot_rule(per: dict[str, dict]) -> dict:
+def pilot_rule(per: dict[str, dict], betas: tuple[str, ...] = BETAS) -> dict:
     """Section 4.1's rule on {run: {beta (str), seed, finished, m1, m0, ev, metrics_finite,
     params_finite}}: eligibility per beta (finished with finite metrics: M1, M0 and EV, every
     value of the last metrics.csv row and the final checkpoint's parameters; EV >= 0.90; M0 <
-    13.99), the median M1 of each, beta* (null if none is eligible)."""
+    13.99), the median M1 of each, beta* (null if none is eligible), over the grid ``betas``
+    (BETAS for the pilot, BETAS2 for the second)."""
     elig, med, why = {}, {}, {}
-    for b in BETAS:
+    for b in betas:
         rs = [r for r in per.values() if r["beta"] == b]
         reasons = []
         if len(rs) != 2:
@@ -1041,7 +1067,7 @@ def pilot_rule(per: dict[str, dict]) -> dict:
         elig[b], why[b] = not reasons, reasons
         m1 = [num(r.get("m1")) for r in rs]
         med[b] = float(np.median(m1)) if rs and all(math.isfinite(v) for v in m1) else math.nan
-    ok = [b for b in BETAS if elig[b]]
+    ok = [b for b in betas if elig[b]]
     star = None
     if ok:
         best = max(med[b] for b in ok)
@@ -1051,17 +1077,22 @@ def pilot_rule(per: dict[str, dict]) -> dict:
 
 
 def cost_check(beta_star: str | None, per: dict[str, dict], box_gpu_hours: float,
-               main_gpus: int) -> dict:
-    """Section 4.1's cost check, in GPU-hours with idle GPUs included."""
+               main_gpus: int, first_pilot_gpu_hours: float = 0.0) -> dict:
+    """Section 4.1's cost check, in GPU-hours with idle GPUs included. For the second pilot
+    (Amendment 1) the pilot term is ``first_pilot_gpu_hours`` (FIRST_PILOT_GPU_HOURS) plus the
+    second box's ``box_gpu_hours``; both are shown."""
     if beta_star is None:
         return {"applies": False, "reason": "no beta is eligible: the main run does not start"}
     t = [num(r.get("gpu_minutes")) for r in per.values() if r["beta"] == beta_star]
     t_star = float(np.mean(t)) if t else math.nan
     main = (MAIN_RUNS_PER_ARM * BASE_GPU_MIN + MAIN_RUNS_PER_ARM * t_star
             + SETUP_MIN * main_gpus) / 60.0
-    total = box_gpu_hours + main
+    pilots = first_pilot_gpu_hours + box_gpu_hours
+    total = pilots + main
     # a projection that cannot be computed (a run without times) goes to the user too
-    return {"applies": True, "pilot_gpu_hours": box_gpu_hours, "beta_star_gpu_minutes": t_star,
+    return {"applies": True, "pilot_gpu_hours": pilots,
+            "first_pilot_gpu_hours": first_pilot_gpu_hours, "this_pilot_gpu_hours": box_gpu_hours,
+            "beta_star_gpu_minutes": t_star,
             "main_projected_gpu_hours": main, "main_gpus": main_gpus, "total": total,
             "limit": COST_LIMIT_H,
             "to_the_user": bool(not math.isfinite(total) or total > COST_LIMIT_H),
@@ -1071,13 +1102,27 @@ def cost_check(beta_star: str | None, per: dict[str, dict], box_gpu_hours: float
 
 def cmd_pilot(a) -> None:
     t0 = time.time()
-    path = ROOT / OUT / "pilot.json"
-    if path.exists() or ever_committed(f"{OUT}/pilot.json"):
-        raise CheckFailed(f"{OUT}/pilot.json exists or was committed: the pilot rule runs once")
+    phase = a.phase
+    grid = GRIDS[phase]
+    rec_path = f"{OUT}/{phase}.json"
+    path = ROOT / rec_path
+    if path.exists() or ever_committed(rec_path):
+        raise CheckFailed(f"{rec_path} exists or was committed: the pilot rule runs once")
     inputs: dict[str, str] = {}
-    m = load_manifest("pilot", inputs)
+    first_hours = 0.0
+    if phase == "pilot2":
+        # Amendment 1: the second pilot runs only because the first found no beta eligible
+        first_path = f"{OUT}/pilot.json"
+        if not committed(first_path):
+            raise CheckFailed(f"{first_path} is not committed: the second pilot binds it")
+        first = read_json(first_path, inputs)
+        if first.get("record") != "vg1-pilot" or first.get("beta_star") is not None:
+            raise CheckFailed(f"{first_path}: its beta_star is {first.get('beta_star')!r}, not "
+                              "null: the second pilot does not apply (Amendment 1)")
+        first_hours = FIRST_PILOT_GPU_HOURS
+    m = load_manifest(phase, inputs)
     commit = m["commit"]
-    c1 = read_json(f"{OUT}/c1/pilot.json", inputs)
+    c1 = read_json(f"{OUT}/c1/{phase}.json", inputs)
     bad = check_c1(c1, m, commit)
     gm = gpu_minutes(m["runs"])
     qh = queue_gpu_hours(m["runs"])
@@ -1086,7 +1131,7 @@ def cmd_pilot(a) -> None:
     per = {}
     for ent in m["runs"]:
         name = ent["name"]
-        r = {"name": name, "beta": next(b for b in BETAS if float(b) == ent["beta"]),
+        r = {"name": name, "beta": next(b for b in grid if float(b) == ent["beta"]),
              "seed": ent["seed"], "status": ent["status"],
              "finished": ent["status"] in ("done", "retried") and bool(ent.get("final")),
              "gpu_minutes": gm.get(name, math.nan), "m1": None, "m0": None, "ev": None}
@@ -1106,12 +1151,14 @@ def cmd_pilot(a) -> None:
         per[name] = r
     if bad:
         raise CheckFailed("the pilot's inputs do not check:\n  " + "\n  ".join(bad))
-    rule = pilot_rule(per)
-    cost = cost_check(rule["beta_star_text"], per, a.box_gpu_hours, a.main_gpus)
-    rec = {"record": "vg1-pilot", "label": "exploratory (the pilot; never confirmatory)",
+    rule = pilot_rule(per, grid)
+    cost = cost_check(rule["beta_star_text"], per, a.box_gpu_hours, a.main_gpus, first_hours)
+    rec = {"record": "vg1-pilot", "phase": phase,
+           "label": ("exploratory (the second pilot; never confirmatory)" if phase == "pilot2"
+                     else "exploratory (the pilot; never confirmatory)"),
            "pilot_commit": commit, "runs": per, **rule, "cost_check": cost,
            "queue_gpu_hours": qh, "rule": {"ev_min": EV_MIN, "m0_max_exclusive": M0_MAX,
-                                           "betas": list(BETAS), "tie": "the smaller beta",
+                                           "betas": list(grid), "tie": "the smaller beta",
                                            "finite": "M1, M0, EV, the last metrics.csv row "
                                                      "and the final checkpoint's parameters"},
            "provenance": provenance(t0, inputs)}
@@ -1178,9 +1225,7 @@ def cmd_analyse(a) -> None:
             raise CheckFailed(f"{rel(p)} exists or was committed: the analysis runs once")
     tag = tag_gate()
     inputs: dict[str, str] = {}
-    pilot = read_json(f"{OUT}/pilot.json", inputs)
-    if not committed(f"{OUT}/pilot.json"):
-        raise CheckFailed(f"{OUT}/pilot.json is not committed")
+    pilot1, pilot = main_pilot_records(inputs)          # pilot: the second's (beta* is its)
     failures = read_failures("main", inputs)
     m = load_manifest("main", inputs)
     if m.get("tag") != TAG or m["commit"] != tag["commit"]:
@@ -1228,7 +1273,8 @@ def cmd_analyse(a) -> None:
            "missing": [v["name"] for v in allv if v["missing"]],
            "tests": tests, "values": {v["name"]: v.get("value") for v in vals},
            "descriptives": descriptives(vals, c1, m0s, gpu_minutes(m["runs"]), names),
-           "pilot": {k: pilot.get(k) for k in ("runs", "beta_star", "median_m1", "eligible")},
+           "pilot": {name: {k: p.get(k) for k in ("runs", "beta_star", "median_m1", "eligible")}
+                     for name, p in (("pilot", pilot1), ("pilot2", pilot))},
            "round_check": {k: check[k] for k in ("returncode", "tolerated", "report_sha256")},
            "provenance": provenance(t0, inputs)}
     write_new(out_p, rec)
@@ -1241,10 +1287,14 @@ def main(argv: list[str] | None = None) -> None:
     sub = ap.add_subparsers(dest="cmd", required=True)
     m = sub.add_parser("manifest", help="the phase's manifest, after pull-round")
     m.add_argument("--phase", choices=sorted(ROUNDS), required=True)
-    m.add_argument("--tag", required=True, help="the pilot commit's sha, or vg1-prereg-v1")
+    m.add_argument("--tag", required=True,
+                   help="the pilot commit's sha (the second pilot commit for pilot2), or "
+                        "vg1-prereg-v1")
     m.add_argument("--box-sums", nargs="+", required=True,
                    help="sha256sum output taken on the box(es) before deletion")
     p = sub.add_parser("pilot", help="the pilot rule and the cost check")
+    p.add_argument("--phase", choices=sorted(GRIDS), default="pilot",
+                   help="pilot (the default) or pilot2 (Amendment 1's second pilot)")
     p.add_argument("--box-gpu-hours", type=float, required=True,
                    help="the pilot box's lifetime x its GPUs, setup and pull-back included")
     p.add_argument("--main-gpus", type=int, default=4, help="the main run's box GPUs")

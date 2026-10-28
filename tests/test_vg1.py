@@ -2,7 +2,8 @@
 
 The run lists give the draft's names and flags in the pre-registered order, pass the run-list
 contract, and deal the main run's arms evenly over GPUs, lanes and boxes; the main list reads
-beta* only from a committed, eligible pilot record. scripts/vg1_c1.py's copied functions are
+beta* only from the second pilot's committed, eligible record (Amendment 1: the first pilot
+found no beta eligible). scripts/vg1_c1.py's copied functions are
 the pinned costate-exploratory blob's byte for byte, and (where the worktree and the costate
 data are on this machine) its per-network path reproduces a decision network's C1 from
 decisions.json. scripts/vg1_analysis.py's exact rank-sum and sign-flip tests give known p
@@ -10,6 +11,7 @@ values, the failed-network rule puts the worst value in each test's direction, t
 takes each branch (no beta eligible included), the manifest refuses every planted leak or
 mismatch, and the tag gate and run-once rules refuse what they must."""
 
+import argparse
 import importlib.util
 import itertools
 import json
@@ -67,20 +69,34 @@ def pilot_record(beta_star=0.3, eligible=None) -> dict:
     return {"record": "vg1-pilot", "beta_star": beta_star, "eligible": eligible}
 
 
-def pilot_repo(tmp_path: Path, rec: dict | None, commit: bool = True) -> Path:
+def pilot2_record(beta_star=0.03, eligible=None) -> dict:
+    eligible = eligible or {"0.01": True, "0.03": True}
+    return {"record": "vg1-pilot", "phase": "pilot2", "beta_star": beta_star,
+            "eligible": eligible}
+
+
+NO_BETA = pilot_record(None, {"0.1": False, "0.3": False, "1.0": False})   # the first pilot's
+
+
+def pilot_repo(tmp_path: Path, rec: dict | None, commit: bool = True,
+               first: dict | None = NO_BETA, first_commit: bool = True) -> Path:
+    """A repo with the second pilot's record (``rec``, outputs/vg1/pilot2.json) and the first
+    pilot's (``first``, outputs/vg1/pilot.json: by default no beta eligible)."""
     root = tmp_path / "repo"
-    root.mkdir()
+    root.mkdir(parents=True)
     _git(root, "init", "-q")
     (root / "README").write_text("x\n")
     _git(root, "add", "README")
     _git(root, "commit", "-qm", "init")
-    if rec is not None:
-        p = root / "outputs" / "vg1" / "pilot.json"
-        p.parent.mkdir(parents=True)
-        p.write_text(json.dumps(rec))
-        if commit:
-            _git(root, "add", "-f", "outputs/vg1/pilot.json")
-            _git(root, "commit", "-qm", "pilot")
+    for name, r, c in (("pilot", first, first_commit), ("pilot2", rec, commit)):
+        if r is None:
+            continue
+        p = root / "outputs" / "vg1" / f"{name}.json"
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_text(json.dumps(r))
+        if c:
+            _git(root, "add", "-f", f"outputs/vg1/{name}.json")
+            _git(root, "commit", "-qm", name)
     return root
 
 
@@ -122,11 +138,43 @@ def test_pilot_refuses_a_run_without_the_skip_flag(VR, monkeypatch):
         VR.pilot_runs()
 
 
+def test_pilot2_runs_are_the_amendments(VR, RM, monkeypatch):
+    runs = VR.runs("pilot2")
+    assert [r["name"] for r in runs] == ["vg1p2-b0.01-s15", "vg1p2-b0.03-s15",
+                                         "vg1p2-b0.01-s16", "vg1p2-b0.03-s16"]
+    for r in runs:
+        b = r["name"].split("-")[1][1:]
+        assert r["cmd"] == ["scripts/train_dr.py", "--steps", "200e6", "--seed", str(r["seed"]),
+                            "--name", r["name"], "--vg-coef", b, "--skip-eval-rdev"]
+        assert r["config"] == f"runs/{r['name']}/config.json" and r["beta"] == float(b)
+        assert r["arm"] == "pilot2"
+    monkeypatch.chdir(REPO)
+    assert RM.run_list_problems(runs) == []
+    # GPUS=1 LANES_PER_GPU=4: all four at once on one GPU, one run per lane
+    sched = RM.schedule(runs, 1, 4)
+    assert sorted(lane for lane, *_ in sched) == [0, 1, 2, 3]
+    assert all(gpu == 0 and pos == 0 for _lane, gpu, pos, _run in sched)
+    assert [run["name"] for _l, _g, _p, run in sorted(sched, key=lambda t: t[0])] == [
+        r["name"] for r in runs]
+
+
+def test_pilot2_refuses_a_run_without_the_skip_flag(VR, monkeypatch):
+    monkeypatch.setattr(VR, "SKIP", "--no-such-flag")
+    real = VR._run
+
+    def drop(name, seed, extra, **k):
+        return real(name, seed, [a for a in extra if a != "--no-such-flag"], **k)
+
+    monkeypatch.setattr(VR, "_run", drop)
+    with pytest.raises(SystemExit, match="do not pass"):
+        VR.pilot2_runs()
+
+
 def test_runs_parse_with_train_dr_and_record_the_flags(VR, RM):
     """Each cmd parses with train_dr.py's own parser (rebuilt as round_manifest.py check does):
     --skip-eval-rdev on in the pilot, off in the main run, --vg-coef only where it belongs."""
     parser = RM.trainer_parser((SCRIPTS / "train_dr.py").read_text())
-    for r in VR.runs("pilot"):
+    for r in VR.runs("pilot") + VR.runs("pilot2"):
         args = vars(parser.parse_args(r["cmd"][1:]))
         assert args["skip_eval_rdev"] is True and args["vg_coef"] == r["beta"]
         assert args["steps"] == 200e6 and args["seed"] == r["seed"] and args["name"] == r["name"]
@@ -137,7 +185,7 @@ def test_runs_parse_with_train_dr_and_record_the_flags(VR, RM):
 
 @needs_git
 def test_main_runs_order_names_flags_and_dealing(VR, RM, tmp_path, monkeypatch):
-    root = pilot_repo(tmp_path, pilot_record(0.3))
+    root = pilot_repo(tmp_path, pilot2_record(0.03))
     runs = VR.runs("main", root)
     assert len(runs) == 40 and len({r["name"] for r in runs}) == 40
     order = [r["name"] for r in runs]
@@ -148,7 +196,7 @@ def test_main_runs_order_names_flags_and_dealing(VR, RM, tmp_path, monkeypatch):
     for r in runs:
         base = ["scripts/train_dr.py", "--steps", "200e6", "--seed", str(r["seed"]), "--name",
                 r["name"]]
-        assert r["cmd"] == (base if r["arm"] == "base" else base + ["--vg-coef", "0.3"])
+        assert r["cmd"] == (base if r["arm"] == "base" else base + ["--vg-coef", "0.03"])
     assert sorted({r["seed"] for r in runs}) == list(range(30, 50))
     monkeypatch.chdir(REPO)
     assert RM.run_list_problems(runs) == []
@@ -197,11 +245,15 @@ def test_main_runs_order_names_flags_and_dealing(VR, RM, tmp_path, monkeypatch):
 @needs_git
 @pytest.mark.parametrize("rec, commit, msg", [
     (None, True, "not found"),
-    (pilot_record(0.3), False, "not committed"),
-    (pilot_record(None), True, "no beta is eligible"),
-    (pilot_record(0.5), True, "not in the grid"),
-    (pilot_record(0.3, {"0.1": True, "0.3": False, "1.0": True}), True, "not marked eligible"),
-    ({**pilot_record(0.3), "record": "other"}, True, "not VG-1's pilot record"),
+    (pilot2_record(0.03), False, "not committed"),
+    (pilot2_record(None), True, "no beta is eligible"),
+    (pilot2_record(0.3), True, "not in the grid"),          # the first grid's beta
+    (pilot2_record(0.1), True, "not in the grid"),
+    (pilot2_record(0.05), True, "not in the grid"),
+    (pilot2_record(0.03, {"0.01": True, "0.03": False}), True, "not marked eligible"),
+    ({**pilot2_record(0.03), "record": "other"}, True, "not VG-1's pilot record"),
+    ({k: v for k, v in pilot2_record(0.03).items() if k != "phase"}, True, "second pilot's"),
+    ({**pilot2_record(0.03), "phase": "pilot"}, True, "second pilot's"),
 ])
 def test_main_runs_refuse_without_a_committed_eligible_beta(VR, tmp_path, rec, commit, msg):
     root = pilot_repo(tmp_path, rec, commit)
@@ -210,11 +262,38 @@ def test_main_runs_refuse_without_a_committed_eligible_beta(VR, tmp_path, rec, c
 
 
 @needs_git
+@pytest.mark.parametrize("first, first_commit, msg", [
+    (None, True, "pilot.json not found"),
+    (NO_BETA, False, "pilot.json is not committed"),
+    (pilot_record(0.3), True, "not null"),                  # the first pilot named a beta
+    ({**NO_BETA, "record": "other"}, True, "not VG-1's pilot record"),
+])
+def test_main_runs_refuse_when_the_first_pilot_is_not_a_null_record(VR, tmp_path, first,
+                                                                    first_commit, msg):
+    root = pilot_repo(tmp_path, pilot2_record(0.03), first=first, first_commit=first_commit)
+    with pytest.raises(SystemExit, match=msg):
+        VR.runs("main", root)
+
+
+@needs_git
 def test_main_runs_refuse_a_pilot_record_changed_since_commit(VR, tmp_path):
-    root = pilot_repo(tmp_path, pilot_record(0.3))
-    (root / "outputs" / "vg1" / "pilot.json").write_text(json.dumps(pilot_record(1.0)))
+    root = pilot_repo(tmp_path, pilot2_record(0.03))
+    (root / "outputs" / "vg1" / "pilot2.json").write_text(json.dumps(pilot2_record(0.01)))
     with pytest.raises(SystemExit, match="differs from HEAD"):
         VR.runs("main", root)
+    root = pilot_repo(tmp_path / "b", pilot2_record(0.03))
+    (root / "outputs" / "vg1" / "pilot.json").write_text(json.dumps(pilot_record(0.3)))
+    with pytest.raises(SystemExit, match="differs from HEAD"):
+        VR.runs("main", root)
+
+
+@needs_git
+def test_beta_star_reads_the_second_pilot_by_default_and_either_record_alone(VR, tmp_path):
+    root = pilot_repo(tmp_path, pilot2_record(0.01))
+    assert VR.beta_star(root) == "0.01"
+    # one record alone (first=None): the first pilot's own grid, as the old signature read it
+    root = pilot_repo(tmp_path / "b", None, first=pilot_record(0.3))
+    assert VR.beta_star(root, VR.PILOT_RECORD, first=None, grid=VR.PILOT_BETAS) == "0.3"
 
 
 # ------------------------------------------------------------------------- vg1_c1.py's pin
@@ -525,6 +604,21 @@ def pilot(VA, **over):
     return per
 
 
+def pilot2(VA, **over):
+    """The second pilot's planted per-run values: both betas eligible, 0.03 the better M1."""
+    per = {}
+    for b in VA.BETAS2:
+        for s in (15, 16):
+            name = f"vg1p2-b{b}-s{s}"
+            per[name] = {"name": name, "beta": b, "seed": s, "finished": True,
+                         "m1": {"0.01": -0.6, "0.03": -0.3}[b] + (s - 15) * 0.02,
+                         "m0": 9.0, "ev": 0.93, "metrics_finite": True, "params_finite": True,
+                         "gpu_minutes": {"0.01": 10.0, "0.03": 12.0}[b]}
+    for k, v in over.items():
+        per[k].update(v)
+    return per
+
+
 def test_pilot_rule_picks_the_best_eligible_beta(VA):
     r = VA.pilot_rule(pilot(VA))
     assert r["eligible"] == {"0.1": True, "0.3": True, "1.0": True}
@@ -561,6 +655,75 @@ def test_pilot_rule_with_no_beta_eligible(VA):
     assert c["applies"] is False and "does not start" in c["reason"]
 
 
+def test_pilot2_rule_picks_over_the_second_grid_only(VA):
+    r = VA.pilot_rule(pilot2(VA), VA.BETAS2)
+    assert r["eligible"] == {"0.01": True, "0.03": True}
+    assert r["beta_star"] == 0.03 and r["beta_star_text"] == "0.03"
+    assert r["median_m1"]["0.03"] == pytest.approx(-0.29)
+    assert set(r["median_m1"]) == {"0.01", "0.03"}
+
+
+@pytest.mark.parametrize("over, why", [
+    ({"ev": 0.8999}, "EV 0.8999 < 0.9"),
+    ({"ev": 0.90}, None),                                   # exactly the bar: eligible
+    ({"m0": 13.99}, "M0 13.990 >= 13.99"),
+    ({"m0": 13.98}, None),
+    ({"m1": math.nan}, "non-finite metric"),
+    ({"m0": math.inf}, "non-finite metric"),
+    ({"ev": None}, "non-finite metric"),
+    ({"finished": False}, "did not finish"),
+    ({"metrics_finite": False}, "in its last metrics.csv row"),
+    ({"params_finite": False}, "non-finite parameter"),
+])
+def test_pilot2_rule_eligibility_by_ev_m0_and_non_finite_values(VA, over, why):
+    r = VA.pilot_rule(pilot2(VA, **{"vg1p2-b0.03-s16": over}), VA.BETAS2)
+    if why is None:
+        assert r["eligible"]["0.03"] is True and r["beta_star_text"] == "0.03"
+        return
+    assert r["eligible"]["0.03"] is False
+    assert any(why in w for w in r["ineligible_because"]["0.03"])
+    assert r["eligible"]["0.01"] is True and r["beta_star_text"] == "0.01"   # the other beta
+
+
+def test_pilot2_rule_ties_go_to_the_smaller_beta(VA):
+    per = pilot2(VA, **{"vg1p2-b0.01-s15": {"m1": -0.3}, "vg1p2-b0.01-s16": {"m1": -0.3 + 0.02}})
+    assert VA.pilot_rule(per, VA.BETAS2)["beta_star_text"] == "0.01"
+
+
+def test_pilot2_rule_with_none_eligible(VA):
+    per = pilot2(VA, **{f"vg1p2-b{b}-s15": {"ev": 0.5} for b in VA.BETAS2})
+    r = VA.pilot_rule(per, VA.BETAS2)
+    assert r["beta_star"] is None and r["beta_star_text"] is None
+    assert not any(r["eligible"].values())
+    c = VA.cost_check(None, per, 1.0, 4, VA.FIRST_PILOT_GPU_HOURS)
+    assert c["applies"] is False and "does not start" in c["reason"]
+    # a run missing from the grid: not 2 runs
+    r = VA.pilot_rule({k: v for k, v in pilot2(VA).items() if k != "vg1p2-b0.01-s16"},
+                      VA.BETAS2)
+    assert r["eligible"] == {"0.01": False, "0.03": True} and r["beta_star_text"] == "0.03"
+
+
+def test_pilot2_cost_check_adds_the_first_pilots_hours_and_the_threshold(VA):
+    assert VA.FIRST_PILOT_GPU_HOURS == 1.50
+    per = pilot2(VA)
+    c = VA.cost_check("0.03", per, 1.2, 4, VA.FIRST_PILOT_GPU_HOURS)
+    main = (20 * 6.5 + 20 * 12.0 + 15 * 4) / 60
+    assert c["first_pilot_gpu_hours"] == 1.50 and c["this_pilot_gpu_hours"] == 1.2
+    assert c["pilot_gpu_hours"] == pytest.approx(2.7)
+    assert c["main_projected_gpu_hours"] == pytest.approx(main)
+    assert c["total"] == pytest.approx(2.7 + main) and c["to_the_user"] is False
+    # without the first pilot's term (the first pilot's own call) the total is 1.5 lower
+    assert VA.cost_check("0.03", per, 1.2, 4)["total"] == pytest.approx(1.2 + main)
+    # the threshold: just under and just over 14 GPU-hours
+    under = 14.0 - main - 1.50
+    assert VA.cost_check("0.03", per, under - 1e-6, 4, 1.50)["to_the_user"] is False
+    assert VA.cost_check("0.03", per, under + 1e-6, 4, 1.50)["to_the_user"] is True
+    assert VA.cost_check("0.03", per, 1.2, 4, 1.50)["limit"] == 14.0
+    # a run without times is not computable: to the user
+    per = pilot2(VA, **{"vg1p2-b0.03-s15": {"gpu_minutes": math.nan}})
+    assert VA.cost_check("0.03", per, 1.2, 4, 1.50)["to_the_user"] is True
+
+
 def test_cost_check_in_gpu_hours(VA):
     per = pilot(VA)
     c = VA.cost_check("0.3", per, 2.5, 4)
@@ -583,11 +746,20 @@ def test_cost_check_in_gpu_hours(VA):
 
 @needs_git
 def test_the_pilot_record_feeds_the_main_run_list(VA, VR, tmp_path):
-    """The rule's beta* and eligibility, as pilot.json holds them, are what vg1_runs reads."""
-    r = VA.pilot_rule(pilot(VA))
-    root = pilot_repo(tmp_path, json.loads(json.dumps(VA.clean({"record": "vg1-pilot", **r}))))
+    """The rule's beta* and eligibility, as pilot2.json holds them, are what vg1_runs reads,
+    given a first pilot's record with no beta eligible."""
+    first = json.loads(json.dumps(VA.clean({"record": "vg1-pilot", **VA.pilot_rule(
+        pilot(VA, **{f"vg1p-b{b}-s15": {"ev": 0.5} for b in VA.BETAS}))})))
+    assert first["beta_star"] is None
+    r = VA.pilot_rule(pilot2(VA), VA.BETAS2)
+    rec = json.loads(json.dumps(VA.clean({"record": "vg1-pilot", "phase": "pilot2", **r})))
+    root = pilot_repo(tmp_path, rec, first=first)
     vgl = [x for x in VR.runs("main", root) if x["arm"] == "vgl"]
-    assert len(vgl) == 20 and all(x["cmd"][-2:] == ["--vg-coef", "0.3"] for x in vgl)
+    assert len(vgl) == 20 and all(x["cmd"][-2:] == ["--vg-coef", "0.03"] for x in vgl)
+    # a first pilot that had named a beta leaves no room for the second
+    root = pilot_repo(tmp_path / "b", rec, first={**first, "beta_star": 0.3})
+    with pytest.raises(SystemExit, match="not null"):
+        VR.runs("main", root)
 
 
 def test_gpu_minutes_share_each_gpu(VA):
@@ -627,8 +799,9 @@ def test_gpu_minutes_read_the_manifests_times_as_utc(VA, monkeypatch):
 # ------------------------------------------------------------------------- the manifest
 
 
-def plant_pilot_round(VA, VR, root: Path) -> tuple[list, Path]:
-    runs = VR.runs("pilot")
+def plant_pilot_round(VA, VR, root: Path, phase: str = "pilot") -> tuple[list, Path]:
+    runs = VR.runs(phase)
+    rnd = VA.ROUNDS[phase]
     recs = []
     for k, r in enumerate(runs):
         d = root / "runs" / r["name"]
@@ -643,12 +816,12 @@ def plant_pilot_round(VA, VR, root: Path) -> tuple[list, Path]:
         (root / "runs" / f"{r['name']}.log").write_text("--skip-eval-rdev: no R-dev evaluation\n")
         recs.append({"name": r["name"], "seed": r["seed"], "status": "done", "lane": k % 3,
                      "gpu": 0, "start": "2026-10-28T10:00:00Z", "end": "2026-10-28T11:00:00Z"})
-    (root / "runs" / "vg1p-manifest-0of1.json").write_text(json.dumps(
+    (root / "runs" / f"{rnd}-manifest-0of1.json").write_text(json.dumps(
         {"runs": recs, "gpu_model": "NVIDIA RTX A6000", "gpu_count": 1,
          "box_type": "massedcompute_A6000_plus"}))
     sums = root / "sums.txt"
     lines = [f"{VA.sha256_file(p)}  {p.relative_to(root).as_posix()}"
-             for p in sorted((root / "runs").glob("vg1p-*/ckpt/*.pkl"))]
+             for p in sorted((root / "runs").glob(f"{rnd}-*/ckpt/*.pkl"))]
     sums.write_text("\n".join(lines) + "\n")
     return runs, sums
 
@@ -706,6 +879,45 @@ def test_manifest_refuses_leaks_and_mismatches(VA, VR, root, monkeypatch, plant,
         VA.build_manifest("pilot", "c" * 40, VA.box_sums([str(sums)]), runs, {}, CHECK, None)
 
 
+def test_manifest_pilot2_records_the_second_round(VA, VR, root, monkeypatch):
+    monkeypatch.setattr(VA, "git_run", StubGit())
+    runs, sums = plant_pilot_round(VA, VR, root, "pilot2")
+    m = VA.build_manifest("pilot2", "c" * 40, VA.box_sums([str(sums)]), runs, {}, CHECK, None)
+    assert m["phase"] == "pilot2" and m["round"] == "vg1p2" and len(m["runs"]) == 4
+    assert [e["name"] for e in m["runs"]] == [r["name"] for r in runs]
+    assert all(e["eval_rdev_sha256"] is None for e in m["runs"])
+    assert set(m["round_files"]) == {"runs/vg1p2-manifest-0of1.json"}
+    assert all(v == pytest.approx(15.0) for v in VA.gpu_minutes(m["runs"]).values())   # 4 at once
+
+
+@pytest.mark.parametrize("plant, msg", [
+    (lambda r: (r / "runs" / "vg1p2-b0.03-s15" / "eval_rdev.json").write_text("{}"),
+     "eval_rdev.json exists"),
+    (lambda r: (r / "runs" / "vg1p2-b0.01-s16.log").write_text("Sochi {\"completion\": 1}\n"),
+     r"names \['Sochi'"),
+    (lambda r: (r / "runs" / "vg1p2-b0.01-s16.log").write_text("the completion is 1\n"),
+     r"names \['completion'\]"),
+    (lambda r: (r / "runs" / "vg1p2-b0.01-s16" / "config.json").write_text(json.dumps(
+        {"args": {"seed": 16, "skip_eval_rdev": False, "vg_lambda": 0.95, "vg_winsor": 0.005},
+         "vg": {"coef": 0.01, "lam": 0.95, "winsor": 0.005}})),
+     "--skip-eval-rdev is not in its config"),
+    (lambda r: (r / "runs" / "vg1p2-b0.01-s16" / "config.json").write_text(json.dumps(
+        {"args": {"seed": 16, "skip_eval_rdev": True, "vg_lambda": 0.95, "vg_winsor": 0.005},
+         "vg": {"coef": 0.03, "lam": 0.95, "winsor": 0.005}})),
+     r"config vg \{"),
+    (lambda r: (r / "runs" / "vg1p2-b0.03-s16" / "ckpt" / "000199884800.pkl").write_bytes(b"x"),
+     "is not the box's file"),
+    (lambda r: (r / "runs" / "vg1p2-b0.03-s16" / "ckpt" / "000199884800.pkl").unlink(),
+     "no final checkpoint"),
+])
+def test_manifest_pilot2_refuses_leaks_and_mismatches(VA, VR, root, monkeypatch, plant, msg):
+    monkeypatch.setattr(VA, "git_run", StubGit())
+    runs, sums = plant_pilot_round(VA, VR, root, "pilot2")
+    plant(root)
+    with pytest.raises(VA.CheckFailed, match=msg):
+        VA.build_manifest("pilot2", "c" * 40, VA.box_sums([str(sums)]), runs, {}, CHECK, None)
+
+
 def test_manifest_needs_a_classification_for_a_failed_run(VA, VR, root, monkeypatch):
     monkeypatch.setattr(VA, "git_run", StubGit())
     runs, sums = plant_pilot_round(VA, VR, root)
@@ -751,6 +963,12 @@ def test_main_configs_carry_the_arms_flags(VA):
     assert VA.config_problems(pilot_run, pc, "pilot", None) == []
     assert VA.config_problems(pilot_run, {**pc, "args": {**pc["args"], "vg_lambda": 0.5}},
                               "pilot", None)
+    p2 = {"name": "vg1p2-b0.01-s15", "seed": 15, "arm": "pilot2", "beta": 0.01}
+    c2 = {"args": {"seed": 15, "skip_eval_rdev": True, "vg_lambda": 0.95, "vg_winsor": 0.005},
+          "vg": {"coef": 0.01, "lam": 0.95, "winsor": 0.005}}
+    assert VA.config_problems(p2, c2, "pilot2", None) == []
+    assert VA.config_problems(p2, {**c2, "args": {**c2["args"], "skip_eval_rdev": False}},
+                              "pilot2", None)
 
 
 def test_round_check_tolerates_only_classified_runs(VA, monkeypatch):
@@ -962,4 +1180,55 @@ def test_analyse_runs_once(VA, root, monkeypatch):
 def test_pilot_rule_runs_once(VA, root, monkeypatch):
     monkeypatch.setattr(VA, "git_run", FakeGit(log="f" * 40))
     with pytest.raises(VA.CheckFailed, match="runs once"):
-        VA.cmd_pilot(None)
+        VA.cmd_pilot(argparse.Namespace(phase="pilot"))
+
+
+def test_pilot2_json_is_write_once(VA, root, monkeypatch):
+    (root / "outputs" / "vg1").mkdir(parents=True)
+    (root / "outputs" / "vg1" / "pilot2.json").write_text("{}")      # on disk
+    monkeypatch.setattr(VA, "git_run", FakeGit())
+    with pytest.raises(VA.CheckFailed, match="pilot2.json exists or was committed"):
+        VA.cmd_pilot(argparse.Namespace(phase="pilot2"))
+    (root / "outputs" / "vg1" / "pilot2.json").unlink()
+    monkeypatch.setattr(VA, "git_run", FakeGit(log="f" * 40))        # ever committed
+    with pytest.raises(VA.CheckFailed, match="pilot2.json exists or was committed"):
+        VA.cmd_pilot(argparse.Namespace(phase="pilot2"))
+    # a first pilot that is not committed: refused before any run is read
+    monkeypatch.setattr(VA, "git_run", FakeGit(diff_clean=False))
+    with pytest.raises(VA.CheckFailed, match="pilot.json is not committed"):
+        VA.cmd_pilot(argparse.Namespace(phase="pilot2", box_gpu_hours=1.0, main_gpus=4))
+    assert not (root / "outputs" / "vg1" / "pilot2.json").exists()
+
+
+def test_pilot2_binds_the_first_pilot_and_needs_its_beta_null(VA, root, monkeypatch):
+    out = root / "outputs" / "vg1"
+    out.mkdir(parents=True)
+    monkeypatch.setattr(VA, "git_run", FakeGit())
+    a = argparse.Namespace(phase="pilot2", box_gpu_hours=1.0, main_gpus=4)
+    with pytest.raises(VA.CheckFailed, match="pilot.json not found"):
+        VA.cmd_pilot(a)
+    (out / "pilot.json").write_text(json.dumps(pilot_record(0.3)))
+    with pytest.raises(VA.CheckFailed, match="not null"):
+        VA.cmd_pilot(a)
+    (out / "pilot.json").write_text(json.dumps({**NO_BETA, "record": "other"}))
+    with pytest.raises(VA.CheckFailed, match="not null"):
+        VA.cmd_pilot(a)
+    # with a null first record it goes on to the second pilot's own manifest
+    (out / "pilot.json").write_text(json.dumps(NO_BETA))
+    with pytest.raises(VA.CheckFailed, match="manifest-pilot2.json not found"):
+        VA.cmd_pilot(a)
+
+
+def test_main_paths_need_both_pilot_records_committed(VA, root, monkeypatch):
+    out = root / "outputs" / "vg1"
+    out.mkdir(parents=True)
+    (out / "pilot.json").write_text(json.dumps(NO_BETA))
+    (out / "pilot2.json").write_text(json.dumps(pilot2_record(0.03)))
+    monkeypatch.setattr(VA, "git_run", FakeGit(diff_clean=False))               # not tracked
+    with pytest.raises(VA.CheckFailed, match="is not committed"):
+        VA.main_pilot_records({})
+    monkeypatch.setattr(VA, "git_run", FakeGit())
+    inputs = {}
+    first, second = VA.main_pilot_records(inputs)
+    assert first["beta_star"] is None and second["beta_star"] == 0.03
+    assert set(inputs) == {"outputs/vg1/pilot.json", "outputs/vg1/pilot2.json"}

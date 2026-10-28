@@ -419,3 +419,38 @@ All items are settled in the text before the pilot commit (Section 9). The user 
    - **Why.** At 4 lanes the block order gives each lane one arm, so a GPU's `vgl` lanes run on alone after its `base` lanes end. Modelled, that tail added 0.9–2.4 GPU-hours at r = 3.6 and took VG-1 to about 14.5–16.3 GPU-hours, past the approved 14 that the cost check guards, while the check (which assumes the 4-lane rate throughout) would let it through (Section 8). At 5 lanes each lane runs one run of each arm and the lanes end together, so the cost check's projection and the measured GPU-hours agree.
    - **What it does not change.** The run list, its order, the seeds, the arms, the cost check's formula and threshold, and the stop rule. Both runs of a seed still share a GPU and no arm has a GPU or lane of its own.
    - **The memory check** is decided before any pilot number exists, by a pre-stated pass rule, and its run is not a VG-1 network.
+
+## 11. Amendment 1 (28 Oct 2026): a second pilot at smaller β
+
+**What had been seen** when this was written. The first pilot (round `vg1p`, commit 860939a, record `outputs/vg1/pilot.json`) found no β eligible. Every run finished with finite metrics and K3 passed, but each β had a run with EV below 0.90. No main-run network exists.
+- **M1 (C1's R²_c),** seed 15 then seed 16: β = 0.1: −0.351, −0.200; β = 0.3: −0.154, −0.698; β = 1.0: −0.191, −0.189.
+- **M0** (bar 13.99): β = 0.1: 0.67, 0.73; β = 0.3: 0.53, 0.77; β = 1.0: 0.75, 0.99.
+- **EV** (bar 0.90): β = 0.1: 0.880, 0.906; β = 0.3: 0.836, 0.860; β = 1.0: 0.750, 0.771.
+- **GPU minutes:** 11.5–12.8 per run. The queue took 1.25 GPU-hours and the pilot box 1.50 GPU-hours (23:30 to 00:59:53 UTC, the start taken early to be conservative).
+- **Reference, descriptive only:** the nine costate decision networks' C1 statistic ranges from +0.010 to −2.575 (median −1.359); the three v1 ones among them are +0.010, −0.726 and −1.403.
+
+**The decision (the user, 28 Oct 2026).** Run a second pilot at β ∈ {0.01, 0.03} × seeds {15, 16} = 4 runs, under the unchanged eligibility rule and choice of Section 4.1 (finite metrics, EV ≥ 0.90, M0 below 13.99; the highest median M1 over the two seeds, a tie to the smaller β).
+- **Why.** β = 0.1 missed EV ≥ 0.90 at one seed (0.880 against 0.906), and EV fell as β rose (about 0.89, 0.85 and 0.76 for the means at β = 0.1, 0.3 and 1.0). A smaller β should keep the value fit, while the term, which already put M0 far below the bar at every β, should still lower M0.
+
+**What does not change.** The main run (Section 4.2): its arms, 40 runs, seeds 30–49, order, lanes, memory check and retry. Also P and the secondaries (Section 5), the analysis, the EV and M0 bars, the stop rule (Section 8), and the cost check's threshold, 14 GPU-hours, which now counts both pilots: the first pilot's 1.50 plus the second's box GPU-hours, plus the main run's projection (20 × 6.5 min + 20 × β\*'s mean second-pilot GPU minutes per run + 15 min × the main box's GPUs).
+
+**If no β of the second grid is eligible,** the main run does not start, VG-1 closes with both pilots reported as exploratory, and there is no third pilot.
+
+**The runs.** `scripts/vg1_runs.py --phase pilot2` (round `vg1p2`) lists `vg1p2-b0.01-s15`, `vg1p2-b0.03-s15`, `vg1p2-b0.01-s16`, `vg1p2-b0.03-s16`, in that order, each with the first pilot's arguments (`--vg-coef <β> --skip-eval-rdev`), and refuses a list in which a run lacks the flag. At `GPUS=1 LANES_PER_GPU=4` all four run at once on one GPU, one per lane, at XLA memory fraction 0.23, above the 0.18 the memory check covered. The second pilot's networks are never confirmatory, and no completion is read from them before the tag (Section 4.1).
+
+**The second pilot commit** is this amendment's commit. It replaces "the pilot commit" in Section 9, step 4's freeze check. Between it and the tag, only the line below and `outputs/vg1/pilot2.json` may change; the paths listed in step 4 are otherwise frozen. The main run reads β\* from `outputs/vg1/pilot2.json`, which must be committed, unchanged against HEAD, of phase `pilot2` and name an eligible β of {0.01, 0.03}; it also requires `outputs/vg1/pilot.json` to be committed with no β eligible.
+
+**β\* (second pilot):** to be recorded here after the second pilot, before the tag.
+
+**The procedure.**
+1. Rent one `massedcompute_A6000_plus`, set it up, push R-dev data, and check out the second pilot commit detached.
+2. Check the schedule with `DRY_RUN=1 GPUS=1 LANES_PER_GPU=4 bash scripts/gpu_round.sh vg1p2 scripts/vg1_runs.py --phase pilot2`, then launch it the same way under `nohup` with `BREV_TYPE` set.
+3. When the queue ends, take the box's sha256 of every checkpoint (`sha256sum runs/vg1p2-*/ckpt/*.pkl`, saved on the Mac as `runs/vg1p2-box-sha256.txt`), pull back with `scripts/gpu_sync.sh <box> pull-round vg1p2 scripts/vg1_runs.py --phase pilot2`, delete the box, and note its lifetime × its GPUs (H2).
+4. On the Mac: `vg1_analysis.py manifest --phase pilot2 --tag <second pilot commit> --box-sums runs/vg1p2-box-sha256.txt`, `vg1_c1.py measure --phase pilot2`, `vg1_analysis.py m0 --phase pilot2`, then `vg1_analysis.py pilot --phase pilot2 --box-gpu-hours H2`. The last binds the committed `outputs/vg1/pilot.json` (and refuses unless its β\* is null), applies Section 4.1's rule to the second grid only, and writes `outputs/vg1/pilot2.json` (write-once), with the cost check's two pilot terms, 1.50 and H2, shown apart.
+5. Record β\* in this section and commit it with `outputs/vg1/pilot2.json` force-added.
+6. Run the freeze check of Section 9, step 4, against the second pilot commit, and the cost check.
+7. Tag `vg1-prereg-v1` on that commit, then run the main run as Section 9, steps 6–8, with β\* from `pilot2.json`.
+
+**After the tag,** the descriptive completion of Sections 4.1 and 5.3 covers all 10 pilot networks (the 6 of the first pilot and the 4 of the second).
+
+**The first pilot's box** was 1.50 GPU-hours. For the record, the P4-B2 box, which followed the pilot on the same machine, sat idle for 1.74 h after P4-B2's queue ended while this decision was awaited; that time is P4-B2's box time, not VG-1's, and is reported in P4-B2's findings.
