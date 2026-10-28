@@ -1725,3 +1725,158 @@ the rule: 7 inconclusive, 2 refute (G1, G1s2). G1s1 would confirm before the rul
 - **Machinery (CS-15).** FWL differs from the joint ridge by up to 0.08 on the raw gain, mostly
   on s; h1 and h2 show no costate information either; D alone is mostly inconclusive.
 - None of this changes a decision of `costate-prereg-v1`.
+
+## BC-a0: the run (exploratory, targets only)
+
+- **Plan and code.** BC-a0 ran at `8f2ad68` (the unit cache), under the plan with amendments 11
+  to 14: `5491194` (its operational details, committed alone before any of its numbers),
+  `f0c8d7c` (its measured cost, after a one-key development run), `f21afaf` (each re-solve's log
+  in brief, after a stopped run) and `bf80190` (the unit cache, after a second stopped run). The
+  two stopped runs wrote nothing; what was seen from their logs is listed in amendments 13 and 14.
+- **Targets only.** No network output of any network was computed or read, no checkpoint was
+  opened, and the item does not unlock (decision #8, plan R5).
+- **The run.** `scripts/costate_exploratory.py bc-a0`: 359 units (26 keys × 8 continuations, 50
+  states × 3, and the wiring key) on 4 workers × 2 XLA threads, niced, beside another workflow on
+  the same Mac. It took 10.6 h of wall time and 42 CPU-h of unit time; no unit came from the
+  cache. The plan's first estimate was 7 CPU-h; amendment 13's was about 40.
+  - Per-key units: median 270 s (W = 400) and 873 s (W = 800).
+  - Per-state units: median 175 s (W = 400) and 984 s (W = 800).
+- **Stamps.** `summary.json` and `rows.npz` record an empty `changed_vs_head`, no partial flag,
+  HEAD `8f2ad68`, the plan's sha256 with 14 amendments, and the sha256 of each input: the bound
+  world and its summary, `gates/k2b.json`, the A2 key files' content hash, and the 12 R-dev
+  centrelines the grammar is fitted on. Before this note, the stamps' script and plan sha256 were
+  checked against their blobs at `8f2ad68`, and the script's `verify` reported 0 problems.
+- **Wiring checks (all passed).**
+  - K2b's first key, re-solved under both severities, reproduces `gates/k2b.json` with a gap of
+    0 (tolerance 10⁻⁶ in SD units).
+  - In every unit, the re-polished stored targets equal the bound world's with a gap of 0
+    (tolerance 10⁻¹²).
+  - SD_T equals `gates.lam_sd`'s.
+  - Each strip's first nonzero knot is the one just beyond its run-up, and it turns the drawn
+    way.
+- **Failures.** 58 of the 358 re-solves failed. None raised an error; each stopped partway up the
+  amplitude ramp, after passing amplitudes 0.375–0.875. 54 of them ended with IPOPT at its
+  iteration cap.
+  - **W = 800 keys:** 54 of 84 failed (32 of 48 per-key, 22 of 36 per-state).
+  - **W = 400 keys:** 4 of 274 failed, all on continuation 6.
+  - **Dropped under step 4's rule:** 5 of the 6 W = 800 keys (dd6bc9e8, 84ce4d9b, d309952e,
+    23fc2c37, e8ea7337, with 5–7 failures each) and 7 of the 50 states. The shares therefore
+    rest on 21 keys (20 W = 400 and 2152051c) and 43 states (19 braking, 24 corner).
+  - **A possible bias.** Four of the five dropped keys have tight corners (R 35.8–55.9 m), and
+    the failed continuations are probably the hardest ones. If so, the shares below understate
+    the movement rather than overstate it.
+- **Placement facts.**
+  - The first corner of the continuation turns the key's own way in 51% of the per-key units.
+  - The generator's inside-width cap would have been exceeded on 8 units (largest 0.648, against
+    0.6), on 2 keys and continuations 3 and 7. The cap is not applied (amendment 11 item 2).
+
+## BC-a0. Braking and corner targets pilot (exploratory, targets only)
+
+**The question.** How much does realistic road beyond the preview move λ on braking and corner
+rows? The answer decides which target route BC-1 should use.
+
+**Two measures.** Δ is the target under a continuation drawn from the v1 grammar minus the stored
+target, whose road beyond the preview is a straight.
+- **U** is the mean over continuations of Δ², over T's variance of that target within the phase
+  (interior rows, each key weighted equally).
+- **p90** is K2b's statistic: the 90th percentile of |Δ| / SD_T, with SD_T taken over all of T's
+  rows.
+
+**Per-state shares.** The estimand BC-1 would need. Each state's continuations start 20 m beyond
+its own preview, so U measures what that state cannot see. CIs are 95% over keys.
+
+| Phase | Component | U [95% CI] | U_bias | U_spread | p90 |
+|---|---|---|---|---|---|
+| braking (19 states) | λ_s | 0.75 [0.56, 0.96] | 0.60 | 0.15 | 0.25 |
+| | λ_n | 0.12 [0.07, 0.19] | 0.10 | 0.02 | 0.29 |
+| | λ_ξ | 0.09 [0.04, 0.15] | 0.07 | 0.02 | 0.40 |
+| | λ_vx | 0.09 [0.04, 0.15] | 0.07 | 0.02 | 0.20 |
+| corner (24 states) | λ_s | 0.20 [0.10, 0.35] | 0.17 | 0.03 | 1.06 |
+| | λ_n | 0.22 [0.13, 0.32] | 0.18 | 0.04 | 0.50 |
+| | λ_ξ | 0.19 [0.11, 0.27] | 0.15 | 0.04 | 0.87 |
+| | λ_vx | 1.03 [0.84, 1.25] | 0.82 | 0.22 | 0.70 |
+
+**Per-key shares.** These place every continuation beyond the furthest preview of all the key's
+T states (K2b's point s2, or further). A state earlier on the key then sees less of the road
+before it, so these shares are lower bounds.
+
+| Phase | λ_s | λ_n | λ_ξ | λ_vx |
+|---|---|---|---|---|
+| braking (35 rows, 17 keys): U [CI] | 0.53 [0.41, 0.64] | 0.09 [0.05, 0.13] | 0.06 [0.03, 0.09] | 0.05 [0.03, 0.07] |
+| braking: p90 (K2b's slow corner) | 0.19 (0.25) | 0.33 (0.23) | 0.32 (0.24) | 0.15 (0.13) |
+| corner (61 rows, 21 keys): U [CI] | 0.16 [0.07, 0.29] | 0.17 [0.10, 0.24] | 0.14 [0.09, 0.20] | 0.97 [0.81, 1.14] |
+| corner: p90 (K2b's slow corner) | 0.67 (0.37) | 0.39 (0.23) | 0.62 (0.30) | 0.66 (0.36) |
+
+- **Larger than K2b's slow corner.** On corner rows, realistic continuations move λ about twice
+  as much as K2b's slow second corner did, on every K_P component. On braking rows they move it
+  about as much.
+- **Approach and exit, per key, for comparison.** On approach (56 rows), U is 1.2 for λ_s
+  (whose approach variance is tiny), 0.15 for λ_n, 0.11 for λ_ξ and 0.05 for λ_vx. On exit
+  (7 rows on 6 keys), U is 2.8, 0.13, 0.14 and 1.19.
+- **The other λ components** (per state, U). Braking: λ_vy 0.10, λ_r 0.02, λ_δ 0.24 and λ_pedal
+  0.05. Corner: 0.47, 0.11, 0.0003 and 0.14.
+- **The bias part dominates.** U_bias is 70–85% of U on every K_P component and phase. So the
+  continuations move λ mostly the same way: relative to the road the grammar generates, the
+  stored straight is atypical. What remains once a state's preview is fixed is the
+  continuations' spread, U_spread. It is 0.02–0.04 of the phase variance, except for braking λ_s
+  (0.15) and corner λ_vx (0.22).
+- **The state itself moves only a little.** At the per-state rows, the re-solved plan's own state
+  moves by a median of 0.006–0.03 m in s and n and 0.01–0.04 m/s in vx. The largest moves are
+  1.2 m and 0.9 m/s.
+
+**For CS-5 and CS-14 (descriptive).** Amendment 2 left these p90s to BC-a0. They are per key, on
+the interior rows CS-5 and CS-14 score.
+- **Π.** |ΔΠ|/SD_T has p90s of 0.79 (Π^in), 1.02 (Π^out), 0.79 (Π^slip) and 1.02 (Π^μ) on
+  approach rows. On exit rows they are 1.48, 1.78, 0.96 and 1.67. The Π targets therefore move by
+  about one SD_T with the road beyond the preview, on the very rows CS-5 scored. This is the
+  caveat CS-5 recorded ("Π's sensitivity to unseen road is unmeasured"), now measured: it is
+  large.
+- **σ.** |Δσ^ped|/SD_T has p90s of 0.58 on approach and 0.36 on exit. σ^steer does not move (p90
+  about 10⁻¹⁰).
+- **Where U is not read.** U is not reported where T's phase variance is near zero: Π^in and
+  Π^slip on corner and exit rows (variance ≤ 3·10⁻⁵), and σ^steer outside the corner phase
+  (≤ 10⁻²²). There U's ratio is meaningless, and the summary's values there are not results.
+
+**Expected directions against the results** (amendment 11 item 5, point estimates, per state).
+- **Ea0.1** ("in the corner phase, U is above 0.1 for s and vx"): **holds**. U is 0.20 for λ_s
+  and 1.03 for λ_vx. It also holds per key (0.16 and 0.97).
+- **Ea0.2** ("in the braking phase, U is smaller than in the corner phase for every K_P
+  component"): **does not hold**, 3 of 4. It holds for n, ξ and vx. λ_s is the exception: its
+  braking U is 0.75 against 0.20 in the corner. Per key it is also 3 of 4 (0.53 against 0.16).
+  λ_s varies little within the braking phase (its variance there is 1/60 of the corner's), so a
+  modest shift (p90 0.25 SD_T) is a large share.
+- **Ea0.3** ("the per-state shares exceed the per-key shares"): **holds**, 8 of 8.
+
+**The route** (plan BC-a0, "What the outcomes mean"; a recommendation to the lead under decision
+#6, not a decision).
+- **Option (ii), the preview-matched average target, in all 8 cells.** No per-state U has its CI
+  upper end at or below 0.1; the upper ends are 0.15–1.25. Option (i), pre-registering against
+  the existing λ with a stated bound of at most 0.1, is open for no K_P component in braking or in
+  the corner.
+- **The closest cells** are braking λ_ξ and λ_vx (per state 0.09 [0.04, 0.15] for each). Per
+  key, their upper ends are 0.09 and 0.07, at or under 0.1, but the per-key shares are only the
+  lower bound.
+- **Cost.** Option (ii) is costed in the plan at 2,298 states × M draws at 60–75 s each. The
+  per-state re-solves here took a median of 175 s at W = 400, on a shared machine. At W = 800
+  they took 984 s, and 61% failed at IPOPT's iteration cap. At these rates option (ii) needs
+  roughly 2.5–3 times the plan's 150–380 CPU-h. Its W = 800 states also need a solver that
+  reaches full amplitude.
+- **The pilot's limits.**
+  - It rests on 26 keys, with 1–2 states on each, and 3 continuations per state.
+  - It has one W = 800 key.
+  - The dropped, mostly tight-corner keys would probably raise the shares, not lower them.
+
+### What BC-a0 says (exploratory, targets only)
+
+- **On braking and corner rows, the existing λ is not a target BC-1 can pre-register against
+  with a bound of 0.1.** Realistic road beyond the preview moves it by 9–100% of its phase
+  variance (per state). On corner rows it moves λ about twice as much as K2b's slow second corner
+  did. The biggest moves are λ_vx in the corner (U ≈ 1) and λ_s in braking (U ≈ 0.75).
+- **Most of the movement is a common shift, not noise.** The stored straight continuation is
+  atypical of the grammar's road. So a preview-matched average target would differ from the
+  existing λ mostly by a systematic offset. Once the preview is matched, the spread that remains
+  is small (0.02–0.04 of the phase variance), except for braking λ_s and corner λ_vx (0.15 and
+  0.22).
+- **The Π targets are also sensitive on approach and exit rows** (p90 about 0.8–1.8 SD_T). That
+  qualifies CS-5's and W1's Π comparisons; σ^ped's is smaller (0.4–0.6).
+- No network was computed or read. None of this changes a decision of `costate-prereg-v1`.
