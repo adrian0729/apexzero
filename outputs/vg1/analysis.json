@@ -1,0 +1,2178 @@
+{
+ "record": "vg1-analysis",
+ "label": "confirmatory (P) and secondary (S1-S6, unadjusted); descriptives decide nothing",
+ "tag": {
+  "tag": "vg1-prereg-v1",
+  "tag_object": "3a06129e43b2066cafe38db1e3e0ec6f768e28b6",
+  "commit": "6fd82183ba7842a49e09cc1a4bb05ac74ab858fc",
+  "head": "3044270e5a252c2dd876e917b596539c4025361e"
+ },
+ "beta_star": 0.03,
+ "counts": {
+  "base": {
+   "failed": 0,
+   "missing": 0
+  },
+  "vgl": {
+   "failed": 0,
+   "missing": 0
+  }
+ },
+ "missing": [],
+ "tests": {
+  "P": {
+   "n_x": 20,
+   "n_y": 20,
+   "w": 495.0,
+   "expected_w": 410.0,
+   "p_greater": 0.010538397175723673,
+   "p_less": 0.990231619080098,
+   "two_sided": 0.021076794351447346,
+   "direction": "vgl above",
+   "p": 0.010538397175723673,
+   "p_opposite": 0.990231619080098,
+   "result": "confirm",
+   "hodges_lehmann": 0.3532571252184173,
+   "hodges_lehmann_ci": {
+    "lo": 0.049936807129730754,
+    "hi": 0.6287160335500435,
+    "n_boot": 20000,
+    "seed": 20261026
+   }
+  },
+  "S1": {
+   "n_x": 20,
+   "n_y": 20,
+   "w": 369.5,
+   "expected_w": 410.0,
+   "p_greater": 0.8755274531765319,
+   "p_less": 0.13208292355895973,
+   "two_sided": 0.26416584711791946,
+   "direction": "two-sided",
+   "p": 0.26416584711791946,
+   "result": "no difference shown",
+   "mean_difference": -0.5,
+   "mean_difference_ci": {
+    "lo": -1.1999999999999997,
+    "hi": 0.1999999999999993,
+    "n_boot": 20000,
+    "seed": 20261026
+   }
+  },
+  "S2": {
+   "n_x": 20,
+   "n_y": 20,
+   "w": 584.0,
+   "expected_w": 410.0,
+   "p_greater": 8.445624347350904e-08,
+   "p_less": 0.9999999329399145,
+   "two_sided": 1.6891248694701808e-07,
+   "direction": "vgl above",
+   "p": 8.445624347350904e-08,
+   "p_opposite": 0.9999999329399145,
+   "result": "confirm"
+  },
+  "S3": {
+   "n_x": 20,
+   "n_y": 20,
+   "w": 211.0,
+   "expected_w": 410.0,
+   "p_greater": 0.9999999999927456,
+   "p_less": 1.4508889103849688e-11,
+   "two_sided": 2.9017778207699375e-11,
+   "direction": "vgl below",
+   "p": 1.4508889103849688e-11,
+   "p_opposite": 0.9999999999927456,
+   "result": "confirm"
+  },
+  "S4": {
+   "steer": {
+    "n_x": 20,
+    "n_y": 20,
+    "w": 211.0,
+    "expected_w": 410.0,
+    "p_greater": 0.9999999999927456,
+    "p_less": 1.4508889103849688e-11,
+    "two_sided": 2.9017778207699375e-11,
+    "direction": "vgl below",
+    "p": 1.4508889103849688e-11,
+    "p_opposite": 0.9999999999927456,
+    "result": "confirm"
+   },
+   "pedal": {
+    "n_x": 20,
+    "n_y": 20,
+    "w": 212.0,
+    "expected_w": 410.0,
+    "p_greater": 0.9999999999854912,
+    "p_less": 2.9017778207699375e-11,
+    "two_sided": 5.803555641539875e-11,
+    "direction": "vgl below",
+    "p": 2.9017778207699375e-11,
+    "p_opposite": 0.9999999999854912,
+    "result": "confirm"
+   }
+  },
+  "S5": {
+   "n_x": 20,
+   "n_y": 20,
+   "w": 242.0,
+   "expected_w": 410.0,
+   "p_greater": 0.9999997488148574,
+   "p_less": 3.0892326679916757e-07,
+   "two_sided": 6.178465335983351e-07,
+   "direction": "two-sided",
+   "p": 6.178465335983351e-07,
+   "result": "differs",
+   "hodges_lehmann": -0.017615199089050293
+  },
+  "S6": {
+   "n": 20,
+   "mean": 0.3745732994750471,
+   "flips": 1048576,
+   "p_greater": 0.010720252990722656,
+   "p_less": 0.9892807006835938,
+   "seeds": [
+    30,
+    31,
+    32,
+    33,
+    34,
+    35,
+    36,
+    37,
+    38,
+    39,
+    40,
+    41,
+    42,
+    43,
+    44,
+    45,
+    46,
+    47,
+    48,
+    49
+   ],
+   "substituted_seeds": [],
+   "floor": -2.0050759587916454,
+   "result": "confirm"
+  },
+  "reading": {
+   "row": 2,
+   "P": "confirm",
+   "S3": "confirm"
+  }
+ },
+ "values": {
+  "vg1-base-s30": {
+   "r2c": -0.9408008793773602,
+   "rho": 0.17976701438576662,
+   "m0": 5.512365341186523,
+   "s4_steer": 2.6099462509155273,
+   "s4_pedal": 2.322706460952759,
+   "ev": 0.9442022442817688,
+   "completion": 7.0
+  },
+  "vg1-base-s31": {
+   "r2c": -0.6211805046354207,
+   "rho": 0.0892401031687228,
+   "m0": 19.359516143798828,
+   "s4_steer": 8.627620697021484,
+   "s4_pedal": 5.966092109680176,
+   "ev": 0.9353220462799072,
+   "completion": 5.0
+  },
+  "vg1-base-s32": {
+   "r2c": -0.18036365879792993,
+   "rho": 0.051040971352487155,
+   "m0": 17.474708557128906,
+   "s4_steer": 4.757298469543457,
+   "s4_pedal": 3.990393877029419,
+   "ev": 0.935152530670166,
+   "completion": 3.0
+  },
+  "vg1-base-s33": {
+   "r2c": -0.021424379374596625,
+   "rho": 0.026964517957210526,
+   "m0": 10.596966743469238,
+   "s4_steer": 5.21284294128418,
+   "s4_pedal": 4.237576484680176,
+   "ev": 0.9396090507507324,
+   "completion": 4.0
+  },
+  "vg1-vgl-s30": {
+   "r2c": -0.11205377629233881,
+   "rho": 0.21825162300620218,
+   "m0": 0.7781680822372437,
+   "s4_steer": 0.8404039144515991,
+   "s4_pedal": 0.775331974029541,
+   "ev": 0.9189682602882385,
+   "completion": 3.0
+  },
+  "vg1-vgl-s31": {
+   "r2c": -0.288837511320864,
+   "rho": 0.26628094330930663,
+   "m0": 0.8825204372406006,
+   "s4_steer": 0.8769887685775757,
+   "s4_pedal": 0.8951829075813293,
+   "ev": 0.9444538354873657,
+   "completion": 4.0
+  },
+  "vg1-vgl-s32": {
+   "r2c": -0.40940433337454885,
+   "rho": 0.38241444404133296,
+   "m0": 0.9383183717727661,
+   "s4_steer": 0.950021505355835,
+   "s4_pedal": 0.9708240628242493,
+   "ev": 0.9290475249290466,
+   "completion": 3.0
+  },
+  "vg1-vgl-s33": {
+   "r2c": -0.5838082054753317,
+   "rho": 0.4084211030423226,
+   "m0": 0.6995853185653687,
+   "s4_steer": 0.7980406880378723,
+   "s4_pedal": 0.666194498538971,
+   "ev": 0.9224022030830383,
+   "completion": 4.0
+  },
+  "vg1-base-s34": {
+   "r2c": -0.43883850085982457,
+   "rho": 0.05642326935467934,
+   "m0": 6.341719627380371,
+   "s4_steer": 2.7277913093566895,
+   "s4_pedal": 3.0321595668792725,
+   "ev": 0.9405595660209656,
+   "completion": 6.0
+  },
+  "vg1-base-s35": {
+   "r2c": -0.6607253187486638,
+   "rho": 0.2150634900097318,
+   "m0": 21.121814727783203,
+   "s4_steer": 10.319669723510742,
+   "s4_pedal": 14.723361015319824,
+   "ev": 0.9318954348564148,
+   "completion": 4.0
+  },
+  "vg1-base-s36": {
+   "r2c": -1.4351886929519138,
+   "rho": 0.20313117707814468,
+   "m0": 13.94342041015625,
+   "s4_steer": 13.156618118286133,
+   "s4_pedal": 7.376359939575195,
+   "ev": 0.943727433681488,
+   "completion": 3.0
+  },
+  "vg1-base-s37": {
+   "r2c": -0.07023705991125928,
+   "rho": 0.05512582862321794,
+   "m0": 16.53500747680664,
+   "s4_steer": 9.253776550292969,
+   "s4_pedal": 4.914914608001709,
+   "ev": 0.9297124147415161,
+   "completion": 3.0
+  },
+  "vg1-vgl-s34": {
+   "r2c": -0.15566269367196223,
+   "rho": 0.39478096131353907,
+   "m0": 0.8368921279907227,
+   "s4_steer": 0.792087197303772,
+   "s4_pedal": 0.8834273219108582,
+   "ev": 0.9106515645980835,
+   "completion": 3.0
+  },
+  "vg1-vgl-s35": {
+   "r2c": -0.023123609407820378,
+   "rho": 0.3018043725048369,
+   "m0": 0.8977862596511841,
+   "s4_steer": 0.9153919816017151,
+   "s4_pedal": 0.9388911128044128,
+   "ev": 0.9320518970489502,
+   "completion": 5.0
+  },
+  "vg1-vgl-s36": {
+   "r2c": -0.4587880493070472,
+   "rho": 0.2526065005936752,
+   "m0": 0.8927831649780273,
+   "s4_steer": 0.8808358311653137,
+   "s4_pedal": 0.9322528839111328,
+   "ev": 0.9245558381080627,
+   "completion": 4.0
+  },
+  "vg1-vgl-s37": {
+   "r2c": -0.6624233042047218,
+   "rho": 0.439077264465882,
+   "m0": 0.7986478209495544,
+   "s4_steer": 0.8033472299575806,
+   "s4_pedal": 0.7526293396949768,
+   "ev": 0.9138978123664856,
+   "completion": 3.0
+  },
+  "vg1-base-s38": {
+   "r2c": -0.04516986149398883,
+   "rho": -0.013086503794373497,
+   "m0": 13.462379455566406,
+   "s4_steer": 6.5348029136657715,
+   "s4_pedal": 7.89447546005249,
+   "ev": 0.9340101480484009,
+   "completion": 4.0
+  },
+  "vg1-base-s39": {
+   "r2c": -1.2125242390253752,
+   "rho": 0.15263307279605448,
+   "m0": 16.293655395507812,
+   "s4_steer": 9.754733085632324,
+   "s4_pedal": 8.258907318115234,
+   "ev": 0.921133279800415,
+   "completion": 3.0
+  },
+  "vg1-base-s40": {
+   "r2c": -2.0050759587916454,
+   "rho": 0.2409754200185592,
+   "m0": 10.156879425048828,
+   "s4_steer": 7.241737365722656,
+   "s4_pedal": 5.774498462677002,
+   "ev": 0.9453681707382202,
+   "completion": 5.0
+  },
+  "vg1-base-s41": {
+   "r2c": -0.8301407416045306,
+   "rho": 0.1711337794316096,
+   "m0": 12.764627456665039,
+   "s4_steer": 9.041830062866211,
+   "s4_pedal": 3.9081292152404785,
+   "ev": 0.935256838798523,
+   "completion": 5.0
+  },
+  "vg1-vgl-s38": {
+   "r2c": -0.44075828330270084,
+   "rho": 0.37257075886701685,
+   "m0": 0.8837922811508179,
+   "s4_steer": 0.8869022727012634,
+   "s4_pedal": 1.0272700786590576,
+   "ev": 0.9174711108207703,
+   "completion": 6.0
+  },
+  "vg1-vgl-s39": {
+   "r2c": -0.10520037501840684,
+   "rho": 0.32754119635604273,
+   "m0": 0.8888652324676514,
+   "s4_steer": 0.9085516333580017,
+   "s4_pedal": 0.9559910893440247,
+   "ev": 0.927457869052887,
+   "completion": 4.0
+  },
+  "vg1-vgl-s40": {
+   "r2c": -0.10143848356888518,
+   "rho": 0.06652250893698111,
+   "m0": 1.000403881072998,
+   "s4_steer": 1.0001558065414429,
+   "s4_pedal": 1.00003981590271,
+   "ev": 0.9315924644470215,
+   "completion": 3.0
+  },
+  "vg1-vgl-s41": {
+   "r2c": -0.4448749215179334,
+   "rho": 0.30709384834656445,
+   "m0": 0.9111073017120361,
+   "s4_steer": 0.9380726218223572,
+   "s4_pedal": 0.9185693860054016,
+   "ev": 0.9266390204429626,
+   "completion": 4.0
+  },
+  "vg1-base-s42": {
+   "r2c": -0.3148609877910079,
+   "rho": 0.12527589623324403,
+   "m0": 14.77093505859375,
+   "s4_steer": 9.04092025756836,
+   "s4_pedal": 5.1276679039001465,
+   "ev": 0.9338997602462769,
+   "completion": 6.0
+  },
+  "vg1-base-s43": {
+   "r2c": -0.5155965852577121,
+   "rho": 0.10737701447934717,
+   "m0": 10.452439308166504,
+   "s4_steer": 7.159646034240723,
+   "s4_pedal": 5.370296478271484,
+   "ev": 0.9442543387413025,
+   "completion": 4.0
+  },
+  "vg1-base-s44": {
+   "r2c": -1.0786911194397188,
+   "rho": 0.1560987108393476,
+   "m0": 8.526144027709961,
+   "s4_steer": 2.9754910469055176,
+   "s4_pedal": 5.265360355377197,
+   "ev": 0.944847583770752,
+   "completion": 5.0
+  },
+  "vg1-base-s45": {
+   "r2c": -0.8557735970585814,
+   "rho": 0.1515009762534076,
+   "m0": 9.402233123779297,
+   "s4_steer": 4.930573463439941,
+   "s4_pedal": 3.313765525817871,
+   "ev": 0.9493004679679871,
+   "completion": 5.0
+  },
+  "vg1-vgl-s42": {
+   "r2c": -0.09334690081951846,
+   "rho": 0.33167060363874057,
+   "m0": 0.7013893127441406,
+   "s4_steer": 0.7272347807884216,
+   "s4_pedal": 0.650029182434082,
+   "ev": 0.914280354976654,
+   "completion": 4.0
+  },
+  "vg1-vgl-s43": {
+   "r2c": -0.3598149231165748,
+   "rho": 0.3312899298114893,
+   "m0": 0.7642838954925537,
+   "s4_steer": 0.8280779123306274,
+   "s4_pedal": 0.696611762046814,
+   "ev": 0.9024727940559387,
+   "completion": 5.0
+  },
+  "vg1-vgl-s44": {
+   "r2c": -0.2808508704462748,
+   "rho": 0.3198920595541068,
+   "m0": 0.9055516123771667,
+   "s4_steer": 0.915669858455658,
+   "s4_pedal": 0.938927412033081,
+   "ev": 0.9074726104736328,
+   "completion": 3.0
+  },
+  "vg1-vgl-s45": {
+   "r2c": -0.13513235551978175,
+   "rho": 0.24408964241114767,
+   "m0": 0.9023830890655518,
+   "s4_steer": 0.8838857412338257,
+   "s4_pedal": 0.9092018604278564,
+   "ev": 0.92860347032547,
+   "completion": 3.0
+  },
+  "vg1-base-s46": {
+   "r2c": -1.367188590647874,
+   "rho": 0.2039402601907711,
+   "m0": 11.588171005249023,
+   "s4_steer": 5.823563098907471,
+   "s4_pedal": 5.57124137878418,
+   "ev": 0.9367231726646423,
+   "completion": 4.0
+  },
+  "vg1-base-s47": {
+   "r2c": -0.2728160135315981,
+   "rho": 0.0786729543376871,
+   "m0": 17.864219665527344,
+   "s4_steer": 3.9638922214508057,
+   "s4_pedal": 4.325683116912842,
+   "ev": 0.9501230716705322,
+   "completion": 7.0
+  },
+  "vg1-base-s48": {
+   "r2c": -0.8205038155107166,
+   "rho": 0.13816026139350743,
+   "m0": 1.0003588199615479,
+   "s4_steer": 1.0000208616256714,
+   "s4_pedal": 1.0002648830413818,
+   "ev": 0.9383752346038818,
+   "completion": 3.0
+  },
+  "vg1-base-s49": {
+   "r2c": -0.7046393006006831,
+   "rho": 0.060792788945011514,
+   "m0": 14.204931259155273,
+   "s4_steer": 10.00288200378418,
+   "s4_pedal": 5.345325469970703,
+   "ev": 0.9402227997779846,
+   "completion": 3.0
+  },
+  "vg1-vgl-s46": {
+   "r2c": -0.2996758888074077,
+   "rho": 0.3602094746476481,
+   "m0": 0.8557345867156982,
+   "s4_steer": 0.8996424078941345,
+   "s4_pedal": 0.9095551371574402,
+   "ev": 0.9082565307617188,
+   "completion": 5.0
+  },
+  "vg1-vgl-s47": {
+   "r2c": -0.9002403350218104,
+   "rho": 0.28422821815569277,
+   "m0": 0.8286714553833008,
+   "s4_steer": 0.8236270546913147,
+   "s4_pedal": 0.8717446327209473,
+   "ev": 0.9137287735939026,
+   "completion": 3.0
+  },
+  "vg1-vgl-s48": {
+   "r2c": -1.017667014113068,
+   "rho": 0.2763073082239361,
+   "m0": 0.9402567148208618,
+   "s4_steer": 0.9253986477851868,
+   "s4_pedal": 1.0046699047088623,
+   "ev": 0.9344394207000732,
+   "completion": 5.0
+  },
+  "vg1-vgl-s49": {
+   "r2c": -0.027171981602462703,
+   "rho": 0.12367298824145787,
+   "m0": 0.6295212507247925,
+   "s4_steer": 0.7868180871009827,
+   "s4_pedal": 0.5975853204727173,
+   "ev": 0.9188970327377319,
+   "completion": 5.0
+  }
+ },
+ "descriptives": {
+  "per_network": {
+   "vg1-base-s30": {
+    "arm": "base",
+    "seed": 30,
+    "failed": false,
+    "failed_because": [],
+    "raw": {
+     "r2c": -0.9408008793773602,
+     "rho": 0.17976701438576662,
+     "m0": 5.512365341186523,
+     "s4_steer": 2.6099462509155273,
+     "s4_pedal": 2.322706460952759,
+     "ev": 0.9442022442817688
+    },
+    "completion_by_circuit": {
+     "BrandsHatch": 1.0,
+     "Hockenheim": 0.0,
+     "MoscowRaceway": 1.0,
+     "Norisring": 0.0,
+     "Nuerburgring": 1.0,
+     "Oschersleben": 1.0,
+     "Sepang": 1.0,
+     "Sochi": 0.0,
+     "YasMarina": 0.0,
+     "Melbourne": 0.0,
+     "Catalunya": 1.0,
+     "Zandvoort": 1.0
+    }
+   },
+   "vg1-base-s31": {
+    "arm": "base",
+    "seed": 31,
+    "failed": false,
+    "failed_because": [],
+    "raw": {
+     "r2c": -0.6211805046354207,
+     "rho": 0.0892401031687228,
+     "m0": 19.359516143798828,
+     "s4_steer": 8.627620697021484,
+     "s4_pedal": 5.966092109680176,
+     "ev": 0.9353220462799072
+    },
+    "completion_by_circuit": {
+     "BrandsHatch": 1.0,
+     "Hockenheim": 0.0,
+     "MoscowRaceway": 1.0,
+     "Norisring": 0.0,
+     "Nuerburgring": 1.0,
+     "Oschersleben": 0.0,
+     "Sepang": 1.0,
+     "Sochi": 0.0,
+     "YasMarina": 0.0,
+     "Melbourne": 0.0,
+     "Catalunya": 1.0,
+     "Zandvoort": 0.0
+    }
+   },
+   "vg1-base-s32": {
+    "arm": "base",
+    "seed": 32,
+    "failed": false,
+    "failed_because": [],
+    "raw": {
+     "r2c": -0.18036365879792993,
+     "rho": 0.051040971352487155,
+     "m0": 17.474708557128906,
+     "s4_steer": 4.757298469543457,
+     "s4_pedal": 3.990393877029419,
+     "ev": 0.935152530670166
+    },
+    "completion_by_circuit": {
+     "BrandsHatch": 1.0,
+     "Hockenheim": 0.0,
+     "MoscowRaceway": 0.0,
+     "Norisring": 0.0,
+     "Nuerburgring": 1.0,
+     "Oschersleben": 0.0,
+     "Sepang": 1.0,
+     "Sochi": 0.0,
+     "YasMarina": 0.0,
+     "Melbourne": 0.0,
+     "Catalunya": 0.0,
+     "Zandvoort": 0.0
+    }
+   },
+   "vg1-base-s33": {
+    "arm": "base",
+    "seed": 33,
+    "failed": false,
+    "failed_because": [],
+    "raw": {
+     "r2c": -0.021424379374596625,
+     "rho": 0.026964517957210526,
+     "m0": 10.596966743469238,
+     "s4_steer": 5.21284294128418,
+     "s4_pedal": 4.237576484680176,
+     "ev": 0.9396090507507324
+    },
+    "completion_by_circuit": {
+     "BrandsHatch": 1.0,
+     "Hockenheim": 0.0,
+     "MoscowRaceway": 0.0,
+     "Norisring": 0.0,
+     "Nuerburgring": 1.0,
+     "Oschersleben": 0.0,
+     "Sepang": 1.0,
+     "Sochi": 0.0,
+     "YasMarina": 0.0,
+     "Melbourne": 0.0,
+     "Catalunya": 1.0,
+     "Zandvoort": 0.0
+    }
+   },
+   "vg1-vgl-s30": {
+    "arm": "vgl",
+    "seed": 30,
+    "failed": false,
+    "failed_because": [],
+    "raw": {
+     "r2c": -0.11205377629233881,
+     "rho": 0.21825162300620218,
+     "m0": 0.7781680822372437,
+     "s4_steer": 0.8404039144515991,
+     "s4_pedal": 0.775331974029541,
+     "ev": 0.9189682602882385
+    },
+    "completion_by_circuit": {
+     "BrandsHatch": 0.0,
+     "Hockenheim": 0.0,
+     "MoscowRaceway": 0.0,
+     "Norisring": 0.0,
+     "Nuerburgring": 1.0,
+     "Oschersleben": 0.0,
+     "Sepang": 1.0,
+     "Sochi": 0.0,
+     "YasMarina": 0.0,
+     "Melbourne": 0.0,
+     "Catalunya": 0.0,
+     "Zandvoort": 1.0
+    }
+   },
+   "vg1-vgl-s31": {
+    "arm": "vgl",
+    "seed": 31,
+    "failed": false,
+    "failed_because": [],
+    "raw": {
+     "r2c": -0.288837511320864,
+     "rho": 0.26628094330930663,
+     "m0": 0.8825204372406006,
+     "s4_steer": 0.8769887685775757,
+     "s4_pedal": 0.8951829075813293,
+     "ev": 0.9444538354873657
+    },
+    "completion_by_circuit": {
+     "BrandsHatch": 0.0,
+     "Hockenheim": 0.0,
+     "MoscowRaceway": 0.0,
+     "Norisring": 0.0,
+     "Nuerburgring": 1.0,
+     "Oschersleben": 0.0,
+     "Sepang": 1.0,
+     "Sochi": 0.0,
+     "YasMarina": 0.0,
+     "Melbourne": 0.0,
+     "Catalunya": 1.0,
+     "Zandvoort": 1.0
+    }
+   },
+   "vg1-vgl-s32": {
+    "arm": "vgl",
+    "seed": 32,
+    "failed": false,
+    "failed_because": [],
+    "raw": {
+     "r2c": -0.40940433337454885,
+     "rho": 0.38241444404133296,
+     "m0": 0.9383183717727661,
+     "s4_steer": 0.950021505355835,
+     "s4_pedal": 0.9708240628242493,
+     "ev": 0.9290475249290466
+    },
+    "completion_by_circuit": {
+     "BrandsHatch": 0.0,
+     "Hockenheim": 1.0,
+     "MoscowRaceway": 0.0,
+     "Norisring": 0.0,
+     "Nuerburgring": 1.0,
+     "Oschersleben": 0.0,
+     "Sepang": 0.9,
+     "Sochi": 0.0,
+     "YasMarina": 0.0,
+     "Melbourne": 0.0,
+     "Catalunya": 0.0,
+     "Zandvoort": 0.0
+    }
+   },
+   "vg1-vgl-s33": {
+    "arm": "vgl",
+    "seed": 33,
+    "failed": false,
+    "failed_because": [],
+    "raw": {
+     "r2c": -0.5838082054753317,
+     "rho": 0.4084211030423226,
+     "m0": 0.6995853185653687,
+     "s4_steer": 0.7980406880378723,
+     "s4_pedal": 0.666194498538971,
+     "ev": 0.9224022030830383
+    },
+    "completion_by_circuit": {
+     "BrandsHatch": 1.0,
+     "Hockenheim": 0.0,
+     "MoscowRaceway": 0.0,
+     "Norisring": 0.0,
+     "Nuerburgring": 1.0,
+     "Oschersleben": 0.0,
+     "Sepang": 1.0,
+     "Sochi": 0.0,
+     "YasMarina": 0.0,
+     "Melbourne": 0.0,
+     "Catalunya": 0.0,
+     "Zandvoort": 1.0
+    }
+   },
+   "vg1-base-s34": {
+    "arm": "base",
+    "seed": 34,
+    "failed": false,
+    "failed_because": [],
+    "raw": {
+     "r2c": -0.43883850085982457,
+     "rho": 0.05642326935467934,
+     "m0": 6.341719627380371,
+     "s4_steer": 2.7277913093566895,
+     "s4_pedal": 3.0321595668792725,
+     "ev": 0.9405595660209656
+    },
+    "completion_by_circuit": {
+     "BrandsHatch": 1.0,
+     "Hockenheim": 0.0,
+     "MoscowRaceway": 0.0,
+     "Norisring": 0.0,
+     "Nuerburgring": 1.0,
+     "Oschersleben": 1.0,
+     "Sepang": 1.0,
+     "Sochi": 0.0,
+     "YasMarina": 0.0,
+     "Melbourne": 0.0,
+     "Catalunya": 1.0,
+     "Zandvoort": 1.0
+    }
+   },
+   "vg1-base-s35": {
+    "arm": "base",
+    "seed": 35,
+    "failed": false,
+    "failed_because": [],
+    "raw": {
+     "r2c": -0.6607253187486638,
+     "rho": 0.2150634900097318,
+     "m0": 21.121814727783203,
+     "s4_steer": 10.319669723510742,
+     "s4_pedal": 14.723361015319824,
+     "ev": 0.9318954348564148
+    },
+    "completion_by_circuit": {
+     "BrandsHatch": 1.0,
+     "Hockenheim": 0.0,
+     "MoscowRaceway": 1.0,
+     "Norisring": 0.0,
+     "Nuerburgring": 1.0,
+     "Oschersleben": 0.0,
+     "Sepang": 1.0,
+     "Sochi": 0.0,
+     "YasMarina": 0.0,
+     "Melbourne": 0.0,
+     "Catalunya": 0.0,
+     "Zandvoort": 0.0
+    }
+   },
+   "vg1-base-s36": {
+    "arm": "base",
+    "seed": 36,
+    "failed": false,
+    "failed_because": [],
+    "raw": {
+     "r2c": -1.4351886929519138,
+     "rho": 0.20313117707814468,
+     "m0": 13.94342041015625,
+     "s4_steer": 13.156618118286133,
+     "s4_pedal": 7.376359939575195,
+     "ev": 0.943727433681488
+    },
+    "completion_by_circuit": {
+     "BrandsHatch": 1.0,
+     "Hockenheim": 0.0,
+     "MoscowRaceway": 0.0,
+     "Norisring": 0.0,
+     "Nuerburgring": 1.0,
+     "Oschersleben": 0.0,
+     "Sepang": 1.0,
+     "Sochi": 0.0,
+     "YasMarina": 0.0,
+     "Melbourne": 0.0,
+     "Catalunya": 0.0,
+     "Zandvoort": 0.0
+    }
+   },
+   "vg1-base-s37": {
+    "arm": "base",
+    "seed": 37,
+    "failed": false,
+    "failed_because": [],
+    "raw": {
+     "r2c": -0.07023705991125928,
+     "rho": 0.05512582862321794,
+     "m0": 16.53500747680664,
+     "s4_steer": 9.253776550292969,
+     "s4_pedal": 4.914914608001709,
+     "ev": 0.9297124147415161
+    },
+    "completion_by_circuit": {
+     "BrandsHatch": 0.0,
+     "Hockenheim": 0.0,
+     "MoscowRaceway": 0.0,
+     "Norisring": 0.0,
+     "Nuerburgring": 1.0,
+     "Oschersleben": 1.0,
+     "Sepang": 1.0,
+     "Sochi": 0.0,
+     "YasMarina": 0.0,
+     "Melbourne": 0.0,
+     "Catalunya": 0.0,
+     "Zandvoort": 0.0
+    }
+   },
+   "vg1-vgl-s34": {
+    "arm": "vgl",
+    "seed": 34,
+    "failed": false,
+    "failed_because": [],
+    "raw": {
+     "r2c": -0.15566269367196223,
+     "rho": 0.39478096131353907,
+     "m0": 0.8368921279907227,
+     "s4_steer": 0.792087197303772,
+     "s4_pedal": 0.8834273219108582,
+     "ev": 0.9106515645980835
+    },
+    "completion_by_circuit": {
+     "BrandsHatch": 0.0,
+     "Hockenheim": 0.0,
+     "MoscowRaceway": 0.0,
+     "Norisring": 0.0,
+     "Nuerburgring": 1.0,
+     "Oschersleben": 0.0,
+     "Sepang": 1.0,
+     "Sochi": 0.0,
+     "YasMarina": 0.0,
+     "Melbourne": 0.0,
+     "Catalunya": 0.0,
+     "Zandvoort": 1.0
+    }
+   },
+   "vg1-vgl-s35": {
+    "arm": "vgl",
+    "seed": 35,
+    "failed": false,
+    "failed_because": [],
+    "raw": {
+     "r2c": -0.023123609407820378,
+     "rho": 0.3018043725048369,
+     "m0": 0.8977862596511841,
+     "s4_steer": 0.9153919816017151,
+     "s4_pedal": 0.9388911128044128,
+     "ev": 0.9320518970489502
+    },
+    "completion_by_circuit": {
+     "BrandsHatch": 1.0,
+     "Hockenheim": 1.0,
+     "MoscowRaceway": 0.0,
+     "Norisring": 0.0,
+     "Nuerburgring": 1.0,
+     "Oschersleben": 0.0,
+     "Sepang": 1.0,
+     "Sochi": 0.0,
+     "YasMarina": 0.0,
+     "Melbourne": 0.0,
+     "Catalunya": 0.1,
+     "Zandvoort": 1.0
+    }
+   },
+   "vg1-vgl-s36": {
+    "arm": "vgl",
+    "seed": 36,
+    "failed": false,
+    "failed_because": [],
+    "raw": {
+     "r2c": -0.4587880493070472,
+     "rho": 0.2526065005936752,
+     "m0": 0.8927831649780273,
+     "s4_steer": 0.8808358311653137,
+     "s4_pedal": 0.9322528839111328,
+     "ev": 0.9245558381080627
+    },
+    "completion_by_circuit": {
+     "BrandsHatch": 0.0,
+     "Hockenheim": 1.0,
+     "MoscowRaceway": 0.0,
+     "Norisring": 0.0,
+     "Nuerburgring": 1.0,
+     "Oschersleben": 0.0,
+     "Sepang": 1.0,
+     "Sochi": 0.0,
+     "YasMarina": 0.0,
+     "Melbourne": 0.0,
+     "Catalunya": 0.0,
+     "Zandvoort": 1.0
+    }
+   },
+   "vg1-vgl-s37": {
+    "arm": "vgl",
+    "seed": 37,
+    "failed": false,
+    "failed_because": [],
+    "raw": {
+     "r2c": -0.6624233042047218,
+     "rho": 0.439077264465882,
+     "m0": 0.7986478209495544,
+     "s4_steer": 0.8033472299575806,
+     "s4_pedal": 0.7526293396949768,
+     "ev": 0.9138978123664856
+    },
+    "completion_by_circuit": {
+     "BrandsHatch": 1.0,
+     "Hockenheim": 0.0,
+     "MoscowRaceway": 0.0,
+     "Norisring": 0.0,
+     "Nuerburgring": 0.0,
+     "Oschersleben": 0.0,
+     "Sepang": 1.0,
+     "Sochi": 0.0,
+     "YasMarina": 0.0,
+     "Melbourne": 0.0,
+     "Catalunya": 1.0,
+     "Zandvoort": 0.0
+    }
+   },
+   "vg1-base-s38": {
+    "arm": "base",
+    "seed": 38,
+    "failed": false,
+    "failed_because": [],
+    "raw": {
+     "r2c": -0.04516986149398883,
+     "rho": -0.013086503794373497,
+     "m0": 13.462379455566406,
+     "s4_steer": 6.5348029136657715,
+     "s4_pedal": 7.89447546005249,
+     "ev": 0.9340101480484009
+    },
+    "completion_by_circuit": {
+     "BrandsHatch": 0.0,
+     "Hockenheim": 0.0,
+     "MoscowRaceway": 1.0,
+     "Norisring": 0.0,
+     "Nuerburgring": 1.0,
+     "Oschersleben": 0.0,
+     "Sepang": 1.0,
+     "Sochi": 0.0,
+     "YasMarina": 0.0,
+     "Melbourne": 0.0,
+     "Catalunya": 1.0,
+     "Zandvoort": 0.0
+    }
+   },
+   "vg1-base-s39": {
+    "arm": "base",
+    "seed": 39,
+    "failed": false,
+    "failed_because": [],
+    "raw": {
+     "r2c": -1.2125242390253752,
+     "rho": 0.15263307279605448,
+     "m0": 16.293655395507812,
+     "s4_steer": 9.754733085632324,
+     "s4_pedal": 8.258907318115234,
+     "ev": 0.921133279800415
+    },
+    "completion_by_circuit": {
+     "BrandsHatch": 1.0,
+     "Hockenheim": 0.0,
+     "MoscowRaceway": 1.0,
+     "Norisring": 0.0,
+     "Nuerburgring": 1.0,
+     "Oschersleben": 0.0,
+     "Sepang": 0.0,
+     "Sochi": 0.0,
+     "YasMarina": 0.0,
+     "Melbourne": 0.0,
+     "Catalunya": 0.0,
+     "Zandvoort": 0.0
+    }
+   },
+   "vg1-base-s40": {
+    "arm": "base",
+    "seed": 40,
+    "failed": false,
+    "failed_because": [],
+    "raw": {
+     "r2c": -2.0050759587916454,
+     "rho": 0.2409754200185592,
+     "m0": 10.156879425048828,
+     "s4_steer": 7.241737365722656,
+     "s4_pedal": 5.774498462677002,
+     "ev": 0.9453681707382202
+    },
+    "completion_by_circuit": {
+     "BrandsHatch": 1.0,
+     "Hockenheim": 0.0,
+     "MoscowRaceway": 0.0,
+     "Norisring": 0.0,
+     "Nuerburgring": 1.0,
+     "Oschersleben": 1.0,
+     "Sepang": 1.0,
+     "Sochi": 0.0,
+     "YasMarina": 0.0,
+     "Melbourne": 0.0,
+     "Catalunya": 0.0,
+     "Zandvoort": 1.0
+    }
+   },
+   "vg1-base-s41": {
+    "arm": "base",
+    "seed": 41,
+    "failed": false,
+    "failed_because": [],
+    "raw": {
+     "r2c": -0.8301407416045306,
+     "rho": 0.1711337794316096,
+     "m0": 12.764627456665039,
+     "s4_steer": 9.041830062866211,
+     "s4_pedal": 3.9081292152404785,
+     "ev": 0.935256838798523
+    },
+    "completion_by_circuit": {
+     "BrandsHatch": 0.0,
+     "Hockenheim": 0.0,
+     "MoscowRaceway": 1.0,
+     "Norisring": 0.0,
+     "Nuerburgring": 1.0,
+     "Oschersleben": 0.0,
+     "Sepang": 1.0,
+     "Sochi": 0.0,
+     "YasMarina": 0.0,
+     "Melbourne": 1.0,
+     "Catalunya": 1.0,
+     "Zandvoort": 0.0
+    }
+   },
+   "vg1-vgl-s38": {
+    "arm": "vgl",
+    "seed": 38,
+    "failed": false,
+    "failed_because": [],
+    "raw": {
+     "r2c": -0.44075828330270084,
+     "rho": 0.37257075886701685,
+     "m0": 0.8837922811508179,
+     "s4_steer": 0.8869022727012634,
+     "s4_pedal": 1.0272700786590576,
+     "ev": 0.9174711108207703
+    },
+    "completion_by_circuit": {
+     "BrandsHatch": 1.0,
+     "Hockenheim": 0.7,
+     "MoscowRaceway": 0.0,
+     "Norisring": 0.0,
+     "Nuerburgring": 1.0,
+     "Oschersleben": 0.0,
+     "Sepang": 1.0,
+     "Sochi": 0.0,
+     "YasMarina": 0.0,
+     "Melbourne": 1.0,
+     "Catalunya": 0.0,
+     "Zandvoort": 1.0
+    }
+   },
+   "vg1-vgl-s39": {
+    "arm": "vgl",
+    "seed": 39,
+    "failed": false,
+    "failed_because": [],
+    "raw": {
+     "r2c": -0.10520037501840684,
+     "rho": 0.32754119635604273,
+     "m0": 0.8888652324676514,
+     "s4_steer": 0.9085516333580017,
+     "s4_pedal": 0.9559910893440247,
+     "ev": 0.927457869052887
+    },
+    "completion_by_circuit": {
+     "BrandsHatch": 1.0,
+     "Hockenheim": 0.0,
+     "MoscowRaceway": 0.0,
+     "Norisring": 0.0,
+     "Nuerburgring": 1.0,
+     "Oschersleben": 0.0,
+     "Sepang": 1.0,
+     "Sochi": 0.0,
+     "YasMarina": 0.0,
+     "Melbourne": 0.0,
+     "Catalunya": 0.0,
+     "Zandvoort": 1.0
+    }
+   },
+   "vg1-vgl-s40": {
+    "arm": "vgl",
+    "seed": 40,
+    "failed": false,
+    "failed_because": [],
+    "raw": {
+     "r2c": -0.10143848356888518,
+     "rho": 0.06652250893698111,
+     "m0": 1.000403881072998,
+     "s4_steer": 1.0001558065414429,
+     "s4_pedal": 1.00003981590271,
+     "ev": 0.9315924644470215
+    },
+    "completion_by_circuit": {
+     "BrandsHatch": 0.0,
+     "Hockenheim": 0.0,
+     "MoscowRaceway": 0.0,
+     "Norisring": 0.0,
+     "Nuerburgring": 0.6,
+     "Oschersleben": 0.0,
+     "Sepang": 1.0,
+     "Sochi": 0.0,
+     "YasMarina": 0.0,
+     "Melbourne": 0.0,
+     "Catalunya": 0.0,
+     "Zandvoort": 1.0
+    }
+   },
+   "vg1-vgl-s41": {
+    "arm": "vgl",
+    "seed": 41,
+    "failed": false,
+    "failed_because": [],
+    "raw": {
+     "r2c": -0.4448749215179334,
+     "rho": 0.30709384834656445,
+     "m0": 0.9111073017120361,
+     "s4_steer": 0.9380726218223572,
+     "s4_pedal": 0.9185693860054016,
+     "ev": 0.9266390204429626
+    },
+    "completion_by_circuit": {
+     "BrandsHatch": 0.0,
+     "Hockenheim": 0.0,
+     "MoscowRaceway": 0.0,
+     "Norisring": 0.0,
+     "Nuerburgring": 1.0,
+     "Oschersleben": 0.0,
+     "Sepang": 1.0,
+     "Sochi": 0.0,
+     "YasMarina": 0.0,
+     "Melbourne": 0.0,
+     "Catalunya": 1.0,
+     "Zandvoort": 1.0
+    }
+   },
+   "vg1-base-s42": {
+    "arm": "base",
+    "seed": 42,
+    "failed": false,
+    "failed_because": [],
+    "raw": {
+     "r2c": -0.3148609877910079,
+     "rho": 0.12527589623324403,
+     "m0": 14.77093505859375,
+     "s4_steer": 9.04092025756836,
+     "s4_pedal": 5.1276679039001465,
+     "ev": 0.9338997602462769
+    },
+    "completion_by_circuit": {
+     "BrandsHatch": 1.0,
+     "Hockenheim": 0.0,
+     "MoscowRaceway": 1.0,
+     "Norisring": 0.0,
+     "Nuerburgring": 1.0,
+     "Oschersleben": 0.0,
+     "Sepang": 1.0,
+     "Sochi": 0.0,
+     "YasMarina": 0.0,
+     "Melbourne": 0.0,
+     "Catalunya": 1.0,
+     "Zandvoort": 1.0
+    }
+   },
+   "vg1-base-s43": {
+    "arm": "base",
+    "seed": 43,
+    "failed": false,
+    "failed_because": [],
+    "raw": {
+     "r2c": -0.5155965852577121,
+     "rho": 0.10737701447934717,
+     "m0": 10.452439308166504,
+     "s4_steer": 7.159646034240723,
+     "s4_pedal": 5.370296478271484,
+     "ev": 0.9442543387413025
+    },
+    "completion_by_circuit": {
+     "BrandsHatch": 0.0,
+     "Hockenheim": 0.0,
+     "MoscowRaceway": 0.0,
+     "Norisring": 0.0,
+     "Nuerburgring": 1.0,
+     "Oschersleben": 1.0,
+     "Sepang": 1.0,
+     "Sochi": 0.0,
+     "YasMarina": 0.0,
+     "Melbourne": 0.0,
+     "Catalunya": 1.0,
+     "Zandvoort": 0.0
+    }
+   },
+   "vg1-base-s44": {
+    "arm": "base",
+    "seed": 44,
+    "failed": false,
+    "failed_because": [],
+    "raw": {
+     "r2c": -1.0786911194397188,
+     "rho": 0.1560987108393476,
+     "m0": 8.526144027709961,
+     "s4_steer": 2.9754910469055176,
+     "s4_pedal": 5.265360355377197,
+     "ev": 0.944847583770752
+    },
+    "completion_by_circuit": {
+     "BrandsHatch": 1.0,
+     "Hockenheim": 1.0,
+     "MoscowRaceway": 1.0,
+     "Norisring": 0.0,
+     "Nuerburgring": 1.0,
+     "Oschersleben": 0.0,
+     "Sepang": 0.0,
+     "Sochi": 0.0,
+     "YasMarina": 0.0,
+     "Melbourne": 0.0,
+     "Catalunya": 1.0,
+     "Zandvoort": 0.0
+    }
+   },
+   "vg1-base-s45": {
+    "arm": "base",
+    "seed": 45,
+    "failed": false,
+    "failed_because": [],
+    "raw": {
+     "r2c": -0.8557735970585814,
+     "rho": 0.1515009762534076,
+     "m0": 9.402233123779297,
+     "s4_steer": 4.930573463439941,
+     "s4_pedal": 3.313765525817871,
+     "ev": 0.9493004679679871
+    },
+    "completion_by_circuit": {
+     "BrandsHatch": 1.0,
+     "Hockenheim": 0.0,
+     "MoscowRaceway": 0.0,
+     "Norisring": 0.0,
+     "Nuerburgring": 1.0,
+     "Oschersleben": 0.0,
+     "Sepang": 1.0,
+     "Sochi": 0.0,
+     "YasMarina": 0.0,
+     "Melbourne": 0.0,
+     "Catalunya": 1.0,
+     "Zandvoort": 1.0
+    }
+   },
+   "vg1-vgl-s42": {
+    "arm": "vgl",
+    "seed": 42,
+    "failed": false,
+    "failed_because": [],
+    "raw": {
+     "r2c": -0.09334690081951846,
+     "rho": 0.33167060363874057,
+     "m0": 0.7013893127441406,
+     "s4_steer": 0.7272347807884216,
+     "s4_pedal": 0.650029182434082,
+     "ev": 0.914280354976654
+    },
+    "completion_by_circuit": {
+     "BrandsHatch": 1.0,
+     "Hockenheim": 0.0,
+     "MoscowRaceway": 0.0,
+     "Norisring": 0.0,
+     "Nuerburgring": 1.0,
+     "Oschersleben": 0.0,
+     "Sepang": 1.0,
+     "Sochi": 0.0,
+     "YasMarina": 0.0,
+     "Melbourne": 0.0,
+     "Catalunya": 0.0,
+     "Zandvoort": 1.0
+    }
+   },
+   "vg1-vgl-s43": {
+    "arm": "vgl",
+    "seed": 43,
+    "failed": false,
+    "failed_because": [],
+    "raw": {
+     "r2c": -0.3598149231165748,
+     "rho": 0.3312899298114893,
+     "m0": 0.7642838954925537,
+     "s4_steer": 0.8280779123306274,
+     "s4_pedal": 0.696611762046814,
+     "ev": 0.9024727940559387
+    },
+    "completion_by_circuit": {
+     "BrandsHatch": 1.0,
+     "Hockenheim": 0.0,
+     "MoscowRaceway": 0.0,
+     "Norisring": 0.0,
+     "Nuerburgring": 1.0,
+     "Oschersleben": 0.0,
+     "Sepang": 1.0,
+     "Sochi": 0.0,
+     "YasMarina": 0.0,
+     "Melbourne": 0.0,
+     "Catalunya": 1.0,
+     "Zandvoort": 1.0
+    }
+   },
+   "vg1-vgl-s44": {
+    "arm": "vgl",
+    "seed": 44,
+    "failed": false,
+    "failed_because": [],
+    "raw": {
+     "r2c": -0.2808508704462748,
+     "rho": 0.3198920595541068,
+     "m0": 0.9055516123771667,
+     "s4_steer": 0.915669858455658,
+     "s4_pedal": 0.938927412033081,
+     "ev": 0.9074726104736328
+    },
+    "completion_by_circuit": {
+     "BrandsHatch": 0.0,
+     "Hockenheim": 0.0,
+     "MoscowRaceway": 0.0,
+     "Norisring": 0.0,
+     "Nuerburgring": 1.0,
+     "Oschersleben": 0.0,
+     "Sepang": 1.0,
+     "Sochi": 0.0,
+     "YasMarina": 0.0,
+     "Melbourne": 0.0,
+     "Catalunya": 0.0,
+     "Zandvoort": 1.0
+    }
+   },
+   "vg1-vgl-s45": {
+    "arm": "vgl",
+    "seed": 45,
+    "failed": false,
+    "failed_because": [],
+    "raw": {
+     "r2c": -0.13513235551978175,
+     "rho": 0.24408964241114767,
+     "m0": 0.9023830890655518,
+     "s4_steer": 0.8838857412338257,
+     "s4_pedal": 0.9092018604278564,
+     "ev": 0.92860347032547
+    },
+    "completion_by_circuit": {
+     "BrandsHatch": 0.0,
+     "Hockenheim": 0.0,
+     "MoscowRaceway": 0.0,
+     "Norisring": 0.0,
+     "Nuerburgring": 1.0,
+     "Oschersleben": 0.0,
+     "Sepang": 0.0,
+     "Sochi": 0.0,
+     "YasMarina": 0.0,
+     "Melbourne": 0.0,
+     "Catalunya": 1.0,
+     "Zandvoort": 1.0
+    }
+   },
+   "vg1-base-s46": {
+    "arm": "base",
+    "seed": 46,
+    "failed": false,
+    "failed_because": [],
+    "raw": {
+     "r2c": -1.367188590647874,
+     "rho": 0.2039402601907711,
+     "m0": 11.588171005249023,
+     "s4_steer": 5.823563098907471,
+     "s4_pedal": 5.57124137878418,
+     "ev": 0.9367231726646423
+    },
+    "completion_by_circuit": {
+     "BrandsHatch": 1.0,
+     "Hockenheim": 0.0,
+     "MoscowRaceway": 1.0,
+     "Norisring": 0.0,
+     "Nuerburgring": 1.0,
+     "Oschersleben": 0.0,
+     "Sepang": 1.0,
+     "Sochi": 0.0,
+     "YasMarina": 0.0,
+     "Melbourne": 0.0,
+     "Catalunya": 0.0,
+     "Zandvoort": 0.0
+    }
+   },
+   "vg1-base-s47": {
+    "arm": "base",
+    "seed": 47,
+    "failed": false,
+    "failed_because": [],
+    "raw": {
+     "r2c": -0.2728160135315981,
+     "rho": 0.0786729543376871,
+     "m0": 17.864219665527344,
+     "s4_steer": 3.9638922214508057,
+     "s4_pedal": 4.325683116912842,
+     "ev": 0.9501230716705322
+    },
+    "completion_by_circuit": {
+     "BrandsHatch": 0.0,
+     "Hockenheim": 0.7,
+     "MoscowRaceway": 0.1,
+     "Norisring": 0.0,
+     "Nuerburgring": 1.0,
+     "Oschersleben": 1.0,
+     "Sepang": 1.0,
+     "Sochi": 0.0,
+     "YasMarina": 1.0,
+     "Melbourne": 1.0,
+     "Catalunya": 1.0,
+     "Zandvoort": 0.0
+    }
+   },
+   "vg1-base-s48": {
+    "arm": "base",
+    "seed": 48,
+    "failed": false,
+    "failed_because": [],
+    "raw": {
+     "r2c": -0.8205038155107166,
+     "rho": 0.13816026139350743,
+     "m0": 1.0003588199615479,
+     "s4_steer": 1.0000208616256714,
+     "s4_pedal": 1.0002648830413818,
+     "ev": 0.9383752346038818
+    },
+    "completion_by_circuit": {
+     "BrandsHatch": 0.0,
+     "Hockenheim": 0.0,
+     "MoscowRaceway": 0.0,
+     "Norisring": 0.0,
+     "Nuerburgring": 1.0,
+     "Oschersleben": 0.0,
+     "Sepang": 1.0,
+     "Sochi": 0.0,
+     "YasMarina": 0.0,
+     "Melbourne": 0.0,
+     "Catalunya": 1.0,
+     "Zandvoort": 0.2
+    }
+   },
+   "vg1-base-s49": {
+    "arm": "base",
+    "seed": 49,
+    "failed": false,
+    "failed_because": [],
+    "raw": {
+     "r2c": -0.7046393006006831,
+     "rho": 0.060792788945011514,
+     "m0": 14.204931259155273,
+     "s4_steer": 10.00288200378418,
+     "s4_pedal": 5.345325469970703,
+     "ev": 0.9402227997779846
+    },
+    "completion_by_circuit": {
+     "BrandsHatch": 0.0,
+     "Hockenheim": 0.0,
+     "MoscowRaceway": 0.0,
+     "Norisring": 0.0,
+     "Nuerburgring": 1.0,
+     "Oschersleben": 1.0,
+     "Sepang": 1.0,
+     "Sochi": 0.0,
+     "YasMarina": 0.0,
+     "Melbourne": 0.0,
+     "Catalunya": 0.0,
+     "Zandvoort": 0.0
+    }
+   },
+   "vg1-vgl-s46": {
+    "arm": "vgl",
+    "seed": 46,
+    "failed": false,
+    "failed_because": [],
+    "raw": {
+     "r2c": -0.2996758888074077,
+     "rho": 0.3602094746476481,
+     "m0": 0.8557345867156982,
+     "s4_steer": 0.8996424078941345,
+     "s4_pedal": 0.9095551371574402,
+     "ev": 0.9082565307617188
+    },
+    "completion_by_circuit": {
+     "BrandsHatch": 1.0,
+     "Hockenheim": 1.0,
+     "MoscowRaceway": 0.0,
+     "Norisring": 0.0,
+     "Nuerburgring": 1.0,
+     "Oschersleben": 0.0,
+     "Sepang": 0.4,
+     "Sochi": 0.0,
+     "YasMarina": 0.0,
+     "Melbourne": 0.0,
+     "Catalunya": 1.0,
+     "Zandvoort": 1.0
+    }
+   },
+   "vg1-vgl-s47": {
+    "arm": "vgl",
+    "seed": 47,
+    "failed": false,
+    "failed_because": [],
+    "raw": {
+     "r2c": -0.9002403350218104,
+     "rho": 0.28422821815569277,
+     "m0": 0.8286714553833008,
+     "s4_steer": 0.8236270546913147,
+     "s4_pedal": 0.8717446327209473,
+     "ev": 0.9137287735939026
+    },
+    "completion_by_circuit": {
+     "BrandsHatch": 0.0,
+     "Hockenheim": 0.0,
+     "MoscowRaceway": 1.0,
+     "Norisring": 0.0,
+     "Nuerburgring": 1.0,
+     "Oschersleben": 0.0,
+     "Sepang": 1.0,
+     "Sochi": 0.0,
+     "YasMarina": 0.0,
+     "Melbourne": 0.0,
+     "Catalunya": 0.0,
+     "Zandvoort": 0.0
+    }
+   },
+   "vg1-vgl-s48": {
+    "arm": "vgl",
+    "seed": 48,
+    "failed": false,
+    "failed_because": [],
+    "raw": {
+     "r2c": -1.017667014113068,
+     "rho": 0.2763073082239361,
+     "m0": 0.9402567148208618,
+     "s4_steer": 0.9253986477851868,
+     "s4_pedal": 1.0046699047088623,
+     "ev": 0.9344394207000732
+    },
+    "completion_by_circuit": {
+     "BrandsHatch": 1.0,
+     "Hockenheim": 0.0,
+     "MoscowRaceway": 0.0,
+     "Norisring": 0.0,
+     "Nuerburgring": 1.0,
+     "Oschersleben": 0.0,
+     "Sepang": 1.0,
+     "Sochi": 0.0,
+     "YasMarina": 0.0,
+     "Melbourne": 0.0,
+     "Catalunya": 1.0,
+     "Zandvoort": 1.0
+    }
+   },
+   "vg1-vgl-s49": {
+    "arm": "vgl",
+    "seed": 49,
+    "failed": false,
+    "failed_because": [],
+    "raw": {
+     "r2c": -0.027171981602462703,
+     "rho": 0.12367298824145787,
+     "m0": 0.6295212507247925,
+     "s4_steer": 0.7868180871009827,
+     "s4_pedal": 0.5975853204727173,
+     "ev": 0.9188970327377319
+    },
+    "completion_by_circuit": {
+     "BrandsHatch": 1.0,
+     "Hockenheim": 0.9,
+     "MoscowRaceway": 0.0,
+     "Norisring": 0.0,
+     "Nuerburgring": 1.0,
+     "Oschersleben": 0.0,
+     "Sepang": 1.0,
+     "Sochi": 0.0,
+     "YasMarina": 0.0,
+     "Melbourne": 0.0,
+     "Catalunya": 1.0,
+     "Zandvoort": 0.0
+    }
+   }
+  },
+  "per_arm": {
+   "base": {
+    "n": 20,
+    "failed": 0,
+    "median": {
+     "r2c": -0.6826823096746735,
+     "rho": 0.13171807881337572,
+     "m0": 13.113503456115723,
+     "s4_steer": 6.847224473953247,
+     "s4_pedal": 5.196514129638672,
+     "ev": 0.9389921426773071
+    },
+    "median_completion": 4.0,
+    "r2c_component": {
+     "s": -0.023221852264737608,
+     "xi": -1.3284210725988181
+    },
+    "spearman_component": {
+     "s": 0.13538496197477443,
+     "xi": 0.11372292643835592
+    },
+    "m0_component": {
+     "s": 5.4122796058654785,
+     "n": 6.65185546875,
+     "xi": 3.3359949588775635,
+     "vx": 6.161239385604858,
+     "vy": 6.272369623184204,
+     "r": 6.043471574783325,
+     "delta": 20.769779205322266,
+     "pedal": 18.81974983215332,
+     "prev_steer": 143.30648803710938,
+     "prev_pedal": 267.8788299560547,
+     "ax": 245.3654022216797,
+     "ay": 1028.5575256347656
+    },
+    "action_projection_share_target": {
+     "steer": {
+      "s": 0.00030391789914574474,
+      "n": 0.006725996267050505,
+      "xi": 0.19251777976751328,
+      "vx": 0.038001418113708496,
+      "vy": 0.03676920384168625,
+      "r": 0.19274604320526123,
+      "delta": 0.36762307584285736,
+      "pedal": 0.0,
+      "prev_steer": 0.0551605150103569,
+      "prev_pedal": 0.0,
+      "ax": 0.0035801775520667434,
+      "ay": 0.09795572608709335
+     },
+     "pedal": {
+      "s": 0.0029113495256751776,
+      "n": 0.0012822836870327592,
+      "xi": 0.058253731578588486,
+      "vx": 0.23902902007102966,
+      "vy": 0.10179966315627098,
+      "r": 0.07070814073085785,
+      "delta": 0.0,
+      "pedal": 0.347735270857811,
+      "prev_steer": 0.0,
+      "prev_pedal": 0.12019289284944534,
+      "ax": 0.047157227993011475,
+      "ay": 0.004960424732416868
+     }
+    },
+    "completion_share": {
+     "BrandsHatch": 0.65,
+     "Hockenheim": 0.1,
+     "MoscowRaceway": 0.45,
+     "Norisring": 0.0,
+     "Nuerburgring": 1.0,
+     "Oschersleben": 0.35,
+     "Sepang": 0.9,
+     "Sochi": 0.0,
+     "YasMarina": 0.05,
+     "Melbourne": 0.1,
+     "Catalunya": 0.6,
+     "Zandvoort": 0.25
+    },
+    "gpu_minutes_per_update": 0.004306921675774135
+   },
+   "vgl": {
+    "n": 20,
+    "failed": 0,
+    "median": {
+     "r2c": -0.29425670006413585,
+     "rho": 0.3134929539503356,
+     "m0": 0.8831563591957092,
+     "s4_steer": 0.8823607861995697,
+     "s4_pedal": 0.9093784987926483,
+     "ev": 0.9206852316856384
+    },
+    "median_completion": 4.0,
+    "r2c_component": {
+     "s": -0.001337457793379071,
+     "xi": -0.6068480936709579
+    },
+    "spearman_component": {
+     "s": 0.21844991269927655,
+     "xi": 0.38976546402057416
+    },
+    "m0_component": {
+     "s": 0.5196564197540283,
+     "n": 0.41674910485744476,
+     "xi": 0.2664353549480438,
+     "vx": 1.1051658987998962,
+     "vy": 0.21250982582569122,
+     "r": 0.5142678320407867,
+     "delta": 0.8825057744979858,
+     "pedal": 0.8768760561943054,
+     "prev_steer": 0.9196507632732391,
+     "prev_pedal": 0.8915723562240601,
+     "ax": 0.9348699152469635,
+     "ay": 0.8877210915088654
+    },
+    "action_projection_share_target": {
+     "steer": {
+      "s": 0.00031335337553173304,
+      "n": 0.004663627361878753,
+      "xi": 0.15791410207748413,
+      "vx": 0.04273237846791744,
+      "vy": 0.034102946519851685,
+      "r": 0.1917162984609604,
+      "delta": 0.4026162028312683,
+      "pedal": 0.0,
+      "prev_steer": 0.07564899697899818,
+      "prev_pedal": 0.0,
+      "ax": 0.003768776310607791,
+      "ay": 0.08381164446473122
+     },
+     "pedal": {
+      "s": 0.0029071707976981997,
+      "n": 0.0011633405229076743,
+      "xi": 0.06022706814110279,
+      "vx": 0.21088072657585144,
+      "vy": 0.10326475650072098,
+      "r": 0.059072135016322136,
+      "delta": 0.0,
+      "pedal": 0.34592384099960327,
+      "prev_steer": 0.0,
+      "prev_pedal": 0.15395966917276382,
+      "ax": 0.05484025552868843,
+      "ay": 0.005051722750067711
+     }
+    },
+    "completion_share": {
+     "BrandsHatch": 0.5,
+     "Hockenheim": 0.3,
+     "MoscowRaceway": 0.05,
+     "Norisring": 0.0,
+     "Nuerburgring": 0.95,
+     "Oschersleben": 0.0,
+     "Sepang": 0.9,
+     "Sochi": 0.0,
+     "YasMarina": 0.0,
+     "Melbourne": 0.05,
+     "Catalunya": 0.4,
+     "Zandvoort": 0.8
+    },
+    "gpu_minutes_per_update": 0.008744262295081967
+   }
+  },
+  "gap_on_circuits_both_arms_complete": {
+   "BrandsHatch": {
+    "base": 0.07715121190094076,
+    "vgl": 0.08716369884911734
+   },
+   "Hockenheim": {
+    "base": 0.08264147311553027,
+    "vgl": 0.17817812267376654
+   },
+   "MoscowRaceway": {
+    "base": 0.08052834959579425,
+    "vgl": 0.17097167846042272
+   },
+   "Nuerburgring": {
+    "base": 0.06885730574976168,
+    "vgl": 0.1053893479483079
+   },
+   "Sepang": {
+    "base": 0.0667497722070276,
+    "vgl": 0.12125213390950673
+   },
+   "Melbourne": {
+    "base": 0.1028508562998035,
+    "vgl": 0.25703799455848775
+   },
+   "Catalunya": {
+    "base": 0.0627432877264329,
+    "vgl": 0.10661834596737052
+   },
+   "Zandvoort": {
+    "base": 0.0737492568973721,
+    "vgl": 0.1168665510651371
+   }
+  }
+ },
+ "pilot": {
+  "pilot": {
+   "runs": {
+    "vg1p-b0.1-s15": {
+     "name": "vg1p-b0.1-s15",
+     "beta": "0.1",
+     "seed": 15,
+     "status": "done",
+     "finished": true,
+     "gpu_minutes": 12.394444444444444,
+     "m1": -0.35051420107809694,
+     "m0": 0.666245698928833,
+     "ev": 0.879873514175415,
+     "k3_pass": true,
+     "params_finite": true,
+     "s4": {
+      "steer": 0.8954089283943176,
+      "pedal": 0.7410842776298523
+     },
+     "metrics_finite": true,
+     "nonfinite_metrics": []
+    },
+    "vg1p-b0.3-s15": {
+     "name": "vg1p-b0.3-s15",
+     "beta": "0.3",
+     "seed": 15,
+     "status": "done",
+     "finished": true,
+     "gpu_minutes": 12.75,
+     "m1": -0.1543608295279637,
+     "m0": 0.5340509414672852,
+     "ev": 0.8364014029502869,
+     "k3_pass": true,
+     "params_finite": true,
+     "s4": {
+      "steer": 0.8584470152854919,
+      "pedal": 0.3961905539035797
+     },
+     "metrics_finite": true,
+     "nonfinite_metrics": []
+    },
+    "vg1p-b1.0-s15": {
+     "name": "vg1p-b1.0-s15",
+     "beta": "1.0",
+     "seed": 15,
+     "status": "done",
+     "finished": true,
+     "gpu_minutes": 12.744444444444444,
+     "m1": -0.19128343104780254,
+     "m0": 0.7526578307151794,
+     "ev": 0.7496733069419861,
+     "k3_pass": true,
+     "params_finite": true,
+     "s4": {
+      "steer": 0.9740064144134521,
+      "pedal": 0.5363659262657166
+     },
+     "metrics_finite": true,
+     "nonfinite_metrics": []
+    },
+    "vg1p-b0.1-s16": {
+     "name": "vg1p-b0.1-s16",
+     "beta": "0.1",
+     "seed": 16,
+     "status": "done",
+     "finished": true,
+     "gpu_minutes": 11.455555555555556,
+     "m1": -0.19978436640268427,
+     "m0": 0.7270092964172363,
+     "ev": 0.9057653546333313,
+     "k3_pass": true,
+     "params_finite": true,
+     "s4": {
+      "steer": 0.8760046362876892,
+      "pedal": 0.6443898677825928
+     },
+     "metrics_finite": true,
+     "nonfinite_metrics": []
+    },
+    "vg1p-b0.3-s16": {
+     "name": "vg1p-b0.3-s16",
+     "beta": "0.3",
+     "seed": 16,
+     "status": "done",
+     "finished": true,
+     "gpu_minutes": 12.791666666666666,
+     "m1": -0.6983223667024123,
+     "m0": 0.7737312316894531,
+     "ev": 0.8600257635116577,
+     "k3_pass": true,
+     "params_finite": true,
+     "s4": {
+      "steer": 0.9807443022727966,
+      "pedal": 0.5210344195365906
+     },
+     "metrics_finite": true,
+     "nonfinite_metrics": []
+    },
+    "vg1p-b1.0-s16": {
+     "name": "vg1p-b1.0-s16",
+     "beta": "1.0",
+     "seed": 16,
+     "status": "done",
+     "finished": true,
+     "gpu_minutes": 12.697222222222223,
+     "m1": -0.188989257150462,
+     "m0": 0.9948283433914185,
+     "ev": 0.7705988883972168,
+     "k3_pass": true,
+     "params_finite": true,
+     "s4": {
+      "steer": 1.0000708103179932,
+      "pedal": 0.8399064540863037
+     },
+     "metrics_finite": true,
+     "nonfinite_metrics": []
+    }
+   },
+   "beta_star": null,
+   "median_m1": {
+    "0.1": -0.2751492837403906,
+    "0.3": -0.426341598115188,
+    "1.0": -0.19013634409913227
+   },
+   "eligible": {
+    "0.1": false,
+    "0.3": false,
+    "1.0": false
+   }
+  },
+  "pilot2": {
+   "runs": {
+    "vg1p2-b0.01-s15": {
+     "name": "vg1p2-b0.01-s15",
+     "beta": "0.01",
+     "seed": 15,
+     "status": "done",
+     "finished": true,
+     "gpu_minutes": 12.815277777777778,
+     "m1": -0.4171093809645145,
+     "m0": 0.9211947917938232,
+     "ev": 0.9429331421852112,
+     "k3_pass": true,
+     "params_finite": true,
+     "s4": {
+      "steer": 0.9450191855430603,
+      "pedal": 1.1170629262924194
+     },
+     "metrics_finite": true,
+     "nonfinite_metrics": []
+    },
+    "vg1p2-b0.03-s15": {
+     "name": "vg1p2-b0.03-s15",
+     "beta": "0.03",
+     "seed": 15,
+     "status": "done",
+     "finished": true,
+     "gpu_minutes": 12.790277777777778,
+     "m1": -0.1651299552219716,
+     "m0": 0.6979241967201233,
+     "ev": 0.9249142408370972,
+     "k3_pass": true,
+     "params_finite": true,
+     "s4": {
+      "steer": 0.7685060501098633,
+      "pedal": 0.7334251403808594
+     },
+     "metrics_finite": true,
+     "nonfinite_metrics": []
+    },
+    "vg1p2-b0.01-s16": {
+     "name": "vg1p2-b0.01-s16",
+     "beta": "0.01",
+     "seed": 16,
+     "status": "done",
+     "finished": true,
+     "gpu_minutes": 12.815277777777778,
+     "m1": -0.43265923072842627,
+     "m0": 0.8504902720451355,
+     "ev": 0.9375806450843811,
+     "k3_pass": true,
+     "params_finite": true,
+     "s4": {
+      "steer": 0.8811151385307312,
+      "pedal": 0.9045162796974182
+     },
+     "metrics_finite": true,
+     "nonfinite_metrics": []
+    },
+    "vg1p2-b0.03-s16": {
+     "name": "vg1p2-b0.03-s16",
+     "beta": "0.03",
+     "seed": 16,
+     "status": "done",
+     "finished": true,
+     "gpu_minutes": 12.1625,
+     "m1": -0.28469180142171374,
+     "m0": 0.8984566330909729,
+     "ev": 0.9162261486053467,
+     "k3_pass": true,
+     "params_finite": true,
+     "s4": {
+      "steer": 0.9253718852996826,
+      "pedal": 0.9714162349700928
+     },
+     "metrics_finite": true,
+     "nonfinite_metrics": []
+    }
+   },
+   "beta_star": 0.03,
+   "median_m1": {
+    "0.01": -0.4248843058464704,
+    "0.03": -0.22491087832184267
+   },
+   "eligible": {
+    "0.01": true,
+    "0.03": true
+   }
+  }
+ },
+ "round_check": {
+  "returncode": 0,
+  "tolerated": [],
+  "report_sha256": "51d626c17301fc17718ead190606d569850eb38a3580a43c5a2e76c4d4739f8d"
+ },
+ "provenance": {
+  "script": "scripts/vg1_analysis.py",
+  "script_sha256": "1d88120a058492b9dabe921827272765d161d68530856185b459c284210da159",
+  "head": "3044270e5a252c2dd876e917b596539c4025361e",
+  "changed": [],
+  "inputs": {
+   "outputs/vg1/c1/main.json": "ac7072e898b5e0a2f85be6c4b14025f166e2c740ff07242f587afa81530d97cd",
+   "outputs/vg1/m0/vg1-base-s30.check.json": "53fce30756ab38734435e3a43b7bdf9ed1419383a53377180b3dab1602ce104c",
+   "outputs/vg1/m0/vg1-base-s30.json": "3db6a9615d065b8efeda752cb2532568aadac2a29c4f54d48bb37182b4580d92",
+   "outputs/vg1/m0/vg1-base-s31.check.json": "144de9fe59d18565d6cf60db838398b489421a7971d0410a9f487ce35aa90e13",
+   "outputs/vg1/m0/vg1-base-s31.json": "59cf92ca077239846383ff4c7ea094d63204df8fda0c181aafc7fc161f3051e1",
+   "outputs/vg1/m0/vg1-base-s32.check.json": "b7e773394eb01fdb5ddcb6f66ff2688cff404cb75c936bb8f94185821292a956",
+   "outputs/vg1/m0/vg1-base-s32.json": "289dbf6ac3a10ebe4a3f6bbd883bbc417f0f008c4e23ca3019b78ca0a96cc581",
+   "outputs/vg1/m0/vg1-base-s33.check.json": "dd0564ec55d0c7d3a1b4889fd9eb3913c7eaed7c8e789f01ae7af99ebda2d2ab",
+   "outputs/vg1/m0/vg1-base-s33.json": "fef1043ceb5cf2820202dabbefc022f1fa8bbb5ef60970d4fb08b3c6e60b08c5",
+   "outputs/vg1/m0/vg1-base-s34.check.json": "704641ba1d00b35e2e6f2ea016ed5c7fd24c3246dcd1ab4ba9b8e68f00b7684d",
+   "outputs/vg1/m0/vg1-base-s34.json": "f4e4d6da3efcb4cd058ecf706458c32f71fbefbfadc13c49321bb5e96a002bf1",
+   "outputs/vg1/m0/vg1-base-s35.check.json": "8623151b0a8107c1d0dc6e91c947a75b8be78e7e89eb58c866b085e85a21a46e",
+   "outputs/vg1/m0/vg1-base-s35.json": "855589f0aa4a48d28c3a9f82cea744d7cf872169a6838beca800ffa82e794503",
+   "outputs/vg1/m0/vg1-base-s36.check.json": "71116e155dfdfcd059e3dc95095fa9701cab01942cc1fbab22f8df70c7467871",
+   "outputs/vg1/m0/vg1-base-s36.json": "cc2ad677fcbb8d80882e3579eb42d1bde518eb09ff6091ad5e53be460936fd46",
+   "outputs/vg1/m0/vg1-base-s37.check.json": "2e21caaccb5ff6c3ea47acb087e6354fc9d6eef8d5a9b73994e98676e12b80c0",
+   "outputs/vg1/m0/vg1-base-s37.json": "573724fc48c636ca66449688161a4fdc482a618b873c60ce5c3ac74978786364",
+   "outputs/vg1/m0/vg1-base-s38.check.json": "352e5d0080778a1c4b28267546d04fb4881d9948aa3b224fc6bb6c2c1399dcc5",
+   "outputs/vg1/m0/vg1-base-s38.json": "5c12af2b3d28930c511a56048f48823f840225ba664c14cc5855233d020e59d5",
+   "outputs/vg1/m0/vg1-base-s39.check.json": "cf6fa76168a335d4490271204677853f6e5da92977780c7f8675737f4cba7e1d",
+   "outputs/vg1/m0/vg1-base-s39.json": "4ccb9355a288b8af149b0c545779f9f509f92ed6cd5f812665f4d514578bff97",
+   "outputs/vg1/m0/vg1-base-s40.check.json": "104035c2da797114ea75c1caa65795300bcf54b5a0649551f0f3c21d19997fa8",
+   "outputs/vg1/m0/vg1-base-s40.json": "4ce7b00c44cc9e623d1ae07edb616e9be42a4a224f8095e3108817da92092dff",
+   "outputs/vg1/m0/vg1-base-s41.check.json": "d4fc3a7bfa7f9ad7252c62c638e2afc675e8490727692b166b160ca49f32144c",
+   "outputs/vg1/m0/vg1-base-s41.json": "2729b2ca4fdb545efd102308bde3d322c51be2fdc86b3a596b59cb71a4ba8a88",
+   "outputs/vg1/m0/vg1-base-s42.check.json": "9d4221c6c5d55c68b0dbcfa8a97b88783ef2fd647d35e0412c43ccf1c697d7d4",
+   "outputs/vg1/m0/vg1-base-s42.json": "54b7996dcce4bc3aa0f9741ae4c7adef8a206106608fc0608941cf884dd0bdd8",
+   "outputs/vg1/m0/vg1-base-s43.check.json": "d0c8881fa759d8d4d5fefeee9eaa4209a6653d9ccc2799ef07456fccfffd7ec2",
+   "outputs/vg1/m0/vg1-base-s43.json": "8eb5231dc6fe41e1be5ef4a5d1f33c48a16b32d150ff0d16a73a3487e2536fa0",
+   "outputs/vg1/m0/vg1-base-s44.check.json": "eb2f33585b749546fc9968d96bbea7349749ed889034a1b3a572a2e2597345f4",
+   "outputs/vg1/m0/vg1-base-s44.json": "af349fc291388feaf6c91b08d957585620562e8ec745f4309595c35a47dcc5f7",
+   "outputs/vg1/m0/vg1-base-s45.check.json": "80b565f6b4ee78a7e9dc2b5385f7516b1a1f50e464f9c71237cdfe72c2bd66e2",
+   "outputs/vg1/m0/vg1-base-s45.json": "cabd4d4cd2a566c1ff2801936933ee059f4ae45b558017d97b0b883d3956247d",
+   "outputs/vg1/m0/vg1-base-s46.check.json": "b3b02c70b8321eed46dabae7c359ed739454c04da7bbc192a757ea3c83b52788",
+   "outputs/vg1/m0/vg1-base-s46.json": "4f6a481362665633bd07d3ad99215aa85fcbe24f671df30b31bfe67d2b515b52",
+   "outputs/vg1/m0/vg1-base-s47.check.json": "12b7fe9391eaa28b7f488f3c5994da09e951db60a7ca018690333e7fbda239e6",
+   "outputs/vg1/m0/vg1-base-s47.json": "9b5de6030b86f26f204134d1fe1b4bbe736657905ca0f383b63aa62320457113",
+   "outputs/vg1/m0/vg1-base-s48.check.json": "f06a477c8f0998b9dc5aa126ebe725d7c3a4dde0f87389f04becd83052868b30",
+   "outputs/vg1/m0/vg1-base-s48.json": "32065c5246f104491744fdbeb6dc6e37b69c5418ca66cb6b14de9bbd5c80f98c",
+   "outputs/vg1/m0/vg1-base-s49.check.json": "a05eb29c1a73e0951d662dc461d07d29b4490bb1d5baf4e1d82ca61d6be9d421",
+   "outputs/vg1/m0/vg1-base-s49.json": "03282e3d4fc36754abb686d16d8483e0280f4c07e50972d69e930b2656d78acc",
+   "outputs/vg1/m0/vg1-vgl-s30.check.json": "0e36272aa580ddf824bce9c41d29c6ffc6775c7ddd1f2fef4d1fa96666eed05d",
+   "outputs/vg1/m0/vg1-vgl-s30.json": "980b7737abc34090fcdf84419584f2f9f69bd91d68306fb5c94f341cecd1472d",
+   "outputs/vg1/m0/vg1-vgl-s31.check.json": "b41fbc55790b76932160264eda2cc9531ecf3eb26975678abad1d54a50f94496",
+   "outputs/vg1/m0/vg1-vgl-s31.json": "8bd47bf5caf8c77f236bd245d1f60eca928d1f9968c7ae749f420079e18857b4",
+   "outputs/vg1/m0/vg1-vgl-s32.check.json": "27061e6e05f8f5d7f5b066c1555173f0c983f7eb28f336def97f50fa28447dc2",
+   "outputs/vg1/m0/vg1-vgl-s32.json": "fae5ba6a9eaa7ad9b995edfefb49998b1c129e20cdfcb8af188d1e653e989e43",
+   "outputs/vg1/m0/vg1-vgl-s33.check.json": "b854c9ac337191b32461605051fb869050d0ded404a68a6c541723b4e434f616",
+   "outputs/vg1/m0/vg1-vgl-s33.json": "34530f021cc3998440e7c30cd88a14782467a6ef5be50fe3223292a5d3d524ed",
+   "outputs/vg1/m0/vg1-vgl-s34.check.json": "93c91f0eda9b922a60763116da9d914c3b6a4a9d11c63107ee041f90be172536",
+   "outputs/vg1/m0/vg1-vgl-s34.json": "0c8b547ffa5c4b12ed4e01b50f23c0531f65aa3e7054d413c5e53d9811f09da5",
+   "outputs/vg1/m0/vg1-vgl-s35.check.json": "6b69180deada1f398096022e87e537bbfb195fa2998013d94e26d0e53ba93879",
+   "outputs/vg1/m0/vg1-vgl-s35.json": "00e1df0c400c48a1f94102b801d81fdbcc19c106d0083b10d8b499679428cb2d",
+   "outputs/vg1/m0/vg1-vgl-s36.check.json": "fd8cfaaa219e4dd9e7be1a888d06d2d944229fcc81042694fe0da2ae1c9a8377",
+   "outputs/vg1/m0/vg1-vgl-s36.json": "34f4ce4de674cbd8014cf0798820f05a81317f2306a835d40c10efa3201092ee",
+   "outputs/vg1/m0/vg1-vgl-s37.check.json": "e9e2f99c09b62c74e5497f51d8f38ce38afc66f2aad429ef83f1d0e1105c43d9",
+   "outputs/vg1/m0/vg1-vgl-s37.json": "76fd2a0ae5ea49f06adc7c4b5c7286f10a95e5ca50a633db790e338b32e0add5",
+   "outputs/vg1/m0/vg1-vgl-s38.check.json": "ce1b51ae30f6f069d3db82b48d87561e9915591b02c6ec423b7dd85c4817b44b",
+   "outputs/vg1/m0/vg1-vgl-s38.json": "e53e8e7b6e92d85b704b96ba7109c87ab515c4acb7da573cd4f4c9edb1dce66b",
+   "outputs/vg1/m0/vg1-vgl-s39.check.json": "b4ccb5925f3e6a4eb6b70c5553bfcf456f5c7ab51fee6ce3bb64922c8c7ad122",
+   "outputs/vg1/m0/vg1-vgl-s39.json": "e124179db1162f941e22bf3923313a485dd97c36d9b1364b98df7f9f1a1ddeef",
+   "outputs/vg1/m0/vg1-vgl-s40.check.json": "9714aedfcd188108db58ff5796ebf0352a59fcd6d92379eb5210ace99ae52de6",
+   "outputs/vg1/m0/vg1-vgl-s40.json": "32e1fc9c9704a9d739bbbab7b8f52a8cc851d3c001c5c311e4310a97dc4c5fa9",
+   "outputs/vg1/m0/vg1-vgl-s41.check.json": "70cd5494c65143fb7d4d92ea6a81768dc95db339d9902b2bf041cc2b9260be6e",
+   "outputs/vg1/m0/vg1-vgl-s41.json": "843237d562a211f619f6260f4dda4323518d3ca157a89d176a59059d233b893c",
+   "outputs/vg1/m0/vg1-vgl-s42.check.json": "86e126ff602c3650f42222e98bcc39a18e7a909d522cc1d877f0c71ebaf0e1e2",
+   "outputs/vg1/m0/vg1-vgl-s42.json": "6daed24669bb35062f1290f5237bd53e8b4e28e6fe0c859245984f7b36589f50",
+   "outputs/vg1/m0/vg1-vgl-s43.check.json": "ef0e04c1d0e62c2830a39b63ad09dce59d43193da0f46e83e30502cf2e9af5e7",
+   "outputs/vg1/m0/vg1-vgl-s43.json": "b9b4b7241121bef674e90a8c8dc1fb9e2cb3132e6221823ccf3b1ece6e89e7f5",
+   "outputs/vg1/m0/vg1-vgl-s44.check.json": "6f8d222e6eded81ccbfc4b4fbb94ac96abba08e44ee21d2d379ffd2d59d8f671",
+   "outputs/vg1/m0/vg1-vgl-s44.json": "00e51ccd1b00c1dff6a03ebda42d212b3d22ea79d76ecdb78fb16cf362687f11",
+   "outputs/vg1/m0/vg1-vgl-s45.check.json": "c857b733605a7887a5f6c82e52e2af77b37c4fa282203f43e63e7fd476d39263",
+   "outputs/vg1/m0/vg1-vgl-s45.json": "c878d3cf25727b6502ce18e10ddfabdd3b8c36aea852ff57c81d70964fd7c5cf",
+   "outputs/vg1/m0/vg1-vgl-s46.check.json": "c72e407aa089fb0a103ca32005cfff5d7e8bb52f8dc540acf3f16d8664b301e0",
+   "outputs/vg1/m0/vg1-vgl-s46.json": "8f8e35b007ef8e2bf985bb7f143b39aefe3c9d5896b85b4160c3c690d52edd6d",
+   "outputs/vg1/m0/vg1-vgl-s47.check.json": "74ffa5bec4d12935ef165a70fa61999176f8dbd332243f8935d0e8257607d741",
+   "outputs/vg1/m0/vg1-vgl-s47.json": "b5b2a96f6275ca15403a97ab11bef653560103d7a4eb3bf489a5216caae2b176",
+   "outputs/vg1/m0/vg1-vgl-s48.check.json": "5a05414dbb4395a538a9b651a05d57ea880b06917517773ef038c3a9d13b99c7",
+   "outputs/vg1/m0/vg1-vgl-s48.json": "6b022fee16469d6d24647c11d4dbcabf20d61edcf1fbed66a30a41a7e56aee42",
+   "outputs/vg1/m0/vg1-vgl-s49.check.json": "2490208084dfc817b9a41710694548f69ae44252a1e06bcf8d9c3504513cef08",
+   "outputs/vg1/m0/vg1-vgl-s49.json": "2bb53d9d10bdf89c21398cfb681848c99bb9a7de85c597d84b9e4da78f6f7532",
+   "outputs/vg1/manifest-main.json": "3c32864b165b41de54b360102f5a3f892c88af4c4bc37b770fa2719408a422a8",
+   "outputs/vg1/pilot.json": "75da9836ee21c85236ec6d09dae9c52477875734598e11a563c56824721473a8",
+   "outputs/vg1/pilot2.json": "8a8f46dbdf206cd9ec98ac9372fd49c893a96a7a0321680f0d2d6efbf1aa34cf"
+  },
+  "argv": [
+   "scripts/vg1_analysis.py",
+   "analyse"
+  ],
+  "start": "2026-10-28T03:01:51",
+  "end": "2026-10-28T03:01:53",
+  "environment": {
+   "python": "3.12.4",
+   "numpy": "2.5.4",
+   "machine": "arm64",
+   "system": "Darwin"
+  }
+ }
+}
