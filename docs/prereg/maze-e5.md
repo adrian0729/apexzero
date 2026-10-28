@@ -432,8 +432,23 @@ Per arm and primary score, read on both targets:
      review, 40 after the decisions of 27 Oct 2026, 46 after the review of 28 Oct 2026's two
      commits, 47 with the B' reachability test).
 4. **A dry run** on the pilot's checkpoints: the pilot reproduction (Section 3), then `analyse`
-   end to end on one seed. This is a machinery check only. Not yet run (the test shows the E5
-   audit with its additions off equals the pilot's `audit_checkpoint` on a small case).
+   end to end on one seed. This is a machinery check only. **Run on the Mac on 28 Oct 2026**
+   with `scripts/maze_e5_dryrun.py` (outside `CODE_PATHS`; outputs under `runs/maze-e5-dryrun/`,
+   none under `outputs/`):
+   - **The pilot reproduction passes.** The pilot's own `maze_audit.audit` and `report`, with
+     `audit_checkpoint` replaced by `e5_audit.audit_policy(..., sfl_native=False)` and E5's
+     three extra keys dropped, reproduce `runs/maze-audit/pilot-v2/audit/fidelity.json` byte for
+     byte (sha256 `9749c91d…`), and all 8 per-checkpoint arrays exactly. It took 108 s (audit) and
+     49 s (report).
+   - **`analyse` runs end to end on one seed** (the pilot's DR and PLR-MaxMC, 4 checkpoints
+     each, E5's own audit settings, 200 bootstrap draws). The audits go through `audit_one`,
+     `npz_bytes`, a scratch manifest and `load_audits`; then come `point`, `bootstrap`,
+     `analyse`, `describe` and `decisions_md`.
+     - The in-buffer audit ran for PLR at all 4 checkpoints (1,000 levels each).
+     - With one seed and every checkpoint early, every row is "mixed", every test is n/a and
+       no phase label comes out, as expected.
+     - The output is well-formed (written with `allow_nan=False` and read back).
+     - On the Mac, E5's audit took about 115 s per DR checkpoint and 150 s per PLR checkpoint.
 5. **Timing calibration** on the box (Section 9). It fixes the lanes and the projection. It is the
    only box time approved so far (27 Oct 2026), and its measured projection goes to the user.
 6. **Training,** once the user has approved the full queue on the measured estimate (Section 9).
