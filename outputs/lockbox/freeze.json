@@ -1,0 +1,183 @@
+{
+ "label": "LOCKBOX (protocol-v1)",
+ "mode": "lockbox",
+ "freeze_id": "3ada5b1f4e084707b42060fdf278ba65",
+ "created": "2026-10-29T18:31:05",
+ "circuits": [
+  "Austin",
+  "Budapest",
+  "MexicoCity",
+  "Montreal",
+  "Monza",
+  "Sakhir",
+  "SaoPaulo",
+  "Shanghai",
+  "Silverstone",
+  "Spa",
+  "Spielberg",
+  "Suzuka"
+ ],
+ "variants": [
+  "original",
+  "mirrored",
+  "reversed"
+ ],
+ "protocol": {
+  "laps": {
+   "runs": 10,
+   "laps": 2,
+   "start_fraction": 0.9,
+   "seed": 0,
+   "completion_min": 0.5,
+   "completed_when": "completion fraction > completion_min",
+   "context": "default car (racing.default_context), grip 1, no observation noise"
+  },
+  "ocp": {
+   "ds": 3.0,
+   "margin": 1.0,
+   "tol": 1e-06,
+   "max_iter": 3000,
+   "fallback": "one retry from the failed iterate at tol 1e-5"
+  },
+  "widths": {
+   "deltas_m": [
+    0.0,
+    -0.5,
+    0.5
+   ],
+   "applied_to": "w_left and w_right, each"
+  },
+  "sectors": {
+   "merge_gap_m": 40.0,
+   "type_kph": [
+    120.0,
+    200.0
+   ],
+   "types": [
+    "slow (< 120)",
+    "medium (120-200)",
+    "fast (> 200)"
+   ],
+   "apex_speed": "the nominal OCP's minimum v_x between the complex's entry and exit"
+  },
+  "ood": {
+   "root_seed": 7707,
+   "stream": "a_dr",
+   "levels": 100,
+   "steps": 1200,
+   "n_obs": 40000,
+   "subsample_seed": 7707,
+   "chunk": 25,
+   "generator": "generator-v1: fit_grammar on raw R-dev centrelines with real_widths (scripts/train_dr.py --real-widths: no --real-widths-from, no stat widths, no tilt)",
+   "real_widths": true,
+   "denominator": "leave-one-level-out median NN distance",
+   "variant_statistic": "median (and 90th percentile) over run 0's steps, both laps"
+  },
+  "stats": {
+   "n_boot": 2000,
+   "boot_seed": 0,
+   "iqm_trim": 0.25,
+   "ci": [
+    2.5,
+    97.5
+   ],
+   "ci_method": "nearest rank (no interpolation, so +inf entries are safe)",
+   "h1": {
+    "laps_completed_min": 0.9,
+    "median_gap_max": 0.04,
+    "source": "plan-v1 H1 as written; LB-1 may replace it"
+   }
+  }
+ },
+ "subjects": [
+  {
+   "name": "e0-s50",
+   "checkpoint": "runs/e0-s50/ckpt/000999948288.pkl",
+   "sha256": "a03a918cb29d1c0dfc901006535a8b688dbf578565f82b8cd0f204d10d8a2c5c",
+   "source": "docs/prereg/protocol-v1-subjects.json",
+   "timesteps": 999948288
+  },
+  {
+   "name": "e0-s51",
+   "checkpoint": "runs/e0-s51/ckpt/000999948288.pkl",
+   "sha256": "3a2ce18dfa838609603572d713531ca98124fadeddf17a9e5ca1ee29034256a4",
+   "source": "docs/prereg/protocol-v1-subjects.json",
+   "timesteps": 999948288
+  },
+  {
+   "name": "e0-s52",
+   "checkpoint": "runs/e0-s52/ckpt/000999948288.pkl",
+   "sha256": "1b7078f4416f8b9671ebc4a14a2cae36a5ebcc27fe9cc4c2188241ed654256fe",
+   "source": "docs/prereg/protocol-v1-subjects.json",
+   "timesteps": 999948288
+  },
+  {
+   "name": "e0-s53",
+   "checkpoint": "runs/e0-s53/ckpt/000999948288.pkl",
+   "sha256": "02827403a23cbc39173f6990b627ae0b54cb62c55146baafdba6d065717470b5",
+   "source": "docs/prereg/protocol-v1-subjects.json",
+   "timesteps": 999948288
+  },
+  {
+   "name": "e0-s54",
+   "checkpoint": "runs/e0-s54/ckpt/000999948288.pkl",
+   "sha256": "4e9e7e91780fbe610eb2c1adcd036593048632cd20828de627eaf807c1f4cd75",
+   "source": "docs/prereg/protocol-v1-subjects.json",
+   "timesteps": 999948288
+  }
+ ],
+ "subjects_file": {
+  "source": "docs/prereg/protocol-v1-subjects.json",
+  "sha256": "dbd9bbcfec4a46535717dabfc4ebe6b54710ef8aeec2bd1384ef104eea0817c6"
+ },
+ "circuit_files_sha256": {
+  "data/tracks/tumftm/Austin.csv": "60d46180320177ba49bec61bad390872039222dbab225fe12781ca662becda55",
+  "data/tracks/tumftm/Budapest.csv": "3c25a55841af6de1e78a366593108835738d78e75cedfb7acd11c9b36da53d5a",
+  "data/tracks/tumftm/MexicoCity.csv": "fc16f83e3e81308a47b8726439f0ff3bb7ce7593f0fdcea053d61e47a14c89f3",
+  "data/tracks/tumftm/Montreal.csv": "0b27cf74193ea20ebab058a300cd935d2c07bb6003a898e108febcd63a3c42be",
+  "data/tracks/tumftm/Monza.csv": "4b5993986e67950df1b89efa03a4df02127f07b7213985917f0bad27ad3d48b6",
+  "data/tracks/tumftm/Sakhir.csv": "bc3c23da42f9474dbf5700341037bb45521acaa2ad1389bd0a48540fe179ee7a",
+  "data/tracks/tumftm/SaoPaulo.csv": "7383caa2b7af9af6c321aa5442cc5b47b6cfe1a56f70b56f3216ba1a3c015a04",
+  "data/tracks/tumftm/Shanghai.csv": "3bef7580e6ec9f8e2daac23445c4c81ae23e13aa6b92e4204281e143eabee277",
+  "data/tracks/tumftm/Silverstone.csv": "27c51454e81780a75c353d3e6c9f73dbbcd1e82139782e95bd722ade19736e39",
+  "data/tracks/tumftm/Spa.csv": "952673dfa772427be8a9013b8c1cb5ff5935f85c0c21d2a223adb04c6d640c8a",
+  "data/tracks/tumftm/Spielberg.csv": "277b2854c4323021b10b6b63ebfe6a6cc971f494c0728202e910d67d7d65dc8c",
+  "data/tracks/tumftm/Suzuka.csv": "b4d3e325edd1e85e4e73765a80f7203b741e6dff5cceec4260390716c10eee67"
+ },
+ "tag": {
+  "tag": "protocol-v1",
+  "tag_object": "5bc35e288a218fe61401e4a77d04461209a30119",
+  "commit": "8c1a8d7f716a995d91688335614e5c153b1d6109",
+  "head": "8c1a8d7f716a995d91688335614e5c153b1d6109"
+ },
+ "provenance": {
+  "script": "scripts/lockbox.py",
+  "script_sha256": "36bbfea50836350b89b93281432b364a9b7e5ae317ea50965789b37fa236543d",
+  "git_head": "8c1a8d7f716a995d91688335614e5c153b1d6109",
+  "changed_paths": [],
+  "inputs_sha256": {},
+  "argv": [
+   "scripts/lockbox.py",
+   "freeze",
+   "--mode",
+   "lockbox",
+   "--root",
+   "outputs/lockbox",
+   "--subjects",
+   "docs/prereg/protocol-v1-subjects.json"
+  ],
+  "start": "2026-10-29T18:31:04",
+  "end": "2026-10-29T18:31:05",
+  "seconds": 0.6,
+  "environment": {
+   "python": "3.12.4",
+   "jax": "0.11.2",
+   "numpy": "2.5.4",
+   "machine": "arm64",
+   "system": "Darwin",
+   "xla_flags": "--xla_cpu_multi_thread_eigen=false intra_op_parallelism_threads=2",
+   "nice": 15,
+   "cpu_count": 12
+  }
+ }
+}
