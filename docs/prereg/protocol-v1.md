@@ -1,7 +1,7 @@
-# protocol-v1: the lockbox (pre-registration, DRAFT)
+# protocol-v1: the lockbox (pre-registration)
 
-**Status.** DRAFT, 29 Oct 2026, for review and the user's approval. The R-dev dry run has run and its numbers are filled in (Sections 9 and 12). Nothing here is tagged and no lockbox number exists.
-- After the review and the user's approval, the lead commits the final text. The annotated tag `protocol-v1` is placed on that commit and pushed **before any lockbox stage runs** (Section 13).
+**Status.** Approved by the user on 29 Oct 2026 and fixed by the annotated tag `protocol-v1` on the commit of this text, pushed **before any lockbox stage ran** (Section 13). The R-dev dry run's numbers are in Sections 9 and 12. When the tag was placed, no lockbox number existed.
+- It was reviewed independently twice before the approval (the harness's fixes and this text), and every finding was applied.
 - The tag pins this file, `docs/prereg/protocol-v1-subjects.json`, the predictions (`docs/prereg/protocol-v1-predictions.json` and `scripts/lb1_predictions.py`, which wrote it) and the metric code (`scripts/lockbox.py`, `scripts/_bootstrap.py`, `src/apexzero`, `uv.lock`, `pyproject.toml`). Every lockbox stage refuses to start unless the working tree's metric code is the tag's (`tag_gate`, Section 13).
 - Until the tag, nothing under `data/tracks/tumftm/` for an R_TEST circuit and nothing under `outputs/sealed/` is read.
 
