@@ -1,0 +1,3526 @@
+{
+ "round": "maze-e5",
+ "train_tag": "maze-e5-train-v1",
+ "train_commit": "5edb66f81c7389d06d6b22f14fd3a5356a077255",
+ "drop": 0,
+ "written": "2026-10-29T15:56:13Z",
+ "vendored": {
+  "third_party/jaxued_examples/maze_plr.py": "a7b6164dc9d9772613d9cc2dab0ef7e9603dc7d0",
+  "third_party/sfl/LICENSE": "261eeb9e9f8b2b4b0d119366dda99c6fd7d35c64",
+  "third_party/sfl/sfl/__init__.py": "b3c06d488393abb3b3829e5590d42409c995b4cf",
+  "third_party/sfl/sfl/train/__init__.py": "e69de29bb2d1d6434b8b29ae775ad8c2e48c5391",
+  "third_party/sfl/sfl/train/minigrid_sfl.py": "6436f5f659fa5fd0992c3ce479054eacb0353fdd",
+  "third_party/sfl/sfl/train/minigrid_plr.py": "9537a794b7df09c76bf816215b366b03eb10b682",
+  "third_party/sfl/sfl/util/__init__.py": "e69de29bb2d1d6434b8b29ae775ad8c2e48c5391",
+  "third_party/sfl/sfl/util/jaxued/__init__.py": "e69de29bb2d1d6434b8b29ae775ad8c2e48c5391",
+  "third_party/sfl/sfl/util/jaxued/jaxued_utils.py": "f491626f2164e2b36b06c8e4977b672588c985ab",
+  "third_party/sfl/sfl/train/config/minigrid-sfl.yaml": "41a016967485abcc8001b24ec91ddca783e54e6e",
+  "third_party/sfl/sfl/train/config/learning/ippo-minigrid.yaml": "633e1793c235cce1f3b046075d7f14a1d68ac67d",
+  "third_party/sfl/sfl/train/config/env/minigrid.yaml": "8df39e2c6881321897748e2450b51d43f3ad5b5c"
+ },
+ "boxes": [
+  {
+   "shard": "0/5",
+   "head": "5edb66f81c7389d06d6b22f14fd3a5356a077255",
+   "box_type": "massedcompute_A6000_plus",
+   "gpu_model": "NVIDIA RTX A6000",
+   "gpu_count": 1,
+   "gpus": 1,
+   "lanes_per_gpu": 8,
+   "written": "2026-10-29T15:26:45Z"
+  },
+  {
+   "shard": "1/5",
+   "head": "5edb66f81c7389d06d6b22f14fd3a5356a077255",
+   "box_type": "massedcompute_A6000_plus",
+   "gpu_model": "NVIDIA RTX A6000",
+   "gpu_count": 1,
+   "gpus": 1,
+   "lanes_per_gpu": 8,
+   "written": "2026-10-29T15:33:12Z"
+  },
+  {
+   "shard": "2/5",
+   "head": "5edb66f81c7389d06d6b22f14fd3a5356a077255",
+   "box_type": "massedcompute_A6000_plus",
+   "gpu_model": "NVIDIA RTX A6000",
+   "gpu_count": 1,
+   "gpus": 1,
+   "lanes_per_gpu": 8,
+   "written": "2026-10-29T15:21:36Z"
+  },
+  {
+   "shard": "3/5",
+   "head": "5edb66f81c7389d06d6b22f14fd3a5356a077255",
+   "box_type": "massedcompute_A6000_plus",
+   "gpu_model": "NVIDIA RTX A6000",
+   "gpu_count": 1,
+   "gpus": 1,
+   "lanes_per_gpu": 8,
+   "written": "2026-10-29T15:33:55Z"
+  },
+  {
+   "shard": "4/5",
+   "head": "5edb66f81c7389d06d6b22f14fd3a5356a077255",
+   "box_type": "massedcompute_A6000_plus",
+   "gpu_model": "NVIDIA RTX A6000",
+   "gpu_count": 1,
+   "gpus": 1,
+   "lanes_per_gpu": 8,
+   "written": "2026-10-29T15:28:00Z"
+  }
+ ],
+ "missing": [],
+ "runs": {
+  "maze-e5-sfl-v13-s1": {
+   "arm": "sfl",
+   "view": 13,
+   "seed": 1,
+   "updates": 30000,
+   "queue": {
+    "status": "done",
+    "start": "2026-10-28T20:21:56Z",
+    "end": "2026-10-29T15:26:45Z",
+    "lane": 0,
+    "gpu": 0
+   },
+   "status": "trained",
+   "config": "runs/maze-e5-sfl-v13-s1/config.json",
+   "config_sha256": "fd64881d0546e31dc7cfa93b1c55656467e2f054d482a6f55230b5a765bfc1b7",
+   "e5_run_sha256": "473ab67adbfc7a8a404db28c15098097106bfebd1f104aabdfbb067bc7d1f3cd",
+   "wall_s": 68688.50839662552,
+   "checkpoints": [
+    {
+     "update": 300,
+     "path": "runs/maze-e5-sfl-v13-s1/sfl-checkpoints/u00300",
+     "sha256": "986bb56aecac9321643c209e2f70a3ee287d2b571cdf24ac357abfb551c9d551"
+    },
+    {
+     "update": 400,
+     "path": "runs/maze-e5-sfl-v13-s1/sfl-checkpoints/u00400",
+     "sha256": "e96490a4f98f9f144cc08656e41fd279c08fae23bf733d297ec15f92dea34f75"
+    },
+    {
+     "update": 600,
+     "path": "runs/maze-e5-sfl-v13-s1/sfl-checkpoints/u00600",
+     "sha256": "6b3d864ddd807aaed8393dab11423c86d4091b7467f744f93867fb0464b305fa"
+    },
+    {
+     "update": 800,
+     "path": "runs/maze-e5-sfl-v13-s1/sfl-checkpoints/u00800",
+     "sha256": "e0bdcc3480e796edb5357eb8077d82f8971fc500d54dea7e4514b81095f74a99"
+    },
+    {
+     "update": 1000,
+     "path": "runs/maze-e5-sfl-v13-s1/sfl-checkpoints/u01000",
+     "sha256": "ecd19b55abae99dbe4f3bb21e1876a700a883681a771c1f0c86c78f569f150f4"
+    },
+    {
+     "update": 1400,
+     "path": "runs/maze-e5-sfl-v13-s1/sfl-checkpoints/u01400",
+     "sha256": "e557ff81fa7cd6e02062ed6dae21ccfbbf00fb5940aa551ad3a7623723a0c797"
+    },
+    {
+     "update": 1900,
+     "path": "runs/maze-e5-sfl-v13-s1/sfl-checkpoints/u01900",
+     "sha256": "d571b91e6643a31102e105833e5deba0c250ad7d4997dde11e9841bfc14e2a00"
+    },
+    {
+     "update": 2600,
+     "path": "runs/maze-e5-sfl-v13-s1/sfl-checkpoints/u02600",
+     "sha256": "85cbfd233ea926fe69a027c64d81e0bcf0caae9a6f576da449e8b2db54dab11f"
+    },
+    {
+     "update": 3500,
+     "path": "runs/maze-e5-sfl-v13-s1/sfl-checkpoints/u03500",
+     "sha256": "1e1a051ce827dac28c11c4fe9617346afcca69c415bf17865daf6177a9cebaa2"
+    },
+    {
+     "update": 4800,
+     "path": "runs/maze-e5-sfl-v13-s1/sfl-checkpoints/u04800",
+     "sha256": "c140e84c8343f4c6cc6d00189e515e0d8838890004b5952a48d5939d8b016fa7"
+    },
+    {
+     "update": 6500,
+     "path": "runs/maze-e5-sfl-v13-s1/sfl-checkpoints/u06500",
+     "sha256": "9494d60059f055f083c59615d50cec2eb65cb6a245d6210d42a9e577b92b4e7c"
+    },
+    {
+     "update": 8800,
+     "path": "runs/maze-e5-sfl-v13-s1/sfl-checkpoints/u08800",
+     "sha256": "f18e202cb9a13feeb76762860c1d1a002db645b99cce632d989e7b0b0b0d26f0"
+    },
+    {
+     "update": 11900,
+     "path": "runs/maze-e5-sfl-v13-s1/sfl-checkpoints/u11900",
+     "sha256": "b07bf3f8520dd4b9001621bd2d40db45482190a5eec65a83e6f4057a10f3dab7"
+    },
+    {
+     "update": 16200,
+     "path": "runs/maze-e5-sfl-v13-s1/sfl-checkpoints/u16200",
+     "sha256": "0ffe6abc268cae632322674eae962217fdf562383b077ddc1945a8292e1b4bf3"
+    },
+    {
+     "update": 22100,
+     "path": "runs/maze-e5-sfl-v13-s1/sfl-checkpoints/u22100",
+     "sha256": "8a31f28984faeafabbcca4ad6750efb4f6e0724c7eba0e60f273a907752e2735"
+    },
+    {
+     "update": 30000,
+     "path": "runs/maze-e5-sfl-v13-s1/sfl-checkpoints/u30000",
+     "sha256": "93b9f8402fbac68e54b8f52bfd4d2d0b45d09393c5dc17e1583fb833e9f7cf9d"
+    }
+   ],
+   "eval_tail": [
+    {
+     "update": 30000,
+     "time": 1793287602.7381644,
+     "solve_rate/mean": 0.875,
+     "return/mean": 0.6067099571228027,
+     "learnability_set_mean_score": 0.0013099998468533158,
+     "time_delta": 104.0484070777893,
+     "steps_per_section": 62986.06758198958
+    }
+   ]
+  },
+  "maze-e5-sfl-v5-s1": {
+   "arm": "sfl",
+   "view": 5,
+   "seed": 1,
+   "updates": 30000,
+   "queue": {
+    "status": "done",
+    "start": "2026-10-28T20:21:56Z",
+    "end": "2026-10-29T09:58:35Z",
+    "lane": 1,
+    "gpu": 0
+   },
+   "status": "trained",
+   "config": "runs/maze-e5-sfl-v5-s1/config.json",
+   "config_sha256": "89ff6bb9a36718afcfe59c721b5684f8bfd3cd9ef7f520c610db84061c04511a",
+   "e5_run_sha256": "f00b12a541a9523f70f6fea5263dc2f6a77c8b2ed01336d5544ee3066e103f4b",
+   "wall_s": 48999.18880558014,
+   "checkpoints": [
+    {
+     "update": 300,
+     "path": "runs/maze-e5-sfl-v5-s1/sfl-checkpoints/u00300",
+     "sha256": "a83c480d32f857ff3e4487dc47df80b7419f050bd00da7022802c69d785f05d2"
+    },
+    {
+     "update": 400,
+     "path": "runs/maze-e5-sfl-v5-s1/sfl-checkpoints/u00400",
+     "sha256": "907ae8dcf3726918a5a5d681e73f698e5e9ea4bf17da0a4696d144d5ff630ece"
+    },
+    {
+     "update": 600,
+     "path": "runs/maze-e5-sfl-v5-s1/sfl-checkpoints/u00600",
+     "sha256": "dd69930054c629d5069def20d074196efcce85c1a3d28f5b8dd43770a4b5670e"
+    },
+    {
+     "update": 800,
+     "path": "runs/maze-e5-sfl-v5-s1/sfl-checkpoints/u00800",
+     "sha256": "0b397742cb2971d152b417a43ddf1b8a6d06b3d83eb11f9d58632a022ce994dd"
+    },
+    {
+     "update": 1000,
+     "path": "runs/maze-e5-sfl-v5-s1/sfl-checkpoints/u01000",
+     "sha256": "47b80468efc2eaf7528548e5e6c7e78048b27eb43294c1b194ca567b9b7dc510"
+    },
+    {
+     "update": 1400,
+     "path": "runs/maze-e5-sfl-v5-s1/sfl-checkpoints/u01400",
+     "sha256": "235c0afd5edd51e9d6f59e09c0fd8f4e532c10c8df567f96e00299eaa2b7a7a7"
+    },
+    {
+     "update": 1900,
+     "path": "runs/maze-e5-sfl-v5-s1/sfl-checkpoints/u01900",
+     "sha256": "072a0e2586bd0ef524f1d1dcbbd617103d526e445fcadca1681f8d203ee9e14a"
+    },
+    {
+     "update": 2600,
+     "path": "runs/maze-e5-sfl-v5-s1/sfl-checkpoints/u02600",
+     "sha256": "f0161bb7964ce9b98a371c036bb2294aae40a9ae5144353b25fad9aa449e8531"
+    },
+    {
+     "update": 3500,
+     "path": "runs/maze-e5-sfl-v5-s1/sfl-checkpoints/u03500",
+     "sha256": "af4d9313605ce477819ab0f44f731c486b3120c0c910e97b96aef1686f5d852a"
+    },
+    {
+     "update": 4800,
+     "path": "runs/maze-e5-sfl-v5-s1/sfl-checkpoints/u04800",
+     "sha256": "c4ad583326144a9c9801f10b1e1bf52a7c06dbb79dae8328d115b31ad4e993d8"
+    },
+    {
+     "update": 6500,
+     "path": "runs/maze-e5-sfl-v5-s1/sfl-checkpoints/u06500",
+     "sha256": "b1a7891695adf8483f7a3a13ac0921d4fb6c351fd7472b75f17cdd13d573a86f"
+    },
+    {
+     "update": 8800,
+     "path": "runs/maze-e5-sfl-v5-s1/sfl-checkpoints/u08800",
+     "sha256": "c56333d08ab180cf8d385aae528625e717873e58624bb307a08ee6d4d28e0b7a"
+    },
+    {
+     "update": 11900,
+     "path": "runs/maze-e5-sfl-v5-s1/sfl-checkpoints/u11900",
+     "sha256": "2f48250d960d8ba473a4f905494c3b8ec4975d9e5b22b6b3d4b576b133a41542"
+    },
+    {
+     "update": 16200,
+     "path": "runs/maze-e5-sfl-v5-s1/sfl-checkpoints/u16200",
+     "sha256": "7256248c223ec50b0a53ec0cea9cda5e55057b64d3543fd979f227a631a1ec02"
+    },
+    {
+     "update": 22100,
+     "path": "runs/maze-e5-sfl-v5-s1/sfl-checkpoints/u22100",
+     "sha256": "60139e6ca5ade22a305b1b5156b79c798ce441b9dd8b202a3a453ddac44c5b91"
+    },
+    {
+     "update": 30000,
+     "path": "runs/maze-e5-sfl-v5-s1/sfl-checkpoints/u30000",
+     "sha256": "4126a7ac74150f4be7edc4b485f4f5b1725103b7cc1619e993b5d97463d856f2"
+    }
+   ],
+   "eval_tail": [
+    {
+     "update": 30000,
+     "time": 1793267914.2733068,
+     "solve_rate/mean": 0.875,
+     "return/mean": 0.5356099605560303,
+     "learnability_set_mean_score": 0.0060304938815534115,
+     "time_delta": 84.33995652198792,
+     "steps_per_section": 77704.56934361163
+    }
+   ]
+  },
+  "maze-e5-sfl-v13-s2": {
+   "arm": "sfl",
+   "view": 13,
+   "seed": 2,
+   "updates": 30000,
+   "queue": {
+    "status": "done",
+    "start": "2026-10-28T20:22:36Z",
+    "end": "2026-10-29T15:33:11Z",
+    "lane": 0,
+    "gpu": 0
+   },
+   "status": "trained",
+   "config": "runs/maze-e5-sfl-v13-s2/config.json",
+   "config_sha256": "1545fa371cbf6334986ff352db22427a8bb8441abd7a63f002195afb20da8922",
+   "e5_run_sha256": "fbbdb59a297465841b30877615a631e0e521b53b16674ac374b1ce8ac9747fca",
+   "wall_s": 69034.84381175041,
+   "checkpoints": [
+    {
+     "update": 300,
+     "path": "runs/maze-e5-sfl-v13-s2/sfl-checkpoints/u00300",
+     "sha256": "ae3f020815c23c3c667ec7e3580f70ac635ffdbeb43b9c9b7b95985280b4821b"
+    },
+    {
+     "update": 400,
+     "path": "runs/maze-e5-sfl-v13-s2/sfl-checkpoints/u00400",
+     "sha256": "b02f73439e1c33369f38501444bb9d319076bb01849cbd2ed5f5bba012a38377"
+    },
+    {
+     "update": 600,
+     "path": "runs/maze-e5-sfl-v13-s2/sfl-checkpoints/u00600",
+     "sha256": "79396a699adfde3671bfffbcace6f4543b6e756ddf875e8d9c1ba1dc5ac396d3"
+    },
+    {
+     "update": 800,
+     "path": "runs/maze-e5-sfl-v13-s2/sfl-checkpoints/u00800",
+     "sha256": "23591f022a542432359b861ebbcf099cb9f57f203c28900db7005ec6b5816488"
+    },
+    {
+     "update": 1000,
+     "path": "runs/maze-e5-sfl-v13-s2/sfl-checkpoints/u01000",
+     "sha256": "4894acac72b5342938dc8831adda79c34beca85d861abe76e382a96f734fa83f"
+    },
+    {
+     "update": 1400,
+     "path": "runs/maze-e5-sfl-v13-s2/sfl-checkpoints/u01400",
+     "sha256": "df72db467fde8cfbb149fc7f7a27ea31733327413736554079e061299f0cdbff"
+    },
+    {
+     "update": 1900,
+     "path": "runs/maze-e5-sfl-v13-s2/sfl-checkpoints/u01900",
+     "sha256": "3261787b2bbbd07ee3c42e945d7347748c15ab8c1fe90496ad9c539c6ba06936"
+    },
+    {
+     "update": 2600,
+     "path": "runs/maze-e5-sfl-v13-s2/sfl-checkpoints/u02600",
+     "sha256": "049b3c5b826444d719a6859ffc67e2f94add524f5dcb0c0da09b7c3eb64bdb95"
+    },
+    {
+     "update": 3500,
+     "path": "runs/maze-e5-sfl-v13-s2/sfl-checkpoints/u03500",
+     "sha256": "f3db09b3992377513f13b1c8c306b12a3edefe9865efb4d34ef91b4fe33d63f3"
+    },
+    {
+     "update": 4800,
+     "path": "runs/maze-e5-sfl-v13-s2/sfl-checkpoints/u04800",
+     "sha256": "306b7377802fef6b0a3fb897fe2f85659ff0376fec9857d3d0b0d31b3db16e1f"
+    },
+    {
+     "update": 6500,
+     "path": "runs/maze-e5-sfl-v13-s2/sfl-checkpoints/u06500",
+     "sha256": "93bab22b8025b81152fd19554163d1e8ad53467a258f330525d4113ae2654744"
+    },
+    {
+     "update": 8800,
+     "path": "runs/maze-e5-sfl-v13-s2/sfl-checkpoints/u08800",
+     "sha256": "51f1c1e69cc5ca6b789d6f37518715262b8d58e4999412f1c67b4dbc9a231fe6"
+    },
+    {
+     "update": 11900,
+     "path": "runs/maze-e5-sfl-v13-s2/sfl-checkpoints/u11900",
+     "sha256": "9c1ecb466d32d2f77e3a8d63df8a09e4eabf4519b593c1407e3d6395b086f44e"
+    },
+    {
+     "update": 16200,
+     "path": "runs/maze-e5-sfl-v13-s2/sfl-checkpoints/u16200",
+     "sha256": "00ad25e968a02349a27cff7526521ffd1cc0a58dc21cb8b4254439a33c3e7998"
+    },
+    {
+     "update": 22100,
+     "path": "runs/maze-e5-sfl-v13-s2/sfl-checkpoints/u22100",
+     "sha256": "1f5927f72620fa3e7a5beec2552a660a68dead0188373bc87c160673aebaeae8"
+    },
+    {
+     "update": 30000,
+     "path": "runs/maze-e5-sfl-v13-s2/sfl-checkpoints/u30000",
+     "sha256": "2d38844634bf32a48fe61373ef46bfcd77b96f3f32fc008c896c8475b1684c46"
+    }
+   ],
+   "eval_tail": [
+    {
+     "update": 30000,
+     "time": 1793287988.9395192,
+     "solve_rate/mean": 0.7000000476837158,
+     "return/mean": 0.5247700214385986,
+     "learnability_set_mean_score": 0.0020199997816234827,
+     "time_delta": 105.34740424156189,
+     "steps_per_section": 62209.41130141733
+    }
+   ]
+  },
+  "maze-e5-sfl-v5-s2": {
+   "arm": "sfl",
+   "view": 5,
+   "seed": 2,
+   "updates": 30000,
+   "queue": {
+    "status": "retried",
+    "start": "2026-10-28T20:22:36Z",
+    "end": "2026-10-29T10:09:38Z",
+    "lane": 1,
+    "gpu": 0
+   },
+   "status": "trained",
+   "config": "runs/maze-e5-sfl-v5-s2/config.json",
+   "config_sha256": "c4023a8bb369cbd8a6baa742c6d37b3c98e441d47269d8e33919c887194b1160",
+   "e5_run_sha256": "f75ff0c1f43646f5de86c9a763cf4f2061be97a3e8228f2b684cb80c60c68a11",
+   "wall_s": 46031.394426584244,
+   "checkpoints": [
+    {
+     "update": 300,
+     "path": "runs/maze-e5-sfl-v5-s2/sfl-checkpoints/u00300",
+     "sha256": "dc09b522afe3d689eb9feadd38fba3266fc7a935515875ec9bf237c70d25aef5"
+    },
+    {
+     "update": 400,
+     "path": "runs/maze-e5-sfl-v5-s2/sfl-checkpoints/u00400",
+     "sha256": "8e8e521c06d85018e0098f73e27f00848404d4e5b84c018504980d7faf26ac15"
+    },
+    {
+     "update": 600,
+     "path": "runs/maze-e5-sfl-v5-s2/sfl-checkpoints/u00600",
+     "sha256": "0955a6f01cadaca2ff166f0c557c95dd74e84f475faeb55a393eb54888e82019"
+    },
+    {
+     "update": 800,
+     "path": "runs/maze-e5-sfl-v5-s2/sfl-checkpoints/u00800",
+     "sha256": "a0f4eaaeb4f1064b71395565156e6fb97d2b913a158e9d7e91135193d6de1cb2"
+    },
+    {
+     "update": 1000,
+     "path": "runs/maze-e5-sfl-v5-s2/sfl-checkpoints/u01000",
+     "sha256": "03119205485b505e5f151a1bc9857f2f532ea4571d8bb8b30760d880d9f99550"
+    },
+    {
+     "update": 1400,
+     "path": "runs/maze-e5-sfl-v5-s2/sfl-checkpoints/u01400",
+     "sha256": "275e5858271abf8eab29906b3ba890399e09a6cabd9c523896bade6466f8ef7d"
+    },
+    {
+     "update": 1900,
+     "path": "runs/maze-e5-sfl-v5-s2/sfl-checkpoints/u01900",
+     "sha256": "7e991aca83f995a8006987686c21d9f65d9350828f9274a0ac78ce74f92ac990"
+    },
+    {
+     "update": 2600,
+     "path": "runs/maze-e5-sfl-v5-s2/sfl-checkpoints/u02600",
+     "sha256": "901d059b224d116ad76156fe344e5cd2fdec536128638e45ffa55570fac05f9f"
+    },
+    {
+     "update": 3500,
+     "path": "runs/maze-e5-sfl-v5-s2/sfl-checkpoints/u03500",
+     "sha256": "8e1b1faeac02b0096afb1548ed23c042e9ef9408639f01695fb2d9eee1f3bba2"
+    },
+    {
+     "update": 4800,
+     "path": "runs/maze-e5-sfl-v5-s2/sfl-checkpoints/u04800",
+     "sha256": "ff5f2c16152a9e8109380ba889572732000812f0873d79378ac3959e0a9ac90e"
+    },
+    {
+     "update": 6500,
+     "path": "runs/maze-e5-sfl-v5-s2/sfl-checkpoints/u06500",
+     "sha256": "20e464d0bbda8823745308f5b7aa55eb314c985e3acf85a41f75304960996eef"
+    },
+    {
+     "update": 8800,
+     "path": "runs/maze-e5-sfl-v5-s2/sfl-checkpoints/u08800",
+     "sha256": "3d472c89b6c493a89d0c42becad9a7e4a9e4b9c8259123daa13d02b6a896f48a"
+    },
+    {
+     "update": 11900,
+     "path": "runs/maze-e5-sfl-v5-s2/sfl-checkpoints/u11900",
+     "sha256": "7c46b60449e0af9daa2b2a1e52ce044bc11a54ad84e80bfa4d050cf27e9631aa"
+    },
+    {
+     "update": 16200,
+     "path": "runs/maze-e5-sfl-v5-s2/sfl-checkpoints/u16200",
+     "sha256": "885f682d3399f6eca877f8edeb886d6b0973340ec5dbe815d1fcc11fd04c82f1"
+    },
+    {
+     "update": 22100,
+     "path": "runs/maze-e5-sfl-v5-s2/sfl-checkpoints/u22100",
+     "sha256": "3ea729dfc830b19d3ed719ae85e48fc96018dabb08e6ee7eb1c943a8342fb3ec"
+    },
+    {
+     "update": 30000,
+     "path": "runs/maze-e5-sfl-v5-s2/sfl-checkpoints/u30000",
+     "sha256": "2979c8fe2015f828f4bd9425fa4845e849b95c61ef5f08b2f819f9b4decd8ac0"
+    }
+   ],
+   "eval_tail": [
+    {
+     "update": 30000,
+     "time": 1793268576.5413952,
+     "solve_rate/mean": 0.824999988079071,
+     "return/mean": 0.47957998514175415,
+     "learnability_set_mean_score": 0.006675060838460922,
+     "time_delta": 82.73036336898804,
+     "steps_per_section": 79216.38118244571
+    }
+   ]
+  },
+  "maze-e5-sfl-v13-s3": {
+   "arm": "sfl",
+   "view": 13,
+   "seed": 3,
+   "updates": 30000,
+   "queue": {
+    "status": "done",
+    "start": "2026-10-28T20:23:16Z",
+    "end": "2026-10-29T15:21:36Z",
+    "lane": 0,
+    "gpu": 0
+   },
+   "status": "trained",
+   "config": "runs/maze-e5-sfl-v13-s3/config.json",
+   "config_sha256": "5b6b0d99b72ea2aaf72ebc69b52aaefbe2387875f96b8f05bcde9e868c3fcc87",
+   "e5_run_sha256": "705f6821614af06dcf5bf9008a8c148141c6f994e32e0e303cc58a1864128205",
+   "wall_s": 68299.08066606522,
+   "checkpoints": [
+    {
+     "update": 300,
+     "path": "runs/maze-e5-sfl-v13-s3/sfl-checkpoints/u00300",
+     "sha256": "42e4147f4a017b622174d5e202906286f31c77df08018cfd788b456ae6725f43"
+    },
+    {
+     "update": 400,
+     "path": "runs/maze-e5-sfl-v13-s3/sfl-checkpoints/u00400",
+     "sha256": "4d60a4c162b47247307ada7600ced11a0d7a980229aa9e8567d6dd584742781b"
+    },
+    {
+     "update": 600,
+     "path": "runs/maze-e5-sfl-v13-s3/sfl-checkpoints/u00600",
+     "sha256": "b4e65b3a48071fe888ff4bf270988bf77a4d1082ad93c03faa5db487d436e924"
+    },
+    {
+     "update": 800,
+     "path": "runs/maze-e5-sfl-v13-s3/sfl-checkpoints/u00800",
+     "sha256": "fa2f409f90a8ef9d1027782c2499eea3cb460ed09778761de32c3f21af90ccb7"
+    },
+    {
+     "update": 1000,
+     "path": "runs/maze-e5-sfl-v13-s3/sfl-checkpoints/u01000",
+     "sha256": "1245ac7f08b6f9e08f38f2d4a641ce23fd4f67cff98af474aabd5d633a668c1f"
+    },
+    {
+     "update": 1400,
+     "path": "runs/maze-e5-sfl-v13-s3/sfl-checkpoints/u01400",
+     "sha256": "90af3e9f8c051e02e8959d3786a79416342f73ad885889e8c47ffa8ed14f332e"
+    },
+    {
+     "update": 1900,
+     "path": "runs/maze-e5-sfl-v13-s3/sfl-checkpoints/u01900",
+     "sha256": "b0517aefd730ea09be2e49f01d0a9c0a9dead16cd0caf4c80aa7ea08995a4f17"
+    },
+    {
+     "update": 2600,
+     "path": "runs/maze-e5-sfl-v13-s3/sfl-checkpoints/u02600",
+     "sha256": "bee7cb67c215003bdcaee6b725f1126af1bad58a3e19c17096594102d2cc50f2"
+    },
+    {
+     "update": 3500,
+     "path": "runs/maze-e5-sfl-v13-s3/sfl-checkpoints/u03500",
+     "sha256": "c357ff0c27c187ff6493d1ee50c7a066d799aa0e5578faa95d7a864796b98444"
+    },
+    {
+     "update": 4800,
+     "path": "runs/maze-e5-sfl-v13-s3/sfl-checkpoints/u04800",
+     "sha256": "c8d03719b3c405d1c877cd747a3e28f147f23d2fefee4f60e7bcc094ceccb4e2"
+    },
+    {
+     "update": 6500,
+     "path": "runs/maze-e5-sfl-v13-s3/sfl-checkpoints/u06500",
+     "sha256": "a2d9e79b272503abbb1c6b023818049a9f39a012aa97c6b937b6edf989df2bc7"
+    },
+    {
+     "update": 8800,
+     "path": "runs/maze-e5-sfl-v13-s3/sfl-checkpoints/u08800",
+     "sha256": "67c8ae36975bc0c9e8782b3468163742dcc0b7c39f935c44d175f45314fbefc2"
+    },
+    {
+     "update": 11900,
+     "path": "runs/maze-e5-sfl-v13-s3/sfl-checkpoints/u11900",
+     "sha256": "4b6f112d4ba64d0f99003f657774721c94925b62b5512ae3a9df7f2ef1040a64"
+    },
+    {
+     "update": 16200,
+     "path": "runs/maze-e5-sfl-v13-s3/sfl-checkpoints/u16200",
+     "sha256": "06b400f5e2bcba8ee0872528c4097ae4708c714530a2818dd75fec6b0e68686a"
+    },
+    {
+     "update": 22100,
+     "path": "runs/maze-e5-sfl-v13-s3/sfl-checkpoints/u22100",
+     "sha256": "f98f988c38b47c31efcd6ab4e803690027e380538a6ba83e0b4dabd8501033f8"
+    },
+    {
+     "update": 30000,
+     "path": "runs/maze-e5-sfl-v13-s3/sfl-checkpoints/u30000",
+     "sha256": "fee1c4857c878581e4481a7dc625f8261e02bd203dad0bec1acc8b4ba34ed9b9"
+    }
+   ],
+   "eval_tail": [
+    {
+     "update": 30000,
+     "time": 1793287293.7762916,
+     "solve_rate/mean": 0.824999988079071,
+     "return/mean": 0.5456399917602539,
+     "learnability_set_mean_score": 0.00108999980147928,
+     "time_delta": 104.60553455352783,
+     "steps_per_section": 62650.60475023383
+    }
+   ]
+  },
+  "maze-e5-sfl-v5-s3": {
+   "arm": "sfl",
+   "view": 5,
+   "seed": 3,
+   "updates": 30000,
+   "queue": {
+    "status": "done",
+    "start": "2026-10-28T20:23:16Z",
+    "end": "2026-10-29T09:56:03Z",
+    "lane": 1,
+    "gpu": 0
+   },
+   "status": "trained",
+   "config": "runs/maze-e5-sfl-v5-s3/config.json",
+   "config_sha256": "7a3e3dd6dcc217058ebc274544b5c111a879bc60f342263fbc671d33787d3112",
+   "e5_run_sha256": "91e2df8fb6cf3390a4d0b6d488ec1ee22337b2f1951c089f79be38abd147c7e6",
+   "wall_s": 48767.05544757843,
+   "checkpoints": [
+    {
+     "update": 300,
+     "path": "runs/maze-e5-sfl-v5-s3/sfl-checkpoints/u00300",
+     "sha256": "56f6ac17e18020fc96304f49cc60cf9c4ef0bcb7daa5a2950ce3f3a3c96e5275"
+    },
+    {
+     "update": 400,
+     "path": "runs/maze-e5-sfl-v5-s3/sfl-checkpoints/u00400",
+     "sha256": "dafc867185fcbd7559c6c756bc651b3bc7b9eac68a207b617665975cbd1667cc"
+    },
+    {
+     "update": 600,
+     "path": "runs/maze-e5-sfl-v5-s3/sfl-checkpoints/u00600",
+     "sha256": "5b01166bc7b1c78cf6c22ccbc86d316b0f54bca85e77bc7e7d6555fee8abac43"
+    },
+    {
+     "update": 800,
+     "path": "runs/maze-e5-sfl-v5-s3/sfl-checkpoints/u00800",
+     "sha256": "3ce9f0f9ae5ba69f3763b8d7c2176910bfe2ca02f8fb0e5305f6c12b287926c4"
+    },
+    {
+     "update": 1000,
+     "path": "runs/maze-e5-sfl-v5-s3/sfl-checkpoints/u01000",
+     "sha256": "9e19a6c223f8c69e9c6ab02a346291966fbce10bd24f50e3b8ba89a901d7075e"
+    },
+    {
+     "update": 1400,
+     "path": "runs/maze-e5-sfl-v5-s3/sfl-checkpoints/u01400",
+     "sha256": "429a590302985172ebaf7c8aea9566e424d2ed5a94ea3a219b79ff798e162191"
+    },
+    {
+     "update": 1900,
+     "path": "runs/maze-e5-sfl-v5-s3/sfl-checkpoints/u01900",
+     "sha256": "78edc3d2b489dfa52117c66b7b264ff5ddfba9456664c450ec45272e3afae5d1"
+    },
+    {
+     "update": 2600,
+     "path": "runs/maze-e5-sfl-v5-s3/sfl-checkpoints/u02600",
+     "sha256": "d93c24a6aebfadc249c7f907df5ce8f8dff8bf4098565be30839d2e5ae6a0893"
+    },
+    {
+     "update": 3500,
+     "path": "runs/maze-e5-sfl-v5-s3/sfl-checkpoints/u03500",
+     "sha256": "667c6bd9d64fa47c0602da78d0938af6ad0b9e34b48a543c0443d22535caf9c9"
+    },
+    {
+     "update": 4800,
+     "path": "runs/maze-e5-sfl-v5-s3/sfl-checkpoints/u04800",
+     "sha256": "66540e20b6a20015a341671a41d269c7177933e96dbef6bcab4950d0efff4e5f"
+    },
+    {
+     "update": 6500,
+     "path": "runs/maze-e5-sfl-v5-s3/sfl-checkpoints/u06500",
+     "sha256": "1914e70cbab6a5d5095e41d15721598c7a32a0f52f61dd7b3622fc6465d317e9"
+    },
+    {
+     "update": 8800,
+     "path": "runs/maze-e5-sfl-v5-s3/sfl-checkpoints/u08800",
+     "sha256": "effb41b58eba954ee4d5116b76a8832e747e56fa89635b0674d7ba197f7e309a"
+    },
+    {
+     "update": 11900,
+     "path": "runs/maze-e5-sfl-v5-s3/sfl-checkpoints/u11900",
+     "sha256": "14228a0858e5acb2d9f16743f3b24de4e70cffe85f198dc7c0aa5fccc8832484"
+    },
+    {
+     "update": 16200,
+     "path": "runs/maze-e5-sfl-v5-s3/sfl-checkpoints/u16200",
+     "sha256": "444f662f466e7cb06dbaad655e87a643c24a8ccdb9504cedea25e27030824361"
+    },
+    {
+     "update": 22100,
+     "path": "runs/maze-e5-sfl-v5-s3/sfl-checkpoints/u22100",
+     "sha256": "d9c9c3e6618c09fbe7b0ec2a291a58ad027773edfc9ebbd9f2ddcb8f851387ad"
+    },
+    {
+     "update": 30000,
+     "path": "runs/maze-e5-sfl-v5-s3/sfl-checkpoints/u30000",
+     "sha256": "2ebcf9ba7385842509e96ffccd779595d543dcb023e5fef844b00d0e4bd1ae36"
+    }
+   ],
+   "eval_tail": [
+    {
+     "update": 30000,
+     "time": 1793267761.6436677,
+     "solve_rate/mean": 0.7749999761581421,
+     "return/mean": 0.4826800227165222,
+     "learnability_set_mean_score": 0.006206596735864878,
+     "time_delta": 83.98839139938354,
+     "steps_per_section": 78029.83115650078
+    }
+   ]
+  },
+  "maze-e5-sfl-v13-s4": {
+   "arm": "sfl",
+   "view": 13,
+   "seed": 4,
+   "updates": 30000,
+   "queue": {
+    "status": "done",
+    "start": "2026-10-28T20:33:10Z",
+    "end": "2026-10-29T15:33:55Z",
+    "lane": 0,
+    "gpu": 0
+   },
+   "status": "trained",
+   "config": "runs/maze-e5-sfl-v13-s4/config.json",
+   "config_sha256": "7310c6fc2f3a1ebaaf62dc32ed3d140593de9b89aec12a2eed5b170bd4624c44",
+   "e5_run_sha256": "d72e232aa1eb6cdf44ccd4c616d8f67ba6450d1efbd09ef8b3ac987df7c9b2b2",
+   "wall_s": 68443.72846078873,
+   "checkpoints": [
+    {
+     "update": 300,
+     "path": "runs/maze-e5-sfl-v13-s4/sfl-checkpoints/u00300",
+     "sha256": "5b41c9e47fd690ad785d03f7c1b907bd71d779ee2296ad0a0f7354a7a230ce3c"
+    },
+    {
+     "update": 400,
+     "path": "runs/maze-e5-sfl-v13-s4/sfl-checkpoints/u00400",
+     "sha256": "62c7cdf5503e344be8aa7f1f132a8fcec12445165f1fe1a7451422c61ef1b25b"
+    },
+    {
+     "update": 600,
+     "path": "runs/maze-e5-sfl-v13-s4/sfl-checkpoints/u00600",
+     "sha256": "24c0d52500720c5bdba967e830d4f6771d60535da741c09cd3a4050c63663b57"
+    },
+    {
+     "update": 800,
+     "path": "runs/maze-e5-sfl-v13-s4/sfl-checkpoints/u00800",
+     "sha256": "ddbf0765e4147ca49fd82fb1dd134278cdf4cbeebeeda422fe14c6eebe7edb06"
+    },
+    {
+     "update": 1000,
+     "path": "runs/maze-e5-sfl-v13-s4/sfl-checkpoints/u01000",
+     "sha256": "71c2e6fc0acba3b56e8c6ba5055eb05c302b355c10473080e8b3223af3b60a6b"
+    },
+    {
+     "update": 1400,
+     "path": "runs/maze-e5-sfl-v13-s4/sfl-checkpoints/u01400",
+     "sha256": "8385774b6792ca8fe9f02a1e5a64c746686c088bce781a34aecf9bbbd174dc4e"
+    },
+    {
+     "update": 1900,
+     "path": "runs/maze-e5-sfl-v13-s4/sfl-checkpoints/u01900",
+     "sha256": "1e21a0a4df9b02157873f2e4bd2acaa38ac72b5fe0712dff919ef5f424c1e92a"
+    },
+    {
+     "update": 2600,
+     "path": "runs/maze-e5-sfl-v13-s4/sfl-checkpoints/u02600",
+     "sha256": "c0ffe630d9dab2ce9c70388b413a53888e109ceed55e27021b05a722c2ebb706"
+    },
+    {
+     "update": 3500,
+     "path": "runs/maze-e5-sfl-v13-s4/sfl-checkpoints/u03500",
+     "sha256": "d6c3d2981bfd121915b1cd20d992786d43a6587c59d80072d083f82af8e08b7c"
+    },
+    {
+     "update": 4800,
+     "path": "runs/maze-e5-sfl-v13-s4/sfl-checkpoints/u04800",
+     "sha256": "46a7411d5a7b5a4d41a513a0d2386b76cdd4a5db8d34d71c502eb075ceb8fb0a"
+    },
+    {
+     "update": 6500,
+     "path": "runs/maze-e5-sfl-v13-s4/sfl-checkpoints/u06500",
+     "sha256": "32c1b68dd73f5495224e92f1ace5a839c539c6312b2b490c89d45caa331ac455"
+    },
+    {
+     "update": 8800,
+     "path": "runs/maze-e5-sfl-v13-s4/sfl-checkpoints/u08800",
+     "sha256": "3919fb3c59311d38773bb66e7f354a539b96796fa58e55ae385555f7612fd98e"
+    },
+    {
+     "update": 11900,
+     "path": "runs/maze-e5-sfl-v13-s4/sfl-checkpoints/u11900",
+     "sha256": "ba7af65f393d743ae4bcab6f99dae964a89f5c23d681824a87e41daa7baf6ecf"
+    },
+    {
+     "update": 16200,
+     "path": "runs/maze-e5-sfl-v13-s4/sfl-checkpoints/u16200",
+     "sha256": "09780d95337a8fe0344f1cbd9b385756aed748325b3fe51020ae23a5f53a242c"
+    },
+    {
+     "update": 22100,
+     "path": "runs/maze-e5-sfl-v13-s4/sfl-checkpoints/u22100",
+     "sha256": "4165448af7bc3b2bd9aee5da70c5428be3a173f70fa364e4aa24565e1330909b"
+    },
+    {
+     "update": 30000,
+     "path": "runs/maze-e5-sfl-v13-s4/sfl-checkpoints/u30000",
+     "sha256": "e137bd3389ff3e31398863366b9fcc47c2469b18cbe5674fe77463cde3b84114"
+    }
+   ],
+   "eval_tail": [
+    {
+     "update": 30000,
+     "time": 1793288033.4537249,
+     "solve_rate/mean": 0.7250000238418579,
+     "return/mean": 0.5216900110244751,
+     "learnability_set_mean_score": 0.001244374900124967,
+     "time_delta": 103.62472796440125,
+     "steps_per_section": 63243.59184085282
+    }
+   ]
+  },
+  "maze-e5-sfl-v5-s4": {
+   "arm": "sfl",
+   "view": 5,
+   "seed": 4,
+   "updates": 30000,
+   "queue": {
+    "status": "done",
+    "start": "2026-10-28T20:33:10Z",
+    "end": "2026-10-29T10:08:20Z",
+    "lane": 1,
+    "gpu": 0
+   },
+   "status": "trained",
+   "config": "runs/maze-e5-sfl-v5-s4/config.json",
+   "config_sha256": "a44f93cf9a1f672dcdd92a6dc3a765ebc9c284eccbbdf67cc5e4a9a7b2bffa65",
+   "e5_run_sha256": "a17cb6d0bc8ccaae184256b3a27a9c6efcac21564f053908bfd12e45ce885238",
+   "wall_s": 48909.102731227875,
+   "checkpoints": [
+    {
+     "update": 300,
+     "path": "runs/maze-e5-sfl-v5-s4/sfl-checkpoints/u00300",
+     "sha256": "e253930f6328d43dbd4c98566b9699755c8469a3da27c8293030a40313503d22"
+    },
+    {
+     "update": 400,
+     "path": "runs/maze-e5-sfl-v5-s4/sfl-checkpoints/u00400",
+     "sha256": "6e1dda8de8415fa9328199d6c74125fc37532677559d9f28df3f51c2cd6c9a0d"
+    },
+    {
+     "update": 600,
+     "path": "runs/maze-e5-sfl-v5-s4/sfl-checkpoints/u00600",
+     "sha256": "31af7090a906ca574ebd8f6a25bbc479854ec679efe1be0df97b94edda3c8af8"
+    },
+    {
+     "update": 800,
+     "path": "runs/maze-e5-sfl-v5-s4/sfl-checkpoints/u00800",
+     "sha256": "8ce2b353a74497e7ea9fd0b3f274eba646da68e146832e89811aadf17f09678b"
+    },
+    {
+     "update": 1000,
+     "path": "runs/maze-e5-sfl-v5-s4/sfl-checkpoints/u01000",
+     "sha256": "eb1cb0bcfb2d13347011d855f4eaa8240b5f230b83ba5c711b09016dab7636a3"
+    },
+    {
+     "update": 1400,
+     "path": "runs/maze-e5-sfl-v5-s4/sfl-checkpoints/u01400",
+     "sha256": "b131820d47ebd0760b898c40a1151c84939de97926f23639428a1d816298f892"
+    },
+    {
+     "update": 1900,
+     "path": "runs/maze-e5-sfl-v5-s4/sfl-checkpoints/u01900",
+     "sha256": "ca32404d4a473ae4491c0eca69e1898d763345455892743db1012d7365675b48"
+    },
+    {
+     "update": 2600,
+     "path": "runs/maze-e5-sfl-v5-s4/sfl-checkpoints/u02600",
+     "sha256": "6d9f75efaf0735f5c5e820e2368469f96459abb31a708b1e86467a44664bab64"
+    },
+    {
+     "update": 3500,
+     "path": "runs/maze-e5-sfl-v5-s4/sfl-checkpoints/u03500",
+     "sha256": "9957c48458b679223884c610d5d3a446b82630fa3dad61ab8dcb8fdc20dccfeb"
+    },
+    {
+     "update": 4800,
+     "path": "runs/maze-e5-sfl-v5-s4/sfl-checkpoints/u04800",
+     "sha256": "2dfd1b451c9047c072af54a5b04a57b861d1e826da4522bd5dc7f9c6d6ab846d"
+    },
+    {
+     "update": 6500,
+     "path": "runs/maze-e5-sfl-v5-s4/sfl-checkpoints/u06500",
+     "sha256": "73fd0c8729522624b49c299da9ad387f1a23911106531bf17a972fce2241c36d"
+    },
+    {
+     "update": 8800,
+     "path": "runs/maze-e5-sfl-v5-s4/sfl-checkpoints/u08800",
+     "sha256": "36b75b9158d0da4f6b91d7f8aa0a19850468bebb71e2747b9967261650f7167a"
+    },
+    {
+     "update": 11900,
+     "path": "runs/maze-e5-sfl-v5-s4/sfl-checkpoints/u11900",
+     "sha256": "cf23c8ecb6f336e70c6de476b76f024877425ad4a8fe699fd3704525b7a81c62"
+    },
+    {
+     "update": 16200,
+     "path": "runs/maze-e5-sfl-v5-s4/sfl-checkpoints/u16200",
+     "sha256": "37359c7aa55865a9aed6e9b14c8440be33ce157528ced8125e6a07266a2a84e7"
+    },
+    {
+     "update": 22100,
+     "path": "runs/maze-e5-sfl-v5-s4/sfl-checkpoints/u22100",
+     "sha256": "e53479a53dfca86353ea8e0c78271ea8ecf7c6a73af083342731dedc2271963d"
+    },
+    {
+     "update": 30000,
+     "path": "runs/maze-e5-sfl-v5-s4/sfl-checkpoints/u30000",
+     "sha256": "eef7fac2a6e5783db4cfc82a093e9e058fb86dd6eb3a62185908d5800f92acac"
+    }
+   ],
+   "eval_tail": [
+    {
+     "update": 30000,
+     "time": 1793268498.7949588,
+     "solve_rate/mean": 0.9750000238418579,
+     "return/mean": 0.6576600074768066,
+     "learnability_set_mean_score": 0.007772637996822596,
+     "time_delta": 84.03224015235901,
+     "steps_per_section": 77989.1145126877
+    }
+   ]
+  },
+  "maze-e5-sfl-v13-s5": {
+   "arm": "sfl",
+   "view": 13,
+   "seed": 5,
+   "updates": 30000,
+   "queue": {
+    "status": "done",
+    "start": "2026-10-28T20:35:23Z",
+    "end": "2026-10-29T15:28:00Z",
+    "lane": 0,
+    "gpu": 0
+   },
+   "status": "trained",
+   "config": "runs/maze-e5-sfl-v13-s5/config.json",
+   "config_sha256": "d026db7b5c5c8c0ac87d07655a38b6686363586e638ec26bbc6e74113685c797",
+   "e5_run_sha256": "406811dfb2292430f5a7339d9f7921af16cd58ed8c7c869a517b5b2bcac3f98a",
+   "wall_s": 67956.14410114288,
+   "checkpoints": [
+    {
+     "update": 300,
+     "path": "runs/maze-e5-sfl-v13-s5/sfl-checkpoints/u00300",
+     "sha256": "453bfb31654117653f00c9f18a298158bf5c98cd001a97f0b9b6a2cedd8cf6e5"
+    },
+    {
+     "update": 400,
+     "path": "runs/maze-e5-sfl-v13-s5/sfl-checkpoints/u00400",
+     "sha256": "19f0cfd75ac422b61f8148c2ed35a896042066e3fa4f665e22ce85f1b35b0180"
+    },
+    {
+     "update": 600,
+     "path": "runs/maze-e5-sfl-v13-s5/sfl-checkpoints/u00600",
+     "sha256": "275edfd51343d8d07a48a0c16514836575a781bb871a3bf2fa6ee43712b8181b"
+    },
+    {
+     "update": 800,
+     "path": "runs/maze-e5-sfl-v13-s5/sfl-checkpoints/u00800",
+     "sha256": "81e9b08f83da4ce967928f79fb1206d4626a0c7476fabd580f5b8d48c7218fe4"
+    },
+    {
+     "update": 1000,
+     "path": "runs/maze-e5-sfl-v13-s5/sfl-checkpoints/u01000",
+     "sha256": "2fb20f8b68a322049557c253d8244187f74dda8ae004f108087affffa96c52bc"
+    },
+    {
+     "update": 1400,
+     "path": "runs/maze-e5-sfl-v13-s5/sfl-checkpoints/u01400",
+     "sha256": "e4168e08503827c9a6b187dc107e86dead32d447cfa3406d4bfd558dfd591e3e"
+    },
+    {
+     "update": 1900,
+     "path": "runs/maze-e5-sfl-v13-s5/sfl-checkpoints/u01900",
+     "sha256": "ba7c6b13611e7e56e519cb34a5a104759d68088e598f113bf3bb70f53cd13d9c"
+    },
+    {
+     "update": 2600,
+     "path": "runs/maze-e5-sfl-v13-s5/sfl-checkpoints/u02600",
+     "sha256": "49d97b741fa18d1d03905cd963db272c4caabe028e095586d4031c92768ef3a5"
+    },
+    {
+     "update": 3500,
+     "path": "runs/maze-e5-sfl-v13-s5/sfl-checkpoints/u03500",
+     "sha256": "64ea6d8320a2c7d625ec0be419622b1dd07b3fe7508d24b96d365a090b13ee6b"
+    },
+    {
+     "update": 4800,
+     "path": "runs/maze-e5-sfl-v13-s5/sfl-checkpoints/u04800",
+     "sha256": "8a8887451fb4cc538818b328a6657c1a281fc02f7e7f3087f65fd94c3c27f0f9"
+    },
+    {
+     "update": 6500,
+     "path": "runs/maze-e5-sfl-v13-s5/sfl-checkpoints/u06500",
+     "sha256": "bca5b8b3eb461aa4a1021cd2ebf2a9bc06e3de041d573532bad2ef506d06e8ef"
+    },
+    {
+     "update": 8800,
+     "path": "runs/maze-e5-sfl-v13-s5/sfl-checkpoints/u08800",
+     "sha256": "2c82916685c3f6ca5f5e079b45676fc58a83b8dcb3093b225f0ac7a4fa4b969d"
+    },
+    {
+     "update": 11900,
+     "path": "runs/maze-e5-sfl-v13-s5/sfl-checkpoints/u11900",
+     "sha256": "2d767a58716be479b4d7d44f8759014fb0050179bcc455e0748b5f8c51938650"
+    },
+    {
+     "update": 16200,
+     "path": "runs/maze-e5-sfl-v13-s5/sfl-checkpoints/u16200",
+     "sha256": "533473ffca5bdc640d00d8405bbc3accbbb680bb2770a6f4948ee2a8ea1fd4ed"
+    },
+    {
+     "update": 22100,
+     "path": "runs/maze-e5-sfl-v13-s5/sfl-checkpoints/u22100",
+     "sha256": "2aba368e2fe4e09530dcdee34bb2e9b0740850dd0959a3bbfc6f8c88d651f8f2"
+    },
+    {
+     "update": 30000,
+     "path": "runs/maze-e5-sfl-v13-s5/sfl-checkpoints/u30000",
+     "sha256": "46156f2fc54d4f07642fe2430feaeadceccfd94151862b54e0931849b1ffaf74"
+    }
+   ],
+   "eval_tail": [
+    {
+     "update": 30000,
+     "time": 1793287678.0111234,
+     "solve_rate/mean": 0.7250000238418579,
+     "return/mean": 0.5156599879264832,
+     "learnability_set_mean_score": 0.001839999807998538,
+     "time_delta": 104.85350823402405,
+     "steps_per_section": 62502.438977749094
+    }
+   ]
+  },
+  "maze-e5-sfl-v5-s5": {
+   "arm": "sfl",
+   "view": 5,
+   "seed": 5,
+   "updates": 30000,
+   "queue": {
+    "status": "done",
+    "start": "2026-10-28T20:35:23Z",
+    "end": "2026-10-29T09:58:38Z",
+    "lane": 1,
+    "gpu": 0
+   },
+   "status": "trained",
+   "config": "runs/maze-e5-sfl-v5-s5/config.json",
+   "config_sha256": "5f333bb429ca9b6d1130ce906a0762297caf6adf5efd32e4c3df8b2599c63a8b",
+   "e5_run_sha256": "330671d3ee6a8cff43df867332549ae6ef0a5fa397704fef28a951835b5248c9",
+   "wall_s": 48194.78684425354,
+   "checkpoints": [
+    {
+     "update": 300,
+     "path": "runs/maze-e5-sfl-v5-s5/sfl-checkpoints/u00300",
+     "sha256": "f4e01da2351298f2c0d590a3fad9aeb9e1bda856c411fef92f81b2d41eeef826"
+    },
+    {
+     "update": 400,
+     "path": "runs/maze-e5-sfl-v5-s5/sfl-checkpoints/u00400",
+     "sha256": "14d309a7835ee0a12a87bf825f98df465717c3a41f05c30afe700dad6f83d1e9"
+    },
+    {
+     "update": 600,
+     "path": "runs/maze-e5-sfl-v5-s5/sfl-checkpoints/u00600",
+     "sha256": "c821e173774841b061de09020b71e10d925abd0bfc8d4141f7a1dcc1d661d671"
+    },
+    {
+     "update": 800,
+     "path": "runs/maze-e5-sfl-v5-s5/sfl-checkpoints/u00800",
+     "sha256": "7eb0704356a9762b0658078b780ee28f710ce575e0fc0822d28a09e455537477"
+    },
+    {
+     "update": 1000,
+     "path": "runs/maze-e5-sfl-v5-s5/sfl-checkpoints/u01000",
+     "sha256": "6e7ee4bc1b71734e1c1bf49788e55193e431924ca347ab4ab363b07891f0701f"
+    },
+    {
+     "update": 1400,
+     "path": "runs/maze-e5-sfl-v5-s5/sfl-checkpoints/u01400",
+     "sha256": "5e6189e1388a67ecb6049121ec00240a9785d93603991e3f8996186bde6f8948"
+    },
+    {
+     "update": 1900,
+     "path": "runs/maze-e5-sfl-v5-s5/sfl-checkpoints/u01900",
+     "sha256": "2bd553977e3c31129e3fe7953334b0a05fe9f37af3cd47e912ecfb6747f69ab3"
+    },
+    {
+     "update": 2600,
+     "path": "runs/maze-e5-sfl-v5-s5/sfl-checkpoints/u02600",
+     "sha256": "38d17437b2e3375e1f025502d35b2d57c410ee1e9bca8cf39c18b54c21800929"
+    },
+    {
+     "update": 3500,
+     "path": "runs/maze-e5-sfl-v5-s5/sfl-checkpoints/u03500",
+     "sha256": "fbb10cd0510fa7ef228ddb40e39a1deb4ad8f9e4572e5fbe1cf364e640c028a0"
+    },
+    {
+     "update": 4800,
+     "path": "runs/maze-e5-sfl-v5-s5/sfl-checkpoints/u04800",
+     "sha256": "f28d5a04354444368ca216c58be0b1b2cfa23c292a5428671950b1ee8185a725"
+    },
+    {
+     "update": 6500,
+     "path": "runs/maze-e5-sfl-v5-s5/sfl-checkpoints/u06500",
+     "sha256": "2403deb2082541043f756f4de1e55a818556efe1d9654ffae835306dcd0e2f32"
+    },
+    {
+     "update": 8800,
+     "path": "runs/maze-e5-sfl-v5-s5/sfl-checkpoints/u08800",
+     "sha256": "73939c837d9dfa2a271683399fe5858d80b13dabf4388f36b3afbacc3f206821"
+    },
+    {
+     "update": 11900,
+     "path": "runs/maze-e5-sfl-v5-s5/sfl-checkpoints/u11900",
+     "sha256": "c14da1fa9048915ab7ad1c5ec3330e178e91381c128b36a9e599cd8ef310a65f"
+    },
+    {
+     "update": 16200,
+     "path": "runs/maze-e5-sfl-v5-s5/sfl-checkpoints/u16200",
+     "sha256": "471e046423b1924cb5615073ac3f42335aaecc70aa6dfe166eb234c04918026f"
+    },
+    {
+     "update": 22100,
+     "path": "runs/maze-e5-sfl-v5-s5/sfl-checkpoints/u22100",
+     "sha256": "28c111462c634c39bed815dae86f86b33b6040d4f63346b30b49b22a8c32064d"
+    },
+    {
+     "update": 30000,
+     "path": "runs/maze-e5-sfl-v5-s5/sfl-checkpoints/u30000",
+     "sha256": "bf26a96630c57a5594a9da30700a50ca8442921fb744e5865fe74c726bbfae72"
+    }
+   ],
+   "eval_tail": [
+    {
+     "update": 30000,
+     "time": 1793267916.5170047,
+     "solve_rate/mean": 0.8500000238418579,
+     "return/mean": 0.542739987373352,
+     "learnability_set_mean_score": 0.006092838477343321,
+     "time_delta": 82.02118420600891,
+     "steps_per_section": 79901.30919762897
+    }
+   ]
+  },
+  "maze-e5-plr-v13-s1": {
+   "arm": "plr",
+   "view": 13,
+   "seed": 1,
+   "updates": 30000,
+   "queue": {
+    "status": "done",
+    "start": "2026-10-28T20:21:56Z",
+    "end": "2026-10-29T07:06:05Z",
+    "lane": 2,
+    "gpu": 0
+   },
+   "status": "trained",
+   "config": "runs/maze-e5-plr-v13-s1/checkpoints/maze-e5-plr-v13-s1/1/config.json",
+   "config_sha256": "a513709d816dadb4bdc96f8d218d6dbb4fbbc8bf637137fffa8ee453eb9e47cc",
+   "e5_run_sha256": "a5b2972f3585fa424af28c098f8d24d9db7718e9e7caab1f68dd84bd141e3983",
+   "wall_s": 38646.82030296326,
+   "checkpoints": [
+    {
+     "update": 300,
+     "step": 2,
+     "path": "runs/maze-e5-plr-v13-s1/checkpoints/maze-e5-plr-v13-s1/1/models/2",
+     "sha256": "369a18dc9e1f8683d9a808875d8809c319064958cd1d93f7a7a8809ec3fa778f"
+    },
+    {
+     "update": 400,
+     "step": 3,
+     "path": "runs/maze-e5-plr-v13-s1/checkpoints/maze-e5-plr-v13-s1/1/models/3",
+     "sha256": "419f7c6a435ddd0a73821a15feea06e57db5087b142a5f7618f807d070763ccb"
+    },
+    {
+     "update": 600,
+     "step": 5,
+     "path": "runs/maze-e5-plr-v13-s1/checkpoints/maze-e5-plr-v13-s1/1/models/5",
+     "sha256": "da604e00a7eb4d9029b069eee1e606ad23215bf63ea056d0d30e6b453dcc1a13"
+    },
+    {
+     "update": 800,
+     "step": 7,
+     "path": "runs/maze-e5-plr-v13-s1/checkpoints/maze-e5-plr-v13-s1/1/models/7",
+     "sha256": "06c695a5b1cdffaea6db1766ea03a5dcac5b1f050b4a55d2c8ee7798d9f77649"
+    },
+    {
+     "update": 1000,
+     "step": 9,
+     "path": "runs/maze-e5-plr-v13-s1/checkpoints/maze-e5-plr-v13-s1/1/models/9",
+     "sha256": "22d02a5f6dfbc911285c49a5dab6df70ad02cf080b0ae81147807a4c5e4d2963"
+    },
+    {
+     "update": 1400,
+     "step": 13,
+     "path": "runs/maze-e5-plr-v13-s1/checkpoints/maze-e5-plr-v13-s1/1/models/13",
+     "sha256": "cb419738214cbec6b83420dad427195568e374b5ca7d8c8faa73b0ccdb8adddb"
+    },
+    {
+     "update": 1900,
+     "step": 18,
+     "path": "runs/maze-e5-plr-v13-s1/checkpoints/maze-e5-plr-v13-s1/1/models/18",
+     "sha256": "6b94cc1c932829bede9f59c7bcc3ca1e40cd04f5f810405ff687028b120f4286"
+    },
+    {
+     "update": 2600,
+     "step": 25,
+     "path": "runs/maze-e5-plr-v13-s1/checkpoints/maze-e5-plr-v13-s1/1/models/25",
+     "sha256": "974d7cf99e3603da118b264edb49bfe906849d327b60cf33906f1f0552246f8c"
+    },
+    {
+     "update": 3500,
+     "step": 34,
+     "path": "runs/maze-e5-plr-v13-s1/checkpoints/maze-e5-plr-v13-s1/1/models/34",
+     "sha256": "9787ebfe4ded596d216fc500448c0e51f03d8667922d50fe411f8cffd87e8338"
+    },
+    {
+     "update": 4800,
+     "step": 47,
+     "path": "runs/maze-e5-plr-v13-s1/checkpoints/maze-e5-plr-v13-s1/1/models/47",
+     "sha256": "a220cd0e37cb70a5a1d4bfbd08237fc9116b691fe53db72dff640d00db22bbfd"
+    },
+    {
+     "update": 6500,
+     "step": 64,
+     "path": "runs/maze-e5-plr-v13-s1/checkpoints/maze-e5-plr-v13-s1/1/models/64",
+     "sha256": "4dac3f7cca6174cced886564143319371f60f13e2a084694aba5541e6b51651d"
+    },
+    {
+     "update": 8800,
+     "step": 87,
+     "path": "runs/maze-e5-plr-v13-s1/checkpoints/maze-e5-plr-v13-s1/1/models/87",
+     "sha256": "20ce571464682ae842736a7a6e1df26464cfaea1756e8bcf72905bf69ad7791f"
+    },
+    {
+     "update": 11900,
+     "step": 118,
+     "path": "runs/maze-e5-plr-v13-s1/checkpoints/maze-e5-plr-v13-s1/1/models/118",
+     "sha256": "8fecab6f70c021a2eefbeb78e880acf0c551006a029ad88c2c144a32e477a0c2"
+    },
+    {
+     "update": 16200,
+     "step": 161,
+     "path": "runs/maze-e5-plr-v13-s1/checkpoints/maze-e5-plr-v13-s1/1/models/161",
+     "sha256": "0eb3717f959e235b5e7634bfaf42400f680f3ec0b91f68cac2eb50ab0dec755c"
+    },
+    {
+     "update": 22100,
+     "step": 220,
+     "path": "runs/maze-e5-plr-v13-s1/checkpoints/maze-e5-plr-v13-s1/1/models/220",
+     "sha256": "dcd481122fa94ad799c4f10ff41e6834d74ce7a1148aa9d558d0588e7271e3be"
+    },
+    {
+     "update": 30000,
+     "step": 299,
+     "path": "runs/maze-e5-plr-v13-s1/checkpoints/maze-e5-plr-v13-s1/1/models/299",
+     "sha256": "74cb4fb3bb5bfe0d0a49bfec8e664fecdc97046f81cdb3542ab2567165dcb89a"
+    }
+   ],
+   "eval_tail": []
+  },
+  "maze-e5-plr-v5-s1": {
+   "arm": "plr",
+   "view": 5,
+   "seed": 1,
+   "updates": 30000,
+   "queue": {
+    "status": "done",
+    "start": "2026-10-28T20:21:56Z",
+    "end": "2026-10-29T01:41:19Z",
+    "lane": 3,
+    "gpu": 0
+   },
+   "status": "trained",
+   "config": "runs/maze-e5-plr-v5-s1/checkpoints/maze-e5-plr-v5-s1/1/config.json",
+   "config_sha256": "2b3b1575953ef6e3372b8125b81ca084db76df2c822b2342b9db3ab20fb263fa",
+   "e5_run_sha256": "1c9768830bc628c3bca34c7f1420b83f2e41acfaa4b9e16c0b1995d304516bf8",
+   "wall_s": 19162.24447131157,
+   "checkpoints": [
+    {
+     "update": 300,
+     "step": 2,
+     "path": "runs/maze-e5-plr-v5-s1/checkpoints/maze-e5-plr-v5-s1/1/models/2",
+     "sha256": "ec9568f61cdf003ade531b2122c2e5094fb1c5a59a9f113ee666a12d2813f6ae"
+    },
+    {
+     "update": 400,
+     "step": 3,
+     "path": "runs/maze-e5-plr-v5-s1/checkpoints/maze-e5-plr-v5-s1/1/models/3",
+     "sha256": "f9fec45b60c47b1783457652c02151f00e6cdf0429124028860cba91781d65c8"
+    },
+    {
+     "update": 600,
+     "step": 5,
+     "path": "runs/maze-e5-plr-v5-s1/checkpoints/maze-e5-plr-v5-s1/1/models/5",
+     "sha256": "9a8353aff7f2aef467be8b33b50c4a21b0005b978d2bc08b7822941b8df16463"
+    },
+    {
+     "update": 800,
+     "step": 7,
+     "path": "runs/maze-e5-plr-v5-s1/checkpoints/maze-e5-plr-v5-s1/1/models/7",
+     "sha256": "b35c0e5a70a0be5177f2a7169c684f84a31d97f7563ebc76a4a2e1c456e9abc9"
+    },
+    {
+     "update": 1000,
+     "step": 9,
+     "path": "runs/maze-e5-plr-v5-s1/checkpoints/maze-e5-plr-v5-s1/1/models/9",
+     "sha256": "902db8b9f2e2926bd29d5b61d486bc5d437606634f98b648dfb608e4e56be96e"
+    },
+    {
+     "update": 1400,
+     "step": 13,
+     "path": "runs/maze-e5-plr-v5-s1/checkpoints/maze-e5-plr-v5-s1/1/models/13",
+     "sha256": "65f436b595eef6d835d566d343ab4e7aec602a50ca57c92b161dd25c5bb1c541"
+    },
+    {
+     "update": 1900,
+     "step": 18,
+     "path": "runs/maze-e5-plr-v5-s1/checkpoints/maze-e5-plr-v5-s1/1/models/18",
+     "sha256": "46bc838716ae1fb1505db071dce170e714972382612b7357208df842819e8d3f"
+    },
+    {
+     "update": 2600,
+     "step": 25,
+     "path": "runs/maze-e5-plr-v5-s1/checkpoints/maze-e5-plr-v5-s1/1/models/25",
+     "sha256": "b0a750989d9f7acb212366a5016963d495e1eb153ed42b35c343239aba8b63a4"
+    },
+    {
+     "update": 3500,
+     "step": 34,
+     "path": "runs/maze-e5-plr-v5-s1/checkpoints/maze-e5-plr-v5-s1/1/models/34",
+     "sha256": "9ef363eb068ea69f450561abf36b6a13582abf84248e634dd08cb6e4dc877a7d"
+    },
+    {
+     "update": 4800,
+     "step": 47,
+     "path": "runs/maze-e5-plr-v5-s1/checkpoints/maze-e5-plr-v5-s1/1/models/47",
+     "sha256": "d2442ede983e81afb724ccfa8d674fe409e0ed31f07de61f3ab7b03433ec7feb"
+    },
+    {
+     "update": 6500,
+     "step": 64,
+     "path": "runs/maze-e5-plr-v5-s1/checkpoints/maze-e5-plr-v5-s1/1/models/64",
+     "sha256": "8547fb2ef02072f60fcf3829da479a44d194d8c22fabef58cd67049532fd0206"
+    },
+    {
+     "update": 8800,
+     "step": 87,
+     "path": "runs/maze-e5-plr-v5-s1/checkpoints/maze-e5-plr-v5-s1/1/models/87",
+     "sha256": "5bebd6b5af92d46c83a26cce23091de9d333c2d43aef7836266b35990ff89229"
+    },
+    {
+     "update": 11900,
+     "step": 118,
+     "path": "runs/maze-e5-plr-v5-s1/checkpoints/maze-e5-plr-v5-s1/1/models/118",
+     "sha256": "79b0cb9afe143376cb7e029742f30eaeac1c462b13541c8de6dec46209d88b0f"
+    },
+    {
+     "update": 16200,
+     "step": 161,
+     "path": "runs/maze-e5-plr-v5-s1/checkpoints/maze-e5-plr-v5-s1/1/models/161",
+     "sha256": "8f65c3a5c403654097a1030748473a90f5cfad9731c04603c1939b61f13ec745"
+    },
+    {
+     "update": 22100,
+     "step": 220,
+     "path": "runs/maze-e5-plr-v5-s1/checkpoints/maze-e5-plr-v5-s1/1/models/220",
+     "sha256": "8a24ba834395b16c66a0da22c27541388d7e18044c0007b72b83dd80c2624b16"
+    },
+    {
+     "update": 30000,
+     "step": 299,
+     "path": "runs/maze-e5-plr-v5-s1/checkpoints/maze-e5-plr-v5-s1/1/models/299",
+     "sha256": "da6dd134d911f8613ed4ed01d50cdbbb0977368de5b8352641e2a58a1dc4da49"
+    }
+   ],
+   "eval_tail": []
+  },
+  "maze-e5-plr-v13-s2": {
+   "arm": "plr",
+   "view": 13,
+   "seed": 2,
+   "updates": 30000,
+   "queue": {
+    "status": "done",
+    "start": "2026-10-28T20:22:36Z",
+    "end": "2026-10-29T06:58:11Z",
+    "lane": 2,
+    "gpu": 0
+   },
+   "status": "trained",
+   "config": "runs/maze-e5-plr-v13-s2/checkpoints/maze-e5-plr-v13-s2/2/config.json",
+   "config_sha256": "d8139bda798e2b44c5de05c0b318780aaf0093f21a8aaff882075545fd68c89f",
+   "e5_run_sha256": "4e07c544a4d7ff1fd016974a3b900aa1ea88dff918d9cf34d17fe8c1a9583c02",
+   "wall_s": 38133.046152830124,
+   "checkpoints": [
+    {
+     "update": 300,
+     "step": 2,
+     "path": "runs/maze-e5-plr-v13-s2/checkpoints/maze-e5-plr-v13-s2/2/models/2",
+     "sha256": "8d7b9c0434aac8239c8deb387940e7b68f4aaace3acd0c86f30be194b9c2257c"
+    },
+    {
+     "update": 400,
+     "step": 3,
+     "path": "runs/maze-e5-plr-v13-s2/checkpoints/maze-e5-plr-v13-s2/2/models/3",
+     "sha256": "5f9f4ac05bc28b39a73f4bb37260a66c2d3b2850845f2217694e4137a0c0f09e"
+    },
+    {
+     "update": 600,
+     "step": 5,
+     "path": "runs/maze-e5-plr-v13-s2/checkpoints/maze-e5-plr-v13-s2/2/models/5",
+     "sha256": "cbd81d43c8d72f1b76a83690656e185d7d87e5040a1ed0fdd2d0af9e128ba350"
+    },
+    {
+     "update": 800,
+     "step": 7,
+     "path": "runs/maze-e5-plr-v13-s2/checkpoints/maze-e5-plr-v13-s2/2/models/7",
+     "sha256": "4e6a967e6dc001ca9640fcdef01b544f58e378d70ab773c6fc7ab09f3e6c8fe4"
+    },
+    {
+     "update": 1000,
+     "step": 9,
+     "path": "runs/maze-e5-plr-v13-s2/checkpoints/maze-e5-plr-v13-s2/2/models/9",
+     "sha256": "7b996dbcb5b7ab20d607037c938037853c5b7f2f209950875b86cd94dde15149"
+    },
+    {
+     "update": 1400,
+     "step": 13,
+     "path": "runs/maze-e5-plr-v13-s2/checkpoints/maze-e5-plr-v13-s2/2/models/13",
+     "sha256": "21818c87643ba54acb41eb15442dd9809d50f832bd40a92bfa07b449ab485aa6"
+    },
+    {
+     "update": 1900,
+     "step": 18,
+     "path": "runs/maze-e5-plr-v13-s2/checkpoints/maze-e5-plr-v13-s2/2/models/18",
+     "sha256": "55c84fa32de3d0e3494401510d22bc8d03948af97e50aeebf853415911467c19"
+    },
+    {
+     "update": 2600,
+     "step": 25,
+     "path": "runs/maze-e5-plr-v13-s2/checkpoints/maze-e5-plr-v13-s2/2/models/25",
+     "sha256": "0f0ae436766e69fccc68289af00e376fab1464741fc02394f22f0d13b48476ec"
+    },
+    {
+     "update": 3500,
+     "step": 34,
+     "path": "runs/maze-e5-plr-v13-s2/checkpoints/maze-e5-plr-v13-s2/2/models/34",
+     "sha256": "f152b80d2d4b4c4db60daa294916ada1c50718e6457e4cf12728db2795d8215d"
+    },
+    {
+     "update": 4800,
+     "step": 47,
+     "path": "runs/maze-e5-plr-v13-s2/checkpoints/maze-e5-plr-v13-s2/2/models/47",
+     "sha256": "2aca59442a3ccf1546e416ded2dfe4ba0916102bd333b1f6b53b9c22c62c5776"
+    },
+    {
+     "update": 6500,
+     "step": 64,
+     "path": "runs/maze-e5-plr-v13-s2/checkpoints/maze-e5-plr-v13-s2/2/models/64",
+     "sha256": "0aaa1dac81560977cfa7e9a0b736d1fa0978753416af72fae47cf163f954a843"
+    },
+    {
+     "update": 8800,
+     "step": 87,
+     "path": "runs/maze-e5-plr-v13-s2/checkpoints/maze-e5-plr-v13-s2/2/models/87",
+     "sha256": "248b482c28f3e009aab52311a61a5215c4c6a1a52f663c1913ed3795fb87c4c6"
+    },
+    {
+     "update": 11900,
+     "step": 118,
+     "path": "runs/maze-e5-plr-v13-s2/checkpoints/maze-e5-plr-v13-s2/2/models/118",
+     "sha256": "55d73233bd89d7e74197482ccbe720161c1a2c4f1224ba03a8414d8890a1a565"
+    },
+    {
+     "update": 16200,
+     "step": 161,
+     "path": "runs/maze-e5-plr-v13-s2/checkpoints/maze-e5-plr-v13-s2/2/models/161",
+     "sha256": "c36a202a300bc70c8ff2cd9752310d807f4118df91987d908c4334ab0c373125"
+    },
+    {
+     "update": 22100,
+     "step": 220,
+     "path": "runs/maze-e5-plr-v13-s2/checkpoints/maze-e5-plr-v13-s2/2/models/220",
+     "sha256": "645f96dc762d6dee8dd8132f2f4498c0472014ad657c00ae00100f952f9448ed"
+    },
+    {
+     "update": 30000,
+     "step": 299,
+     "path": "runs/maze-e5-plr-v13-s2/checkpoints/maze-e5-plr-v13-s2/2/models/299",
+     "sha256": "c1badfdeca3d5e5bb042f30d35079a4559e3a9299b62d503600a749617713f40"
+    }
+   ],
+   "eval_tail": []
+  },
+  "maze-e5-plr-v5-s2": {
+   "arm": "plr",
+   "view": 5,
+   "seed": 2,
+   "updates": 30000,
+   "queue": {
+    "status": "done",
+    "start": "2026-10-28T20:22:36Z",
+    "end": "2026-10-29T01:41:30Z",
+    "lane": 3,
+    "gpu": 0
+   },
+   "status": "trained",
+   "config": "runs/maze-e5-plr-v5-s2/checkpoints/maze-e5-plr-v5-s2/2/config.json",
+   "config_sha256": "87443b6617b2dc37885d01a0453a1401478d367d6871a70a8ad6c20df1c4386e",
+   "e5_run_sha256": "82461f0f57e43a57dda042415dc674d8bfd8a4a936ede8f18fc2b646c33c534e",
+   "wall_s": 19133.23727273941,
+   "checkpoints": [
+    {
+     "update": 300,
+     "step": 2,
+     "path": "runs/maze-e5-plr-v5-s2/checkpoints/maze-e5-plr-v5-s2/2/models/2",
+     "sha256": "fe95df69b3a5265197eb4ce251dd142eeafca33f0130b8e0064a8db106b20a21"
+    },
+    {
+     "update": 400,
+     "step": 3,
+     "path": "runs/maze-e5-plr-v5-s2/checkpoints/maze-e5-plr-v5-s2/2/models/3",
+     "sha256": "afcd212a8598a12f88e00522bba21039839caff8ab58f7ba8da122a469fd0c5e"
+    },
+    {
+     "update": 600,
+     "step": 5,
+     "path": "runs/maze-e5-plr-v5-s2/checkpoints/maze-e5-plr-v5-s2/2/models/5",
+     "sha256": "c5aad6b31f151422f73dfd8b5a7f24e54515356418692882d7e1bb1d2d3d2f23"
+    },
+    {
+     "update": 800,
+     "step": 7,
+     "path": "runs/maze-e5-plr-v5-s2/checkpoints/maze-e5-plr-v5-s2/2/models/7",
+     "sha256": "ca277bad0d73f64e6b9077ad7dc82c58176500216433b119913336ed06a7f677"
+    },
+    {
+     "update": 1000,
+     "step": 9,
+     "path": "runs/maze-e5-plr-v5-s2/checkpoints/maze-e5-plr-v5-s2/2/models/9",
+     "sha256": "1c1d7f88422f14d7c87f2278106dbbba6cebb2b42d7abbc23eedb0892166f0eb"
+    },
+    {
+     "update": 1400,
+     "step": 13,
+     "path": "runs/maze-e5-plr-v5-s2/checkpoints/maze-e5-plr-v5-s2/2/models/13",
+     "sha256": "1ae2aa883d749150eed749b73757cb60c2e0795e6dca4516ccd79fff393b3eb7"
+    },
+    {
+     "update": 1900,
+     "step": 18,
+     "path": "runs/maze-e5-plr-v5-s2/checkpoints/maze-e5-plr-v5-s2/2/models/18",
+     "sha256": "08d8efc07e0f457cc1cf4363a07c56b321de0c473d94ae489d479879ac930048"
+    },
+    {
+     "update": 2600,
+     "step": 25,
+     "path": "runs/maze-e5-plr-v5-s2/checkpoints/maze-e5-plr-v5-s2/2/models/25",
+     "sha256": "a0ef3384fd5f2462203981bb871c7bf447ef2d6816146bd3de26a778b2b710c3"
+    },
+    {
+     "update": 3500,
+     "step": 34,
+     "path": "runs/maze-e5-plr-v5-s2/checkpoints/maze-e5-plr-v5-s2/2/models/34",
+     "sha256": "20cd02285502ad63f4bf6c758396c619ce79ca2bf045967bb8b0ff4f9e20f099"
+    },
+    {
+     "update": 4800,
+     "step": 47,
+     "path": "runs/maze-e5-plr-v5-s2/checkpoints/maze-e5-plr-v5-s2/2/models/47",
+     "sha256": "e75cde89fc044ea9590ba1c47be449fa3a07a38128f532a5bf80aa75b1fe787b"
+    },
+    {
+     "update": 6500,
+     "step": 64,
+     "path": "runs/maze-e5-plr-v5-s2/checkpoints/maze-e5-plr-v5-s2/2/models/64",
+     "sha256": "46635f34a33ddc951575c57374ed8c4f2105def03633e9c5988cd0e9291078a6"
+    },
+    {
+     "update": 8800,
+     "step": 87,
+     "path": "runs/maze-e5-plr-v5-s2/checkpoints/maze-e5-plr-v5-s2/2/models/87",
+     "sha256": "014cbb5f8630310d83f0bb1ee31f55824b280e03d1d54f1de05e88a956b5c0b0"
+    },
+    {
+     "update": 11900,
+     "step": 118,
+     "path": "runs/maze-e5-plr-v5-s2/checkpoints/maze-e5-plr-v5-s2/2/models/118",
+     "sha256": "4dca03a5f87280a79f68bd4fb07bfde799d0238b963b85fc62ac83eb6378a4b5"
+    },
+    {
+     "update": 16200,
+     "step": 161,
+     "path": "runs/maze-e5-plr-v5-s2/checkpoints/maze-e5-plr-v5-s2/2/models/161",
+     "sha256": "4c8d37d6d85e82c4e71568eb636f9c439afd69c5754c14e25eaf84d0ab14423c"
+    },
+    {
+     "update": 22100,
+     "step": 220,
+     "path": "runs/maze-e5-plr-v5-s2/checkpoints/maze-e5-plr-v5-s2/2/models/220",
+     "sha256": "49fa67deb670172eaaa5305778b54c1db95c4830244ef9e4fcd61d1d3a1fcdc1"
+    },
+    {
+     "update": 30000,
+     "step": 299,
+     "path": "runs/maze-e5-plr-v5-s2/checkpoints/maze-e5-plr-v5-s2/2/models/299",
+     "sha256": "d285653041567b9864a89fb54328de4d76446d7edf469caa760fdbd1f11b2fd1"
+    }
+   ],
+   "eval_tail": []
+  },
+  "maze-e5-plr-v13-s3": {
+   "arm": "plr",
+   "view": 13,
+   "seed": 3,
+   "updates": 30000,
+   "queue": {
+    "status": "done",
+    "start": "2026-10-28T20:23:16Z",
+    "end": "2026-10-29T07:02:32Z",
+    "lane": 2,
+    "gpu": 0
+   },
+   "status": "trained",
+   "config": "runs/maze-e5-plr-v13-s3/checkpoints/maze-e5-plr-v13-s3/3/config.json",
+   "config_sha256": "e5b953474aa02fb9a1be33293a2ca0ea91ef19cec63d714259d779f4a45ea280",
+   "e5_run_sha256": "f3850b9ef3bd146dde59740f859ab2d5cbc7fcb3ca1ab01d9adec2cdc5569176",
+   "wall_s": 38353.55876779556,
+   "checkpoints": [
+    {
+     "update": 300,
+     "step": 2,
+     "path": "runs/maze-e5-plr-v13-s3/checkpoints/maze-e5-plr-v13-s3/3/models/2",
+     "sha256": "4349cf1965947398644dd70537022a919b4ed9bcad76a96ab6d38a6ec4c62629"
+    },
+    {
+     "update": 400,
+     "step": 3,
+     "path": "runs/maze-e5-plr-v13-s3/checkpoints/maze-e5-plr-v13-s3/3/models/3",
+     "sha256": "f7319df4bcec4bc220d04eb20b83ca0e19f77c5300347489cc92fb2997f28474"
+    },
+    {
+     "update": 600,
+     "step": 5,
+     "path": "runs/maze-e5-plr-v13-s3/checkpoints/maze-e5-plr-v13-s3/3/models/5",
+     "sha256": "d1107442299c9b3abd75e940cbaef90ccf0d0e953843ed38e838c8fbf2686bf4"
+    },
+    {
+     "update": 800,
+     "step": 7,
+     "path": "runs/maze-e5-plr-v13-s3/checkpoints/maze-e5-plr-v13-s3/3/models/7",
+     "sha256": "1104f6c190d0cccbae91140f0cbf16f8b0c94909efab0981f25a85e112abea3c"
+    },
+    {
+     "update": 1000,
+     "step": 9,
+     "path": "runs/maze-e5-plr-v13-s3/checkpoints/maze-e5-plr-v13-s3/3/models/9",
+     "sha256": "2fa4f4896712e070e7aeea0ed6290b0a4f950a469e66761a63edb983dbe22822"
+    },
+    {
+     "update": 1400,
+     "step": 13,
+     "path": "runs/maze-e5-plr-v13-s3/checkpoints/maze-e5-plr-v13-s3/3/models/13",
+     "sha256": "893bf8e6dfaae5e5d1c84632545252f669fc8f3c1f53c4074502b6d077085bfd"
+    },
+    {
+     "update": 1900,
+     "step": 18,
+     "path": "runs/maze-e5-plr-v13-s3/checkpoints/maze-e5-plr-v13-s3/3/models/18",
+     "sha256": "df97f5e5ed76daed4936ae8f689a941153f5f80fecdd1bfdd535ce071aca09cb"
+    },
+    {
+     "update": 2600,
+     "step": 25,
+     "path": "runs/maze-e5-plr-v13-s3/checkpoints/maze-e5-plr-v13-s3/3/models/25",
+     "sha256": "03a8bfeddaf3e2fc9493dbd06c02e17a545860fb835900f13e1559437c237941"
+    },
+    {
+     "update": 3500,
+     "step": 34,
+     "path": "runs/maze-e5-plr-v13-s3/checkpoints/maze-e5-plr-v13-s3/3/models/34",
+     "sha256": "0502dc23e60a9e95b45c66383c3f6b678063de67ddae3322c84793734c35e896"
+    },
+    {
+     "update": 4800,
+     "step": 47,
+     "path": "runs/maze-e5-plr-v13-s3/checkpoints/maze-e5-plr-v13-s3/3/models/47",
+     "sha256": "2e630db662fed263ca218211bb862fba58a42d3090dfdd3e3ea20aa4ec6f9a91"
+    },
+    {
+     "update": 6500,
+     "step": 64,
+     "path": "runs/maze-e5-plr-v13-s3/checkpoints/maze-e5-plr-v13-s3/3/models/64",
+     "sha256": "425f61ae6a0f7a4f16b934a53dfefd5f556f5ba02557a914b287a016ec60f3bc"
+    },
+    {
+     "update": 8800,
+     "step": 87,
+     "path": "runs/maze-e5-plr-v13-s3/checkpoints/maze-e5-plr-v13-s3/3/models/87",
+     "sha256": "da00323b0d7b2c238ad8ed27d5e553f8beaa7726f9ccfc525c51e722141583a6"
+    },
+    {
+     "update": 11900,
+     "step": 118,
+     "path": "runs/maze-e5-plr-v13-s3/checkpoints/maze-e5-plr-v13-s3/3/models/118",
+     "sha256": "16dc3ffb6c28023b4ef69b67ea116dc1f0b7c675d3ca43f85f8563f1d9295ac8"
+    },
+    {
+     "update": 16200,
+     "step": 161,
+     "path": "runs/maze-e5-plr-v13-s3/checkpoints/maze-e5-plr-v13-s3/3/models/161",
+     "sha256": "1780569c6d635b8ad402ac435ffc66fe353d02800ea9694c7a334e20f2fa674f"
+    },
+    {
+     "update": 22100,
+     "step": 220,
+     "path": "runs/maze-e5-plr-v13-s3/checkpoints/maze-e5-plr-v13-s3/3/models/220",
+     "sha256": "5f6efbb8eb97f8f3c9e98051d5fa67cb4de3d608f3792f716b70be2066469d1c"
+    },
+    {
+     "update": 30000,
+     "step": 299,
+     "path": "runs/maze-e5-plr-v13-s3/checkpoints/maze-e5-plr-v13-s3/3/models/299",
+     "sha256": "0dfc96301740054940a43b6c7987a26929f7296844f3cbdd551825110a52d88b"
+    }
+   ],
+   "eval_tail": []
+  },
+  "maze-e5-plr-v5-s3": {
+   "arm": "plr",
+   "view": 5,
+   "seed": 3,
+   "updates": 30000,
+   "queue": {
+    "status": "done",
+    "start": "2026-10-28T20:23:16Z",
+    "end": "2026-10-29T01:41:25Z",
+    "lane": 3,
+    "gpu": 0
+   },
+   "status": "trained",
+   "config": "runs/maze-e5-plr-v5-s3/checkpoints/maze-e5-plr-v5-s3/3/config.json",
+   "config_sha256": "f22c408258225c9699b551616dc3ed6cd0218a26ea3d843775e6612e4ec04492",
+   "e5_run_sha256": "2a30cfd1dcb00da88361ed222e7942f72ae4045dc34607a799306c8768a1e5ac",
+   "wall_s": 19088.812480449677,
+   "checkpoints": [
+    {
+     "update": 300,
+     "step": 2,
+     "path": "runs/maze-e5-plr-v5-s3/checkpoints/maze-e5-plr-v5-s3/3/models/2",
+     "sha256": "aefe2d19bb2ed536499304b5bd01ce39f8516b2a9fd1a097ab23db8f8c856ad9"
+    },
+    {
+     "update": 400,
+     "step": 3,
+     "path": "runs/maze-e5-plr-v5-s3/checkpoints/maze-e5-plr-v5-s3/3/models/3",
+     "sha256": "042b6249b9fb6938b9eb661f9b5df0e37d88b997a61dd54f553b9070cfdef7af"
+    },
+    {
+     "update": 600,
+     "step": 5,
+     "path": "runs/maze-e5-plr-v5-s3/checkpoints/maze-e5-plr-v5-s3/3/models/5",
+     "sha256": "a592ee93b8094d028f3768f9b8ff33ac63e7896dff2ebef90df86cc1c26d55f1"
+    },
+    {
+     "update": 800,
+     "step": 7,
+     "path": "runs/maze-e5-plr-v5-s3/checkpoints/maze-e5-plr-v5-s3/3/models/7",
+     "sha256": "a8f66a0147518321fbe1735ef8ebfa1a5d64ec0036a59261b06540dea9db85a5"
+    },
+    {
+     "update": 1000,
+     "step": 9,
+     "path": "runs/maze-e5-plr-v5-s3/checkpoints/maze-e5-plr-v5-s3/3/models/9",
+     "sha256": "5045a791bc13ecd2cf65a4dc3b316ff1c0a525cab84ff0806020cdcac6af6c75"
+    },
+    {
+     "update": 1400,
+     "step": 13,
+     "path": "runs/maze-e5-plr-v5-s3/checkpoints/maze-e5-plr-v5-s3/3/models/13",
+     "sha256": "5469ec9365ad54e2120ffdd366d8d6a092dbc45ee163b6f358caf78ece813b0c"
+    },
+    {
+     "update": 1900,
+     "step": 18,
+     "path": "runs/maze-e5-plr-v5-s3/checkpoints/maze-e5-plr-v5-s3/3/models/18",
+     "sha256": "e56c7b2f2cacbb13f43556fd05236b4283eec0053e506410ba973f1cd7abb676"
+    },
+    {
+     "update": 2600,
+     "step": 25,
+     "path": "runs/maze-e5-plr-v5-s3/checkpoints/maze-e5-plr-v5-s3/3/models/25",
+     "sha256": "1476402d9f984ff8e91abc26100e306eb4b1705c49a7b1d0091a8e9376635cba"
+    },
+    {
+     "update": 3500,
+     "step": 34,
+     "path": "runs/maze-e5-plr-v5-s3/checkpoints/maze-e5-plr-v5-s3/3/models/34",
+     "sha256": "ede6fafc6d4ca953d24d049ca4af35f9aa3a439de5c62553685673cbef89950a"
+    },
+    {
+     "update": 4800,
+     "step": 47,
+     "path": "runs/maze-e5-plr-v5-s3/checkpoints/maze-e5-plr-v5-s3/3/models/47",
+     "sha256": "f7794ba38f081dd5086be8902ea772e6549ebbfa1cb9d38a647dab8a999a3a6a"
+    },
+    {
+     "update": 6500,
+     "step": 64,
+     "path": "runs/maze-e5-plr-v5-s3/checkpoints/maze-e5-plr-v5-s3/3/models/64",
+     "sha256": "56537bb5c37ae1a0811f4d358337e047223b0c460045dda9dae409d717d09243"
+    },
+    {
+     "update": 8800,
+     "step": 87,
+     "path": "runs/maze-e5-plr-v5-s3/checkpoints/maze-e5-plr-v5-s3/3/models/87",
+     "sha256": "f35e2289eee77fed3b0dadf095e43b629737e8892c53f0d61af3097d426693c8"
+    },
+    {
+     "update": 11900,
+     "step": 118,
+     "path": "runs/maze-e5-plr-v5-s3/checkpoints/maze-e5-plr-v5-s3/3/models/118",
+     "sha256": "21d68df2075f21bd52153ec94660c7d3318c042b412eedea2248df1576a5a490"
+    },
+    {
+     "update": 16200,
+     "step": 161,
+     "path": "runs/maze-e5-plr-v5-s3/checkpoints/maze-e5-plr-v5-s3/3/models/161",
+     "sha256": "ef73878dfdc8f9970e0deaaf706dd42522debe4fb15767b27ed42a84d39e2b71"
+    },
+    {
+     "update": 22100,
+     "step": 220,
+     "path": "runs/maze-e5-plr-v5-s3/checkpoints/maze-e5-plr-v5-s3/3/models/220",
+     "sha256": "142f0d2f7a3365ef70097bb2b1f36356a6a30262131938604401219f366172fd"
+    },
+    {
+     "update": 30000,
+     "step": 299,
+     "path": "runs/maze-e5-plr-v5-s3/checkpoints/maze-e5-plr-v5-s3/3/models/299",
+     "sha256": "308d6c591cfc31222be2b2c2849adcf95f9e8c0246cddca3ea213021d7ee858f"
+    }
+   ],
+   "eval_tail": []
+  },
+  "maze-e5-plr-v13-s4": {
+   "arm": "plr",
+   "view": 13,
+   "seed": 4,
+   "updates": 30000,
+   "queue": {
+    "status": "done",
+    "start": "2026-10-28T20:33:10Z",
+    "end": "2026-10-29T07:11:56Z",
+    "lane": 2,
+    "gpu": 0
+   },
+   "status": "trained",
+   "config": "runs/maze-e5-plr-v13-s4/checkpoints/maze-e5-plr-v13-s4/4/config.json",
+   "config_sha256": "24a16f6d74f4e490d1261f24130889e4ce50ae09358731066bf34b4e28d8773d",
+   "e5_run_sha256": "651e6d18327d0906b92fccaa0797359a6c1dd106e6c858df2454b21df0ddf032",
+   "wall_s": 38322.77369904518,
+   "checkpoints": [
+    {
+     "update": 300,
+     "step": 2,
+     "path": "runs/maze-e5-plr-v13-s4/checkpoints/maze-e5-plr-v13-s4/4/models/2",
+     "sha256": "f095c2a9b59deb530e66dc911271155fa19ee479cf73bc01fcdaf2f18327b0fd"
+    },
+    {
+     "update": 400,
+     "step": 3,
+     "path": "runs/maze-e5-plr-v13-s4/checkpoints/maze-e5-plr-v13-s4/4/models/3",
+     "sha256": "73d1732cf994734352f9878e403c691128be6f081a0e07fb9f0de72b5f98a2b2"
+    },
+    {
+     "update": 600,
+     "step": 5,
+     "path": "runs/maze-e5-plr-v13-s4/checkpoints/maze-e5-plr-v13-s4/4/models/5",
+     "sha256": "ca9c546cf90a336ee0ce9b896ad02f0e1340d5c891ca721aaddfd3c366429cf9"
+    },
+    {
+     "update": 800,
+     "step": 7,
+     "path": "runs/maze-e5-plr-v13-s4/checkpoints/maze-e5-plr-v13-s4/4/models/7",
+     "sha256": "8b356fc7e736e797fa1ff61a5724c10286bae83bc300dc787969a255017eda90"
+    },
+    {
+     "update": 1000,
+     "step": 9,
+     "path": "runs/maze-e5-plr-v13-s4/checkpoints/maze-e5-plr-v13-s4/4/models/9",
+     "sha256": "e73df7cb0ca5eb3606f42183a4f38f14897e096b87ea378b3aca6beb7db999b0"
+    },
+    {
+     "update": 1400,
+     "step": 13,
+     "path": "runs/maze-e5-plr-v13-s4/checkpoints/maze-e5-plr-v13-s4/4/models/13",
+     "sha256": "fe585e669f53dbc816251b2e13e6190e820a8f32600b9c5f8160834a0320d76b"
+    },
+    {
+     "update": 1900,
+     "step": 18,
+     "path": "runs/maze-e5-plr-v13-s4/checkpoints/maze-e5-plr-v13-s4/4/models/18",
+     "sha256": "1f3fbc6afe7a0e3cf01be51c9c214f90ed4f25630bd9058217dbb9ede778509d"
+    },
+    {
+     "update": 2600,
+     "step": 25,
+     "path": "runs/maze-e5-plr-v13-s4/checkpoints/maze-e5-plr-v13-s4/4/models/25",
+     "sha256": "4e78c55d411024ad85ddb52332169d4729e4a94d048811712b13bb5fb636df0e"
+    },
+    {
+     "update": 3500,
+     "step": 34,
+     "path": "runs/maze-e5-plr-v13-s4/checkpoints/maze-e5-plr-v13-s4/4/models/34",
+     "sha256": "297a4511f7f52303efb155e63de84688f39118d1833721a73278c5df10eb2bcc"
+    },
+    {
+     "update": 4800,
+     "step": 47,
+     "path": "runs/maze-e5-plr-v13-s4/checkpoints/maze-e5-plr-v13-s4/4/models/47",
+     "sha256": "2b90ff3b71e119c0a73b7ae94f17de44ebdd56a30b1ba1d9bdb61ac5388ff315"
+    },
+    {
+     "update": 6500,
+     "step": 64,
+     "path": "runs/maze-e5-plr-v13-s4/checkpoints/maze-e5-plr-v13-s4/4/models/64",
+     "sha256": "91da948460e761582c75a0fb2f50fb9ec9fe188ccfd47c04cbef74d2789d4e66"
+    },
+    {
+     "update": 8800,
+     "step": 87,
+     "path": "runs/maze-e5-plr-v13-s4/checkpoints/maze-e5-plr-v13-s4/4/models/87",
+     "sha256": "8f4d940fd37ee8fff9a6122a1ec5cbb5645956895b6fd7175f346856a125d77c"
+    },
+    {
+     "update": 11900,
+     "step": 118,
+     "path": "runs/maze-e5-plr-v13-s4/checkpoints/maze-e5-plr-v13-s4/4/models/118",
+     "sha256": "ca6121221c18dd8194a92df9d4a949a4e9f2e36c0292480c462de4b45a6691a7"
+    },
+    {
+     "update": 16200,
+     "step": 161,
+     "path": "runs/maze-e5-plr-v13-s4/checkpoints/maze-e5-plr-v13-s4/4/models/161",
+     "sha256": "acfcdf32a2082772e9adc921ddd6abce9bc9b21f4a152a9eb1763ec35340a30e"
+    },
+    {
+     "update": 22100,
+     "step": 220,
+     "path": "runs/maze-e5-plr-v13-s4/checkpoints/maze-e5-plr-v13-s4/4/models/220",
+     "sha256": "fe9883041ee14612c3d23b06597d92c35d51cfbb8a399cade30c05a2530acd2a"
+    },
+    {
+     "update": 30000,
+     "step": 299,
+     "path": "runs/maze-e5-plr-v13-s4/checkpoints/maze-e5-plr-v13-s4/4/models/299",
+     "sha256": "da5ff8f26eafa434596c3f36308e0fb7b0e5d57c28ecf197490cf33b2c41d114"
+    }
+   ],
+   "eval_tail": []
+  },
+  "maze-e5-plr-v5-s4": {
+   "arm": "plr",
+   "view": 5,
+   "seed": 4,
+   "updates": 30000,
+   "queue": {
+    "status": "done",
+    "start": "2026-10-28T20:33:10Z",
+    "end": "2026-10-29T01:56:54Z",
+    "lane": 3,
+    "gpu": 0
+   },
+   "status": "trained",
+   "config": "runs/maze-e5-plr-v5-s4/checkpoints/maze-e5-plr-v5-s4/4/config.json",
+   "config_sha256": "3e82d674baec648c658e57f8a665f6fb88a89b0eb4982c5f3bab7ae37d4020ea",
+   "e5_run_sha256": "c8f79a305894d90ba0e0b78260b8d607aa2976abbd5c524a345975ff79718244",
+   "wall_s": 19422.612950086594,
+   "checkpoints": [
+    {
+     "update": 300,
+     "step": 2,
+     "path": "runs/maze-e5-plr-v5-s4/checkpoints/maze-e5-plr-v5-s4/4/models/2",
+     "sha256": "8126cd7d7feaf322b5736a068a8ac5f87e6fcb9886e1af828a83d10ecfbaf00c"
+    },
+    {
+     "update": 400,
+     "step": 3,
+     "path": "runs/maze-e5-plr-v5-s4/checkpoints/maze-e5-plr-v5-s4/4/models/3",
+     "sha256": "21cdd676f7f52de106779311999add18a1c3b7dc687e63a25090ca38454b7558"
+    },
+    {
+     "update": 600,
+     "step": 5,
+     "path": "runs/maze-e5-plr-v5-s4/checkpoints/maze-e5-plr-v5-s4/4/models/5",
+     "sha256": "5dff39eead77c226837ae749dd003d65d831e2c4cc8cd370298f0dca5bda5748"
+    },
+    {
+     "update": 800,
+     "step": 7,
+     "path": "runs/maze-e5-plr-v5-s4/checkpoints/maze-e5-plr-v5-s4/4/models/7",
+     "sha256": "f903e2d3606c0a48c3ec4d1f1b7b9cfcaf516835397d7ca3baeb29818e73a2e6"
+    },
+    {
+     "update": 1000,
+     "step": 9,
+     "path": "runs/maze-e5-plr-v5-s4/checkpoints/maze-e5-plr-v5-s4/4/models/9",
+     "sha256": "6871efbe9aa7ccb146fd9a333b79bccbaca29ef1c61243aa3c5bcd494503c18f"
+    },
+    {
+     "update": 1400,
+     "step": 13,
+     "path": "runs/maze-e5-plr-v5-s4/checkpoints/maze-e5-plr-v5-s4/4/models/13",
+     "sha256": "14f5f0e8d729fb433c6e62eec5f180adb12f28ad2c64f131b341691c652eb65c"
+    },
+    {
+     "update": 1900,
+     "step": 18,
+     "path": "runs/maze-e5-plr-v5-s4/checkpoints/maze-e5-plr-v5-s4/4/models/18",
+     "sha256": "bc273280cc860ce5ac9eea556672899cf4bca939091b5cff801b51eea8a01376"
+    },
+    {
+     "update": 2600,
+     "step": 25,
+     "path": "runs/maze-e5-plr-v5-s4/checkpoints/maze-e5-plr-v5-s4/4/models/25",
+     "sha256": "01df736e6cad54209a266ed0e07fe8e4394cd2b4dbd0de473d93ec7158cb4b0c"
+    },
+    {
+     "update": 3500,
+     "step": 34,
+     "path": "runs/maze-e5-plr-v5-s4/checkpoints/maze-e5-plr-v5-s4/4/models/34",
+     "sha256": "2da2e69a4bcfc20d86cf712dd368a2c14c9786d27e0fde7dbc1a24bc53c6fd31"
+    },
+    {
+     "update": 4800,
+     "step": 47,
+     "path": "runs/maze-e5-plr-v5-s4/checkpoints/maze-e5-plr-v5-s4/4/models/47",
+     "sha256": "ab78a98650de7e6111278edffdc07db06eb107fb7b1ad6a832dd10eed1fc1cab"
+    },
+    {
+     "update": 6500,
+     "step": 64,
+     "path": "runs/maze-e5-plr-v5-s4/checkpoints/maze-e5-plr-v5-s4/4/models/64",
+     "sha256": "ddd2876bead4ff5973ad05743e1671a50a8dbda29c093bac7f4707bb1606a30a"
+    },
+    {
+     "update": 8800,
+     "step": 87,
+     "path": "runs/maze-e5-plr-v5-s4/checkpoints/maze-e5-plr-v5-s4/4/models/87",
+     "sha256": "47702601176ef567cc966c8019d2cc5dd51006682da84c85d00b0e4f46b0af25"
+    },
+    {
+     "update": 11900,
+     "step": 118,
+     "path": "runs/maze-e5-plr-v5-s4/checkpoints/maze-e5-plr-v5-s4/4/models/118",
+     "sha256": "47fa21c03cf31cda3deae7981567080b35aa61032682ef861623dd930769345a"
+    },
+    {
+     "update": 16200,
+     "step": 161,
+     "path": "runs/maze-e5-plr-v5-s4/checkpoints/maze-e5-plr-v5-s4/4/models/161",
+     "sha256": "5db1e969875f08a14b632750599961bbc4e7c17d3d2335bdc6e653095157b1b5"
+    },
+    {
+     "update": 22100,
+     "step": 220,
+     "path": "runs/maze-e5-plr-v5-s4/checkpoints/maze-e5-plr-v5-s4/4/models/220",
+     "sha256": "bd2cd90c5893d6a16564f87453a5b7024ced3417df81ec7f01e14e8370765c2c"
+    },
+    {
+     "update": 30000,
+     "step": 299,
+     "path": "runs/maze-e5-plr-v5-s4/checkpoints/maze-e5-plr-v5-s4/4/models/299",
+     "sha256": "13275ddc8ee78f8cfaec9d358967fe78f61ae953eb99a7d62b0768bea9b05584"
+    }
+   ],
+   "eval_tail": []
+  },
+  "maze-e5-plr-v13-s5": {
+   "arm": "plr",
+   "view": 13,
+   "seed": 5,
+   "updates": 30000,
+   "queue": {
+    "status": "done",
+    "start": "2026-10-28T20:35:23Z",
+    "end": "2026-10-29T07:10:58Z",
+    "lane": 2,
+    "gpu": 0
+   },
+   "status": "trained",
+   "config": "runs/maze-e5-plr-v13-s5/checkpoints/maze-e5-plr-v13-s5/5/config.json",
+   "config_sha256": "9e7c7534960a6616b53dd2d1b129e642e908af3413c7479cab8743681adf465a",
+   "e5_run_sha256": "1c8d2920bdc0b93a21d669808d8b5323daf9aae13c37cb9d6ea03c567306e7a5",
+   "wall_s": 38132.523242235184,
+   "checkpoints": [
+    {
+     "update": 300,
+     "step": 2,
+     "path": "runs/maze-e5-plr-v13-s5/checkpoints/maze-e5-plr-v13-s5/5/models/2",
+     "sha256": "a7131ad59b12083ada11e0a3a4d8711bb75f6f88853fd50b3704a7452a5cae3c"
+    },
+    {
+     "update": 400,
+     "step": 3,
+     "path": "runs/maze-e5-plr-v13-s5/checkpoints/maze-e5-plr-v13-s5/5/models/3",
+     "sha256": "7b6adc5b907037fb973b30d4fa591b8a1eaecc3152c57a49e5521068c02b1982"
+    },
+    {
+     "update": 600,
+     "step": 5,
+     "path": "runs/maze-e5-plr-v13-s5/checkpoints/maze-e5-plr-v13-s5/5/models/5",
+     "sha256": "03a7453867537dd0ebaf1a73bbe5e6478691e81a592cc9c02177ccbbfb0d6f5d"
+    },
+    {
+     "update": 800,
+     "step": 7,
+     "path": "runs/maze-e5-plr-v13-s5/checkpoints/maze-e5-plr-v13-s5/5/models/7",
+     "sha256": "e2ab4ffc81bc751d4001da4bc74adb895ddc7b654697ada9460e940c7718af64"
+    },
+    {
+     "update": 1000,
+     "step": 9,
+     "path": "runs/maze-e5-plr-v13-s5/checkpoints/maze-e5-plr-v13-s5/5/models/9",
+     "sha256": "9fadb5683930c9e5ee933ff5071c9c374311eccb709f2e9a31dedc7253f0589c"
+    },
+    {
+     "update": 1400,
+     "step": 13,
+     "path": "runs/maze-e5-plr-v13-s5/checkpoints/maze-e5-plr-v13-s5/5/models/13",
+     "sha256": "593b1cfca5d2affdb0c09b2726b35534889b82f2c99595cb4c0378e318aff30b"
+    },
+    {
+     "update": 1900,
+     "step": 18,
+     "path": "runs/maze-e5-plr-v13-s5/checkpoints/maze-e5-plr-v13-s5/5/models/18",
+     "sha256": "25b3143f5e5c86c344c98ac51f5338eb576aec535796efec42d7a6b6ca25ed2b"
+    },
+    {
+     "update": 2600,
+     "step": 25,
+     "path": "runs/maze-e5-plr-v13-s5/checkpoints/maze-e5-plr-v13-s5/5/models/25",
+     "sha256": "bd92ae570c0af93941656e98e03bae067c6f347609a7a06131e47cefce30071f"
+    },
+    {
+     "update": 3500,
+     "step": 34,
+     "path": "runs/maze-e5-plr-v13-s5/checkpoints/maze-e5-plr-v13-s5/5/models/34",
+     "sha256": "56c312294c5cbe4beba1324c9bb4a04e6589d9fb5d634442497a186c77c3db0d"
+    },
+    {
+     "update": 4800,
+     "step": 47,
+     "path": "runs/maze-e5-plr-v13-s5/checkpoints/maze-e5-plr-v13-s5/5/models/47",
+     "sha256": "ed646e2f6cfd4c64c5ef6805d1740f1a3a6715284934690d49004faa77abad4d"
+    },
+    {
+     "update": 6500,
+     "step": 64,
+     "path": "runs/maze-e5-plr-v13-s5/checkpoints/maze-e5-plr-v13-s5/5/models/64",
+     "sha256": "96091600e0825bc4c154174007cea0dc8abbb843e19188bc65e663556ce65db9"
+    },
+    {
+     "update": 8800,
+     "step": 87,
+     "path": "runs/maze-e5-plr-v13-s5/checkpoints/maze-e5-plr-v13-s5/5/models/87",
+     "sha256": "eeeec11314b41145cfdfae776f7b7e2476de97ab3548cb78158d0c76583ee154"
+    },
+    {
+     "update": 11900,
+     "step": 118,
+     "path": "runs/maze-e5-plr-v13-s5/checkpoints/maze-e5-plr-v13-s5/5/models/118",
+     "sha256": "b2d470f0058ec5e09d69c376e229d5d4ebe31185fb540858731c1762b02cb5c5"
+    },
+    {
+     "update": 16200,
+     "step": 161,
+     "path": "runs/maze-e5-plr-v13-s5/checkpoints/maze-e5-plr-v13-s5/5/models/161",
+     "sha256": "b98e400eda74cfa64d32fcafba2e1dee11e4ef985c6e4d648ac7f847ea8e6f08"
+    },
+    {
+     "update": 22100,
+     "step": 220,
+     "path": "runs/maze-e5-plr-v13-s5/checkpoints/maze-e5-plr-v13-s5/5/models/220",
+     "sha256": "f1a3457ff9d0ee7e1432718a8e756e9eee7352d373cd79549b291c1daed29af2"
+    },
+    {
+     "update": 30000,
+     "step": 299,
+     "path": "runs/maze-e5-plr-v13-s5/checkpoints/maze-e5-plr-v13-s5/5/models/299",
+     "sha256": "47817237f5044401d0baa37c993df071fb4df4186a20ea90f3d327e5332cfb77"
+    }
+   ],
+   "eval_tail": []
+  },
+  "maze-e5-plr-v5-s5": {
+   "arm": "plr",
+   "view": 5,
+   "seed": 5,
+   "updates": 30000,
+   "queue": {
+    "status": "done",
+    "start": "2026-10-28T20:35:23Z",
+    "end": "2026-10-29T01:54:53Z",
+    "lane": 3,
+    "gpu": 0
+   },
+   "status": "trained",
+   "config": "runs/maze-e5-plr-v5-s5/checkpoints/maze-e5-plr-v5-s5/5/config.json",
+   "config_sha256": "b6cf91705d01c5ff6674c0401f41b1697012e01005e42ed77b175b1b6f0b69a8",
+   "e5_run_sha256": "ba5968ae6a2a9757e8cc06741f1eb3077e39880db7e6b5eee13b7a25d9469539",
+   "wall_s": 19169.42543745041,
+   "checkpoints": [
+    {
+     "update": 300,
+     "step": 2,
+     "path": "runs/maze-e5-plr-v5-s5/checkpoints/maze-e5-plr-v5-s5/5/models/2",
+     "sha256": "aa1fb51b0a7932056043446e85ce3d7720b199a92ffd5979a4d922aab4715d97"
+    },
+    {
+     "update": 400,
+     "step": 3,
+     "path": "runs/maze-e5-plr-v5-s5/checkpoints/maze-e5-plr-v5-s5/5/models/3",
+     "sha256": "58094fa6c2b6cc3d77b917570b6173f51c37fca947bf3256b204e895d566b43f"
+    },
+    {
+     "update": 600,
+     "step": 5,
+     "path": "runs/maze-e5-plr-v5-s5/checkpoints/maze-e5-plr-v5-s5/5/models/5",
+     "sha256": "21bc5ee10828e93c96df639e0d856f62fa25e5b7782100a8c2970ffe33ef235a"
+    },
+    {
+     "update": 800,
+     "step": 7,
+     "path": "runs/maze-e5-plr-v5-s5/checkpoints/maze-e5-plr-v5-s5/5/models/7",
+     "sha256": "35941b1885dad083f82704871348437b55672dc936caf68ca7d855734cb1926e"
+    },
+    {
+     "update": 1000,
+     "step": 9,
+     "path": "runs/maze-e5-plr-v5-s5/checkpoints/maze-e5-plr-v5-s5/5/models/9",
+     "sha256": "c74d04ff80e89807c9e2e6d2308a6b5e18e27e105d927dafb86e6feda5d53e43"
+    },
+    {
+     "update": 1400,
+     "step": 13,
+     "path": "runs/maze-e5-plr-v5-s5/checkpoints/maze-e5-plr-v5-s5/5/models/13",
+     "sha256": "aad8c736c8dfecbaddabf4606501c9dd42d6546ed4a82f953a9da8a1717d44b8"
+    },
+    {
+     "update": 1900,
+     "step": 18,
+     "path": "runs/maze-e5-plr-v5-s5/checkpoints/maze-e5-plr-v5-s5/5/models/18",
+     "sha256": "d8f960539a4e06998374b4de0b75310aa719105b543e9cbff29a26e8bc43d774"
+    },
+    {
+     "update": 2600,
+     "step": 25,
+     "path": "runs/maze-e5-plr-v5-s5/checkpoints/maze-e5-plr-v5-s5/5/models/25",
+     "sha256": "fa81af9e394bb274355020ae43971f12bb92298c4345e88a89c03ec04224a079"
+    },
+    {
+     "update": 3500,
+     "step": 34,
+     "path": "runs/maze-e5-plr-v5-s5/checkpoints/maze-e5-plr-v5-s5/5/models/34",
+     "sha256": "cbec33637b5e19b0b483929fca214cccb85bc529eb6c4ee608e3df9eac37d795"
+    },
+    {
+     "update": 4800,
+     "step": 47,
+     "path": "runs/maze-e5-plr-v5-s5/checkpoints/maze-e5-plr-v5-s5/5/models/47",
+     "sha256": "1be5fe8627efaf8e879113c99bcab3dfba23fdc4830bc08c3b7da0a2f037c3fc"
+    },
+    {
+     "update": 6500,
+     "step": 64,
+     "path": "runs/maze-e5-plr-v5-s5/checkpoints/maze-e5-plr-v5-s5/5/models/64",
+     "sha256": "67ebd0553e0b7dfcc6b3bfad776342fd05d1c75fe9d8018b10cbafe6a5ce6f71"
+    },
+    {
+     "update": 8800,
+     "step": 87,
+     "path": "runs/maze-e5-plr-v5-s5/checkpoints/maze-e5-plr-v5-s5/5/models/87",
+     "sha256": "b665e920d09d33bc689807edce218462ff2445970bf6c171b4f6e6e1232aef81"
+    },
+    {
+     "update": 11900,
+     "step": 118,
+     "path": "runs/maze-e5-plr-v5-s5/checkpoints/maze-e5-plr-v5-s5/5/models/118",
+     "sha256": "bb9c3f762544b5e76e908f591643864c61f53ed4147883e525fe84c78bab6c5c"
+    },
+    {
+     "update": 16200,
+     "step": 161,
+     "path": "runs/maze-e5-plr-v5-s5/checkpoints/maze-e5-plr-v5-s5/5/models/161",
+     "sha256": "afbcadde77231ec77795d2ca784c76c93e711382adc6ea3e81a3f8f56b675f40"
+    },
+    {
+     "update": 22100,
+     "step": 220,
+     "path": "runs/maze-e5-plr-v5-s5/checkpoints/maze-e5-plr-v5-s5/5/models/220",
+     "sha256": "4cb5934ae1b9135d845fd5f6b5c93a520414985ffc777fa0ddb84c32041fc85f"
+    },
+    {
+     "update": 30000,
+     "step": 299,
+     "path": "runs/maze-e5-plr-v5-s5/checkpoints/maze-e5-plr-v5-s5/5/models/299",
+     "sha256": "1a09272375bd127b0d5d8202299aee6e6ea7dbd6266cd26ed0e81f9d9f9fd655"
+    }
+   ],
+   "eval_tail": []
+  },
+  "maze-e5-dr-v13-s1": {
+   "arm": "dr",
+   "view": 13,
+   "seed": 1,
+   "updates": 30000,
+   "queue": {
+    "status": "done",
+    "start": "2026-10-28T20:21:56Z",
+    "end": "2026-10-29T07:54:29Z",
+    "lane": 4,
+    "gpu": 0
+   },
+   "status": "trained",
+   "config": "runs/maze-e5-dr-v13-s1/checkpoints/maze-e5-dr-v13-s1/1/config.json",
+   "config_sha256": "8bfebc3d3b9e01ad47fea4ef09077af413b789008b560dc5394fb9e0d052f6e0",
+   "e5_run_sha256": "4c14ec97493c7664a58929baf506dd8318fe5d678f0cc515867f30c313009cc5",
+   "wall_s": 41550.70738148689,
+   "checkpoints": [
+    {
+     "update": 300,
+     "step": 2,
+     "path": "runs/maze-e5-dr-v13-s1/checkpoints/maze-e5-dr-v13-s1/1/models/2",
+     "sha256": "2b3f75b370878b2e50eda51781f415c443d542a001843cfad164dc885a468c97"
+    },
+    {
+     "update": 400,
+     "step": 3,
+     "path": "runs/maze-e5-dr-v13-s1/checkpoints/maze-e5-dr-v13-s1/1/models/3",
+     "sha256": "61fe87948fe8cef01f9eebb8d65fb6f34408cc180a3fd446861219b0ab214291"
+    },
+    {
+     "update": 600,
+     "step": 5,
+     "path": "runs/maze-e5-dr-v13-s1/checkpoints/maze-e5-dr-v13-s1/1/models/5",
+     "sha256": "a129e0ee474cc71877c508f526f5b2ae36d3a1c8c563d640a8c4d113a8096714"
+    },
+    {
+     "update": 800,
+     "step": 7,
+     "path": "runs/maze-e5-dr-v13-s1/checkpoints/maze-e5-dr-v13-s1/1/models/7",
+     "sha256": "6fad44d2c8a2c2018357756de4c3842e67ab5bfefde8724b763a78fca199d49d"
+    },
+    {
+     "update": 1000,
+     "step": 9,
+     "path": "runs/maze-e5-dr-v13-s1/checkpoints/maze-e5-dr-v13-s1/1/models/9",
+     "sha256": "8a35a9251dff044b02b62b46d21bc868572f2097796587a27b8a142ce8e8ff20"
+    },
+    {
+     "update": 1400,
+     "step": 13,
+     "path": "runs/maze-e5-dr-v13-s1/checkpoints/maze-e5-dr-v13-s1/1/models/13",
+     "sha256": "b9cb0bed3e92bc745a251d4b33ffed181d3f42a5bb5136d4385c3f3bea23ad14"
+    },
+    {
+     "update": 1900,
+     "step": 18,
+     "path": "runs/maze-e5-dr-v13-s1/checkpoints/maze-e5-dr-v13-s1/1/models/18",
+     "sha256": "de51348a9c2adf6c6b0188613a29ab592b23b9ae91b9c32a3c9b8c2643191e3b"
+    },
+    {
+     "update": 2600,
+     "step": 25,
+     "path": "runs/maze-e5-dr-v13-s1/checkpoints/maze-e5-dr-v13-s1/1/models/25",
+     "sha256": "80866f6401b79333c19895bc7cc2f1cebf94ac491bf6e9ce6d9d221a472a9fad"
+    },
+    {
+     "update": 3500,
+     "step": 34,
+     "path": "runs/maze-e5-dr-v13-s1/checkpoints/maze-e5-dr-v13-s1/1/models/34",
+     "sha256": "3050586e3fe6cb35dcce283169c2121ca8b078ad7d1f3e6b70dc2bae90fb69de"
+    },
+    {
+     "update": 4800,
+     "step": 47,
+     "path": "runs/maze-e5-dr-v13-s1/checkpoints/maze-e5-dr-v13-s1/1/models/47",
+     "sha256": "cc978344071350fa5abcfcac846d974abb94b8755d05008c18774e2a5cdf383d"
+    },
+    {
+     "update": 6500,
+     "step": 64,
+     "path": "runs/maze-e5-dr-v13-s1/checkpoints/maze-e5-dr-v13-s1/1/models/64",
+     "sha256": "d1e29bac484ac5c515531e23d1b0116296446b5d7eb59235b2fbfab130a0f1a6"
+    },
+    {
+     "update": 8800,
+     "step": 87,
+     "path": "runs/maze-e5-dr-v13-s1/checkpoints/maze-e5-dr-v13-s1/1/models/87",
+     "sha256": "da35dd02451ec4f0a3713dd3179cd2747a40b052481cfd40b5f3c57e8d138f9b"
+    },
+    {
+     "update": 11900,
+     "step": 118,
+     "path": "runs/maze-e5-dr-v13-s1/checkpoints/maze-e5-dr-v13-s1/1/models/118",
+     "sha256": "b7546e1f7a6ef7847a6aaee8738e00ef48e4b5b4a70768740b32d1b29b5d5cda"
+    },
+    {
+     "update": 16200,
+     "step": 161,
+     "path": "runs/maze-e5-dr-v13-s1/checkpoints/maze-e5-dr-v13-s1/1/models/161",
+     "sha256": "2bc7cd3ffb296203e57b2ba7fe38914405ba5b362dad9f10f436f437e974ed80"
+    },
+    {
+     "update": 22100,
+     "step": 220,
+     "path": "runs/maze-e5-dr-v13-s1/checkpoints/maze-e5-dr-v13-s1/1/models/220",
+     "sha256": "88e4214a277eb570fafa065ce7578c31e4e12870ff6c3f4c3878c904ed62369a"
+    },
+    {
+     "update": 30000,
+     "step": 299,
+     "path": "runs/maze-e5-dr-v13-s1/checkpoints/maze-e5-dr-v13-s1/1/models/299",
+     "sha256": "6d83556934335b752ec17f9db237ff7988875542381abdfa9f2441c07513490f"
+    }
+   ],
+   "eval_tail": []
+  },
+  "maze-e5-dr-v5-s1": {
+   "arm": "dr",
+   "view": 5,
+   "seed": 1,
+   "updates": 30000,
+   "queue": {
+    "status": "done",
+    "start": "2026-10-28T20:21:56Z",
+    "end": "2026-10-29T02:10:05Z",
+    "lane": 5,
+    "gpu": 0
+   },
+   "status": "trained",
+   "config": "runs/maze-e5-dr-v5-s1/checkpoints/maze-e5-dr-v5-s1/1/config.json",
+   "config_sha256": "01ed86f18e170a3527c3b46e4fdc8c603795ed5117bf651bd401da4ea371c767",
+   "e5_run_sha256": "a416642ad6ba6b1c9bc6583b5138f6196d02afb2c17169cc728439b5fd4f0763",
+   "wall_s": 20888.183346271515,
+   "checkpoints": [
+    {
+     "update": 300,
+     "step": 2,
+     "path": "runs/maze-e5-dr-v5-s1/checkpoints/maze-e5-dr-v5-s1/1/models/2",
+     "sha256": "6e92aa9668da88e16ccbe7f88e7f5c5f18fa0db55c49144988fc4ac18b6e4706"
+    },
+    {
+     "update": 400,
+     "step": 3,
+     "path": "runs/maze-e5-dr-v5-s1/checkpoints/maze-e5-dr-v5-s1/1/models/3",
+     "sha256": "fe57d528e479b2716029a167153616fab8beb8a3f86994c1773519c5db058858"
+    },
+    {
+     "update": 600,
+     "step": 5,
+     "path": "runs/maze-e5-dr-v5-s1/checkpoints/maze-e5-dr-v5-s1/1/models/5",
+     "sha256": "683fe3400ca1caf8621bf7c3698d228e90d502ae17fa3e11f1c749245b6d076c"
+    },
+    {
+     "update": 800,
+     "step": 7,
+     "path": "runs/maze-e5-dr-v5-s1/checkpoints/maze-e5-dr-v5-s1/1/models/7",
+     "sha256": "a72327626e01679e1b4a28feff7ac9c8c134f7f126adc2b646bd69885864d8bf"
+    },
+    {
+     "update": 1000,
+     "step": 9,
+     "path": "runs/maze-e5-dr-v5-s1/checkpoints/maze-e5-dr-v5-s1/1/models/9",
+     "sha256": "565a4fdbdf3f6421230a87a8357dceb4dabb01ceb8fadba9e3a4e428c2d40389"
+    },
+    {
+     "update": 1400,
+     "step": 13,
+     "path": "runs/maze-e5-dr-v5-s1/checkpoints/maze-e5-dr-v5-s1/1/models/13",
+     "sha256": "6e466047e524ea7e498cde347e8405af114f8d4b83fcf1fb739487550ed13010"
+    },
+    {
+     "update": 1900,
+     "step": 18,
+     "path": "runs/maze-e5-dr-v5-s1/checkpoints/maze-e5-dr-v5-s1/1/models/18",
+     "sha256": "80b8e6fabe4c315413ca9768fd9a91dbba8e3ade9976379cf036109bcdf32219"
+    },
+    {
+     "update": 2600,
+     "step": 25,
+     "path": "runs/maze-e5-dr-v5-s1/checkpoints/maze-e5-dr-v5-s1/1/models/25",
+     "sha256": "f0edf20d6c54af4b0a69292dd093cd5b703ff12b00276974b286474fbf15a05b"
+    },
+    {
+     "update": 3500,
+     "step": 34,
+     "path": "runs/maze-e5-dr-v5-s1/checkpoints/maze-e5-dr-v5-s1/1/models/34",
+     "sha256": "1b70ddf903ec17e22f6abbd2fd0a71b3b3764a665aca22a0aa7ccc45c418dde6"
+    },
+    {
+     "update": 4800,
+     "step": 47,
+     "path": "runs/maze-e5-dr-v5-s1/checkpoints/maze-e5-dr-v5-s1/1/models/47",
+     "sha256": "4b4654bb3b43841f3564056f30a971678d46d69c5c1247e84da3578ef4d6a56f"
+    },
+    {
+     "update": 6500,
+     "step": 64,
+     "path": "runs/maze-e5-dr-v5-s1/checkpoints/maze-e5-dr-v5-s1/1/models/64",
+     "sha256": "d4002e442139cd2595bbd4b62677f9d095b24cab5619f24e1765feb87fda3332"
+    },
+    {
+     "update": 8800,
+     "step": 87,
+     "path": "runs/maze-e5-dr-v5-s1/checkpoints/maze-e5-dr-v5-s1/1/models/87",
+     "sha256": "66ccf296a24471b02b4d881d99e8b679613017d0bb0b22e72dc7149fdf227388"
+    },
+    {
+     "update": 11900,
+     "step": 118,
+     "path": "runs/maze-e5-dr-v5-s1/checkpoints/maze-e5-dr-v5-s1/1/models/118",
+     "sha256": "a4ba6c4c4e1ff1e11685952aaa027f98cdb562f5f9f12d267d47c70af1ec05bd"
+    },
+    {
+     "update": 16200,
+     "step": 161,
+     "path": "runs/maze-e5-dr-v5-s1/checkpoints/maze-e5-dr-v5-s1/1/models/161",
+     "sha256": "27ad70d2fe059dc1f7a148faa2d24b11a6c5bd747952f8cf267d1bf6bc9f108c"
+    },
+    {
+     "update": 22100,
+     "step": 220,
+     "path": "runs/maze-e5-dr-v5-s1/checkpoints/maze-e5-dr-v5-s1/1/models/220",
+     "sha256": "ed88b41ea90c3b14ccc160f560c2d237f0625884b95a33db9eb6021f41673841"
+    },
+    {
+     "update": 30000,
+     "step": 299,
+     "path": "runs/maze-e5-dr-v5-s1/checkpoints/maze-e5-dr-v5-s1/1/models/299",
+     "sha256": "589ae3f913b06080e4ebec799d1303dd73647d0d3e0f30268deeb90542722f8c"
+    }
+   ],
+   "eval_tail": []
+  },
+  "maze-e5-dr-v13-s2": {
+   "arm": "dr",
+   "view": 13,
+   "seed": 2,
+   "updates": 30000,
+   "queue": {
+    "status": "done",
+    "start": "2026-10-28T20:22:36Z",
+    "end": "2026-10-29T07:52:31Z",
+    "lane": 4,
+    "gpu": 0
+   },
+   "status": "trained",
+   "config": "runs/maze-e5-dr-v13-s2/checkpoints/maze-e5-dr-v13-s2/2/config.json",
+   "config_sha256": "186f5648b94d936477cec2d974dba25197fd2197447a212a389ca07279745677",
+   "e5_run_sha256": "39914b9cec7f3a17504f36f87359e9ac2ecb0ecefeba57da3a5607c3467e7652",
+   "wall_s": 41392.25933933258,
+   "checkpoints": [
+    {
+     "update": 300,
+     "step": 2,
+     "path": "runs/maze-e5-dr-v13-s2/checkpoints/maze-e5-dr-v13-s2/2/models/2",
+     "sha256": "57796daaa35819044cd6755d4a518ab650808f291fbac092a7b2c0a159788c6e"
+    },
+    {
+     "update": 400,
+     "step": 3,
+     "path": "runs/maze-e5-dr-v13-s2/checkpoints/maze-e5-dr-v13-s2/2/models/3",
+     "sha256": "4d2847ad1f4562abf5e8b1a541ccd9ec3fa8d0aa77cbf90dce83fa2061beb6e1"
+    },
+    {
+     "update": 600,
+     "step": 5,
+     "path": "runs/maze-e5-dr-v13-s2/checkpoints/maze-e5-dr-v13-s2/2/models/5",
+     "sha256": "2931339e163bae2a1b7c04b27145d4b499824f82c95eb8f8551e5118e46950e6"
+    },
+    {
+     "update": 800,
+     "step": 7,
+     "path": "runs/maze-e5-dr-v13-s2/checkpoints/maze-e5-dr-v13-s2/2/models/7",
+     "sha256": "02bed0b2e766c8cb8e4f3c59960f1f05e1c23b11313a512efec658df3805809b"
+    },
+    {
+     "update": 1000,
+     "step": 9,
+     "path": "runs/maze-e5-dr-v13-s2/checkpoints/maze-e5-dr-v13-s2/2/models/9",
+     "sha256": "8dd560c13e57568ca06e8b059ff5ffdbf7f2646f361df92f785ba419341b02a9"
+    },
+    {
+     "update": 1400,
+     "step": 13,
+     "path": "runs/maze-e5-dr-v13-s2/checkpoints/maze-e5-dr-v13-s2/2/models/13",
+     "sha256": "1d75ca9ae0095144feb697093fd35bc28f34ec156888e88151fde0a0ddafa528"
+    },
+    {
+     "update": 1900,
+     "step": 18,
+     "path": "runs/maze-e5-dr-v13-s2/checkpoints/maze-e5-dr-v13-s2/2/models/18",
+     "sha256": "dcfa56d8885f6b19bd5fbb6f11ad4830a5221ba3e08335c73fc79b2b9bd77f9d"
+    },
+    {
+     "update": 2600,
+     "step": 25,
+     "path": "runs/maze-e5-dr-v13-s2/checkpoints/maze-e5-dr-v13-s2/2/models/25",
+     "sha256": "181f3837ece6179ebdfb78450b80f099f6d27553868a52cac3bd02196183561e"
+    },
+    {
+     "update": 3500,
+     "step": 34,
+     "path": "runs/maze-e5-dr-v13-s2/checkpoints/maze-e5-dr-v13-s2/2/models/34",
+     "sha256": "f6496138deb445c17fb093f607e0b6633ef4816421de2d349dec749d4b7c94c2"
+    },
+    {
+     "update": 4800,
+     "step": 47,
+     "path": "runs/maze-e5-dr-v13-s2/checkpoints/maze-e5-dr-v13-s2/2/models/47",
+     "sha256": "1a00d385e0d25ed32d42badbd525e7dc977ec9d3cbc20e61549bdb72f4e70631"
+    },
+    {
+     "update": 6500,
+     "step": 64,
+     "path": "runs/maze-e5-dr-v13-s2/checkpoints/maze-e5-dr-v13-s2/2/models/64",
+     "sha256": "fcd0f3d41e94683d5ef36bb61d4a0034f70400badd1bc45cf2428ba86bd3f1cd"
+    },
+    {
+     "update": 8800,
+     "step": 87,
+     "path": "runs/maze-e5-dr-v13-s2/checkpoints/maze-e5-dr-v13-s2/2/models/87",
+     "sha256": "834e45d782f835550388857d0c8fa0b8af280ab2d645f9d3711e380102fcc4b8"
+    },
+    {
+     "update": 11900,
+     "step": 118,
+     "path": "runs/maze-e5-dr-v13-s2/checkpoints/maze-e5-dr-v13-s2/2/models/118",
+     "sha256": "c358027cc0321deea2132e4543f3c1daa25f0083d40f01af3e6f4ad23847f787"
+    },
+    {
+     "update": 16200,
+     "step": 161,
+     "path": "runs/maze-e5-dr-v13-s2/checkpoints/maze-e5-dr-v13-s2/2/models/161",
+     "sha256": "42c1ebf186923ad7ab14c0289abd57ab58e74b863149e859ff86ebc82b331b58"
+    },
+    {
+     "update": 22100,
+     "step": 220,
+     "path": "runs/maze-e5-dr-v13-s2/checkpoints/maze-e5-dr-v13-s2/2/models/220",
+     "sha256": "c53c5cf2095c9d09b50ffeacfdba355acfb6faad27a1264574b8979265b587d2"
+    },
+    {
+     "update": 30000,
+     "step": 299,
+     "path": "runs/maze-e5-dr-v13-s2/checkpoints/maze-e5-dr-v13-s2/2/models/299",
+     "sha256": "5a1fe7c8aa127d15931be87988fa244d629095c18bad47454eee16cfd030a65d"
+    }
+   ],
+   "eval_tail": []
+  },
+  "maze-e5-dr-v5-s2": {
+   "arm": "dr",
+   "view": 5,
+   "seed": 2,
+   "updates": 30000,
+   "queue": {
+    "status": "done",
+    "start": "2026-10-28T20:22:36Z",
+    "end": "2026-10-29T02:05:48Z",
+    "lane": 5,
+    "gpu": 0
+   },
+   "status": "trained",
+   "config": "runs/maze-e5-dr-v5-s2/checkpoints/maze-e5-dr-v5-s2/2/config.json",
+   "config_sha256": "2a6b1427ffd2893ef673ebe95cb692d190635992579e8f66adb76eed19e95f63",
+   "e5_run_sha256": "ddd1b071e31e8e7bd6c64dcbe42fe68a87c0475870b468e9f34684ae275b6dd2",
+   "wall_s": 20591.523054122925,
+   "checkpoints": [
+    {
+     "update": 300,
+     "step": 2,
+     "path": "runs/maze-e5-dr-v5-s2/checkpoints/maze-e5-dr-v5-s2/2/models/2",
+     "sha256": "5114468f2746f77547726ab7b1693a950cae8244ae352b2cf37a1ae1b3dd46ef"
+    },
+    {
+     "update": 400,
+     "step": 3,
+     "path": "runs/maze-e5-dr-v5-s2/checkpoints/maze-e5-dr-v5-s2/2/models/3",
+     "sha256": "04bb67abcade06a5a6ab4284248a96ad8afdad0662e7e924411eaecf8846a7e6"
+    },
+    {
+     "update": 600,
+     "step": 5,
+     "path": "runs/maze-e5-dr-v5-s2/checkpoints/maze-e5-dr-v5-s2/2/models/5",
+     "sha256": "02345d38b32c50228e4db01f26f3cf141e445b1119d34727b5f21d113b9207a6"
+    },
+    {
+     "update": 800,
+     "step": 7,
+     "path": "runs/maze-e5-dr-v5-s2/checkpoints/maze-e5-dr-v5-s2/2/models/7",
+     "sha256": "1c7aa45ca62853c62eafac9030b2bbe4680b2e8bafc1031244f4a43f0e41e1c4"
+    },
+    {
+     "update": 1000,
+     "step": 9,
+     "path": "runs/maze-e5-dr-v5-s2/checkpoints/maze-e5-dr-v5-s2/2/models/9",
+     "sha256": "6c24b6aaf370beaa5ed08d4cfa3a02815a600c7575d98a44355563b857d1104a"
+    },
+    {
+     "update": 1400,
+     "step": 13,
+     "path": "runs/maze-e5-dr-v5-s2/checkpoints/maze-e5-dr-v5-s2/2/models/13",
+     "sha256": "bf86e08e032df443ecd423fdd20449ea22c4e3063b6d878457a13d817e82ba1f"
+    },
+    {
+     "update": 1900,
+     "step": 18,
+     "path": "runs/maze-e5-dr-v5-s2/checkpoints/maze-e5-dr-v5-s2/2/models/18",
+     "sha256": "1e16bbaf0cf762d07782d1109168808d614c51ff0cb43358bf405155ed01cf32"
+    },
+    {
+     "update": 2600,
+     "step": 25,
+     "path": "runs/maze-e5-dr-v5-s2/checkpoints/maze-e5-dr-v5-s2/2/models/25",
+     "sha256": "30243e1144c38022fd1d489c99164af6c1e591bf92e65992bc71b81183d7164a"
+    },
+    {
+     "update": 3500,
+     "step": 34,
+     "path": "runs/maze-e5-dr-v5-s2/checkpoints/maze-e5-dr-v5-s2/2/models/34",
+     "sha256": "e3eb2e555c256d02cea459647299568f05c117a2f0b51df2077cdaa1763a148e"
+    },
+    {
+     "update": 4800,
+     "step": 47,
+     "path": "runs/maze-e5-dr-v5-s2/checkpoints/maze-e5-dr-v5-s2/2/models/47",
+     "sha256": "8266f991e40aa17cb8a0a1507cab2c106dff89f356a1531a2a98144358d57d8e"
+    },
+    {
+     "update": 6500,
+     "step": 64,
+     "path": "runs/maze-e5-dr-v5-s2/checkpoints/maze-e5-dr-v5-s2/2/models/64",
+     "sha256": "22a9590e8ffc0e991bb379105b9de2008630830be49923d6719e864352a4312d"
+    },
+    {
+     "update": 8800,
+     "step": 87,
+     "path": "runs/maze-e5-dr-v5-s2/checkpoints/maze-e5-dr-v5-s2/2/models/87",
+     "sha256": "ace1b5dde3c257e0449dc94bd0d3b4ca4e0c80d0875d9274896f7df4f12412ef"
+    },
+    {
+     "update": 11900,
+     "step": 118,
+     "path": "runs/maze-e5-dr-v5-s2/checkpoints/maze-e5-dr-v5-s2/2/models/118",
+     "sha256": "d4d37c89a0d9bd0cc6c9907372f05c4b7a3ef1e1c45760c09062d1c3119d6872"
+    },
+    {
+     "update": 16200,
+     "step": 161,
+     "path": "runs/maze-e5-dr-v5-s2/checkpoints/maze-e5-dr-v5-s2/2/models/161",
+     "sha256": "1763d52d78e9544331f0e275f96e384ba7f6771eaebed9049c08d8370b265d85"
+    },
+    {
+     "update": 22100,
+     "step": 220,
+     "path": "runs/maze-e5-dr-v5-s2/checkpoints/maze-e5-dr-v5-s2/2/models/220",
+     "sha256": "57f5f1170986755bf38a96739b23fe6970bc14fbfcf9de7ad477a23bdd02a0ec"
+    },
+    {
+     "update": 30000,
+     "step": 299,
+     "path": "runs/maze-e5-dr-v5-s2/checkpoints/maze-e5-dr-v5-s2/2/models/299",
+     "sha256": "d452036783965793de83041c411b3329e9a6cfece5fd9ff8bff6c83843655631"
+    }
+   ],
+   "eval_tail": []
+  },
+  "maze-e5-dr-v13-s3": {
+   "arm": "dr",
+   "view": 13,
+   "seed": 3,
+   "updates": 30000,
+   "queue": {
+    "status": "done",
+    "start": "2026-10-28T20:23:16Z",
+    "end": "2026-10-29T07:55:46Z",
+    "lane": 4,
+    "gpu": 0
+   },
+   "status": "trained",
+   "config": "runs/maze-e5-dr-v13-s3/checkpoints/maze-e5-dr-v13-s3/3/config.json",
+   "config_sha256": "a552f575dd9c4cdc11972075552c61286b9e3e614bc44ad9bc9089375b82a51f",
+   "e5_run_sha256": "069d2fe3ccce7bfa39eda014eaf2ec7efafb14f6e51bc324fa1c1c2c31081320",
+   "wall_s": 41547.65579175949,
+   "checkpoints": [
+    {
+     "update": 300,
+     "step": 2,
+     "path": "runs/maze-e5-dr-v13-s3/checkpoints/maze-e5-dr-v13-s3/3/models/2",
+     "sha256": "39ffac1c5fe01b0cdeb62a44dfdb1764d07dfb499b5458810c2fd7b23120c841"
+    },
+    {
+     "update": 400,
+     "step": 3,
+     "path": "runs/maze-e5-dr-v13-s3/checkpoints/maze-e5-dr-v13-s3/3/models/3",
+     "sha256": "18a92e821ccd52d6ee02109d7db28c675f8cacd51a0af6e3e442eb6317fcf25e"
+    },
+    {
+     "update": 600,
+     "step": 5,
+     "path": "runs/maze-e5-dr-v13-s3/checkpoints/maze-e5-dr-v13-s3/3/models/5",
+     "sha256": "80fa004e18eb49e0908d1f53b8631ea05648050b66ebee3ef9bc122575a19eb6"
+    },
+    {
+     "update": 800,
+     "step": 7,
+     "path": "runs/maze-e5-dr-v13-s3/checkpoints/maze-e5-dr-v13-s3/3/models/7",
+     "sha256": "4929e128ba4839ddea5a2a65b6944ccd96c9b9d457f5416c257d3f70c865656c"
+    },
+    {
+     "update": 1000,
+     "step": 9,
+     "path": "runs/maze-e5-dr-v13-s3/checkpoints/maze-e5-dr-v13-s3/3/models/9",
+     "sha256": "9a1c03d5cc59e9acad421cfe82663205e435dcee7e47c4fb44e1a96e32576bc6"
+    },
+    {
+     "update": 1400,
+     "step": 13,
+     "path": "runs/maze-e5-dr-v13-s3/checkpoints/maze-e5-dr-v13-s3/3/models/13",
+     "sha256": "d4aa97b9268db5075db9fce2f7a1206efd634dc3d521ad53dc9c6efb9437c747"
+    },
+    {
+     "update": 1900,
+     "step": 18,
+     "path": "runs/maze-e5-dr-v13-s3/checkpoints/maze-e5-dr-v13-s3/3/models/18",
+     "sha256": "ecb2f2b871b17ed70928fb439adea739eacda9ab0dadd945f0981194e61744aa"
+    },
+    {
+     "update": 2600,
+     "step": 25,
+     "path": "runs/maze-e5-dr-v13-s3/checkpoints/maze-e5-dr-v13-s3/3/models/25",
+     "sha256": "a87b44faedef73920240dfb9ec56ef43a9850472e7b6f0d88765d6044e3b49c0"
+    },
+    {
+     "update": 3500,
+     "step": 34,
+     "path": "runs/maze-e5-dr-v13-s3/checkpoints/maze-e5-dr-v13-s3/3/models/34",
+     "sha256": "9de49c069c1513df2e2dea0dd130f451871655746562e6529eafe4c58d194165"
+    },
+    {
+     "update": 4800,
+     "step": 47,
+     "path": "runs/maze-e5-dr-v13-s3/checkpoints/maze-e5-dr-v13-s3/3/models/47",
+     "sha256": "681e6f00a0c356eac2b430f3c6c39a7445e56e88837722026074eeefe937322a"
+    },
+    {
+     "update": 6500,
+     "step": 64,
+     "path": "runs/maze-e5-dr-v13-s3/checkpoints/maze-e5-dr-v13-s3/3/models/64",
+     "sha256": "9373f46453664aa75b5feffa504b3c283084c0d7331febc5492a24ec60089d02"
+    },
+    {
+     "update": 8800,
+     "step": 87,
+     "path": "runs/maze-e5-dr-v13-s3/checkpoints/maze-e5-dr-v13-s3/3/models/87",
+     "sha256": "a8e64683bfbf61a4fc0603906da7c34ce81c97e2a9f4bf38101e38ac5abe8393"
+    },
+    {
+     "update": 11900,
+     "step": 118,
+     "path": "runs/maze-e5-dr-v13-s3/checkpoints/maze-e5-dr-v13-s3/3/models/118",
+     "sha256": "16e985b89a223ec528e42584ed4a0c8068b30ceb9187fc12cb5c112a9fe7f84d"
+    },
+    {
+     "update": 16200,
+     "step": 161,
+     "path": "runs/maze-e5-dr-v13-s3/checkpoints/maze-e5-dr-v13-s3/3/models/161",
+     "sha256": "565fa013157cb5a423d1496c6098ca5e3d397e3a54c45a428f75b8297a20d657"
+    },
+    {
+     "update": 22100,
+     "step": 220,
+     "path": "runs/maze-e5-dr-v13-s3/checkpoints/maze-e5-dr-v13-s3/3/models/220",
+     "sha256": "4e80436ce3c13e3ca7e662f3e18330e9baf9c7926dfca5008382939b78da7f14"
+    },
+    {
+     "update": 30000,
+     "step": 299,
+     "path": "runs/maze-e5-dr-v13-s3/checkpoints/maze-e5-dr-v13-s3/3/models/299",
+     "sha256": "73fc5719592c3d07d3137b829096ad3e9bb0012d400bb9b379d7f68d39e251b8"
+    }
+   ],
+   "eval_tail": []
+  },
+  "maze-e5-dr-v5-s3": {
+   "arm": "dr",
+   "view": 5,
+   "seed": 3,
+   "updates": 30000,
+   "queue": {
+    "status": "done",
+    "start": "2026-10-28T20:23:16Z",
+    "end": "2026-10-29T02:11:40Z",
+    "lane": 5,
+    "gpu": 0
+   },
+   "status": "trained",
+   "config": "runs/maze-e5-dr-v5-s3/checkpoints/maze-e5-dr-v5-s3/3/config.json",
+   "config_sha256": "e6b73aefe9e59d960f51b857714f54364bec822165867397c6e8917e6afa8c7a",
+   "e5_run_sha256": "9cbfb187158de06536567317c4270dd2a29aaa02263e72e2741f8d4892d6a0b4",
+   "wall_s": 20903.691306829453,
+   "checkpoints": [
+    {
+     "update": 300,
+     "step": 2,
+     "path": "runs/maze-e5-dr-v5-s3/checkpoints/maze-e5-dr-v5-s3/3/models/2",
+     "sha256": "e5c047ec2e6f0ba6955a341ee5cb4083609d30bb9c09046afd756ad435accfaf"
+    },
+    {
+     "update": 400,
+     "step": 3,
+     "path": "runs/maze-e5-dr-v5-s3/checkpoints/maze-e5-dr-v5-s3/3/models/3",
+     "sha256": "93740f3db0c5380063de81ee3fc93b23bca7e56008fcad281512741e9790c596"
+    },
+    {
+     "update": 600,
+     "step": 5,
+     "path": "runs/maze-e5-dr-v5-s3/checkpoints/maze-e5-dr-v5-s3/3/models/5",
+     "sha256": "9c14632009ef9e83575d456f8d2790a3a0b95b4e3499d1d39a03b61205fbff11"
+    },
+    {
+     "update": 800,
+     "step": 7,
+     "path": "runs/maze-e5-dr-v5-s3/checkpoints/maze-e5-dr-v5-s3/3/models/7",
+     "sha256": "315b4347f2e597d782559417cdd544bca9f03b5d85e148df5a3d37e00ad281fc"
+    },
+    {
+     "update": 1000,
+     "step": 9,
+     "path": "runs/maze-e5-dr-v5-s3/checkpoints/maze-e5-dr-v5-s3/3/models/9",
+     "sha256": "2d915117a845df2750749660ba37837129f439acf699d2558218cfbdfeb10791"
+    },
+    {
+     "update": 1400,
+     "step": 13,
+     "path": "runs/maze-e5-dr-v5-s3/checkpoints/maze-e5-dr-v5-s3/3/models/13",
+     "sha256": "0332c5a9827885a1c1d03028991f11dca02ec8d146857360d1c120646e0b30f0"
+    },
+    {
+     "update": 1900,
+     "step": 18,
+     "path": "runs/maze-e5-dr-v5-s3/checkpoints/maze-e5-dr-v5-s3/3/models/18",
+     "sha256": "2f9451f99a527d9bfc057cd7be16fefa0d1a81b42a59276680cdcae203625b4c"
+    },
+    {
+     "update": 2600,
+     "step": 25,
+     "path": "runs/maze-e5-dr-v5-s3/checkpoints/maze-e5-dr-v5-s3/3/models/25",
+     "sha256": "4655fec7adb1bebad5e8b51b4c315c7c4b4ba211f69410218dd1c45cb3dc1559"
+    },
+    {
+     "update": 3500,
+     "step": 34,
+     "path": "runs/maze-e5-dr-v5-s3/checkpoints/maze-e5-dr-v5-s3/3/models/34",
+     "sha256": "80b6affb43f9ae7617fb7808dca59ab88006ebd0b427c5923e6013c09f062fcf"
+    },
+    {
+     "update": 4800,
+     "step": 47,
+     "path": "runs/maze-e5-dr-v5-s3/checkpoints/maze-e5-dr-v5-s3/3/models/47",
+     "sha256": "6f9d5abf0134a116ecf174cf9f0db24611760875d4eb2387c0b107706458e73f"
+    },
+    {
+     "update": 6500,
+     "step": 64,
+     "path": "runs/maze-e5-dr-v5-s3/checkpoints/maze-e5-dr-v5-s3/3/models/64",
+     "sha256": "ddd884ea1c1c94f362488a1f9345fe19e8c9e280fd61eede11a7682e29327b92"
+    },
+    {
+     "update": 8800,
+     "step": 87,
+     "path": "runs/maze-e5-dr-v5-s3/checkpoints/maze-e5-dr-v5-s3/3/models/87",
+     "sha256": "54e8f22e0a6c2cf248a4f97b501cba6a04032d9308b1d18b5229621b1fba1243"
+    },
+    {
+     "update": 11900,
+     "step": 118,
+     "path": "runs/maze-e5-dr-v5-s3/checkpoints/maze-e5-dr-v5-s3/3/models/118",
+     "sha256": "375256d654e37b52daeeb3cf5c9426deaa883bf7e3d978066a49071ebb08bcce"
+    },
+    {
+     "update": 16200,
+     "step": 161,
+     "path": "runs/maze-e5-dr-v5-s3/checkpoints/maze-e5-dr-v5-s3/3/models/161",
+     "sha256": "a4e82a4f7f78f2b3ccc42745a6925722eb9d0f9c183a1accb59fdc8e172aecb5"
+    },
+    {
+     "update": 22100,
+     "step": 220,
+     "path": "runs/maze-e5-dr-v5-s3/checkpoints/maze-e5-dr-v5-s3/3/models/220",
+     "sha256": "e31a77707cf80327ce506b2997c81c047e2df4c3cce9760b5d556eceb9918a6f"
+    },
+    {
+     "update": 30000,
+     "step": 299,
+     "path": "runs/maze-e5-dr-v5-s3/checkpoints/maze-e5-dr-v5-s3/3/models/299",
+     "sha256": "03836e1377f69b4ffbdcf67100c00cbfae3f2e661d13a8d0f9c549e239385d88"
+    }
+   ],
+   "eval_tail": []
+  },
+  "maze-e5-dr-v13-s4": {
+   "arm": "dr",
+   "view": 13,
+   "seed": 4,
+   "updates": 30000,
+   "queue": {
+    "status": "done",
+    "start": "2026-10-28T20:33:10Z",
+    "end": "2026-10-29T08:04:18Z",
+    "lane": 4,
+    "gpu": 0
+   },
+   "status": "trained",
+   "config": "runs/maze-e5-dr-v13-s4/checkpoints/maze-e5-dr-v13-s4/4/config.json",
+   "config_sha256": "1c2311f52ab744df5638acc0b5146a21c59acfcc2305b396399293368a055fc2",
+   "e5_run_sha256": "1d7c00e919717c43e825a34e94e3966437dc5738d78c06dcf77025c02770c31b",
+   "wall_s": 41464.78409576416,
+   "checkpoints": [
+    {
+     "update": 300,
+     "step": 2,
+     "path": "runs/maze-e5-dr-v13-s4/checkpoints/maze-e5-dr-v13-s4/4/models/2",
+     "sha256": "ab39ec18377d4fc9185534fe8890bf08ffd0ab14c8873389f845d851fcbb3999"
+    },
+    {
+     "update": 400,
+     "step": 3,
+     "path": "runs/maze-e5-dr-v13-s4/checkpoints/maze-e5-dr-v13-s4/4/models/3",
+     "sha256": "1290dfa567710bcaad655cb21f36a16bf09f16b25637af578f85e84a53a1eea8"
+    },
+    {
+     "update": 600,
+     "step": 5,
+     "path": "runs/maze-e5-dr-v13-s4/checkpoints/maze-e5-dr-v13-s4/4/models/5",
+     "sha256": "68078ec9df355b647ac6444ba6ec70aaa465ff2e9fc1bc4a60ceb7f8c1d81f2f"
+    },
+    {
+     "update": 800,
+     "step": 7,
+     "path": "runs/maze-e5-dr-v13-s4/checkpoints/maze-e5-dr-v13-s4/4/models/7",
+     "sha256": "6b0f0bf2d88b878123071936f2ae9df8bb171672d0d3ac3d4c0c066efdbe529b"
+    },
+    {
+     "update": 1000,
+     "step": 9,
+     "path": "runs/maze-e5-dr-v13-s4/checkpoints/maze-e5-dr-v13-s4/4/models/9",
+     "sha256": "30bc577f7fc29f4baef6db529cc61912011f584fa68be8aec443e6230057ef67"
+    },
+    {
+     "update": 1400,
+     "step": 13,
+     "path": "runs/maze-e5-dr-v13-s4/checkpoints/maze-e5-dr-v13-s4/4/models/13",
+     "sha256": "0b62b1b1dd9371929cc187540b1054a20c9c9febb772a1ddc192d560d6753318"
+    },
+    {
+     "update": 1900,
+     "step": 18,
+     "path": "runs/maze-e5-dr-v13-s4/checkpoints/maze-e5-dr-v13-s4/4/models/18",
+     "sha256": "1f170b9eee03321f27d803c8742bdc2bb2bfbf6ce0b42a66d9badd1d8a580477"
+    },
+    {
+     "update": 2600,
+     "step": 25,
+     "path": "runs/maze-e5-dr-v13-s4/checkpoints/maze-e5-dr-v13-s4/4/models/25",
+     "sha256": "ec45d8d764e8eaf039f773d0b5a0b4eb59a5b0fbeeea23b4306ea3e042a8db11"
+    },
+    {
+     "update": 3500,
+     "step": 34,
+     "path": "runs/maze-e5-dr-v13-s4/checkpoints/maze-e5-dr-v13-s4/4/models/34",
+     "sha256": "fe3666965b73664fd135128736bfafc097207eee8073c4cc1b4d0ee230e47734"
+    },
+    {
+     "update": 4800,
+     "step": 47,
+     "path": "runs/maze-e5-dr-v13-s4/checkpoints/maze-e5-dr-v13-s4/4/models/47",
+     "sha256": "1f176b77821b61f137f326c071db44fb344a2fd1fd1ac07a4e2f0bd080b16d75"
+    },
+    {
+     "update": 6500,
+     "step": 64,
+     "path": "runs/maze-e5-dr-v13-s4/checkpoints/maze-e5-dr-v13-s4/4/models/64",
+     "sha256": "e76af6b7dd17aa4e5c9093240415cf8bbceb6cfc6a9c5e205a807494ff0fee35"
+    },
+    {
+     "update": 8800,
+     "step": 87,
+     "path": "runs/maze-e5-dr-v13-s4/checkpoints/maze-e5-dr-v13-s4/4/models/87",
+     "sha256": "151df842d4399fb0d4effb2be6cd7a9a65d84395679efd0c6c9617931591761f"
+    },
+    {
+     "update": 11900,
+     "step": 118,
+     "path": "runs/maze-e5-dr-v13-s4/checkpoints/maze-e5-dr-v13-s4/4/models/118",
+     "sha256": "498e7b60f648d167b16eb9446c1b96bd746a187773c6049a93e7def6a1970faa"
+    },
+    {
+     "update": 16200,
+     "step": 161,
+     "path": "runs/maze-e5-dr-v13-s4/checkpoints/maze-e5-dr-v13-s4/4/models/161",
+     "sha256": "7f57bfb3cfc9f2573659c8616c23873d193caa33f243c78d49ac95d57e152d60"
+    },
+    {
+     "update": 22100,
+     "step": 220,
+     "path": "runs/maze-e5-dr-v13-s4/checkpoints/maze-e5-dr-v13-s4/4/models/220",
+     "sha256": "b6439c1ad6ed3595ff688011167fa2c02372a5f997282839b18ff2c2069b2936"
+    },
+    {
+     "update": 30000,
+     "step": 299,
+     "path": "runs/maze-e5-dr-v13-s4/checkpoints/maze-e5-dr-v13-s4/4/models/299",
+     "sha256": "47dd4bbf0c11e4f29fac07d5d07d3daeffef789217336438f244d3e5489e52ec"
+    }
+   ],
+   "eval_tail": []
+  },
+  "maze-e5-dr-v5-s4": {
+   "arm": "dr",
+   "view": 5,
+   "seed": 4,
+   "updates": 30000,
+   "queue": {
+    "status": "done",
+    "start": "2026-10-28T20:33:10Z",
+    "end": "2026-10-29T02:22:50Z",
+    "lane": 5,
+    "gpu": 0
+   },
+   "status": "trained",
+   "config": "runs/maze-e5-dr-v5-s4/checkpoints/maze-e5-dr-v5-s4/4/config.json",
+   "config_sha256": "5a511c747e3f2815de7705291ce586e2657c9ff5dd88356e6dd35e4c4ed35a6a",
+   "e5_run_sha256": "54c9286c0f4f6ceaff7e69f5f4f5148ff4b966a300b8e835871ff15608f8e116",
+   "wall_s": 20978.825620412827,
+   "checkpoints": [
+    {
+     "update": 300,
+     "step": 2,
+     "path": "runs/maze-e5-dr-v5-s4/checkpoints/maze-e5-dr-v5-s4/4/models/2",
+     "sha256": "d34dadb961e7ec8b407e77e2ad0fb8a0dc28bc2fa42ea92ca7402ef447da86cd"
+    },
+    {
+     "update": 400,
+     "step": 3,
+     "path": "runs/maze-e5-dr-v5-s4/checkpoints/maze-e5-dr-v5-s4/4/models/3",
+     "sha256": "c54c9be815da5553921fce0145d90e78ab8b4be7969151d867aa5ba0e66ce403"
+    },
+    {
+     "update": 600,
+     "step": 5,
+     "path": "runs/maze-e5-dr-v5-s4/checkpoints/maze-e5-dr-v5-s4/4/models/5",
+     "sha256": "b743d09aaac12d115e8319c5a39d373b1f138fb492cf9404aa6aefc4c54319da"
+    },
+    {
+     "update": 800,
+     "step": 7,
+     "path": "runs/maze-e5-dr-v5-s4/checkpoints/maze-e5-dr-v5-s4/4/models/7",
+     "sha256": "c276608cafb20031c7a479edccee14f5f3d1a9f6bd126e6d38a83281cb77258e"
+    },
+    {
+     "update": 1000,
+     "step": 9,
+     "path": "runs/maze-e5-dr-v5-s4/checkpoints/maze-e5-dr-v5-s4/4/models/9",
+     "sha256": "31c407c92f927802f4bf49f7c045e93de1cb42ffa3509baa94b950e7ece9b9b4"
+    },
+    {
+     "update": 1400,
+     "step": 13,
+     "path": "runs/maze-e5-dr-v5-s4/checkpoints/maze-e5-dr-v5-s4/4/models/13",
+     "sha256": "52fc6bd4121d5698bda8310e5aff1c623f52b6f6d180dba25291f574b51b5b0e"
+    },
+    {
+     "update": 1900,
+     "step": 18,
+     "path": "runs/maze-e5-dr-v5-s4/checkpoints/maze-e5-dr-v5-s4/4/models/18",
+     "sha256": "ba129e5ddb2bec2bed8dfd8f1730ebc11a93d6d6fadbe2e21a9892114efc6cab"
+    },
+    {
+     "update": 2600,
+     "step": 25,
+     "path": "runs/maze-e5-dr-v5-s4/checkpoints/maze-e5-dr-v5-s4/4/models/25",
+     "sha256": "0facc45d78c5434e895832db333e7b5b1e0098b37658c3727a89f98aff50d400"
+    },
+    {
+     "update": 3500,
+     "step": 34,
+     "path": "runs/maze-e5-dr-v5-s4/checkpoints/maze-e5-dr-v5-s4/4/models/34",
+     "sha256": "c2f65562df5ecc7c6ade4cf6a66e00fae250e4c0c0294226ca2a6c08a05f063f"
+    },
+    {
+     "update": 4800,
+     "step": 47,
+     "path": "runs/maze-e5-dr-v5-s4/checkpoints/maze-e5-dr-v5-s4/4/models/47",
+     "sha256": "6a5c5aa2120df083b6da14ce2db3288e5c0fb29136e80fa928fbf83f9912d0e2"
+    },
+    {
+     "update": 6500,
+     "step": 64,
+     "path": "runs/maze-e5-dr-v5-s4/checkpoints/maze-e5-dr-v5-s4/4/models/64",
+     "sha256": "2c8d6c17b712fba376bd768ed5ed9b79945c0d1e99f9fdcbe58585b15c0f2501"
+    },
+    {
+     "update": 8800,
+     "step": 87,
+     "path": "runs/maze-e5-dr-v5-s4/checkpoints/maze-e5-dr-v5-s4/4/models/87",
+     "sha256": "00216333f0f6e393d0431233aacba79d7d450de3084cff6e6bc9f4bc8a4c5c60"
+    },
+    {
+     "update": 11900,
+     "step": 118,
+     "path": "runs/maze-e5-dr-v5-s4/checkpoints/maze-e5-dr-v5-s4/4/models/118",
+     "sha256": "ee420f5eb25e07ff8ffa94535c8693097dd7ca53a90c72d99fbc7d1ae06b660f"
+    },
+    {
+     "update": 16200,
+     "step": 161,
+     "path": "runs/maze-e5-dr-v5-s4/checkpoints/maze-e5-dr-v5-s4/4/models/161",
+     "sha256": "72016cc1fdaea089f8c6ef10248c9359be4a62c430a4ea4ebd233e78def24107"
+    },
+    {
+     "update": 22100,
+     "step": 220,
+     "path": "runs/maze-e5-dr-v5-s4/checkpoints/maze-e5-dr-v5-s4/4/models/220",
+     "sha256": "18b78f746171a30f8f33522efae9230cb0fd1f35b16e6dfcdb800074ae2620fa"
+    },
+    {
+     "update": 30000,
+     "step": 299,
+     "path": "runs/maze-e5-dr-v5-s4/checkpoints/maze-e5-dr-v5-s4/4/models/299",
+     "sha256": "85ec5e5bc6a0e96271049c469af891e3d41b68e55e3db6b6dab77a5275a5c942"
+    }
+   ],
+   "eval_tail": []
+  },
+  "maze-e5-dr-v13-s5": {
+   "arm": "dr",
+   "view": 13,
+   "seed": 5,
+   "updates": 30000,
+   "queue": {
+    "status": "done",
+    "start": "2026-10-28T20:35:23Z",
+    "end": "2026-10-29T08:04:15Z",
+    "lane": 4,
+    "gpu": 0
+   },
+   "status": "trained",
+   "config": "runs/maze-e5-dr-v13-s5/checkpoints/maze-e5-dr-v13-s5/5/config.json",
+   "config_sha256": "b5e91ac373acff213ae204bcc2b65174c89ccc7f2f96f7d451a0760edd3093cb",
+   "e5_run_sha256": "44905ecd8483ba4c167de7cf8b5c7d8c3efc56bdf088396f433156d8b0ed4a10",
+   "wall_s": 41329.093749284744,
+   "checkpoints": [
+    {
+     "update": 300,
+     "step": 2,
+     "path": "runs/maze-e5-dr-v13-s5/checkpoints/maze-e5-dr-v13-s5/5/models/2",
+     "sha256": "e07c47daa7e0c84ac94716e027cf9de1f5d2503f183846550b3355bc3085ccd5"
+    },
+    {
+     "update": 400,
+     "step": 3,
+     "path": "runs/maze-e5-dr-v13-s5/checkpoints/maze-e5-dr-v13-s5/5/models/3",
+     "sha256": "4d0cf184e9d49d242f8740ea253b0d75ba1c5b99140acd29b0b2e64892f181d3"
+    },
+    {
+     "update": 600,
+     "step": 5,
+     "path": "runs/maze-e5-dr-v13-s5/checkpoints/maze-e5-dr-v13-s5/5/models/5",
+     "sha256": "52123d46710b5a0e92769a1c7cd8473f7395273004c56efcdeb7fb7b97494156"
+    },
+    {
+     "update": 800,
+     "step": 7,
+     "path": "runs/maze-e5-dr-v13-s5/checkpoints/maze-e5-dr-v13-s5/5/models/7",
+     "sha256": "f544b0dfd309255b87793500f50f3e9005344c43977a9b08695ecd9a47adb24c"
+    },
+    {
+     "update": 1000,
+     "step": 9,
+     "path": "runs/maze-e5-dr-v13-s5/checkpoints/maze-e5-dr-v13-s5/5/models/9",
+     "sha256": "d8487d3e2ecaf9c4c9d2eb1c6a54253294d0b814e65633402cc7390c4099b966"
+    },
+    {
+     "update": 1400,
+     "step": 13,
+     "path": "runs/maze-e5-dr-v13-s5/checkpoints/maze-e5-dr-v13-s5/5/models/13",
+     "sha256": "d89ee9bbd26e86ad5950b8c4ce6bcf4e38d0b1837e379302b01b1c5692b8aa14"
+    },
+    {
+     "update": 1900,
+     "step": 18,
+     "path": "runs/maze-e5-dr-v13-s5/checkpoints/maze-e5-dr-v13-s5/5/models/18",
+     "sha256": "fbf3391692b465c105f7d204aafa483719859ca6f46f7ee6057e8d07cedff435"
+    },
+    {
+     "update": 2600,
+     "step": 25,
+     "path": "runs/maze-e5-dr-v13-s5/checkpoints/maze-e5-dr-v13-s5/5/models/25",
+     "sha256": "913b4df98a6a4831a6cebf64f275aaeca4adcaa23d2b8afdabadee988d8e94cf"
+    },
+    {
+     "update": 3500,
+     "step": 34,
+     "path": "runs/maze-e5-dr-v13-s5/checkpoints/maze-e5-dr-v13-s5/5/models/34",
+     "sha256": "ee3dda6f2f56a884bb155180b2d8907f8bb84849d66f4f4e0509a2ba2596338d"
+    },
+    {
+     "update": 4800,
+     "step": 47,
+     "path": "runs/maze-e5-dr-v13-s5/checkpoints/maze-e5-dr-v13-s5/5/models/47",
+     "sha256": "74b50b7470e13a38e1c435c1aa4a090fe134abfb0bdb4a824a4eb1f355a7739b"
+    },
+    {
+     "update": 6500,
+     "step": 64,
+     "path": "runs/maze-e5-dr-v13-s5/checkpoints/maze-e5-dr-v13-s5/5/models/64",
+     "sha256": "6d35dbb09dcda6366f824c113ef7cf333a73f22a162952da6a5b716f14f07677"
+    },
+    {
+     "update": 8800,
+     "step": 87,
+     "path": "runs/maze-e5-dr-v13-s5/checkpoints/maze-e5-dr-v13-s5/5/models/87",
+     "sha256": "9d606387350c8ad1a454c0c2170e12e5a348e260f1fae3a6928618ea9d93e11b"
+    },
+    {
+     "update": 11900,
+     "step": 118,
+     "path": "runs/maze-e5-dr-v13-s5/checkpoints/maze-e5-dr-v13-s5/5/models/118",
+     "sha256": "bf9b9f1df70ebcc596014e6598273382b41aacc6528ac48a74d90ebb9eaa4bf1"
+    },
+    {
+     "update": 16200,
+     "step": 161,
+     "path": "runs/maze-e5-dr-v13-s5/checkpoints/maze-e5-dr-v13-s5/5/models/161",
+     "sha256": "28f6a50a8c8d4b06d9a79f4dbfb3aad42ff567d08b54c8e3bdc500557d917ea8"
+    },
+    {
+     "update": 22100,
+     "step": 220,
+     "path": "runs/maze-e5-dr-v13-s5/checkpoints/maze-e5-dr-v13-s5/5/models/220",
+     "sha256": "611ded73b0f54d8deac697955f2195d7eb17e3cb148b1333a5eec9790020ec03"
+    },
+    {
+     "update": 30000,
+     "step": 299,
+     "path": "runs/maze-e5-dr-v13-s5/checkpoints/maze-e5-dr-v13-s5/5/models/299",
+     "sha256": "58311fc10d6a3f0553fa7d85407d5eefc0becfbf6ed85894d3adf360704c13fe"
+    }
+   ],
+   "eval_tail": []
+  },
+  "maze-e5-dr-v5-s5": {
+   "arm": "dr",
+   "view": 5,
+   "seed": 5,
+   "updates": 30000,
+   "queue": {
+    "status": "done",
+    "start": "2026-10-28T20:35:23Z",
+    "end": "2026-10-29T02:17:23Z",
+    "lane": 5,
+    "gpu": 0
+   },
+   "status": "trained",
+   "config": "runs/maze-e5-dr-v5-s5/checkpoints/maze-e5-dr-v5-s5/5/config.json",
+   "config_sha256": "c777a9d78f6839a3310fd0dc94a0d4e716d447726b79b71773d0d3ce107acf95",
+   "e5_run_sha256": "6f4a3782d7e66311f8d56098efa4f01973f8e14e2dbf11f8e36cd71abbfac503",
+   "wall_s": 20519.456194639206,
+   "checkpoints": [
+    {
+     "update": 300,
+     "step": 2,
+     "path": "runs/maze-e5-dr-v5-s5/checkpoints/maze-e5-dr-v5-s5/5/models/2",
+     "sha256": "e8af1f40e02b5516c44adc6ba15310c3ab1328c86d51bffad3c914732b330759"
+    },
+    {
+     "update": 400,
+     "step": 3,
+     "path": "runs/maze-e5-dr-v5-s5/checkpoints/maze-e5-dr-v5-s5/5/models/3",
+     "sha256": "1ddb2c6db8629b4ee82cca72834c2a1d339f29258f6c47b1818b8d412f636fb4"
+    },
+    {
+     "update": 600,
+     "step": 5,
+     "path": "runs/maze-e5-dr-v5-s5/checkpoints/maze-e5-dr-v5-s5/5/models/5",
+     "sha256": "fd31a1bd7b7f7381317560d86329d497ca082560a3ad1e1bca634453350e8d8d"
+    },
+    {
+     "update": 800,
+     "step": 7,
+     "path": "runs/maze-e5-dr-v5-s5/checkpoints/maze-e5-dr-v5-s5/5/models/7",
+     "sha256": "17146fb5f5193eea4e4c0c10864770af8a5a9609f377fe10365e002cb72c514d"
+    },
+    {
+     "update": 1000,
+     "step": 9,
+     "path": "runs/maze-e5-dr-v5-s5/checkpoints/maze-e5-dr-v5-s5/5/models/9",
+     "sha256": "a176e88fadba1550a9c76285c5d8cb2295bf02cb04ab8d2797fff5fae42cb62a"
+    },
+    {
+     "update": 1400,
+     "step": 13,
+     "path": "runs/maze-e5-dr-v5-s5/checkpoints/maze-e5-dr-v5-s5/5/models/13",
+     "sha256": "fc111c24dea3ce05b29f45db7445433c930a184383f5c23ad9c1d5c59c5e1afa"
+    },
+    {
+     "update": 1900,
+     "step": 18,
+     "path": "runs/maze-e5-dr-v5-s5/checkpoints/maze-e5-dr-v5-s5/5/models/18",
+     "sha256": "2a3b67710d58c14e83718f39b81ad6156d5587a5def82a9a8cbf9069e973a917"
+    },
+    {
+     "update": 2600,
+     "step": 25,
+     "path": "runs/maze-e5-dr-v5-s5/checkpoints/maze-e5-dr-v5-s5/5/models/25",
+     "sha256": "59b38a8606800837db003d60d9b0c2cbe8db73ad79c1cf846d3af3557bac4a17"
+    },
+    {
+     "update": 3500,
+     "step": 34,
+     "path": "runs/maze-e5-dr-v5-s5/checkpoints/maze-e5-dr-v5-s5/5/models/34",
+     "sha256": "82d13963159320382f9e33286c006c16296864358185a1b1fcb6427ad39ad382"
+    },
+    {
+     "update": 4800,
+     "step": 47,
+     "path": "runs/maze-e5-dr-v5-s5/checkpoints/maze-e5-dr-v5-s5/5/models/47",
+     "sha256": "e3c7a5533dd3e0eb23bf2170e8bf911ab7c538c6be1114d16fef4e8eea530421"
+    },
+    {
+     "update": 6500,
+     "step": 64,
+     "path": "runs/maze-e5-dr-v5-s5/checkpoints/maze-e5-dr-v5-s5/5/models/64",
+     "sha256": "6d992391241f4f6e128dd56635f4e4f3ac8afa6021fa9834b8979e556d3021ec"
+    },
+    {
+     "update": 8800,
+     "step": 87,
+     "path": "runs/maze-e5-dr-v5-s5/checkpoints/maze-e5-dr-v5-s5/5/models/87",
+     "sha256": "20877656d90548957e88d53b7b586d22fdd33696bf4405f23146b44c1e79ff1b"
+    },
+    {
+     "update": 11900,
+     "step": 118,
+     "path": "runs/maze-e5-dr-v5-s5/checkpoints/maze-e5-dr-v5-s5/5/models/118",
+     "sha256": "d274b8c8fd6ec521e190a1f813353a6b35401e2c59f5895c5c5b0760e1c37764"
+    },
+    {
+     "update": 16200,
+     "step": 161,
+     "path": "runs/maze-e5-dr-v5-s5/checkpoints/maze-e5-dr-v5-s5/5/models/161",
+     "sha256": "b91778c39c959ab498999df80c3a4b92d05abb8792fc93436c87c0e61a226eae"
+    },
+    {
+     "update": 22100,
+     "step": 220,
+     "path": "runs/maze-e5-dr-v5-s5/checkpoints/maze-e5-dr-v5-s5/5/models/220",
+     "sha256": "73026f84f7d8c6b3cbcd22f252a7ff61dc014d314bf6fd221306bfdc9586f582"
+    },
+    {
+     "update": 30000,
+     "step": 299,
+     "path": "runs/maze-e5-dr-v5-s5/checkpoints/maze-e5-dr-v5-s5/5/models/299",
+     "sha256": "7724cc8bcb2985217f4644ba423b040b2f245d2a479fe9049c46d691be1a30e9"
+    }
+   ],
+   "eval_tail": []
+  }
+ }
+}
