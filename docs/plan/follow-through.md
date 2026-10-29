@@ -825,3 +825,16 @@ The user's decision (29 Oct 2026, seventh round): **the lockbox goes ahead (#14)
   uncompleted circuits counted as failures and left out of the lap-time gap. The rest is
   settled in the draft.
 
+
+The lead's notes (29 Oct 2026, the lockbox done):
+- **`protocol-v1`** was approved by the user and tagged (tag object `5bc35e28`, commit `8c1a8d7`)
+  before any lockbox stage ran. `freeze`, `ocp`, `laps` and `analyse` each ran once, on the Mac,
+  at the tag. One deviation is logged, with no effect (a `nice` and `--no-sync` command prefix). The outputs are committed in `4d4eaf9`.
+- **H1 is refuted on both counts** (`docs/findings/lockbox.md`). At the median subject the lap
+  share is 66.7% (bar ≥ 90%) and the median gap 5.16% (bar ≤ 4%). No subject meets either part.
+- **Six of the eight calibrated predictions held.** The two gap levels (median 5.16%, IQM 5.38%)
+  fell below their R-dev intervals: E0's gaps on R_TEST are smaller than on R-dev. Completion
+  (8 of 12) and all four orientation differences held.
+- All 108 references converged, and none failed. No GPU box was used.
+- **Next:** the descriptive provenance comparison against `outputs/sealed/` (protocol Section 14),
+  now allowed because the findings are committed. Then the exploratory discussion with the user.
