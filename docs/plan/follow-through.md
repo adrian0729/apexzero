@@ -814,3 +814,14 @@ The lead's notes (29 Oct 2026, E5 done):
   bill), against the approved ~108 and the stop rule's 130, plus the 1.74 GPU-h calibration.
 - **No boxes are up.** Next: the lockbox (LB-1), after the user's answers to #14 and #15.
 
+The user's decision (29 Oct 2026, seventh round): **the lockbox goes ahead (#14).**
+- Although E0 missed its gate (median 8 of 12), the lockbox is spent on E0 as it is, on **all 12
+  R_TEST circuits** (no 6 + 6 split), decoupled from `audit-v1` as decided earlier.
+- The lead drafts `protocol-v1` with the defaults below (#15), runs LB-1 step 1 (the checkpoint
+  choice on R-dev and the full R-dev dry run), has it reviewed, and brings it to the user for
+  approval before the tag. Nothing under R_TEST or `outputs/sealed/` is read before the tag.
+- #15's defaults as proposed to the user: E0's five networks as the subjects; the s-OCP lap as
+  the gap reference (no LB-opt); the line/execution split descriptive; 10 runs per circuit;
+  uncompleted circuits counted as failures and left out of the lap-time gap. The rest is
+  settled in the draft.
+
