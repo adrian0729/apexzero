@@ -18,8 +18,9 @@ Four stages, run in order on one root; each refuses what the one before it did n
   v1's geometry error bar), with a fixed convergence fallback.
 - ``laps`` rolls every subject out on every variant (``eval.laps.timed_laps``'s protocol, line
   for line, checked against ``timed_laps`` itself on each subject's first variant), keeps each
-  completed run's lap-2 time at every station (per-corner timing) and run 0's OOD distance at
-  every step. It prints no outcome.
+  completed run's lap-2 time, lateral offset n and speed v_x at every station (per-corner
+  timing; n and v_x are extra data for a later line / execution split, no metric uses them) and
+  run 0's OOD distance at every step. It prints no outcome.
 - ``analyse`` runs once. It refuses if its lock or any output exists, checks every input, then
   takes an exclusive lock (``analysis.lock``, never removed by the harness) before computing
   any number. It reads references only from the root's own ``ocp/``, each file checked against
@@ -35,7 +36,8 @@ Four stages, run in order on one root; each refuses what the one before it did n
   PermissionError at every stage. ``--root`` is required (use a new directory under
   outputs/lockbox-dryrun/); it may not be, contain or sit inside outputs/lockbox/ or
   outputs/sealed/.
-- ``lockbox``: all 12 R_TEST circuits, root outputs/lockbox/ only. Every stage first calls
+- ``lockbox``: all 12 R_TEST circuits, root outputs/lockbox/ only, ``PROTOCOL["laps"]["runs"]``
+  runs (``freeze`` refuses any other ``--runs``). Every stage first calls
   ``tag_gate``, which raises PermissionError unless the annotated tag ``protocol-v1`` exists on
   origin, the local tag is the same tag object, HEAD descends from its commit, and the metric
   code (``METRIC_PATHS``, untracked files included) in the working tree is the tagged code.
@@ -43,6 +45,9 @@ Four stages, run in order on one root; each refuses what the one before it did n
   else in this file (a test checks). The subjects file must sit inside the repository (not a
   symlink), be tracked, and hold exactly the bytes of the tag commit's blob at that path;
   freeze parses those checked bytes and records the repo-relative path and their sha256.
+  A subject's optional ``timesteps`` must equal its checkpoint's (the pickle's, and the file
+  name's when that is 12 digits). ``eval_rdev`` / ``eval_rdev_sha256`` (a stored end-of-training
+  R-dev evaluation for ``analyse``'s agreement check) are dry-run only; the lockbox file has none.
 
 Every later stage re-applies freeze's path checks to ``freeze.json`` before reading anything it
 names: the circuit-file keys must be exactly the cleared circuits' centrelines, and every
@@ -55,7 +60,9 @@ fixes the final values and may change any of them).
   sees it. A width re-solve moves both sides of that track by delta; the reference line stays.
 - Reference: ``ocp.min_time.solve_min_time`` (ds 3 m, margin 1 m, tol 1e-6); if it fails, one
   retry from the failed iterate at tol 1e-5 (``scripts/solve_all_ocp.py``'s rule). A reference
-  that still fails is reported, and every gap against it is missing.
+  that still fails, or whose solve or widening raises (the record says so, its pickle holds
+  None, and the stage goes on), or whose shooting error is at or above ``P2_SHOOTING_LIMIT``,
+  is reported, and every gap against it is missing.
 - Laps: default car, grip 1, no observation noise; rolling start at s = 0 from 0.9 x the QSS
   start speed; ``--runs`` runs (default 10: run 0 centred, the rest jittered as ``timed_laps``);
   2 laps, lap 2 timed. A variant is completed when MORE than half its runs finish (the gate's
@@ -71,8 +78,10 @@ fixes the final values and may change any of them).
   fitted on raw R-dev centrelines, default car, grip 1, root seed 7707, which no other study
   uses); the denominator is the buffer's leave-one-level-out median nearest-neighbour
   distance. A variant's d_OOD is the median over run 0's steps on its two laps; a corner's,
-  over run 0's steps in its sector. LB-1 must set the generator to the subjects' own training
-  generator (generator-v1) if that differs from the default.
+  over run 0's steps in its sector. The generator is the subjects' own (generator-v1): built
+  as ``scripts/train_dr.py --real-widths`` builds it (``fit_grammar(R-dev, real_widths=True)``,
+  every R-dev circuit's widths, no stat widths, no tilt), so the strips carry copied R-dev
+  widths.
 
 **Workers.** At most 4 processes (``--workers``, clamped); each lowers its priority to nice 15
 and runs with 2 XLA and BLAS threads (``--threads``). Another workflow shares the Mac.
@@ -137,7 +146,8 @@ TRACK_DIR = ROOT / "data" / "tracks" / "tumftm"
 H4R_MANIFEST = ROOT / "outputs" / "h4r" / "manifest.json"
 
 TAG = "protocol-v1"
-METRIC_PATHS = ("scripts/lockbox.py", "scripts/_bootstrap.py", "src/apexzero")
+METRIC_PATHS = ("scripts/lockbox.py", "scripts/_bootstrap.py", "src/apexzero", "uv.lock",
+                "pyproject.toml")
 MODES = ("dryrun", "lockbox")
 VARIANTS = ("original", "mirrored", "reversed")
 WIDTH_DELTAS = (0.0, -0.5, 0.5)      # m, both sides; 0.0 is the nominal reference
@@ -160,7 +170,10 @@ PROTOCOL = {
                 "apex_speed": "the nominal OCP's minimum v_x between the complex's entry and exit"},
     "ood": {"root_seed": 7707, "stream": "a_dr", "levels": 100, "steps": 1200,
             "n_obs": 40_000, "subsample_seed": 7707, "chunk": 25,
-            "generator": "train grammar, fit_grammar on raw R-dev centrelines",
+            "generator": "generator-v1: fit_grammar on raw R-dev centrelines with real_widths "
+                         "(scripts/train_dr.py --real-widths: no --real-widths-from, no stat "
+                         "widths, no tilt)",
+            "real_widths": True,
             "denominator": "leave-one-level-out median NN distance",
             "variant_statistic": "median (and 90th percentile) over run 0's steps, both laps"},
     "stats": {"n_boot": 2000, "boot_seed": 0, "iqm_trim": 0.25, "ci": [2.5, 97.5],
@@ -499,6 +512,12 @@ def circuit_file_keys(circuits) -> set[str]:
 # ------------------------------------------------------------------------- subjects
 
 
+def stored_eval(raw: bytes) -> dict:
+    """{circuit: {completion, median_lap_s}} of a stored eval_rdev.json's bytes."""
+    return {c: {"completion": r.get("completion"), "median_lap_s": r.get("median_lap_s")}
+            for c, r in json.loads(raw).items() if isinstance(r, dict)}
+
+
 def subjects_from_h4r(names) -> list[dict]:
     """Dry-run subjects: H4R finals with the sha256s bound in outputs/h4r/manifest.json, and
     each one's stored end-of-training R-dev evaluation (its eval_rdev.json, sha-checked), which
@@ -516,20 +535,43 @@ def subjects_from_h4r(names) -> list[dict]:
             raw = ev.read_bytes()
             if sha256_bytes(raw) != ent["eval_sha256"]:
                 raise CheckFailed(f"{rel(ev)} does not match the manifest's sha256")
-            stored = {c: {"completion": r.get("completion"), "median_lap_s": r.get("median_lap_s")}
-                      for c, r in json.loads(raw).items() if isinstance(r, dict)}
+            stored = stored_eval(raw)
         out.append({"name": n, "checkpoint": ent["path"], "sha256": ent["sha256"],
                     "source": rel(H4R_MANIFEST), "stored_eval_rdev": stored})
     return out
 
 
-def subjects_from_file(raw: bytes, source: str) -> list[dict]:
+def subjects_from_file(raw: bytes, source: str, mode: str = "lockbox") -> list[dict]:
     """The subjects in a subjects file's bytes (the bytes that were checked, never a re-read).
-    ``source`` is what freeze.json records: a repo-relative path, never an absolute one."""
+    ``source`` is what freeze.json records: a repo-relative path, never an absolute one.
+    Optional per subject: ``timesteps`` (checked against the checkpoint by ``verify_subjects``)
+    and, in the dry run only, ``eval_rdev`` + ``eval_rdev_sha256`` (the stored R-dev evaluation,
+    read and sha-checked here, as ``subjects_from_h4r`` does); either is refused in lockbox mode."""
     d = json.loads(raw.decode())
     subs = d["subjects"] if isinstance(d, dict) else d
-    return [{"name": s["name"], "checkpoint": s["checkpoint"], "sha256": s["sha256"],
-             "source": source} for s in subs]
+    out = []
+    for s in subs:
+        sub = {"name": s["name"], "checkpoint": s["checkpoint"], "sha256": s["sha256"],
+               "source": source}
+        if "timesteps" in s:
+            sub["timesteps"] = s["timesteps"]
+        ev = [k for k in ("eval_rdev", "eval_rdev_sha256") if k in s]
+        if ev and mode != "dryrun":
+            raise CheckFailed(f"{s['name']}: {' and '.join(ev)} belong to the dry run only")
+        if ev:
+            if len(ev) != 2 or not all(isinstance(s[k], str) for k in ev):
+                raise CheckFailed(f"{s['name']}: eval_rdev and eval_rdev_sha256 go together")
+            f = Path(s["eval_rdev"])
+            f = f if f.is_absolute() else ROOT / f
+            if _inside(f, SEALED):
+                raise PermissionError("outputs/sealed/ is never read")
+            evraw = f.read_bytes()
+            if sha256_bytes(evraw) != s["eval_rdev_sha256"]:
+                raise CheckFailed(f"{s['name']}: {s['eval_rdev']} does not match its sha256")
+            sub.update(eval_rdev=s["eval_rdev"], eval_rdev_sha256=s["eval_rdev_sha256"],
+                       stored_eval_rdev=stored_eval(evraw))
+        out.append(sub)
+    return out
 
 
 def git_blob_id(raw: bytes, n_hex: int = 40) -> str:
@@ -584,7 +626,8 @@ def check_subject_paths(subs) -> None:
 
 def verify_subjects(subs: list[dict]) -> list[dict]:
     """Each subject's checkpoint must hash to its declared sha256; names must be distinct and
-    filesystem-safe; no checkpoint may sit in outputs/sealed/."""
+    filesystem-safe; no checkpoint may sit in outputs/sealed/; a declared ``timesteps`` must
+    equal the pickle's, and a 12-digit file name must too."""
     check_subject_paths(subs)
     out = []
     for s in subs:
@@ -595,8 +638,14 @@ def verify_subjects(subs: list[dict]) -> list[dict]:
             raise CheckFailed(f"{s['name']}: {s['checkpoint']} hashes to {sha}, not the "
                               f"declared {s['sha256']}")
         d = pickle.loads(raw)
-        out.append(dict(s, checkpoint=rel(f) if _inside(f, ROOT) else str(f),
-                        timesteps=int(d["timesteps"])))
+        ts = int(d["timesteps"])
+        declared = s.get("timesteps")
+        if declared is not None and (isinstance(declared, bool) or declared != ts):
+            raise CheckFailed(f"{s['name']}: declared timesteps {declared!r}, but the checkpoint "
+                              f"holds {ts}")
+        if re.fullmatch(r"\d{12}", f.stem) and int(f.stem) != ts:
+            raise CheckFailed(f"{s['name']}: file name {f.name} is not its {ts} timesteps")
+        out.append(dict(s, checkpoint=rel(f) if _inside(f, ROOT) else str(f), timesteps=ts))
     return out
 
 
@@ -640,6 +689,9 @@ def stage_freeze(args) -> Path:
         raise CheckFailed("give exactly one of --subjects FILE and --h4r-subjects NAMES")
     if mode == "lockbox" and not args.subjects:
         raise CheckFailed("the lockbox run takes its subjects from a committed file")
+    if mode == "lockbox" and args.runs != PROTOCOL["laps"]["runs"]:
+        raise CheckFailed(f"the lockbox run takes {PROTOCOL['laps']['runs']} runs, not "
+                          f"--runs {args.runs}")
     if args.runs < 3:
         raise CheckFailed("--runs must be at least 3")
     subjects_file = None
@@ -651,7 +703,7 @@ def stage_freeze(args) -> Path:
             source = (rel(spath) if _inside(spath, ROOT)
                       else f"(outside the repository) {spath.name}")
             raw = spath.read_bytes()
-        subs = subjects_from_file(raw, source)
+        subs = subjects_from_file(raw, source, mode)
         subjects_file = {"source": source, "sha256": sha256_bytes(raw)}
     else:
         subs = subjects_from_h4r(args.h4r_subjects)
@@ -719,37 +771,50 @@ def solve_task(root: str, rec: dict, clearance: Clearance, circuit: str, variant
     root = Path(root)
     key = ocp_key(circuit, variant, delta)
     op = rec["protocol"]["ocp"]
-    track = widen(load_variant(circuit, variant, clearance), delta, op["margin"])
-    attempts = []
-    res = solve_min_time(track, F1_2025, ds=op["ds"], margin=op["margin"], tol=op["tol"],
-                         max_iter=op["max_iter"])
-    attempts.append({"init": "qss", "tol": op["tol"], "success": res.success,
-                     "status": res.status, "iterations": res.iterations,
-                     "solve_s": round(res.solve_seconds, 1)})
-    if not res.success:
-        res = solve_min_time(track, F1_2025, ds=op["ds"], margin=op["margin"], tol=1e-5,
-                             max_iter=op["max_iter"], init=(res.z, res.u))
-        attempts.append({"init": "failed iterate", "tol": 1e-5, "success": res.success,
+    base = load_variant(circuit, variant, clearance)
+    track, res, error, attempts = None, None, None, []
+    try:       # a failing widening or solve fails this reference only, never the stage
+        track = widen(base, delta, op["margin"])
+        res = solve_min_time(track, F1_2025, ds=op["ds"], margin=op["margin"], tol=op["tol"],
+                             max_iter=op["max_iter"])
+        attempts.append({"init": "qss", "tol": op["tol"], "success": res.success,
                          "status": res.status, "iterations": res.iterations,
                          "solve_s": round(res.solve_seconds, 1)})
-    try:
-        chk = shooting_check(res, F1_2025)
-        shoot = {"shooting_rel_err": float(chk.rel_lap_error),
-                 "max_dv_mps": float(chk.max_speed_error), "shooting_error": None}
-    except Exception as exc:  # noqa: BLE001  (recorded; analyse reports it)
-        shoot = {"shooting_rel_err": float("nan"), "max_dv_mps": float("nan"),
-                 "shooting_error": repr(exc)}
-    pkl_sha = write_new(safe_path(root, "ocp", f"{key}.pkl"), pickle.dumps(res))
-    out = {"key": key, "circuit": circuit, "variant": variant, "name": track.name,
-           "width_delta_m": delta, "freeze_id": rec["freeze_id"], "success": bool(res.success),
-           "status": res.status, "attempts": attempts, "lap_time_s": float(res.lap_time),
-           "length_m": float(track.length), **shoot,
-           "min_width_m": float(min(track.w_left.min(), track.w_right.min())),
-           "drivable_margin": float(drivable_margin(track)),
+        if not res.success:
+            res = solve_min_time(track, F1_2025, ds=op["ds"], margin=op["margin"], tol=1e-5,
+                                 max_iter=op["max_iter"], init=(res.z, res.u))
+            attempts.append({"init": "failed iterate", "tol": 1e-5, "success": res.success,
+                             "status": res.status, "iterations": res.iterations,
+                             "solve_s": round(res.solve_seconds, 1)})
+    except (Exception, CheckFailed) as exc:  # noqa: BLE001  (CheckFailed is a SystemExit)
+        res, error = None, repr(exc)
+    shoot = {"shooting_rel_err": float("nan"), "max_dv_mps": float("nan"),
+             "shooting_error": "no solution"}
+    if res is not None:
+        try:
+            chk = shooting_check(res, F1_2025)
+            shoot = {"shooting_rel_err": float(chk.rel_lap_error),
+                     "max_dv_mps": float(chk.max_speed_error), "shooting_error": None}
+        except Exception as exc:  # noqa: BLE001  (recorded; analyse reports it)
+            shoot["shooting_error"] = repr(exc)
+    pk = safe_path(root, "ocp", f"{key}.pkl")
+    if pk.exists() and not safe_path(root, "ocp", f"{key}.json").exists():
+        pk.unlink()       # a solve killed between its two writes left a pickle with no record
+    pkl_sha = write_new(pk, pickle.dumps(res))
+    nan = float("nan")
+    out = {"key": key, "circuit": circuit, "variant": variant, "name": base.name,
+           "width_delta_m": delta, "freeze_id": rec["freeze_id"],
+           "success": res is not None and bool(res.success),
+           "status": res.status if res is not None else "error", "error": error,
+           "attempts": attempts, "lap_time_s": float(res.lap_time) if res is not None else nan,
+           "length_m": float(base.length), **shoot,
+           "min_width_m": (float(min(track.w_left.min(), track.w_right.min()))
+                           if track is not None else nan),
+           "drivable_margin": float(drivable_margin(track)) if track is not None else nan,
            "pkl": f"ocp/{key}.pkl", "pkl_sha256": pkl_sha,
            "provenance": provenance(t_start)}
     write_json_new(safe_path(root, "ocp", f"{key}.json"), out)
-    return {"key": key, "converged": out["success"],
+    return {"key": key, "converged": out["success"], "error": error,
             "solve_s": round(sum(a["solve_s"] for a in attempts), 1)}
 
 
@@ -796,6 +861,10 @@ class LapRollout:
     length: float
     laps: int
     dt: float
+    n: np.ndarray | None = None       # [T, R] post-step lateral offset
+    vx: np.ndarray | None = None      # [T, R] post-step speed v_x
+    n_start: np.ndarray | None = None    # [R] the offset and speed before the first step
+    vx_start: np.ndarray | None = None
 
     @property
     def completion_rate(self) -> float:
@@ -830,10 +899,27 @@ def lap_profile(s: np.ndarray, t: np.ndarray, stations: np.ndarray, length: floa
     return out
 
 
+def lap_state(s: np.ndarray, x: np.ndarray, x_start: float, stations: np.ndarray,
+              length: float, lap: int) -> np.ndarray:
+    """A post-step quantity ``x`` (n or v_x; ``x_start`` before the first step) at each station
+    of lap ``lap`` (1-based), interpolated at the same crossing as ``crossing_time``'s: linear
+    between the samples either side of the first sample with s at or past the station."""
+    s = np.asarray(s, float)
+    target = float((lap - 1) * length) + np.asarray(stations, float)
+    k = np.searchsorted(np.maximum.accumulate(s), target, side="left")
+    if np.any(k >= len(s)):
+        raise ValueError("the run never reaches the lap's last station")
+    s_prev = np.where(k > 0, s[np.maximum(k - 1, 0)], 0.0)
+    x_prev = np.where(k > 0, np.asarray(x, float)[np.maximum(k - 1, 0)], x_start)
+    frac = (target - s_prev) / np.maximum(s[k] - s_prev, 1e-6)
+    return x_prev + frac * (np.asarray(x, float)[k] - x_prev)
+
+
 def rollout_laps(policy_fn, track, v_start: float, runs: int = 20, laps: int = 2, params=None,
                  ctx=None, seed: int = 0, obs_fn=None) -> LapRollout:
-    """``eval.laps.timed_laps``, line for line, keeping every run's s, alive and termination
-    flags and, with ``obs_fn``, run 0's ``obs_fn(obs)``, s and alive before every step."""
+    """``eval.laps.timed_laps``, line for line, keeping every run's s, n, v_x, alive and
+    termination flags and, with ``obs_fn``, run 0's ``obs_fn(obs)``, s and alive before every
+    step."""
     import jax
     import jax.numpy as jnp
 
@@ -876,12 +962,13 @@ def rollout_laps(policy_fn, track, v_start: float, runs: int = 20, laps: int = 2
                 alive.reshape((-1,) + (1,) * (new.ndim - 1)), new, old), st2, st)
             flags = jnp.stack([info["off_track"], info["slipped"], info["spun"],
                                info["stalled"]], axis=-1)
-            return (st2, ob2, alive2), (st2.x[:, 0], alive2, term, flags, *extra)
+            return (st2, ob2, alive2), (st2.x[:, 0], alive2, term, flags, st2.x[:, 1],
+                                        st2.x[:, 3], *extra)
         _, out = jax.lax.scan(body, (states, obs, jnp.ones(runs, bool)), None, max_steps)
         return out
 
     out = [np.asarray(a) for a in run(states, obs)]
-    s, alive, term, flags = out[:4]
+    s, alive, term, flags, n, vx = out[:6]
     t = (np.arange(max_steps) + 1) * params.dt
     completed = np.zeros(runs, bool)
     lap_time = np.full(runs, np.nan)
@@ -892,8 +979,9 @@ def rollout_laps(policy_fn, track, v_start: float, runs: int = 20, laps: int = 2
             completed[r] = True
             lap_time[r] = t2 - t1
     return LapRollout(completed, lap_time, s.max(axis=0), t, s, alive, term, flags,
-                      out[4] if record else None, out[5] if record else None,
-                      out[6] if record else None, L, laps, float(params.dt))
+                      out[6] if record else None, out[7] if record else None,
+                      out[8] if record else None, L, laps, float(params.dt), n, vx,
+                      x0[:, 1], x0[:, 3])
 
 
 def outcomes(ro: LapRollout) -> dict:
@@ -923,8 +1011,9 @@ def outcomes(ro: LapRollout) -> dict:
 
 def ood_levels(spec: dict):
     """(stacked TrackArrays, x0) of the OOD reference levels: the training generator fitted on
-    raw R-dev centrelines, as scripts/pilot_audit.py and GW-1 build A_DR, from the harness's
-    own root seed."""
+    raw R-dev centrelines with real widths, as ``scripts/train_dr.py --real-widths`` builds it
+    (no --real-widths-from, no stat widths, no tilt; E0's generator-v1), from the harness's own
+    root seed."""
     import jax
 
     from apexzero.tracks.generator import fit_grammar
@@ -933,7 +1022,8 @@ def ood_levels(spec: dict):
 
     for name in R_DEV:
         lockbox_guard(name)
-    g = fit_grammar([load_tumftm(TRACK_DIR / f"{n}.csv") for n in R_DEV])
+    g = fit_grammar([load_tumftm(TRACK_DIR / f"{n}.csv") for n in R_DEV],
+                    real_widths=bool(spec["real_widths"]))
     lv = make_levels(jax.random.PRNGKey(spec["root_seed"]), spec["stream"], n=spec["levels"],
                      randomize_car=False)
     tracks, _, x0 = build(lv, g)
@@ -1075,15 +1165,19 @@ def laps_subject(root: str, rec: dict, clearance: Clearance, sub: dict) -> dict:
         L = ro.length
         stations = np.r_[track.s, L]
         tau = np.full((lp["runs"], len(stations)), np.nan)
+        path_n, path_v = tau.copy(), tau.copy()     # the timed lap's path, same stations
         for r in np.nonzero(ro.completed)[0]:
             tau[r] = lap_profile(ro.s[:, r], ro.t, stations, L, lp["laps"], ro.dt)
+            path_n[r] = lap_state(ro.s[:, r], ro.n[:, r], ro.n_start[r], stations, L, lp["laps"])
+            path_v[r] = lap_state(ro.s[:, r], ro.vx[:, r], ro.vx_start[r], stations, L,
+                                  lp["laps"])
         if ro.completed.any() and not np.array_equal(tau[ro.completed, -1],
                                                      ro.lap_time[ro.completed]):
             raise CheckFailed(f"{sub['name']} {name}: the lap profile misses the lap time")
         keep = ro.alive_pre0 & (ro.s_pre0 < lp["laps"] * L)
         d = d_ood(ro.obs0[keep], buf).astype(np.float32)
-        npz = npz_bytes(stations=stations, tau=tau, ood_s=ro.s_pre0[keep].astype(np.float64),
-                        ood_d=d)
+        npz = npz_bytes(stations=stations, tau=tau, path_n=path_n, path_v=path_v,
+                        ood_s=ro.s_pre0[keep].astype(np.float64), ood_d=d)
         sha = write_new(safe_path(root, "laps", sub["name"], f"{name}.npz"), npz)
         write_json_new(safe_path(root, "laps", sub["name"], f"{name}.json"), {
             "subject": sub["name"], "circuit": circuit, "variant": variant, "name": name,
@@ -1274,6 +1368,12 @@ def load_inputs(root: Path, rec: dict) -> tuple[dict, dict]:
     return refs, laps
 
 
+def shooting_ok(r: dict) -> bool:
+    """The P2 gate's shooting consistency: |error| < ``P2_SHOOTING_LIMIT``. A missing error (the
+    check did not run) does not pass."""
+    return bool(abs(unclean(r["shooting_rel_err"])) < P2_SHOOTING_LIMIT)
+
+
 def stored_eval_agreement(rec: dict, rows: list[dict]) -> dict | None:
     """Dry run with H4R subjects: the original variants against each subject's stored
     end-of-training evaluation (A6000), recorded at freeze. Descriptive, not a check."""
@@ -1323,7 +1423,9 @@ def stage_analyse(args) -> Path:
         if sha256_bytes(raw) != r["pkl_sha256"]:
             raise CheckFailed(f"{rel(pk)} changed after it was checked")
         inputs[rel(pk)] = r["pkl_sha256"]
-        ocp_res[key] = pickle.loads(raw) if r["success"] else None
+        # a reference that did not converge, or whose shooting error is at the P2 limit or
+        # beyond, is failed: every gap and sector time against it is missing
+        ocp_res[key] = pickle.loads(raw) if r["success"] and shooting_ok(r) else None
 
     rows, corner_rows = [], []
     closure = 0.0
@@ -1490,16 +1592,20 @@ def stage_analyse(args) -> Path:
                                                    and not r["crashes_here"]])}
                for s in subjects}}
     unconverged = [k for k, r in refs.items() if not r["success"]]
+    shooting_failed = [k for k, r in refs.items() if r["success"] and not shooting_ok(r)]
     out = {
         "label": rec["label"], "mode": rec["mode"], "freeze_id": rec["freeze_id"],
         "subjects": subjects, "circuits": rec["circuits"], "variants": rec["variants"],
         "checks": {"references_converged": f"{len(refs) - len(unconverged)}/{len(refs)}",
                    "unconverged": unconverged,
+                   "shooting_failed": {"n": len(shooting_failed), "keys": shooting_failed,
+                                       "limit": P2_SHOOTING_LIMIT},
+                   "references_failed": len(unconverged) + len(shooting_failed),
                    "retried": [k for k, r in refs.items() if len(r["attempts"]) > 1],
                    "max_abs_shooting_rel_err": _nanmax([abs(unclean(r["shooting_rel_err"]))
                                                         for r in refs.values()]),
-                   "shooting_over_p2_limit": [k for k, r in refs.items() if not abs(
-                       unclean(r["shooting_rel_err"])) < P2_SHOOTING_LIMIT],
+                   "shooting_over_p2_limit": [k for k, r in refs.items()
+                                              if not shooting_ok(r)],
                    "mirror_ocp_lap_rel_diff": mirror, "sector_sum_closure_s": closure,
                    "stored_eval_agreement": stored_eval_agreement(rec, rows)},
         "per_subject": per_subject, "headline_median_subject": headline, "iqm_gap": iqms,

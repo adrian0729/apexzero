@@ -1,0 +1,34 @@
+{
+ "subjects": [
+  {
+   "name": "e0-s50",
+   "checkpoint": "runs/e0-s50/ckpt/000999948288.pkl",
+   "sha256": "a03a918cb29d1c0dfc901006535a8b688dbf578565f82b8cd0f204d10d8a2c5c",
+   "timesteps": 999948288
+  },
+  {
+   "name": "e0-s51",
+   "checkpoint": "runs/e0-s51/ckpt/000999948288.pkl",
+   "sha256": "3a2ce18dfa838609603572d713531ca98124fadeddf17a9e5ca1ee29034256a4",
+   "timesteps": 999948288
+  },
+  {
+   "name": "e0-s52",
+   "checkpoint": "runs/e0-s52/ckpt/000999948288.pkl",
+   "sha256": "1b7078f4416f8b9671ebc4a14a2cae36a5ebcc27fe9cc4c2188241ed654256fe",
+   "timesteps": 999948288
+  },
+  {
+   "name": "e0-s53",
+   "checkpoint": "runs/e0-s53/ckpt/000999948288.pkl",
+   "sha256": "02827403a23cbc39173f6990b627ae0b54cb62c55146baafdba6d065717470b5",
+   "timesteps": 999948288
+  },
+  {
+   "name": "e0-s54",
+   "checkpoint": "runs/e0-s54/ckpt/000999948288.pkl",
+   "sha256": "4e9e7e91780fbe610eb2c1adcd036593048632cd20828de627eaf807c1f4cd75",
+   "timesteps": 999948288
+  }
+ ]
+}
