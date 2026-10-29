@@ -804,3 +804,13 @@ The lead's notes (28 Oct 2026, E0 and E5's launch):
   fair-share model (SFL-13 6.68 s per update with 6 runs alive; the model's 6.69).
 - **Phase 4's A6000 time** so far: E0 2.80 GPU-h.
 
+The lead's notes (29 Oct 2026, E5 done):
+- **E5** (`docs/findings/maze-e5.md`): 30 of 30 runs trained (one retried), audited and analysed
+  once at `maze-e5-prereg-v1` (`2756468`; analysis `4c31c64`). Row C ("Ground truth confirms No
+  Regrets on the maze") in all nine arm × score cells; B′ for DR PVL, DR MaxMC and PLR-MaxMC
+  MaxMC; G for SFL learnability; S1 holds for no arm. Row F is absent on the pinned code's ρ̄
+  scale but would hold for SFL MaxMC on mean z (reported in the findings, Section 8).
+- **E5's GPU time:** 104.7 GPU-h on five A6000 boxes (up to 1.26 more if two failed creates
+  bill), against the approved ~108 and the stop rule's 130, plus the 1.74 GPU-h calibration.
+- **No boxes are up.** Next: the lockbox (LB-1), after the user's answers to #14 and #15.
+
