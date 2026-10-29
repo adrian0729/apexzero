@@ -1,0 +1,73 @@
+{
+ "record": "lb1-predictions",
+ "label": "from the R-dev dry run (in-sample for widths)",
+ "root": "outputs/lockbox-dryrun/lb1-rdev-e0",
+ "freeze_id": "81866c97de3e4e4e84311d30f7f5ee2a",
+ "analysis_sha256": "931aa2fee4579d9c89cc62c97a56a56060cbf1bc90bc32d5ec3dab6ac27ac3c7",
+ "method": "circuit bootstrap, paired over variants; nearest-rank percentiles",
+ "n_boot": 4000,
+ "seed": 2029,
+ "interval": [
+  2.5,
+  97.5
+ ],
+ "holds_when": "the lockbox value lies within the interval, ends included, both rounded to 12 decimal places; a missing value (or a difference with a missing term) does not hold",
+ "predictions": {
+  "laps_completed_share": {
+   "point": 0.6666666666666666,
+   "interval": [
+    0.4166666666666667,
+    0.8333333333333334
+   ]
+  },
+  "circuits_completed": {
+   "point": 8.0,
+   "interval": [
+    5.0,
+    10.0
+   ]
+  },
+  "median_gap": {
+   "point": 0.0631180047357286,
+   "interval": [
+    0.058710223733109856,
+    0.07649211929022393
+   ]
+  },
+  "iqm_gap_completed_only": {
+   "point": 0.06471295309544824,
+   "interval": [
+    0.05955424107401439,
+    0.07404890107992271
+   ]
+  },
+  "mirrored_minus_original_circuits_completed": {
+   "point": 1.0,
+   "interval": [
+    0.0,
+    4.0
+   ]
+  },
+  "reversed_minus_original_circuits_completed": {
+   "point": 3.0,
+   "interval": [
+    0.0,
+    5.0
+   ]
+  },
+  "mirrored_minus_original_median_gap": {
+   "point": -0.0003348424208521328,
+   "interval": [
+    -0.008096212792021218,
+    0.006617800999934698
+   ]
+  },
+  "reversed_minus_original_median_gap": {
+   "point": 0.00343872822694824,
+   "interval": [
+    -0.005908692957270256,
+    0.008111634261903755
+   ]
+  }
+ }
+}
