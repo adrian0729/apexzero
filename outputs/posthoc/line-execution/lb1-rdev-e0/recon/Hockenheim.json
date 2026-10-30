@@ -1,0 +1,28 @@
+{
+ "circuit": "Hockenheim",
+ "ref_pkl_sha256": "1ad6e9d9c4e2ba10510a5f78a3e5751dcdf3092407be80680f440503261575b9",
+ "ref_lap_s": 71.32045549981511,
+ "lap_s": 71.29068844094137,
+ "rel_diff": -0.00041737056592161537,
+ "success": true,
+ "attempts": [
+  {
+   "init": "qss",
+   "tol": 1e-06,
+   "success": true,
+   "status": "Solve_Succeeded",
+   "iterations": 653,
+   "solve_s": 135.3
+  }
+ ],
+ "grid_equal": true,
+ "max_abs_input_diff": 4.440892098500626e-14,
+ "shooting_rel_err": 7.510937809018792e-05,
+ "shooting_error": null,
+ "provenance": {
+  "script": "scripts/line_execution.py",
+  "script_sha256": "af333919940f73b07e1855f0bfb6722323aff1de0e83dc4884d188ab7800249e",
+  "git_head": "b0ecc77d938e3dfa80cd395b60788b8d25ee6dc7",
+  "seconds": 137.5
+ }
+}

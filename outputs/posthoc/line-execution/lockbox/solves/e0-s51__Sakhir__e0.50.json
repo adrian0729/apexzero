@@ -1,0 +1,39 @@
+{
+ "key": "e0-s51__Sakhir__e0.50",
+ "subject": "e0-s51",
+ "circuit": "Sakhir",
+ "name": "Sakhir",
+ "eps_m": 0.5,
+ "run": 3,
+ "T_a_s": 90.12508832300081,
+ "ref_lap_s": 85.4781874913532,
+ "ref_pkl_sha256": "318ca3b3b556b0c1dcea4577b99eebd1f5ceacd1be75d8bc5ecbfa73521602d0",
+ "lap_npz_sha256": "bd74c5f0d344fc01996647f14adb16ac21d5445ca234f4cb0d3c27697715970e",
+ "band_holds_line": true,
+ "min_band_width_m": 0.6501249003719578,
+ "error": null,
+ "attempts": [
+  {
+   "init": "qss",
+   "tol": 1e-06,
+   "success": true,
+   "status": "Solve_Succeeded",
+   "iterations": 760,
+   "solve_s": 142.1
+  }
+ ],
+ "success": true,
+ "status": "Solve_Succeeded",
+ "lap_time_s": 87.88856689261557,
+ "grid_equal": true,
+ "max_band_violation_m": 0.0,
+ "shooting_rel_err": 0.00015817284138686105,
+ "shooting_error": null,
+ "pkl_sha256": "9f943f68651f47e131cb2e215ca71d2516ee7758554ad077f28906c484ec720b",
+ "provenance": {
+  "script": "scripts/line_execution.py",
+  "script_sha256": "af333919940f73b07e1855f0bfb6722323aff1de0e83dc4884d188ab7800249e",
+  "git_head": "b0ecc77d938e3dfa80cd395b60788b8d25ee6dc7",
+  "seconds": 143.4
+ }
+}

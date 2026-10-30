@@ -1,0 +1,39 @@
+{
+ "key": "e0-s53__Austin__e0.25",
+ "subject": "e0-s53",
+ "circuit": "Austin",
+ "name": "Austin",
+ "eps_m": 0.25,
+ "run": 1,
+ "T_a_s": 95.52780142240226,
+ "ref_lap_s": 89.93455641012693,
+ "ref_pkl_sha256": "08eaee4c42a861130ce50d29d61e8d0fd8049c6afae6316538648551b29bb70f",
+ "lap_npz_sha256": "7b96cc3de262bb77b3bc9d6f4e36392443d11488a539975e738b84daad04a2f9",
+ "band_holds_line": true,
+ "min_band_width_m": 0.2989203194846546,
+ "error": null,
+ "attempts": [
+  {
+   "init": "qss",
+   "tol": 1e-06,
+   "success": true,
+   "status": "Solve_Succeeded",
+   "iterations": 758,
+   "solve_s": 152.3
+  }
+ ],
+ "success": true,
+ "status": "Solve_Succeeded",
+ "lap_time_s": 93.31802711899587,
+ "grid_equal": true,
+ "max_band_violation_m": 0.0,
+ "shooting_rel_err": 0.00010462397113664146,
+ "shooting_error": null,
+ "pkl_sha256": "194650e3ed076ee019974fb0f5ab0a82c21dfe9ac6678bf20d3c163f417f6294",
+ "provenance": {
+  "script": "scripts/line_execution.py",
+  "script_sha256": "af333919940f73b07e1855f0bfb6722323aff1de0e83dc4884d188ab7800249e",
+  "git_head": "b0ecc77d938e3dfa80cd395b60788b8d25ee6dc7",
+  "seconds": 153.7
+ }
+}

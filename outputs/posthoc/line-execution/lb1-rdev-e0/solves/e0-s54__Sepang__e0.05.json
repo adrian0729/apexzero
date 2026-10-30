@@ -1,0 +1,39 @@
+{
+ "key": "e0-s54__Sepang__e0.05",
+ "subject": "e0-s54",
+ "circuit": "Sepang",
+ "name": "Sepang",
+ "eps_m": 0.05,
+ "run": 3,
+ "T_a_s": 93.41517350431529,
+ "ref_lap_s": 87.58413095116096,
+ "ref_pkl_sha256": "a4f3a246d9727ccd400d764038e815906a182a4a3b1e8b16bca7df9e0cb56b12",
+ "lap_npz_sha256": "e04615fa7529506333408f12a5949145c24d2ba231cc9ddd0179492e57cea043",
+ "band_holds_line": true,
+ "min_band_width_m": 0.09999999999999964,
+ "error": null,
+ "attempts": [
+  {
+   "init": "qss",
+   "tol": 1e-06,
+   "success": true,
+   "status": "Solve_Succeeded",
+   "iterations": 800,
+   "solve_s": 150.0
+  }
+ ],
+ "success": true,
+ "status": "Solve_Succeeded",
+ "lap_time_s": 92.23621914223153,
+ "grid_equal": true,
+ "max_band_violation_m": 5.2507894920950093e-08,
+ "shooting_rel_err": 0.00011325935501749207,
+ "shooting_error": null,
+ "pkl_sha256": "774e7f1e95c2f23a1e654b5fca56063f829cb8566ba0cf65a04bb01405d5e083",
+ "provenance": {
+  "script": "scripts/line_execution.py",
+  "script_sha256": "af333919940f73b07e1855f0bfb6722323aff1de0e83dc4884d188ab7800249e",
+  "git_head": "b0ecc77d938e3dfa80cd395b60788b8d25ee6dc7",
+  "seconds": 151.3
+ }
+}

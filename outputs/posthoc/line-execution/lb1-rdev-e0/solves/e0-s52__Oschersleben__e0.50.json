@@ -1,0 +1,39 @@
+{
+ "key": "e0-s52__Oschersleben__e0.50",
+ "subject": "e0-s52",
+ "circuit": "Oschersleben",
+ "name": "Oschersleben",
+ "eps_m": 0.5,
+ "run": 0,
+ "T_a_s": 65.36278259530661,
+ "ref_lap_s": 60.83039966838508,
+ "ref_pkl_sha256": "1d57d6d6fd85ea747611f9d74e68d8ceac1da11c6df4f1801b15de25130de916",
+ "lap_npz_sha256": "43584b471ece83af0fdafb9764a53aec0fcb7f21cd5c85ebe63763cf2d96e757",
+ "band_holds_line": true,
+ "min_band_width_m": 0.874103374714895,
+ "error": null,
+ "attempts": [
+  {
+   "init": "qss",
+   "tol": 1e-06,
+   "success": true,
+   "status": "Solve_Succeeded",
+   "iterations": 567,
+   "solve_s": 81.6
+  }
+ ],
+ "success": true,
+ "status": "Solve_Succeeded",
+ "lap_time_s": 62.6358861626523,
+ "grid_equal": true,
+ "max_band_violation_m": 0.0,
+ "shooting_rel_err": 3.9716427054914405e-05,
+ "shooting_error": null,
+ "pkl_sha256": "4f89e8de4569f7c173c484068cfb22ab1c2d3dcc6858d60bfdeda293da3a97e6",
+ "provenance": {
+  "script": "scripts/line_execution.py",
+  "script_sha256": "af333919940f73b07e1855f0bfb6722323aff1de0e83dc4884d188ab7800249e",
+  "git_head": "b0ecc77d938e3dfa80cd395b60788b8d25ee6dc7",
+  "seconds": 82.8
+ }
+}

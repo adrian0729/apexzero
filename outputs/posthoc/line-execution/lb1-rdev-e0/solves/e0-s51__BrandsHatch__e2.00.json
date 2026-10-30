@@ -1,0 +1,39 @@
+{
+ "key": "e0-s51__BrandsHatch__e2.00",
+ "subject": "e0-s51",
+ "circuit": "BrandsHatch",
+ "name": "BrandsHatch",
+ "eps_m": 2.0,
+ "run": 3,
+ "T_a_s": 61.51383513538167,
+ "ref_lap_s": 57.612415274288075,
+ "ref_pkl_sha256": "f7b7418c668b4b86bde904ecc574df82629fde11b5bf16fa9a044039c1987da7",
+ "lap_npz_sha256": "29da5001aca0b17b8965328bde601e61a2c819a8aa03fb4e2c71933bf2ccc49e",
+ "band_holds_line": true,
+ "min_band_width_m": 2.109969928353066,
+ "error": null,
+ "attempts": [
+  {
+   "init": "qss",
+   "tol": 1e-06,
+   "success": true,
+   "status": "Solve_Succeeded",
+   "iterations": 602,
+   "solve_s": 72.6
+  }
+ ],
+ "success": true,
+ "status": "Solve_Succeeded",
+ "lap_time_s": 57.85815341656601,
+ "grid_equal": true,
+ "max_band_violation_m": 4.613267812203503e-08,
+ "shooting_rel_err": 3.0994061138711615e-05,
+ "shooting_error": null,
+ "pkl_sha256": "bebd0ba96ed5c431fab6f98332661e39ed6a659d65b1b982ae482943bd5332c9",
+ "provenance": {
+  "script": "scripts/line_execution.py",
+  "script_sha256": "af333919940f73b07e1855f0bfb6722323aff1de0e83dc4884d188ab7800249e",
+  "git_head": "b0ecc77d938e3dfa80cd395b60788b8d25ee6dc7",
+  "seconds": 73.6
+ }
+}

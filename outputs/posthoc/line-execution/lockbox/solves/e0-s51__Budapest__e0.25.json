@@ -1,0 +1,39 @@
+{
+ "key": "e0-s51__Budapest__e0.25",
+ "subject": "e0-s51",
+ "circuit": "Budapest",
+ "name": "Budapest",
+ "eps_m": 0.25,
+ "run": 0,
+ "T_a_s": 79.68522293753921,
+ "ref_lap_s": 75.03118004552802,
+ "ref_pkl_sha256": "d2d5a703fc312009e513e5985275c21b662d34535f27bc8b160c2fcb00cd3fcc",
+ "lap_npz_sha256": "ce06f91f2ebc67de57c3911b266adaa147f7787ca42695700874e74a180fa4b4",
+ "band_holds_line": true,
+ "min_band_width_m": 0.3948048107074307,
+ "error": null,
+ "attempts": [
+  {
+   "init": "qss",
+   "tol": 1e-06,
+   "success": true,
+   "status": "Solve_Succeeded",
+   "iterations": 715,
+   "solve_s": 112.2
+  }
+ ],
+ "success": true,
+ "status": "Solve_Succeeded",
+ "lap_time_s": 77.48699526845266,
+ "grid_equal": true,
+ "max_band_violation_m": 4.742042847283301e-08,
+ "shooting_rel_err": 7.89421548208491e-05,
+ "shooting_error": null,
+ "pkl_sha256": "53cec6dfa584b09538459151ba6eaeda59bdb5b7c1e54ab81e4f3041015db02f",
+ "provenance": {
+  "script": "scripts/line_execution.py",
+  "script_sha256": "af333919940f73b07e1855f0bfb6722323aff1de0e83dc4884d188ab7800249e",
+  "git_head": "b0ecc77d938e3dfa80cd395b60788b8d25ee6dc7",
+  "seconds": 113.4
+ }
+}

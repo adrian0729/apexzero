@@ -1,0 +1,28 @@
+{
+ "circuit": "Nuerburgring",
+ "ref_pkl_sha256": "7cc48ddbe95063edad5ff7db5786a3b95329d2675d00fc3d17a3e4c6b66c6ee1",
+ "ref_lap_s": 83.54916341653613,
+ "lap_s": 83.56128855855042,
+ "rel_diff": 0.00014512583392178868,
+ "success": true,
+ "attempts": [
+  {
+   "init": "qss",
+   "tol": 1e-06,
+   "success": true,
+   "status": "Solve_Succeeded",
+   "iterations": 622,
+   "solve_s": 133.4
+  }
+ ],
+ "grid_equal": true,
+ "max_abs_input_diff": 8.348877145181177e-14,
+ "shooting_rel_err": 7.389523182377289e-05,
+ "shooting_error": null,
+ "provenance": {
+  "script": "scripts/line_execution.py",
+  "script_sha256": "af333919940f73b07e1855f0bfb6722323aff1de0e83dc4884d188ab7800249e",
+  "git_head": "b0ecc77d938e3dfa80cd395b60788b8d25ee6dc7",
+  "seconds": 135.0
+ }
+}

@@ -1,0 +1,39 @@
+{
+ "key": "e0-s52__Spa__e2.00",
+ "subject": "e0-s52",
+ "circuit": "Spa",
+ "name": "Spa",
+ "eps_m": 2.0,
+ "run": 1,
+ "T_a_s": 106.43642536206171,
+ "ref_lap_s": 102.20021183316382,
+ "ref_pkl_sha256": "edd22df6c4b5dded465a14ca898bb1a5383f3897d7dedfc9daf83efdd72b5344",
+ "lap_npz_sha256": "69915b343dbc829751ae6447c47d95d2d7c52f6dea71af8ea33b6a455abcf2f7",
+ "band_holds_line": true,
+ "min_band_width_m": 2.6309754540127526,
+ "error": null,
+ "attempts": [
+  {
+   "init": "qss",
+   "tol": 1e-06,
+   "success": true,
+   "status": "Solve_Succeeded",
+   "iterations": 544,
+   "solve_s": 137.0
+  }
+ ],
+ "success": true,
+ "status": "Solve_Succeeded",
+ "lap_time_s": 102.49127758855796,
+ "grid_equal": true,
+ "max_band_violation_m": 6.705951172136793e-08,
+ "shooting_rel_err": 6.465181001980014e-05,
+ "shooting_error": null,
+ "pkl_sha256": "d774d0ab9d36ace0c41893a64e439bc026cae99a94b317bfda2c60d217dba822",
+ "provenance": {
+  "script": "scripts/line_execution.py",
+  "script_sha256": "af333919940f73b07e1855f0bfb6722323aff1de0e83dc4884d188ab7800249e",
+  "git_head": "b0ecc77d938e3dfa80cd395b60788b8d25ee6dc7",
+  "seconds": 138.3
+ }
+}

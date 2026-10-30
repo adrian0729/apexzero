@@ -1,0 +1,39 @@
+{
+ "key": "e0-s51__Montreal__e2.00",
+ "subject": "e0-s51",
+ "circuit": "Montreal",
+ "name": "Montreal",
+ "eps_m": 2.0,
+ "run": 6,
+ "T_a_s": 77.38335572704672,
+ "ref_lap_s": 71.85539850024958,
+ "ref_pkl_sha256": "c1cadee3c6db6e32525a495eb90d2d3577f88485e5bbadfd2959f8af1026e6be",
+ "lap_npz_sha256": "c4e010c4f527af019b4e8b869b74df0f37b5be995f07244cda807e9bd00507fa",
+ "band_holds_line": true,
+ "min_band_width_m": 2.4894823852959163,
+ "error": null,
+ "attempts": [
+  {
+   "init": "qss",
+   "tol": 1e-06,
+   "success": true,
+   "status": "Solve_Succeeded",
+   "iterations": 742,
+   "solve_s": 115.9
+  }
+ ],
+ "success": true,
+ "status": "Solve_Succeeded",
+ "lap_time_s": 72.25392536373207,
+ "grid_equal": true,
+ "max_band_violation_m": 5.3764805052480824e-08,
+ "shooting_rel_err": 9.793258996371179e-05,
+ "shooting_error": null,
+ "pkl_sha256": "384b87b9a2e84e85f6357142cb1e22df5b334a14894f9e189a8d59c5fb1a8ed4",
+ "provenance": {
+  "script": "scripts/line_execution.py",
+  "script_sha256": "af333919940f73b07e1855f0bfb6722323aff1de0e83dc4884d188ab7800249e",
+  "git_head": "b0ecc77d938e3dfa80cd395b60788b8d25ee6dc7",
+  "seconds": 117.4
+ }
+}

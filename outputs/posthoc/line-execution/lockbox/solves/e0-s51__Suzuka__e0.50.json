@@ -1,0 +1,39 @@
+{
+ "key": "e0-s51__Suzuka__e0.50",
+ "subject": "e0-s51",
+ "circuit": "Suzuka",
+ "name": "Suzuka",
+ "eps_m": 0.5,
+ "run": 7,
+ "T_a_s": 90.29536193348466,
+ "ref_lap_s": 85.6107870529894,
+ "ref_pkl_sha256": "59eec979dbf63c2f9568fb42e5e7974a415f515315ea081410daeff2966cb456",
+ "lap_npz_sha256": "ffffb5d9512653f766ea4923caf1164c0e431abe5c5b3e2bad90f9b185de359b",
+ "band_holds_line": true,
+ "min_band_width_m": 0.6346320267364916,
+ "error": null,
+ "attempts": [
+  {
+   "init": "qss",
+   "tol": 1e-06,
+   "success": true,
+   "status": "Solve_Succeeded",
+   "iterations": 542,
+   "solve_s": 80.0
+  }
+ ],
+ "success": true,
+ "status": "Solve_Succeeded",
+ "lap_time_s": 87.59279527165351,
+ "grid_equal": true,
+ "max_band_violation_m": 3.8940632496320404e-08,
+ "shooting_rel_err": 4.94038103369121e-05,
+ "shooting_error": null,
+ "pkl_sha256": "ebc209a234ec873e694ba7d83e46216c32e4da1e388b5d6c9b63e1b39e57446b",
+ "provenance": {
+  "script": "scripts/line_execution.py",
+  "script_sha256": "af333919940f73b07e1855f0bfb6722323aff1de0e83dc4884d188ab7800249e",
+  "git_head": "b0ecc77d938e3dfa80cd395b60788b8d25ee6dc7",
+  "seconds": 80.9
+ }
+}

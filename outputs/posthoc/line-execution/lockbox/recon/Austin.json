@@ -1,0 +1,28 @@
+{
+ "circuit": "Austin",
+ "ref_pkl_sha256": "08eaee4c42a861130ce50d29d61e8d0fd8049c6afae6316538648551b29bb70f",
+ "ref_lap_s": 89.93455641012693,
+ "lap_s": 89.91704844360032,
+ "rel_diff": -0.00019467451917776213,
+ "success": true,
+ "attempts": [
+  {
+   "init": "qss",
+   "tol": 1e-06,
+   "success": true,
+   "status": "Solve_Succeeded",
+   "iterations": 655,
+   "solve_s": 166.8
+  }
+ ],
+ "grid_equal": true,
+ "max_abs_input_diff": 1.9895196601282805e-13,
+ "shooting_rel_err": 9.643945293991152e-05,
+ "shooting_error": null,
+ "provenance": {
+  "script": "scripts/line_execution.py",
+  "script_sha256": "af333919940f73b07e1855f0bfb6722323aff1de0e83dc4884d188ab7800249e",
+  "git_head": "b0ecc77d938e3dfa80cd395b60788b8d25ee6dc7",
+  "seconds": 168.9
+ }
+}

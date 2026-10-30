@@ -1,0 +1,39 @@
+{
+ "key": "e0-s51__Norisring__e0.25",
+ "subject": "e0-s51",
+ "circuit": "Norisring",
+ "name": "Norisring",
+ "eps_m": 0.25,
+ "run": 5,
+ "T_a_s": 43.79237893894316,
+ "ref_lap_s": 39.227347104120156,
+ "ref_pkl_sha256": "a43f654c42bc5221b08c1c96b84e4570a26d1090233b50c66140f79ccc02d51b",
+ "lap_npz_sha256": "25c1a7b24ed7353a99f3bed735b9b9352bc7408ab4657219574a7a4079fff80f",
+ "band_holds_line": true,
+ "min_band_width_m": 0.4749366372944053,
+ "error": null,
+ "attempts": [
+  {
+   "init": "qss",
+   "tol": 1e-06,
+   "success": true,
+   "status": "Solve_Succeeded",
+   "iterations": 542,
+   "solve_s": 43.3
+  }
+ ],
+ "success": true,
+ "status": "Solve_Succeeded",
+ "lap_time_s": 40.28096225326836,
+ "grid_equal": true,
+ "max_band_violation_m": 5.1186976435246834e-08,
+ "shooting_rel_err": 2.1329916743972888e-06,
+ "shooting_error": null,
+ "pkl_sha256": "9da9894bb06de7e515e6a15edcb7a16568e5ecbe0975ebe4a49ee705c8d1ee20",
+ "provenance": {
+  "script": "scripts/line_execution.py",
+  "script_sha256": "af333919940f73b07e1855f0bfb6722323aff1de0e83dc4884d188ab7800249e",
+  "git_head": "b0ecc77d938e3dfa80cd395b60788b8d25ee6dc7",
+  "seconds": 45.2
+ }
+}

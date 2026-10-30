@@ -1,0 +1,39 @@
+{
+ "key": "e0-s50__SaoPaulo__e1.00",
+ "subject": "e0-s50",
+ "circuit": "SaoPaulo",
+ "name": "SaoPaulo",
+ "eps_m": 1.0,
+ "run": 8,
+ "T_a_s": 70.70376696884631,
+ "ref_lap_s": 67.46824677552772,
+ "ref_pkl_sha256": "6b72062c38658e5737e6d54055a4b3c3b0ece3ec5f49754b97b9742e30108b20",
+ "lap_npz_sha256": "ea16a3432f19dfe077f5186305c0c19fa3eb77feff4b381bff894b9ccc37992d",
+ "band_holds_line": true,
+ "min_band_width_m": 1.4390698760409206,
+ "error": null,
+ "attempts": [
+  {
+   "init": "qss",
+   "tol": 1e-06,
+   "success": true,
+   "status": "Solve_Succeeded",
+   "iterations": 514,
+   "solve_s": 85.6
+  }
+ ],
+ "success": true,
+ "status": "Solve_Succeeded",
+ "lap_time_s": 68.66801575353715,
+ "grid_equal": true,
+ "max_band_violation_m": 5.346368769920673e-08,
+ "shooting_rel_err": 5.331879215697555e-05,
+ "shooting_error": null,
+ "pkl_sha256": "adebf143a7340fad15214d1282042c4c6ffd93d489bf4f80c78d555e8d278bb3",
+ "provenance": {
+  "script": "scripts/line_execution.py",
+  "script_sha256": "af333919940f73b07e1855f0bfb6722323aff1de0e83dc4884d188ab7800249e",
+  "git_head": "b0ecc77d938e3dfa80cd395b60788b8d25ee6dc7",
+  "seconds": 86.7
+ }
+}

@@ -1,0 +1,28 @@
+{
+ "circuit": "Suzuka",
+ "ref_pkl_sha256": "59eec979dbf63c2f9568fb42e5e7974a415f515315ea081410daeff2966cb456",
+ "ref_lap_s": 85.6107870529894,
+ "lap_s": 85.61414025044655,
+ "rel_diff": 3.916793166602872e-05,
+ "success": true,
+ "attempts": [
+  {
+   "init": "qss",
+   "tol": 1e-06,
+   "success": true,
+   "status": "Solve_Succeeded",
+   "iterations": 439,
+   "solve_s": 78.4
+  }
+ ],
+ "grid_equal": true,
+ "max_abs_input_diff": 5.417888360170764e-14,
+ "shooting_rel_err": 4.4835708664869856e-05,
+ "shooting_error": null,
+ "provenance": {
+  "script": "scripts/line_execution.py",
+  "script_sha256": "af333919940f73b07e1855f0bfb6722323aff1de0e83dc4884d188ab7800249e",
+  "git_head": "b0ecc77d938e3dfa80cd395b60788b8d25ee6dc7",
+  "seconds": 79.6
+ }
+}

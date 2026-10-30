@@ -1,0 +1,28 @@
+{
+ "circuit": "MoscowRaceway",
+ "ref_pkl_sha256": "ff62460e1e8a9cf9f6cbe8144c6bb4d83eb1a109991e4277a547a82e5b3ef2f4",
+ "ref_lap_s": 74.06302257431948,
+ "lap_s": 74.0625207190713,
+ "rel_diff": -6.776056805768427e-06,
+ "success": true,
+ "attempts": [
+  {
+   "init": "qss",
+   "tol": 1e-06,
+   "success": true,
+   "status": "Solve_Succeeded",
+   "iterations": 734,
+   "solve_s": 136.3
+  }
+ ],
+ "grid_equal": true,
+ "max_abs_input_diff": 7.194245199571014e-14,
+ "shooting_rel_err": 9.157145081895024e-05,
+ "shooting_error": null,
+ "provenance": {
+  "script": "scripts/line_execution.py",
+  "script_sha256": "af333919940f73b07e1855f0bfb6722323aff1de0e83dc4884d188ab7800249e",
+  "git_head": "b0ecc77d938e3dfa80cd395b60788b8d25ee6dc7",
+  "seconds": 138.4
+ }
+}

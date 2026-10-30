@@ -1,0 +1,39 @@
+{
+ "key": "e0-s51__Monza__e0.25",
+ "subject": "e0-s51",
+ "circuit": "Monza",
+ "name": "Monza",
+ "eps_m": 0.25,
+ "run": 3,
+ "T_a_s": 85.47549303881824,
+ "ref_lap_s": 80.94937479535969,
+ "ref_pkl_sha256": "ba26406316c1507fcefccd376242b4f13346b49a668f7dff30cbac7cc6bda564",
+ "lap_npz_sha256": "514acdeda360abdc18977a7d8243e962cdf956ddce9877fbd9eded26dcdf0e47",
+ "band_holds_line": true,
+ "min_band_width_m": 0.35854292502626794,
+ "error": null,
+ "attempts": [
+  {
+   "init": "qss",
+   "tol": 1e-06,
+   "success": true,
+   "status": "Solve_Succeeded",
+   "iterations": 602,
+   "solve_s": 125.6
+  }
+ ],
+ "success": true,
+ "status": "Solve_Succeeded",
+ "lap_time_s": 82.84587516952791,
+ "grid_equal": true,
+ "max_band_violation_m": 3.059106212788265e-08,
+ "shooting_rel_err": 8.985067534128532e-05,
+ "shooting_error": null,
+ "pkl_sha256": "65d26bb63eb01cd71c8ffbafd7d3f6eb1cf1d758042b01c3e515844f24c94a0a",
+ "provenance": {
+  "script": "scripts/line_execution.py",
+  "script_sha256": "af333919940f73b07e1855f0bfb6722323aff1de0e83dc4884d188ab7800249e",
+  "git_head": "b0ecc77d938e3dfa80cd395b60788b8d25ee6dc7",
+  "seconds": 127.0
+ }
+}

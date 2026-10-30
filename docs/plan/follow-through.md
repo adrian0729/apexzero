@@ -842,3 +842,10 @@ The lead's notes (29 Oct 2026, the lockbox done):
   with the lockbox's re-solved references to within 0.06% on all 12 R_TEST circuits
   (`docs/findings/lockbox-provenance.md`). Monza reproduces exactly; the other 11 differ by a few
   cm of geometry. With the old optima the median gap would read about 5.18% instead of 5.16%.
+- **The line / execution split (POST HOC, descriptive, 30 Oct 2026; the user's go-ahead after the
+  discussion):** the plan (`docs/findings/line-execution-plan.md`) was committed before any R_TEST
+  number. Each completed lap's minimum-time problem was re-solved with the car held within
+  0.05–2 m of its own line (`docs/findings/line-execution.md`). At the median subject, 30% of the
+  lost time comes back on the car's own line, half within 0.37 m of it and 90% within 2 m: "mostly
+  line" by the plan's rule, but near its edge, and in small moves. R-dev gives the same picture.
+  All 409 solves converged; no box was used.

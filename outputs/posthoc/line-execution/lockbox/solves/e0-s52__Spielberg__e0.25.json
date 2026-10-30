@@ -1,0 +1,39 @@
+{
+ "key": "e0-s52__Spielberg__e0.25",
+ "subject": "e0-s52",
+ "circuit": "Spielberg",
+ "name": "Spielberg",
+ "eps_m": 0.25,
+ "run": 3,
+ "T_a_s": 69.45492940237745,
+ "ref_lap_s": 65.15603130660307,
+ "ref_pkl_sha256": "e8a21a8f2e2a88ba0180355209be4a44e911061c8eae405743f4ed3457966949",
+ "lap_npz_sha256": "25ddedaa2cf7bce4c02cb74ecf043a9abf3bce1e8c1a4e342b27f5a8e91bc74e",
+ "band_holds_line": true,
+ "min_band_width_m": 0.49999999999999956,
+ "error": null,
+ "attempts": [
+  {
+   "init": "qss",
+   "tol": 1e-06,
+   "success": true,
+   "status": "Solve_Succeeded",
+   "iterations": 523,
+   "solve_s": 67.5
+  }
+ ],
+ "success": true,
+ "status": "Solve_Succeeded",
+ "lap_time_s": 66.77464668323069,
+ "grid_equal": true,
+ "max_band_violation_m": 0.0,
+ "shooting_rel_err": 7.933786908864704e-05,
+ "shooting_error": null,
+ "pkl_sha256": "38a3c8e8852ece128fb86d2a2a51055f16598dfb9a36197537d7e1aadc0dbaff",
+ "provenance": {
+  "script": "scripts/line_execution.py",
+  "script_sha256": "af333919940f73b07e1855f0bfb6722323aff1de0e83dc4884d188ab7800249e",
+  "git_head": "b0ecc77d938e3dfa80cd395b60788b8d25ee6dc7",
+  "seconds": 68.3
+ }
+}

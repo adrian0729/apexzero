@@ -1,0 +1,28 @@
+{
+ "circuit": "YasMarina",
+ "ref_pkl_sha256": "c57edb8f4ca8ab7cba0fc77a5333117a5c890f10b0b7a634492f594bf731cfb2",
+ "ref_lap_s": 96.21338723588818,
+ "lap_s": 96.22802953550885,
+ "rel_diff": 0.0001521856785353659,
+ "success": true,
+ "attempts": [
+  {
+   "init": "qss",
+   "tol": 1e-06,
+   "success": true,
+   "status": "Solve_Succeeded",
+   "iterations": 687,
+   "solve_s": 136.5
+  }
+ ],
+ "grid_equal": true,
+ "max_abs_input_diff": 1.6431300764452317e-13,
+ "shooting_rel_err": 0.00016102402338113997,
+ "shooting_error": null,
+ "provenance": {
+  "script": "scripts/line_execution.py",
+  "script_sha256": "af333919940f73b07e1855f0bfb6722323aff1de0e83dc4884d188ab7800249e",
+  "git_head": "b0ecc77d938e3dfa80cd395b60788b8d25ee6dc7",
+  "seconds": 138.0
+ }
+}

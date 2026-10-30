@@ -1,0 +1,39 @@
+{
+ "key": "e0-s52__Hockenheim__e0.05",
+ "subject": "e0-s52",
+ "circuit": "Hockenheim",
+ "name": "Hockenheim",
+ "eps_m": 0.05,
+ "run": 7,
+ "T_a_s": 76.6002967044711,
+ "ref_lap_s": 71.32045549981511,
+ "ref_pkl_sha256": "1ad6e9d9c4e2ba10510a5f78a3e5751dcdf3092407be80680f440503261575b9",
+ "lap_npz_sha256": "588f79af2c787c533188344d9cfe5ca1cb8e7e25115cde2d0c8f867a3d4c70eb",
+ "band_holds_line": true,
+ "min_band_width_m": 0.09999999999999964,
+ "error": null,
+ "attempts": [
+  {
+   "init": "qss",
+   "tol": 1e-06,
+   "success": true,
+   "status": "Solve_Succeeded",
+   "iterations": 911,
+   "solve_s": 158.0
+  }
+ ],
+ "success": true,
+ "status": "Solve_Succeeded",
+ "lap_time_s": 74.38235311988456,
+ "grid_equal": true,
+ "max_band_violation_m": 5.6082565258464e-08,
+ "shooting_rel_err": 7.305755077591236e-05,
+ "shooting_error": null,
+ "pkl_sha256": "63927959d9fc3a5cd439fb69efa1f8b4ba5a029aee0d63edebad7805e5ffb757",
+ "provenance": {
+  "script": "scripts/line_execution.py",
+  "script_sha256": "af333919940f73b07e1855f0bfb6722323aff1de0e83dc4884d188ab7800249e",
+  "git_head": "b0ecc77d938e3dfa80cd395b60788b8d25ee6dc7",
+  "seconds": 160.7
+ }
+}

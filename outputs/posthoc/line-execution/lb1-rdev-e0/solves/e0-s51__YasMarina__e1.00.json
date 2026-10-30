@@ -1,0 +1,39 @@
+{
+ "key": "e0-s51__YasMarina__e1.00",
+ "subject": "e0-s51",
+ "circuit": "YasMarina",
+ "name": "YasMarina",
+ "eps_m": 1.0,
+ "run": 4,
+ "T_a_s": 107.36724167168138,
+ "ref_lap_s": 96.21338723588818,
+ "ref_pkl_sha256": "c57edb8f4ca8ab7cba0fc77a5333117a5c890f10b0b7a634492f594bf731cfb2",
+ "lap_npz_sha256": "52b17993ef8520c38e320d3535ac8199bbba467eabde596ee1af539bc2296929",
+ "band_holds_line": true,
+ "min_band_width_m": 1.127586606606707,
+ "error": null,
+ "attempts": [
+  {
+   "init": "qss",
+   "tol": 1e-06,
+   "success": true,
+   "status": "Solve_Succeeded",
+   "iterations": 743,
+   "solve_s": 158.5
+  }
+ ],
+ "success": true,
+ "status": "Solve_Succeeded",
+ "lap_time_s": 98.32287076032935,
+ "grid_equal": true,
+ "max_band_violation_m": 0.0,
+ "shooting_rel_err": 0.0001748304202811024,
+ "shooting_error": null,
+ "pkl_sha256": "900f91dcee668361c87cd32ced4d37319b74653f609a3e71abb32c4e27fa632a",
+ "provenance": {
+  "script": "scripts/line_execution.py",
+  "script_sha256": "af333919940f73b07e1855f0bfb6722323aff1de0e83dc4884d188ab7800249e",
+  "git_head": "b0ecc77d938e3dfa80cd395b60788b8d25ee6dc7",
+  "seconds": 160.5
+ }
+}

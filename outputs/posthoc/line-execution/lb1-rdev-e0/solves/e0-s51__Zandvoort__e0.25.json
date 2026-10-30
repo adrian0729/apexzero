@@ -1,0 +1,39 @@
+{
+ "key": "e0-s51__Zandvoort__e0.25",
+ "subject": "e0-s51",
+ "circuit": "Zandvoort",
+ "name": "Zandvoort",
+ "eps_m": 0.25,
+ "run": 6,
+ "T_a_s": 74.98266019858418,
+ "ref_lap_s": 71.03075632337038,
+ "ref_pkl_sha256": "d947b8ce392efa51a1b842a3cb08c48f571b929ba440bd2fa95685e8a1821fe1",
+ "lap_npz_sha256": "0c11ac9342ddc218fa1bfd774c8a17a252236465e8c88c831a93379f2299bc91",
+ "band_holds_line": true,
+ "min_band_width_m": 0.49999999999999956,
+ "error": null,
+ "attempts": [
+  {
+   "init": "qss",
+   "tol": 1e-06,
+   "success": true,
+   "status": "Solve_Succeeded",
+   "iterations": 726,
+   "solve_s": 112.4
+  }
+ ],
+ "success": true,
+ "status": "Solve_Succeeded",
+ "lap_time_s": 73.37851475132018,
+ "grid_equal": true,
+ "max_band_violation_m": 3.718190644264041e-08,
+ "shooting_rel_err": 4.488777797928556e-05,
+ "shooting_error": null,
+ "pkl_sha256": "7235bdc2ba331b1f031a2392f58136b4909b5504e70bc1efde90803634a9b26c",
+ "provenance": {
+  "script": "scripts/line_execution.py",
+  "script_sha256": "af333919940f73b07e1855f0bfb6722323aff1de0e83dc4884d188ab7800249e",
+  "git_head": "b0ecc77d938e3dfa80cd395b60788b8d25ee6dc7",
+  "seconds": 113.6
+ }
+}

@@ -1,0 +1,39 @@
+{
+ "key": "e0-s53__Sochi__e0.25",
+ "subject": "e0-s53",
+ "circuit": "Sochi",
+ "name": "Sochi",
+ "eps_m": 0.25,
+ "run": 2,
+ "T_a_s": 97.82393181500954,
+ "ref_lap_s": 92.27867870418285,
+ "ref_pkl_sha256": "4b6c11817dcc4052791335104dfcfcbe813fb96220254959213d3d0dff5d6937",
+ "lap_npz_sha256": "610d67165625ea8d3ce7cee0d01a6cf9ef871606e0f28865d290c172f5b63eb9",
+ "band_holds_line": true,
+ "min_band_width_m": 0.49999999999999956,
+ "error": null,
+ "attempts": [
+  {
+   "init": "qss",
+   "tol": 1e-06,
+   "success": true,
+   "status": "Solve_Succeeded",
+   "iterations": 677,
+   "solve_s": 136.4
+  }
+ ],
+ "success": true,
+ "status": "Solve_Succeeded",
+ "lap_time_s": 95.70518122432175,
+ "grid_equal": true,
+ "max_band_violation_m": 5.5257152631327244e-08,
+ "shooting_rel_err": 0.00011847858237912234,
+ "shooting_error": null,
+ "pkl_sha256": "7fc469776a64cad1a9252773c013e400a05a80221c29caf511d7e3d9fd8cf502",
+ "provenance": {
+  "script": "scripts/line_execution.py",
+  "script_sha256": "af333919940f73b07e1855f0bfb6722323aff1de0e83dc4884d188ab7800249e",
+  "git_head": "b0ecc77d938e3dfa80cd395b60788b8d25ee6dc7",
+  "seconds": 137.7
+ }
+}

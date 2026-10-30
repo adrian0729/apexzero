@@ -1,0 +1,28 @@
+{
+ "circuit": "MexicoCity",
+ "ref_pkl_sha256": "bf53d7fba55b3cfc3b56565f623f3ef62cf86b144bc20edc009a8a2186610492",
+ "ref_lap_s": 73.50855791372658,
+ "lap_s": 73.4936964589815,
+ "rel_diff": -0.00020217312333237203,
+ "success": true,
+ "attempts": [
+  {
+   "init": "qss",
+   "tol": 1e-06,
+   "success": true,
+   "status": "Solve_Succeeded",
+   "iterations": 727,
+   "solve_s": 138.8
+  }
+ ],
+ "grid_equal": true,
+ "max_abs_input_diff": 4.884981308350689e-14,
+ "shooting_rel_err": 0.00013060071424009223,
+ "shooting_error": null,
+ "provenance": {
+  "script": "scripts/line_execution.py",
+  "script_sha256": "af333919940f73b07e1855f0bfb6722323aff1de0e83dc4884d188ab7800249e",
+  "git_head": "b0ecc77d938e3dfa80cd395b60788b8d25ee6dc7",
+  "seconds": 140.7
+ }
+}

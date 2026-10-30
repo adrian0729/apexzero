@@ -1,0 +1,28 @@
+{
+ "circuit": "BrandsHatch",
+ "ref_pkl_sha256": "f7b7418c668b4b86bde904ecc574df82629fde11b5bf16fa9a044039c1987da7",
+ "ref_lap_s": 57.612415274288075,
+ "lap_s": 57.61402240021579,
+ "rel_diff": 2.7895479126627265e-05,
+ "success": true,
+ "attempts": [
+  {
+   "init": "qss",
+   "tol": 1e-06,
+   "success": true,
+   "status": "Solve_Succeeded",
+   "iterations": 412,
+   "solve_s": 53.1
+  }
+ ],
+ "grid_equal": true,
+ "max_abs_input_diff": 2.220446049250313e-14,
+ "shooting_rel_err": 2.3412703268110846e-05,
+ "shooting_error": null,
+ "provenance": {
+  "script": "scripts/line_execution.py",
+  "script_sha256": "af333919940f73b07e1855f0bfb6722323aff1de0e83dc4884d188ab7800249e",
+  "git_head": "b0ecc77d938e3dfa80cd395b60788b8d25ee6dc7",
+  "seconds": 55.2
+ }
+}
