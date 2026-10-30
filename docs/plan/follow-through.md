@@ -863,3 +863,10 @@ The lead's notes (29 Oct 2026, the lockbox done):
   **locality explains the low real-road ratio** by the plan's rule. A 1 m local intrusion crashes
   G2 at 10 of 12 unit-phases, a 1 m corner-wide one at none. First order holds for intrusions; on
   local widening the closest point moves away.
+- **GW-5 and GW-7 (exploratory, 30 Oct 2026; plan `docs/findings/gw5-plan.md`, tag `gw5-v1`):**
+  one round of 4 arms x 5 seeds at 200M on one A6000 (2.54 h). **A 1.4 m training-only margin
+  lifts R-dev completion from 8.0 to 10.6 of 12** (one-sided p 0.016, Holm rejects; median 11,
+  Norisring 5 of 5), at about +1.1 points of lap gap; it keeps 0.47 m more clearance at the real
+  crash corners. Local width bumps do not help; SimBa follows edges far more but keeps half the
+  clearance and tends to complete less (6.6). Findings: `docs/findings/gw5.md`. **GW-6** (the
+  margin recipe at 1B, seeds 80-84, by the plan's rule) is running on the same box.
