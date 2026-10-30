@@ -838,3 +838,7 @@ The lead's notes (29 Oct 2026, the lockbox done):
 - All 108 references converged, and none failed. No GPU box was used.
 - **Next:** the descriptive provenance comparison against `outputs/sealed/` (protocol Section 14),
   now allowed because the findings are committed. Then the exploratory discussion with the user.
+- **Provenance (protocol Section 14, done after the findings):** the sealed optima of 18 Oct agree
+  with the lockbox's re-solved references to within 0.06% on all 12 R_TEST circuits
+  (`docs/findings/lockbox-provenance.md`). Monza reproduces exactly; the other 11 differ by a few
+  cm of geometry. With the old optima the median gap would read about 5.18% instead of 5.16%.
