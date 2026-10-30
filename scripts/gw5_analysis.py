@@ -11,7 +11,9 @@ difference (5 against 5: ``analysis.permutation_test`` with one stratum), one-si
 with Holm over the three arms, and applies the plan's GW-6 rule. ``edges`` loads each network's
 final checkpoint and measures, at the 12 real R-dev crash unit-phases, L/e for the sigma_b = 4
 and 8 m bumps, the trapezoid G and the real change's L/e (``x2x3_exploratory.unit_phase``),
-each network's value the median over its unit-phases. ``gw6`` compares GW-6's runs with E0's
+each network's value the median over its unit-phases. Added after the first analysis, on
+review: the lap gap on the circuits both same-seed runs complete (``completion``) and the base
+run's c_min at the unit-phases (``edges``). ``gw6`` compares GW-6's runs with E0's
 five. Outputs: outputs/gw5/{completion,edges,gw6}.json.
 """
 
@@ -75,6 +77,8 @@ def run_stats(name: str) -> dict:
     with (RUNS / name / "metrics.csv").open() as f:
         last = list(csv.DictReader(f))[-1]
     return {"circuits": len(done), "completed": sorted(done),
+            "gaps": {c: float(ev[c]["gap"]) for c in done if ev[c].get("gap") is not None
+                     and np.isfinite(ev[c]["gap"])},
             "median_gap": float(np.median(gaps)) if gaps else float("nan"),
             "mean_completion": float(np.mean([r["completion"] for r in ev.values()])),
             "sps": float(last["sps"]), "timesteps": float(last["timesteps"]),
@@ -119,11 +123,24 @@ def stage_completion() -> dict:
     tests = {a: compare(arms[a]["circuits"], ctrl) for a in LEVERS}
     gap_tests = {a: compare([x["median_gap"] for x in by[a]],
                             [x["median_gap"] for x in by["ctrl"]]) for a in LEVERS}
+    # added after the first analysis (review): the gap on circuits both same-seed runs complete
+    common = {}
+    for a in LEVERS:
+        per_seed, pooled = {}, []
+        for s in R.SEEDS:
+            ga, gc = per[R.run_name(a, s)]["gaps"], per[R.run_name("ctrl", s)]["gaps"]
+            d = [ga[c] - gc[c] for c in sorted(set(ga) & set(gc))]
+            per_seed[str(s)] = {"n_circuits": len(d), "mean_diff": float(np.mean(d)) if d else None}
+            pooled += d
+        common[a] = {"per_seed": per_seed, "n_circuit_pairs": len(pooled),
+                     "pooled_mean_diff": float(np.mean(pooled)),
+                     "share_positive": float(np.mean(np.asarray(pooled) > 0))}
     h = holm({a: tests[a]["p_greater"] for a in LEVERS})
     cand = min(LEVERS, key=lambda a: (-tests[a]["mean_diff"], tests[a]["p_greater"],
                                          TIE_ORDER.index(a)))
     chosen = tests[cand]["mean_diff"] >= MIN_GAIN and tests[cand]["p_greater"] <= MAX_P
     return {"runs": per, "arms": arms, "tests": tests, "holm": h, "gap_tests": gap_tests,
+            "common_circuit_gap": common,
             "gw6": {"candidate": cand, "gain": tests[cand]["mean_diff"],
                     "p_greater": tests[cand]["p_greater"], "chosen": cand if chosen else None,
                     "rule": f"gain >= {MIN_GAIN} circuit and one-sided p <= {MAX_P}"}}
@@ -157,10 +174,12 @@ def stage_edges() -> dict:
                       "L_per_e_sigma4": X.med(u["forms"]["L_per_e"]["sigma_b=4"] for u in ok),
                       "L_per_e_sigma8": X.med(u["forms"]["L_per_e"]["sigma_b=8"] for u in ok),
                       "trapezoid_G": X.med(u["forms"]["G_loc"]["trapezoid"] for u in ok),
-                      "L_per_e_real": X.med(u["L_per_e_real"] for u in ok)}
+                      "L_per_e_real": X.med(u["L_per_e_real"] for u in ok),
+                      # added after the first analysis (review): clearance at the base run
+                      "base_c_min": X.med(u["base_c_min"] for u in ok)}
         print(f"{name}: {len(ok)} of {len(vals)} unit-phases", flush=True)
     out = {"networks": nets, "not_loaded": failed, "tests": {}}
-    for m in ("L_per_e_sigma4", "L_per_e_sigma8", "trapezoid_G", "L_per_e_real"):
+    for m in ("L_per_e_sigma4", "L_per_e_sigma8", "trapezoid_G", "L_per_e_real", "base_c_min"):
         ctrl = [nets[R.run_name("ctrl", s)][m] for s in R.SEEDS if R.run_name("ctrl", s) in nets]
         out["tests"][m] = {"ctrl_median": float(np.median(ctrl))}
         for a in LEVERS:
