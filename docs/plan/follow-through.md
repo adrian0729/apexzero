@@ -856,3 +856,10 @@ The lead's notes (29 Oct 2026, the lockbox done):
   against −0.059 for the corner-wide trapezoid. Real-width training lowers only the slow,
   far-upstream part of the response, as on step 2's confounded arms. By this section's rule,
   local perturbations (GW-5) stay the lever to test. No box was used.
+- **X-2 and X-3, locality at G2's real crash corners (exploratory, 30 Oct 2026; the user asked
+  for X-2, X-3 and GW-5 to GW-7):** plan `docs/findings/x2-plan.md`, findings
+  `docs/findings/x2x3.md`. At the same real R-dev corners and start states, G2 follows a
+  corner-wide shift at 0.75 but the real apex-local change at 0.07 (H3 reproduced exactly):
+  **locality explains the low real-road ratio** by the plan's rule. A 1 m local intrusion crashes
+  G2 at 10 of 12 unit-phases, a 1 m corner-wide one at none. First order holds for intrusions; on
+  local widening the closest point moves away.
