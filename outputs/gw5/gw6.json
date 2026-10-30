@@ -1,0 +1,398 @@
+{
+ "chosen": "margin",
+ "runs": {
+  "gw6-margin-s80": {
+   "circuits": 11,
+   "completed": [
+    "BrandsHatch",
+    "Catalunya",
+    "Hockenheim",
+    "Melbourne",
+    "MoscowRaceway",
+    "Nuerburgring",
+    "Oschersleben",
+    "Sepang",
+    "Sochi",
+    "YasMarina",
+    "Zandvoort"
+   ],
+   "gaps": {
+    "BrandsHatch": 0.07692656440762047,
+    "Hockenheim": 0.07089270247734647,
+    "MoscowRaceway": 0.08095375301448016,
+    "Nuerburgring": 0.06534820726815815,
+    "Oschersleben": 0.09244179365167993,
+    "Sepang": 0.0626047500799265,
+    "Sochi": 0.06146151360629171,
+    "YasMarina": 0.09392334768854038,
+    "Melbourne": 0.08132967729226004,
+    "Catalunya": 0.06635441013390575,
+    "Zandvoort": 0.0619804656427585
+   },
+   "median_gap": 0.07089270247734647,
+   "mean_completion": 0.9416666666666668,
+   "sps": 120690.51965778794,
+   "timesteps": 999948288.0,
+   "eval_sha256": "51cc6773b26be84c1e8d1e1696726a94f5b286586dffd439c1658732af337e4b"
+  },
+  "gw6-margin-s81": {
+   "circuits": 12,
+   "completed": [
+    "BrandsHatch",
+    "Catalunya",
+    "Hockenheim",
+    "Melbourne",
+    "MoscowRaceway",
+    "Norisring",
+    "Nuerburgring",
+    "Oschersleben",
+    "Sepang",
+    "Sochi",
+    "YasMarina",
+    "Zandvoort"
+   ],
+   "gaps": {
+    "BrandsHatch": 0.077913414425963,
+    "Hockenheim": 0.07745058077881617,
+    "MoscowRaceway": 0.07559425439827128,
+    "Norisring": 0.07438762638337604,
+    "Nuerburgring": 0.06630642087032079,
+    "Oschersleben": 0.09336731215605698,
+    "Sepang": 0.06554690502195726,
+    "Sochi": 0.07951215888602325,
+    "YasMarina": 0.08892625330843118,
+    "Melbourne": 0.08868627075085067,
+    "Catalunya": 0.062403287047247735,
+    "Zandvoort": 0.06243225441225109
+   },
+   "median_gap": 0.07652241758854372,
+   "mean_completion": 1.0,
+   "sps": 125043.38703199339,
+   "timesteps": 999948288.0,
+   "eval_sha256": "7d46345e5adb108db96dc624badc38b02cff6792db1f3b4676b3c1a5725eaf5a"
+  },
+  "gw6-margin-s82": {
+   "circuits": 12,
+   "completed": [
+    "BrandsHatch",
+    "Catalunya",
+    "Hockenheim",
+    "Melbourne",
+    "MoscowRaceway",
+    "Norisring",
+    "Nuerburgring",
+    "Oschersleben",
+    "Sepang",
+    "Sochi",
+    "YasMarina",
+    "Zandvoort"
+   ],
+   "gaps": {
+    "BrandsHatch": 0.08573635997633966,
+    "Hockenheim": 0.07604826731434722,
+    "MoscowRaceway": 0.10465721488954172,
+    "Norisring": 0.12000055502867979,
+    "Nuerburgring": 0.07044534994247886,
+    "Oschersleben": 0.10762715238237197,
+    "Sepang": 0.06997529996022878,
+    "Sochi": 0.06870590799309007,
+    "YasMarina": 0.1285069974169013,
+    "Melbourne": 0.09419174096194882,
+    "Catalunya": 0.08384650067286126,
+    "Zandvoort": 0.06611525560857534
+   },
+   "median_gap": 0.08479143032460046,
+   "mean_completion": 1.0,
+   "sps": 125488.37166847775,
+   "timesteps": 999948288.0,
+   "eval_sha256": "445a33d6a927976fb171873e19ffc805fd2692b7ee63a62a10c3c877c87d57e5"
+  },
+  "gw6-margin-s83": {
+   "circuits": 11,
+   "completed": [
+    "BrandsHatch",
+    "Catalunya",
+    "Hockenheim",
+    "Melbourne",
+    "MoscowRaceway",
+    "Norisring",
+    "Nuerburgring",
+    "Oschersleben",
+    "Sepang",
+    "Sochi",
+    "Zandvoort"
+   ],
+   "gaps": {
+    "BrandsHatch": 0.07548220756120272,
+    "Hockenheim": 0.06994123706254785,
+    "MoscowRaceway": 0.08124654894512173,
+    "Norisring": 0.05986140172173782,
+    "Nuerburgring": 0.06487290677805513,
+    "Oschersleben": 0.09226143181527013,
+    "Sepang": 0.06307577214498461,
+    "Sochi": 0.06666250243587912,
+    "Melbourne": 0.08776886081615487,
+    "Catalunya": 0.05995404814521477,
+    "Zandvoort": 0.06454217273023621
+   },
+   "median_gap": 0.06666250243587912,
+   "mean_completion": 0.9166666666666666,
+   "sps": 128195.40175558132,
+   "timesteps": 999948288.0,
+   "eval_sha256": "03cd7d48c68988930146a2bdb899c5c11f6199ccb0a4d9ea43ed5865dfa06a81"
+  },
+  "gw6-margin-s84": {
+   "circuits": 11,
+   "completed": [
+    "BrandsHatch",
+    "Catalunya",
+    "Hockenheim",
+    "Melbourne",
+    "MoscowRaceway",
+    "Nuerburgring",
+    "Oschersleben",
+    "Sepang",
+    "Sochi",
+    "YasMarina",
+    "Zandvoort"
+   ],
+   "gaps": {
+    "BrandsHatch": 0.07528264641422733,
+    "Hockenheim": 0.06733560276006334,
+    "MoscowRaceway": 0.10251910972499934,
+    "Nuerburgring": 0.06635679921954396,
+    "Oschersleben": 0.09607629450172284,
+    "Sepang": 0.07162120964239982,
+    "Sochi": 0.0640275856325756,
+    "YasMarina": 0.12143943069694463,
+    "Melbourne": 0.0878286147449805,
+    "Catalunya": 0.06605727328990652,
+    "Zandvoort": 0.06324095150041997
+   },
+   "median_gap": 0.07162120964239982,
+   "mean_completion": 0.9166666666666666,
+   "sps": 125489.64292242484,
+   "timesteps": 999948288.0,
+   "eval_sha256": "5e9bb7da81bc8584b65ee8608111fa52267354a878bb4a6a62426733ccae387f"
+  }
+ },
+ "e0": {
+  "e0-s50": {
+   "circuits": 4,
+   "completed": [
+    "MoscowRaceway",
+    "Oschersleben",
+    "Sepang",
+    "Zandvoort"
+   ],
+   "gaps": {
+    "MoscowRaceway": 0.06748536635391278,
+    "Oschersleben": 0.08603680265516567,
+    "Sepang": 0.05713357738451452,
+    "Zandvoort": 0.05650663266381106
+   },
+   "median_gap": 0.06230947186921365,
+   "mean_completion": 0.3333333333333333,
+   "sps": 125244.83946262386,
+   "timesteps": 999948288.0,
+   "eval_sha256": "4908bdd2a0dca213c62c3e9ffd56d7dffb5253f78b1043680d0c031f2a6b1e18"
+  },
+  "e0-s51": {
+   "circuits": 10,
+   "completed": [
+    "BrandsHatch",
+    "Catalunya",
+    "Melbourne",
+    "Norisring",
+    "Nuerburgring",
+    "Oschersleben",
+    "Sepang",
+    "Sochi",
+    "YasMarina",
+    "Zandvoort"
+   ],
+   "gaps": {
+    "BrandsHatch": 0.06788952338993659,
+    "Norisring": 0.11745209530737744,
+    "Nuerburgring": 0.06052326653408158,
+    "Oschersleben": 0.08359359078508155,
+    "Sepang": 0.0642714574427754,
+    "Sochi": 0.06161228629004101,
+    "YasMarina": 0.11621697542138199,
+    "Melbourne": 0.07920778155067021,
+    "Catalunya": 0.05109218951436989,
+    "Zandvoort": 0.05580237882717065
+   },
+   "median_gap": 0.066080490416356,
+   "mean_completion": 0.875,
+   "sps": 124842.49561659974,
+   "timesteps": 999948288.0,
+   "eval_sha256": "f311d31ea21f98735d6546fd56454d53eb6bc7962472a54b7d00553abc21e8b8"
+  },
+  "e0-s52": {
+   "circuits": 8,
+   "completed": [
+    "BrandsHatch",
+    "Catalunya",
+    "Hockenheim",
+    "MoscowRaceway",
+    "Nuerburgring",
+    "Oschersleben",
+    "Sepang",
+    "Zandvoort"
+   ],
+   "gaps": {
+    "BrandsHatch": 0.06352276619918884,
+    "Hockenheim": 0.07460046959198574,
+    "MoscowRaceway": 0.0680051552134564,
+    "Nuerburgring": 0.06044171547604238,
+    "Oschersleben": 0.07472378947217506,
+    "Sepang": 0.05521899737609837,
+    "Catalunya": 0.051868177151832784,
+    "Zandvoort": 0.05887739020131866
+   },
+   "median_gap": 0.06198224083761561,
+   "mean_completion": 0.6666666666666666,
+   "sps": 124778.95739479357,
+   "timesteps": 999948288.0,
+   "eval_sha256": "6b94c9697427216e3eafda96fce2e3e4514777e12f25ec2f11613c21c297f5b8"
+  },
+  "e0-s53": {
+   "circuits": 8,
+   "completed": [
+    "BrandsHatch",
+    "Hockenheim",
+    "MoscowRaceway",
+    "Nuerburgring",
+    "Oschersleben",
+    "Sepang",
+    "Sochi",
+    "Zandvoort"
+   ],
+   "gaps": {
+    "BrandsHatch": 0.07307812152968873,
+    "Hockenheim": 0.0642553860340529,
+    "MoscowRaceway": 0.07417708915971577,
+    "Nuerburgring": 0.06106860346584653,
+    "Oschersleben": 0.09027230652805818,
+    "Sepang": 0.06273023425515079,
+    "Sochi": 0.06049333218157038,
+    "Zandvoort": 0.05538433684733812
+   },
+   "median_gap": 0.06349281014460184,
+   "mean_completion": 0.6666666666666666,
+   "sps": 128524.49771424003,
+   "timesteps": 999948288.0,
+   "eval_sha256": "551b7a161c2ab6bb457c27e9665aa343927d38c50c1ab2ae32ffce6d5da8828d"
+  },
+  "e0-s54": {
+   "circuits": 6,
+   "completed": [
+    "BrandsHatch",
+    "Catalunya",
+    "Nuerburgring",
+    "Oschersleben",
+    "Sepang",
+    "Zandvoort"
+   ],
+   "gaps": {
+    "BrandsHatch": 0.07086786910135667,
+    "Nuerburgring": 0.05728842469445472,
+    "Oschersleben": 0.08811434868934764,
+    "Sepang": 0.06673656209230372,
+    "Catalunya": 0.058389924168820606,
+    "Zandvoort": 0.06260764585978373
+   },
+   "median_gap": 0.06467210397604373,
+   "mean_completion": 0.525,
+   "sps": 124992.67965685588,
+   "timesteps": 999948288.0,
+   "eval_sha256": "9b48d154fdc5fae63db2f8e0aee7795f0b6f9e6e1c803348c54cf842dca3af75"
+  }
+ },
+ "gw6_circuits": [
+  11,
+  12,
+  12,
+  11,
+  11
+ ],
+ "e0_circuits": [
+  4,
+  10,
+  8,
+  8,
+  6
+ ],
+ "gw6_median": 11.0,
+ "e0_median": 8.0,
+ "reaches_gate": true,
+ "test": {
+  "mean_diff": 4.2,
+  "p_greater": 0.003968253968253968,
+  "p_less": 1.0,
+  "p_two_sided": 0.007936507936507936,
+  "n_relabellings": 252
+ },
+ "gap": {
+  "gw6_mean_median_gap": 0.07409805249375392,
+  "e0_mean_median_gap": 0.06370742344876616
+ },
+ "gap_test": {
+  "mean_diff": 0.010390629044987762,
+  "p_greater": 0.003968253968253968,
+  "p_less": 1.0,
+  "p_two_sided": 0.007936507936507936,
+  "n_relabellings": 252
+ },
+ "common_circuit_gap": {
+  "all_ten": {
+   "circuits": [
+    "Oschersleben",
+    "Sepang",
+    "Zandvoort"
+   ],
+   "gw6": [
+    0.07234233645812164,
+    0.07378215719675511,
+    0.08123923598372536,
+    0.07329312556349699,
+    0.07697948521484754
+   ],
+   "e0": [
+    0.06655900423449708,
+    0.06788914235167587,
+    0.0629400590165307,
+    0.0694622925435157,
+    0.07248618554714503
+   ],
+   "mean_diff": 0.0076599313447164585,
+   "p_greater": 0.007936507936507936,
+   "p_less": 0.996031746031746,
+   "p_two_sided": 0.015873015873015872,
+   "n_relabellings": 252
+  },
+  "per_circuit_arm_mean_diff": {
+   "BrandsHatch": 0.00942866850202792,
+   "Catalunya": 0.013939673579486112,
+   "Hockenheim": 0.002905750265604884,
+   "Melbourne": 0.00875325136256877,
+   "MoscowRaceway": 0.019104972618787852,
+   "Norisring": -0.03270223426277956,
+   "Nuerburgring": 0.0068354342731050816,
+   "Oschersleben": 0.011806629275454755,
+   "Sepang": 0.005346621659730828,
+   "Sochi": 0.0070211244749662505,
+   "YasMarina": -0.008017968143677612,
+   "Zandvoort": 0.005826543098963771
+  },
+  "share_positive": 0.8333333333333334
+ },
+ "status": "EXPLORATORY (docs/findings/gw5-plan.md)",
+ "provenance": {
+  "script": "scripts/gw5_analysis.py",
+  "script_sha256": "2a5058393927f25a2702eb3fe2f2b70c0f74be3af69b95e334655d810b3d7160",
+  "git_head": "fb7ebab47e5cdefd8aea9700fe5107f77463c381",
+  "seconds": 0.0
+ }
+}

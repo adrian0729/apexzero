@@ -868,5 +868,10 @@ The lead's notes (29 Oct 2026, the lockbox done):
   lifts R-dev completion from 8.0 to 10.6 of 12** (one-sided p 0.016, Holm rejects; median 11,
   Norisring 5 of 5), at about +1.1 points of lap gap; it keeps 0.47 m more clearance at the real
   crash corners. Local width bumps do not help; SimBa follows edges far more but keeps half the
-  clearance and tends to complete less (6.6). Findings: `docs/findings/gw5.md`. **GW-6** (the
-  margin recipe at 1B, seeds 80-84, by the plan's rule) is running on the same box.
+  clearance and tends to complete less (6.6). Findings: `docs/findings/gw5.md`.
+- **GW-6 (exploratory, 30 Oct 2026; tag `gw6-v1`):** the plan's rule chose the margin. **At 1B the
+  margin recipe completes 11.4 R-dev circuits of 12 against E0's 7.2** (11, 12, 12, 11, 11 against
+  4, 10, 8, 8, 6; two-sided p 0.008); its median, 11, reaches E0's gate of 10. The cost is about 1
+  point of lap gap (7.41% against 6.37%). It differs from E0 in box, day and seeds too, and R-dev
+  is in-sample for widths. Findings: `docs/findings/gw5.md` Section 5. The box is deleted (2.33 h
+  for GW-6, about 4.9 GPU-h for GW-5 to GW-7).

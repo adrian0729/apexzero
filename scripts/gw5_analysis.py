@@ -198,13 +198,32 @@ def stage_gw6() -> dict:
         return {"chosen": None, "note": "no lever chosen: E0 is the 1B pilot of the recipe"}
     gw6 = [f"gw6-{arm}-s{s}" for s in GW6_SEEDS]
     a, b = [run_stats(n) for n in gw6], [run_stats(n) for n in E0]
+    # added after the first gw6 analysis (review): the levers and steps as planned
+    for n, x in zip(gw6, a, strict=True):
+        lv = json.loads((RUNS / n / "gw5.json").read_text())["levers"]
+        if lv["train_edge_margin"] != 1.4 or lv["local_bumps"] or x["timesteps"] != b[0]["timesteps"]:
+            raise SystemExit(f"{n}: levers {lv} or timesteps {x['timesteps']} not as planned")
     ca, cb = [x["circuits"] for x in a], [x["circuits"] for x in b]
+    # added after the first gw6 analysis (review): the gap test, and the gap like for like.
+    # The seeds differ, so there is no same-seed pairing: each run's mean gap on the circuits
+    # all ten runs complete, and per circuit the arm means over the runs that complete it.
+    every = sorted(set.intersection(*(set(x["gaps"]) for x in a + b)))
+    either = sorted(set.intersection(set().union(*(x["gaps"] for x in a)),
+                                     set().union(*(x["gaps"] for x in b))))
+    per_circuit = {c: float(np.mean([x["gaps"][c] for x in a if c in x["gaps"]])
+                            - np.mean([x["gaps"][c] for x in b if c in x["gaps"]])) for c in either}
+    ga, gb = ([float(np.mean([x["gaps"][c] for c in every])) for x in s] for s in (a, b))
     return {"chosen": arm, "runs": dict(zip(gw6, a, strict=True)), "e0": dict(zip(E0, b, strict=True)),
             "gw6_circuits": ca, "e0_circuits": cb, "gw6_median": float(np.median(ca)),
             "e0_median": float(np.median(cb)), "reaches_gate": bool(np.median(ca) >= 10),
             "test": compare(ca, cb),
             "gap": {"gw6_mean_median_gap": float(np.nanmean([x["median_gap"] for x in a])),
-                    "e0_mean_median_gap": float(np.nanmean([x["median_gap"] for x in b]))}}
+                    "e0_mean_median_gap": float(np.nanmean([x["median_gap"] for x in b]))},
+            "gap_test": compare([x["median_gap"] for x in a], [x["median_gap"] for x in b]),
+            "common_circuit_gap": {
+                "all_ten": {"circuits": every, "gw6": ga, "e0": gb, **compare(ga, gb)},
+                "per_circuit_arm_mean_diff": per_circuit,
+                "share_positive": float(np.mean(np.asarray(list(per_circuit.values())) > 0))}}
 
 
 def main() -> None:

@@ -1,15 +1,16 @@
-# GW-5, GW-6 and GW-7: a 1.4 m training-only margin lifts R-dev completion from 8.0 to 10.6 of 12 at 200M; local width bumps do not help, and SimBa follows edges far more but keeps less room and tends to complete less (exploratory)
+# GW-5, GW-6 and GW-7: a 1.4 m training-only margin lifts R-dev completion from 8.0 to 10.6 of 12 at 200M, and at 1B to 11.4 against E0's 7.2, for about 1 point of lap gap; local width bumps do not help, and SimBa follows edges far more but keeps less room and tends to complete less (exploratory)
 
 Results of 30 Oct 2026. Plan: [gw5-plan.md](gw5-plan.md), committed with its code and tagged `gw5-v1` (`c5963fc`) before any run.
 - **Code:**
   - `scripts/gw5_train.py` (the levers, wrapping `train_dr.py` unchanged) and `scripts/gw5_runs.py`, both tagged `gw5-v1`;
   - `scripts/gw6_runs.py` (tag `gw6-v1`);
   - `scripts/gw5_analysis.py`, written after the runs (first committed in `7961d56`).
-- **Results:** `outputs/gw5/completion.json` and `edges.json` (committed). GW-6's will be `gw6.json`. The plan named a single `analysis.json`.
+- **Results:** `outputs/gw5/completion.json`, `edges.json` and `gw6.json` (committed). The plan named a single `analysis.json`.
 - **Beyond the plan, added after the analysis was first run (on review):**
   - the real crash change's L/e and the permutation test on the gap;
   - the gap on the circuits both same-seed runs complete;
-  - the clearance (base c_min) at the real crash corners.
+  - the clearance (base c_min) at the real crash corners;
+  - for GW-6: a check of each run's lever and step count, the permutation test on the gap, and the gap on shared circuits.
 
   They are marked where they appear.
 - **Everything here is exploratory.**
@@ -43,7 +44,11 @@ Results of 30 Oct 2026. Plan: [gw5-plan.md](gw5-plan.md), committed with its cod
     - the corner-wide trapezoid: 0.85 against 0.72;
     - the real crash changes: 0.48 against 0.19.
   - It trains at about 73k steps per second against about 130k. These are cumulative averages that vary with what shared the GPU (116–150k within one MLP arm), but the arms were staggered evenly over the lanes.
-- **GW-6** (Section 5) is the margin recipe at 1B steps, chosen by the plan's rule, against E0's five 1B runs.
+- **GW-6: at 1B the margin recipe completes 11.4 circuits of 12 against E0's 7.2** (Section 5).
+  - Per run: 11, 12, 12, 11, 11 against 4, 10, 8, 8, 6. That is +4.2, two-sided p 0.008, the smallest possible at 5 against 5.
+  - Its median, 11, reaches E0's gate of 10; E0's was 8.
+  - **The cost is again about 1 point of lap gap:** 7.41% against 6.37% (+1.04, two-sided p 0.008; added). On the three circuits all ten runs complete it is +0.77 points (p 0.016; added).
+  - GW-6 differs from E0 in box, day and seeds as well as the lever.
 
 ## 2. Completion and lap time (primary outcome: R-dev circuits completed, of 12)
 
@@ -97,10 +102,52 @@ Measured with X-2's machinery ([x2x3.md](x2x3.md)) at the 12 real R-dev crash un
   - It works through clearance (+0.47 m at the real crash corners), not better edge following.
   - It costs about 1.1–1.2 points of lap gap, the same order as the width model GW-4 turned down for its +1.5-point gap. Whether that trade is worth it is a judgment for the next recipe.
 - **Local bumps, as built here, are not.** They change neither completion nor short-scale following, and they cost about 0.6 points of lap time on shared circuits. The edge-following deficit X-2 found at the real corners is not cured by exposing the policy to random local width changes of ±1 m. This one design does not rule out other densities or amplitudes.
+- **At 1B the margin's lead holds and grows** (+2.6 circuits at 200M, +4.2 at 1B), while longer training cuts its gap as it does E0's. Adopting it is a recipe decision: about a point of lap time for about four more R-dev circuits completed, in-sample.
 - **SimBa's high edge following does not translate into completion** (6.6 against 8.0, p 0.12), although it is 1.6 points faster on every shared circuit.
   - It keeps about half the control's clearance at the real crash corners (0.64 m against 1.21 m). It drives a tighter, faster line with less room for error, which fits completing less; whether that is the cause is not tested.
   - The interp tooling did load SimBa, which the plan had doubted.
 
-## 5. GW-6: the margin recipe at 1B (pending)
+## 5. GW-6: the margin recipe at 1B
 
-Running on the same box since 08:39 UTC (5 runs, seeds 80–84). This section is filled in from `outputs/gw5/gw6.json` when the runs are back.
+- **The rule chose `margin`:** a gain of +2.6 ≥ 1.0 circuit, one-sided p 0.016 ≤ 0.10 (`completion.json`).
+- **The runs:** the recipe at 1B, seeds 80–84, on the same A6000 at 5 lanes.
+  - All five finished in 2.33 h (`round_manifest.py check` OK at `gw6-v1`).
+  - Each recorded the 1.4 m margin and no bumps, and ended at E0's step count, 999,948,288 (checked; added).
+- **The comparison** (the plan's): E0's five 1B runs, `e0-s50..54`, the same recipe without the margin.
+
+| | Seeds | Circuits completed | Mean | Median | Median ≥ 10 | Mean of the runs' median gaps | Steps/s per run |
+|---|---|---|---|---|---|---|---|
+| GW-6 (`margin`, 1B) | 80–84 | 11, 12, 12, 11, 11 | **11.4** | 11 | **yes** | 7.41% | 125.0k |
+| E0 (1B) | 50–54 | 4, 10, 8, 8, 6 | 7.2 | 8 | no | 6.37% | 125.7k |
+
+- **Completion:** +4.2 circuits, two-sided permutation p 0.008 (2 of 252 relabellings, the smallest possible). The ranges do not overlap: every GW-6 run completes 11 or 12, every E0 run 4–10.
+- **Seeds completing each circuit (of 5):**
+
+  | Circuit | GW-6 | E0 |
+  |---|---|---|
+  | Brands Hatch | 5 | 4 |
+  | Catalunya | 5 | 3 |
+  | Hockenheim | 5 | 2 |
+  | Melbourne | 5 | 1 |
+  | Moscow Raceway | 5 | 3 |
+  | Norisring | 3 | 1 |
+  | Nürburgring | 5 | 4 |
+  | Oschersleben | 5 | 5 |
+  | Sepang | 5 | 5 |
+  | Sochi | 5 | 2 |
+  | Yas Marina | 4 | 1 |
+  | Zandvoort | 5 | 5 |
+
+- **Lap gap** (added: the test and both like-for-like views).
+  - **All circuits:** the mean of the runs' median gaps is +1.04 points (two-sided p 0.008). Every GW-6 run's median gap (6.67–8.48%) is above every E0 run's (6.20–6.61%).
+  - **Like for like:** the seeds differ, so there is no same-seed pairing.
+    - On the three circuits all ten runs complete (Oschersleben, Sepang, Zandvoort), each run's mean gap is 7.23–8.12% against 6.29–7.25%: +0.77 points, two-sided p 0.016.
+    - Per circuit, the GW-6 mean is higher on 10 of 12. The two exceptions, Norisring (−3.3 points) and Yas Marina (−0.8), rest on the one E0 run that completes them (`e0-s51`, at 11.8% and 11.6%).
+- **From 200M to 1B** (descriptive; different seeds):
+  - **The margin recipe** goes from 10.6 circuits (GW-5) to 11.4, and its mean of median gaps from 9.39% to 7.41%.
+  - **E0's recipe** goes from 8.0 (GW-5's `ctrl`) to 7.2, and from 8.17% to 6.37%.
+  - So the extra training cuts both recipes' gaps by about 2 points, and the margin keeps its completion lead.
+- **Limits:**
+  - GW-6 and E0 differ in box, day and seeds as well as the lever, as the plan stated.
+  - R-dev completion is in-sample for widths, and R_TEST is spent, so no held-out completion is measured.
+  - Only one margin, 1.4 m, was tried.
