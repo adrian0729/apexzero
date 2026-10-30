@@ -875,3 +875,10 @@ The lead's notes (29 Oct 2026, the lockbox done):
   point of lap gap (7.41% against 6.37%). It differs from E0 in box, day and seeds too, and R-dev
   is in-sample for widths. Findings: `docs/findings/gw5.md` Section 5. The box is deleted (2.33 h
   for GW-6, about 4.9 GPU-h for GW-5 to GW-7).
+- **GW-8, the training-margin sweep (exploratory, 30 Oct 2026; plan `docs/findings/gw8-plan.md`,
+  tag `gw8-v1`; the user asked for it after GW-6):** 1.2, 1.4 and 1.6 m x seeds 90-94 at 200M on
+  one A6000 (1.72 h). Completion, lap gap and clearance at the real crash corners all rise with the
+  margin: 9.6, 10.8 and 11.4 circuits; 8.45%, 9.01% and 9.53%. No step is significant at five
+  seeds. **The plan's rule keeps 1.4 m:** 1.6 m adds only 0.6 circuits (1.0 needed), and 1.2 m
+  loses 1.2 (0.4 allowed). Edge following does not change. Findings: `docs/findings/gw8.md`. The
+  box is deleted.
