@@ -849,3 +849,10 @@ The lead's notes (29 Oct 2026, the lockbox done):
   lost time comes back on the car's own line, half within 0.37 m of it and 90% within 2 m: "mostly
   line" by the plan's rule, but near its edge, and in small moves. R-dev gives the same picture.
   All 409 solves converged; no box was used.
+- **X-1, locality on H4R's 20 same-code networks (exploratory, 30 Oct 2026):** the plan
+  (`docs/findings/locality-h4r-plan.md`) was committed before computing; the script reproduces
+  H4R-G exactly (`docs/findings/locality-h4r.md`). Primary outcome: **no change detected at short
+  scales** (L/e at 4 and 8 m bumps +0.020 and +0.026, p 0.065 and 0.12; Holm rejects neither),
+  against −0.059 for the corner-wide trapezoid. Real-width training lowers only the slow,
+  far-upstream part of the response, as on step 2's confounded arms. By this section's rule,
+  local perturbations (GW-5) stay the lever to test. No box was used.
