@@ -1,8 +1,25 @@
-# Status (24 Oct 2026)
+# Status (30 Oct 2026)
 
 Phases follow [the two-track plan](plan/two-track-plan.md): K = shared core, P = paper, D = demo.
+Since 25 Oct the work has followed [the follow-through plan](plan/follow-through.md), whose
+Section 11 records every decision round and the lead's notes on each round.
 
-## Done
+## In brief
+
+- **Every study started has been run, analysed and written up.** No GPU box is up.
+- **The final agent misses its gate.** E0 (5 seeds × 1B on `generator-v1` and `sim-v1`) completes
+  a median 8 of 12 R-dev circuits against a pass mark of 10, in-sample for widths
+  ([e0](findings/e0.md)).
+- **The lockbox is spent** (`protocol-v1`, 29 Oct). On R_TEST, E0's median subject completes 66.7%
+  of laps at a median gap of 5.16%, so H1 is refuted on both counts ([lockbox](findings/lockbox.md)).
+  Any further use of R_TEST is POST HOC.
+- **The best recipe found since** (exploratory, R-dev only): a 1.4 m training-only margin. At 1B it
+  completes 11.4 of 12 R-dev circuits against E0's 7.2, for about 1 point of lap gap
+  ([gw5](findings/gw5.md) Section 5; the margin sweep in [gw8](findings/gw8.md)). E0 and the tags
+  are unchanged.
+- **Paused by choice:** the paper, the drivers study and the full demo.
+
+## Built first (18–24 Oct)
 
 | Phase | What exists | Key results |
 |---|---|---|
@@ -115,6 +132,120 @@ re-run passed every gate with a verdict.
 - **Exploratory:** λ_ξ's very negative score comes from a tail of large critic gradients with
   the wrong sign, present in every critic; the refute does not depend on it.
 
+## Follow-through (25–30 Oct 2026)
+
+The [follow-through plan](plan/follow-through.md) put everything not yet done into phases 0–5,
+each with a cost.
+
+**Phase 0: hygiene.**
+- Three stray lockbox files were sealed unread (see the addenda below), and
+  `scripts/solve_all_ocp.py` refuses lockbox circuits.
+- STATUS and the paper were brought up to date.
+- The driver registration gate is in code (DV-A), and the snapping-audit panel is legible (DV-D2).
+
+**Phase 1: analyses of outputs already on disk** (Mac, exploratory, each with its plan committed
+first).
+- **Gate diagnostics, GW-1** ([findings](findings/gate-diagnostics.md)).
+  - **The R-dev shortfall is transfer.** The final networks complete 0.96–0.99 of their own A_DR
+    levels, against a median 0.67 on R-dev.
+  - **Most crashes leave the track on the inside.** 92–97% of the baselines' terminations are
+    inside-edge corridor exits at corners, and real-width networks keep about 0.27 m more
+    clearance.
+  - **R-dev completion over training is U-shaped:** 8.8 circuits at 10M steps, 5.5 at 110M and 7.1
+    at 200M. The early completions are slow laps.
+  - This pointed at two levers: a training margin (GW-5) and a longer budget (GW-6).
+- **Interpretability leftovers, IN-1 to IN-4** ([findings](findings/interp-leftovers.md)).
+  - Step 2's numbers now have intervals.
+  - On the keys valid for all nine generalists, G2 is lawful as well as G3.
+  - "About 80% for a corner-wide shift" is the better summary.
+- **P4, option A** ([findings](findings/p4.md)). No certified perturbation reaches the
+  specialists' failing distance, so P4 stayed vacuous. It was settled by option B2 (below).
+- **Drivers power, DV-B0** ([findings](findings/drivers-power.md)): **no-go.**
+  - The split-half gate would most likely fail at the effect sizes the pilot allows, so DV-B was
+    not run.
+  - The fallback is 2–3 teammate-pair case studies, labelled as such.
+- **Idea 2's follow-ups, CS-1 to CS-15 and BC-a0** ([findings](findings/costate-followups.md)).
+  - The C1 refute holds at the policies' own states and at all 144 training snapshots.
+  - λ_s and λ_ξ can be decoded from the input z (R² 0.35 and 0.67), but the critics' gradients
+    do not express them.
+  - Road beyond the preview moves braking and corner λ by 9–103% of its phase variance, so
+    BC-1 was dropped.
+
+**Phase 2: builds on the Mac.**
+- **Width model, GW-2** ([findings](findings/width-model.md)).
+  - There are two statistical width models; neither copies any circuit.
+  - Each fails 3 of the 90 width-report checks.
+  - Model (2a) was chosen, with a restated criterion that is logged as a deviation.
+- **Built and tested:**
+  - the value-gradient term (VG-0);
+  - the lockbox harness (LB-0);
+  - the paper's labeller (PA-1). Its 200-label pilot was not run.
+- **The demo's MVP-1 lite** (DM-1; [demo](demo/README.md)):
+  - a clip of the Hockenheim specialist;
+  - a POST HOC R-dev generalist ghost on Catalunya.
+
+**Phase 3: A6000 rounds (27–29 Oct).**
+- **GW-3** (pre-registered, 120 runs; [findings](findings/gw3.md)).
+  - A width model fitted on one fold raises completion on the other fold: 9.8 against 4.6 (v1)
+    and 9.9 against 5.0 (v3) held-out circuits of 12, p 2.9e-11.
+  - Its lap-gap cost, +1.52 points, fails GW-4's limit of 1.0.
+- **GW-4** ([findings](findings/gw4.md)).
+  - The rule fixed before GW-3 gives `generator-v1` copied R-dev widths (`--real-widths`).
+  - `generator-v1` and `sim-v1` are tagged.
+  - So every R-dev number for E0 is **in-sample for widths**.
+- **P4-B2** (pre-registered, 5 fresh specialists; [findings](findings/p4-b2.md)). No reading
+  reaches 3 of the 5, so there is no recipe-level description.
+- **VG-1** (pre-registered, 40 runs; [findings](findings/vg1.md)).
+  - The value-gradient term moves the critic's gradient toward λ (C1's R²_c, p 0.0105).
+  - It brings no completion gain (−0.5 circuits, CI −1.2 to +0.2) and takes twice the GPU time.
+  - It is closed as a completion lever at 200M.
+- **Maze E5** (pre-registered, 30 runs; [findings](findings/maze-e5.md)).
+  - The agents are JaxUED's and SFL's own maze agents, measured against exact regret.
+  - None of PVL, MaxMC or learnability ranks regret better than the best baseline, which is
+    agent-only in every late cell.
+  - Row C ("Ground truth confirms No Regrets on the maze") holds in all nine arm × score cells.
+
+**Phases 4 and 5: the final agent and the lockbox (28–29 Oct).**
+- **E0, 5 seeds × 1B** ([findings](findings/e0.md)).
+  - The gate fails: a median 8 of 12 (counts 4, 10, 8, 8, 6), in-sample for widths.
+  - `generator-v1` stays frozen.
+- **The lockbox, `protocol-v1`** ([findings](findings/lockbox.md)).
+  - The user approved it, and it was tagged before any stage ran. Each stage ran once, on the Mac.
+  - **H1 is refuted on both counts:** the median subject completes 66.7% of laps (bar 90%), at a
+    median gap of 5.16% (bar 4%).
+  - Six of the eight calibrated predictions held. The two that missed are the gap levels, which
+    fell below their R-dev intervals.
+  - The sealed optima of 18 Oct agree with the re-solved references to within 0.06%
+    ([provenance](findings/lockbox-provenance.md)).
+
+**After the lockbox (30 Oct; exploratory or POST HOC).**
+- **Line or execution** (POST HOC; [findings](findings/line-execution.md)).
+  - About 30% of E0's lost time on R_TEST comes back on its own line.
+  - Half of the lost time comes back within 0.37 m of that line, and 90% within 2 m.
+  - So the loss is mostly in the line, but in small moves.
+- **X-1** ([findings](findings/locality-h4r.md)). On H4R's same-code networks, real-width training
+  lowers only the slow, far-upstream part of edge tracking.
+- **X-2 and X-3** ([findings](findings/x2x3.md)), at G2's real crash corners:
+  - the line follows a corner-wide edge shift at 0.75, but the real apex-local change at only
+    0.07;
+  - a 1 m local intrusion crashes G2 at 10 of 12 unit-phases, while a 1 m corner-wide one crashes
+    it at none.
+- **GW-5 and GW-7** ([findings](findings/gw5.md)).
+  - **A 1.4 m training-only termination margin** (evaluation stays at 1.0 m) lifts R-dev completion
+    from 8.0 to 10.6 of 12 at 200M (one-sided p 0.016), for about 1.1 points of lap gap.
+  - Local width bumps do not help.
+  - SimBa follows edges more closely but completes less (6.6).
+- **GW-6** (gw5.md Section 5).
+  - **At 1B the margin recipe completes 11.4 of 12 against E0's 7.2** (two-sided p 0.008); its
+    median is 11.
+  - The cost is lap gap: 7.41% against 6.37%.
+  - It also differs from E0 in box, day and seeds.
+- **GW-8** ([findings](findings/gw8.md)).
+  - Margins of 1.2, 1.4 and 1.6 m complete 9.6, 10.8 and 11.4 circuits, at gaps of 8.45%, 9.01%
+    and 9.53%.
+  - No step is significant at five seeds.
+  - The plan's rule keeps 1.4 m.
+
 `scripts/dashboard.py` shows everything running: stages, agent workflows, GPU boxes.
 
 ## Protocol deviation (recorded)
@@ -141,23 +272,32 @@ listed file names only, and it was stopped with empty output. No sealed file nam
 reached any agent or the lead, and nothing was written there. Later tasks name the search paths
 explicitly and exclude `outputs/sealed/`.
 
+**Addendum, 29 Oct 2026.**
+- `protocol-v1` was tagged, and the lockbox ran once ([lockbox](findings/lockbox.md)).
+- `outputs/sealed/` was opened only after those findings were committed, for the provenance
+  comparison that protocol Section 14 allows ([provenance](findings/lockbox-provenance.md)).
+- Any further use of R_TEST or of the sealed files is POST HOC.
+
 ## Decisions taken (reversible, recorded here)
 
-- **Driver registration gate.** The plan's gate (RMS <= 3 m, length within 1%) rejects 8 of 12 current layouts because the OpenF1 track model behaves like a racing line (inside offsets of 0.6-2.8 m), not a centreline. Adopted instead: excursion beyond the TUMFTM edges at the 99th percentile <= 8 m, with RMS and length reported as diagnostics. It passes all current layouts and no old layout in 2023, 2024 and 2025. Not yet applied in code.
+- **Driver registration gate.** The plan's gate (RMS <= 3 m, length within 1%) rejects 8 of 12 current layouts because the OpenF1 track model behaves like a racing line (inside offsets of 0.6-2.8 m), not a centreline. Adopted instead: excursion beyond the TUMFTM edges at the 99th percentile <= 8 m, with RMS and length reported as diagnostics. It passes all current layouts and no old layout in 2023, 2024 and 2025. Applied in code in `884280f` (DV-A).
 - **Track geometry stays out of git**, including derived trajectory JSON; figures are committed with attribution.
 - **Human telemetry from lockbox circuits is allowed** (snapping audit, driver study); the lockbox covers agent and optimum evaluation only.
 
-## Next
+## What is left
 
-1. Idea 2's follow-ups ([costate findings](findings/costate.md), Section 10): exploratory
-   analyses of the bound arrays, each with a plan committed first; a new pre-registration for
-   braking and corner states, or for a value-gradient term in the critic's loss.
-2. Width in the generator: real profiles help unseen circuits by about half the in-sample gain.
-   Before a default (`generator-v1`): more leave-out seeds, or a statistical width model that
-   copies no evaluation circuit.
-3. Paused by choice: the paper's curriculum audit (maze E5 at scale, racing PLR / SFL), K2b
-   production TO-OCP labels, the drivers study, the demo, and the lockbox evaluation
-   (`protocol-v1`).
+Every study started has been run and written up. What remains:
+- **Paused by choice:**
+  - the paper. It is a draft with placeholder results. PA-1's label pilot, PA-2 and PA-4 to PA-7
+    were not run; PA-5 is the production labels and PA-6 the racing curriculum runs.
+  - the full demo;
+  - the drivers case studies (DV-B is a no-go).
+- **Dropped:** BC-1, and CS-13 on T.
+- **Open and optional:**
+  - The margin recipe has been shown on R-dev only, where it is in-sample for widths. The lockbox
+    is spent, so any R_TEST check of the recipe would be POST HOC.
+  - The 1.6 m margin was not run at 1B.
+  - E0 and the tags stay the frozen baseline.
 
 ## Compute
 
@@ -165,6 +305,13 @@ GPU training runs on Brev (Massed Compute). `scripts/gpu_setup.sh` and `scripts/
 set a box up and move R-dev data only; the lockbox never leaves the Mac. At about 430k PPO
 steps/s per run (two runs per L40S), a 200M-step run takes minutes instead of 3 h on the Mac.
 Boxes are deleted when their results are pulled back.
+
+From 27 Oct every round ran on Massed Compute A6000s through `scripts/gpu_round.sh`.
+- On the 12-vCPU type, five runs share one GPU at about 125–128k PPO steps/s each.
+- Each round's manifest is checked against its tag by `scripts/round_manifest.py`.
+- The rounds in the follow-through log from 27 to 30 Oct add up to about 145 GPU-hours, 105 of
+  them for maze E5.
+- No box is up.
 
 ## Things found along the way (all fixed, each with a test)
 
